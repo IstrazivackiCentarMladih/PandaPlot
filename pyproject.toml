@@ -1,0 +1,23 @@
+[project]
+name = "pandaplot"
+version = "0.1.0"
+description = "PandaPlot is educational scientific visualization and analysis application built with Python. The project is open source and welcomes contribution."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.10.5",
+    "pandas>=2.3.1",
+    "pyside6>=6.9.1",
+    "scipy>=1.16.1",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.8.6",
+    "pip-audit>=2.9.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.12.7",
+]
