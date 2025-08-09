@@ -105,7 +105,7 @@ class TestDeleteItemCommand:
         sample_project.find_item.assert_called_once_with("item-123")
         ui_controller.show_warning_message.assert_called_once_with(
             "Delete Item", 
-            "Item with ID 'item-123' not found in the project."
+            "Item 'item-123' not found in the project."
         )
 
     def test_execute_user_cancels_deletion(self, mock_app_context, sample_project, sample_note):

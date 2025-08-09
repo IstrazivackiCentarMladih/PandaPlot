@@ -97,7 +97,7 @@ class TestEditNoteCommand:
         sample_project.find_item.assert_called_once_with("note-123")
         ui_controller.show_warning_message.assert_called_once_with(
             "Edit Note", 
-            "Note with ID 'note-123' not found in the project."
+            "Note 'note-123' not found in the project."
         )
 
     def test_execute_item_not_note(self, mock_app_context, sample_project):
@@ -116,7 +116,7 @@ class TestEditNoteCommand:
         assert result is False
         ui_controller.show_warning_message.assert_called_once_with(
             "Edit Note", 
-            "Note with ID 'note-123' not found in the project."
+            "Note 'note-123' not found in the project."
         )
 
     def test_execute_successful(self, mock_app_context, sample_project, sample_note):
