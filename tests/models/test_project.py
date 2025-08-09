@@ -222,53 +222,6 @@ class TestProjectQueries:
         assert item3 not in root_items  # item3 is in collection1
 
 
-class TestIndexManagement:
-    """Test index rebuilding and management."""
-    
-    def test_rebuild_index_empty_project(self, sample_project):
-        """Test rebuilding index on empty project."""
-        sample_project.rebuild_index()
-        assert len(sample_project.items_index) == 0
-    
-    def test_rebuild_index_populated_project(self, populated_project):
-        """Test rebuilding index on populated project."""
-        project, item1, item2, collection1, item3 = populated_project
-        
-        # Clear the index
-        project.items_index.clear()
-        assert len(project.items_index) == 0
-        
-        # Rebuild it
-        project.rebuild_index()
-        
-        assert len(project.items_index) == 4
-        assert item1.id in project.items_index
-        assert item2.id in project.items_index
-        assert collection1.id in project.items_index
-        assert item3.id in project.items_index
-    
-    def test_rebuild_index_corrupted_state(self, populated_project):
-        """Test rebuilding index when index is out of sync with hierarchy."""
-        project, item1, item2, collection1, item3 = populated_project
-        
-        # Manually corrupt the index
-        fake_item = Item(name="Fake Item")
-        project.items_index[fake_item.id] = fake_item
-        
-        # Remove an item from hierarchy but not index
-        collection1.remove_item(item2)
-        
-        # Rebuild should fix the inconsistency
-        project.rebuild_index()
-        
-        assert len(project.items_index) == 3  # item1, collection1, item3 (item2 was removed)
-        assert fake_item.id not in project.items_index
-        assert item2.id not in project.items_index
-        assert item1.id in project.items_index
-        assert collection1.id in project.items_index
-        assert item3.id in project.items_index
-
-
 class TestSerialization:
     """Test project serialization and deserialization."""
     
@@ -429,11 +382,6 @@ class TestEdgeCases:
         assert len(sample_project.items_index) == 4
         assert sample_project.find_item(item.id) == item
         assert item.parent_id == collection3.id
-        
-        # Test rebuild index works with nested structure
-        sample_project.rebuild_index()
-        assert len(sample_project.items_index) == 4
-        assert sample_project.find_item(item.id) == item
     
     def test_cannot_remove_root_item(self, sample_project):
         """Test that attempting to remove the root item raises ValueError."""

@@ -28,7 +28,6 @@ class EventPublisherMixin:
     """
     
     def __init__(self, event_bus: 'EventBus'):
-        # Don't call super() to avoid passing event_bus to Qt widgets
         self._event_bus: EventBus | None = event_bus
     
     def publish_event(self, event_type: str, data: Dict[str, Any] | None = None) -> None:
@@ -74,7 +73,6 @@ class EventSubscriberMixin:
     """
     
     def __init__(self, event_bus: 'EventBus'):
-        # Don't call super() to avoid passing event_bus to Qt widgets
         self._event_bus: EventBus | None = event_bus
         self._subscriptions: List[Tuple[str, Callable]] = []
     

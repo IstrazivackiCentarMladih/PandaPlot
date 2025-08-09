@@ -1,7 +1,9 @@
 # exit_command.py
 # Command to handle application exit in PandaPlot.
 
+from tkinter import EventType
 from pandaplot.commands.base_command import Command
+from pandaplot.models.events.event_types import AppEvents
 from pandaplot.models.state.app_context import AppContext
 
 class ExitCommand(Command):
@@ -17,7 +19,7 @@ class ExitCommand(Command):
         """
         Execute the exit command.
         """
-        self.app_context.event_bus.emit('app_exit')
+        self.app_context.event_bus.emit(AppEvents.APP_CLOSING)
 
     def undo(self):
         """

@@ -14,6 +14,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, call
 from pandaplot.commands.app.exit_command import ExitCommand
 from pandaplot.commands.base_command import Command
+from pandaplot.models.events.event_types import AppEvents
 from pandaplot.models.state.app_context import AppContext
 
 
@@ -89,7 +90,7 @@ class TestExitCommandExecution:
         exit_command.execute()
         
         # Verify that the event bus emit method was called with 'app_exit'
-        mock_app_context.event_bus.emit.assert_called_once_with('app_exit')
+        mock_app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
     
     def test_execute_multiple_calls(self, exit_command, mock_app_context):
         """Test multiple execute calls."""
@@ -101,7 +102,7 @@ class TestExitCommandExecution:
         assert mock_app_context.event_bus.emit.call_count == 3
         
         # Verify all calls were with 'app_exit'
-        expected_calls = [call('app_exit'), call('app_exit'), call('app_exit')]
+        expected_calls = [call(AppEvents.APP_CLOSING), call(AppEvents.APP_CLOSING), call(AppEvents.APP_CLOSING)]
         mock_app_context.event_bus.emit.assert_has_calls(expected_calls)
     
     def test_execute_with_different_event_bus_states(self, mock_app_context):
@@ -119,7 +120,7 @@ class TestExitCommandExecution:
             
             # Should not raise any exceptions
             command.execute()
-            mock_event_bus.emit.assert_called_with('app_exit')
+            mock_event_bus.emit.assert_called_with(AppEvents.APP_CLOSING)
 
 
 class TestExitCommandUndoRedo:
@@ -187,8 +188,8 @@ class TestExitCommandIntegration:
         
         # Execute should still work
         exit_command.execute()
-        mock_app_context.event_bus.emit.assert_called_once_with('app_exit')
-    
+        mock_app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
+
     def test_execute_after_failed_redo(self, exit_command, mock_app_context):
         """Test that execute still works after a failed redo attempt."""
         # Try to redo (should fail)
@@ -197,7 +198,7 @@ class TestExitCommandIntegration:
         
         # Execute should still work
         exit_command.execute()
-        mock_app_context.event_bus.emit.assert_called_once_with('app_exit')
+        mock_app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
     
     def test_multiple_operations_sequence(self, exit_command, mock_app_context):
         """Test a sequence of operations including failures."""
@@ -220,7 +221,7 @@ class TestExitCommandIntegration:
         
         # Verify execute was called 3 times total
         assert mock_app_context.event_bus.emit.call_count == 3
-        expected_calls = [call('app_exit')] * 3
+        expected_calls = [call(AppEvents.APP_CLOSING)] * 3
         mock_app_context.event_bus.emit.assert_has_calls(expected_calls)
 
 
@@ -230,7 +231,7 @@ class TestExitCommandEdgeCases:
     def test_initialization_with_none_app_context(self):
         """Test initialization with None as app_context."""
         # This should work during initialization
-        command = ExitCommand(None)
+        command = ExitCommand(None) # type: ignore
         assert command.app_context is None
         
         # But execute should fail when trying to access event_bus

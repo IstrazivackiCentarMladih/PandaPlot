@@ -5,13 +5,8 @@ from .event_types import EventHierarchy
 
 
 class EventBus:
-    """Enhanced event bus with pattern matching and hierarchical event support.
-    
-    Features:
-    - Pattern subscriptions (e.g., "dataset.*" to catch all dataset events)
-    - Automatic event hierarchy emission using EventHierarchy mapping
-    - Thread-safe operations for GUI use
-    - Unsubscribe capability for cleanup
+    """
+    Event bus for communication between components.
     """
     
     def __init__(self):

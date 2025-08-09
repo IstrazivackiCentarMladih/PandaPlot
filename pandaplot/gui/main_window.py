@@ -14,14 +14,14 @@ from pandaplot.gui.components.tabs.tab_container import TabContainer
 from pandaplot.gui.dialogs.settings_dialog import SettingsDialog
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.events.mixins import EventBusComponentMixin
-from pandaplot.models.events.event_types import DatasetOperationEvents, UIEvents
+from pandaplot.models.events.event_types import AppEvents, DatasetOperationEvents, UIEvents
 
 
 class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     def __init__(self, app_context: AppContext):
         super().__init__(event_bus=app_context.event_bus)
         
-        self.setWindowTitle("CSV Plotter - Modern Data Visualization Tool")
+        self.setWindowTitle("PandaPlot")
         
         # Initialize MVC components
         self.app_context = app_context
@@ -43,7 +43,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
         
         self.create_widgets(main_layout)
         self.setup_event_subscriptions()
-        self.app_context.event_bus.subscribe('app_exit', self.closeEvent)
+        self.app_context.event_bus.subscribe(AppEvents.APP_CLOSING, self.closeEvent)
         
     def create_widgets(self, main_layout):
         # Create menu

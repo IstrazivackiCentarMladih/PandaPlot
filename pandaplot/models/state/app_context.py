@@ -1,3 +1,6 @@
+"""
+Facade for accessing application state and services.
+"""
 from pandaplot.models.state.app_state import AppState
 from pandaplot.models.events.event_bus import EventBus
 from pandaplot.commands.command_executor import CommandExecutor

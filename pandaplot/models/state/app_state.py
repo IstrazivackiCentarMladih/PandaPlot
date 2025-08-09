@@ -12,7 +12,8 @@ class AppState:
     def __init__(self, event_bus: Optional[EventBus] = None):
         self.event_bus = event_bus or EventBus()
         self._current_project: Optional[Project] = None
-        self._project_file_path: Optional[str] = None
+        # TODO: move to the project model or project container model
+        self._project_file_path: Optional[str] = None  
         
     @property
     def current_project(self) -> Optional[Project]:
@@ -49,6 +50,7 @@ class AppState:
         })
         
         if old_project is None:
+            # TODO: this should be removed
             self.event_bus.emit('first_project_loaded', {
                 'project': project,
                 'file_path': file_path
@@ -57,6 +59,7 @@ class AppState:
     def close_project(self):
         """Close the currently loaded project."""
         if self._current_project is not None:
+            # TODO: add support for multiple projects
             old_project = self._current_project
             old_file_path = self._project_file_path
             
@@ -75,6 +78,7 @@ class AppState:
         Args:
             file_path (str, optional): New file path to save to. If None, uses current path.
         """
+        # TODO: this shouldn't be in the application state. 
         if self._current_project is None:
             raise ValueError("No project loaded to save")
         

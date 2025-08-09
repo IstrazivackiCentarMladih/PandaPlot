@@ -12,6 +12,10 @@ Usage patterns:
 
 from typing import List, Dict
 
+class AppEvents:
+    """Application-wide events."""
+    APP_CLOSING = "app.closing"
+
 
 class DatasetEvents:
     """Dataset-related events (generic dataset operations).
@@ -169,6 +173,8 @@ class EventHierarchy:
     
     # Simple mapping from specific events to their parent chain
     HIERARCHY_MAP: Dict[str, List[str]] = {
+        "app.closing": ["app.closing"],
+
         # Folder events
         "folder.created": ["folder.created", "project.item_added", "project.changed"],
         "folder.renamed": ["folder.renamed", "project.item_renamed", "project.changed"],

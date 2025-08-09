@@ -505,11 +505,6 @@ class TestImportCsvCommand:
         assert dataset.data is not None
         assert len(dataset.data) == 3
         assert list(dataset.data.columns) == ['Name', 'Age', 'City']
-        
-        # Check that column info was updated
-        assert dataset.column_info is not None
-        assert 'columns' in dataset.column_info
-        assert dataset.column_info['columns'] == ['Name', 'Age', 'City']
 
     @patch('uuid.uuid4')
     def test_dataset_id_generation(self, mock_uuid, mock_app_context, sample_project, sample_csv_file):

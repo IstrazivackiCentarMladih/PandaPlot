@@ -94,18 +94,6 @@ class Project:
     def get_root_items(self) -> List[Item]:
         """Get items at the root level."""
         return self.root.get_items()
-    
-    def rebuild_index(self):
-        """Rebuild the items index from the hierarchy."""
-        self.items_index = {}
-        self._build_index_recursive(self.root)
-    
-    def _build_index_recursive(self, collection: ItemCollection):
-        """Recursively build the items index."""
-        for item in collection.get_items():
-            self.items_index[item.id] = item
-            if isinstance(item, ItemCollection):
-                self._build_index_recursive(item)
      
     def accept_visitor(self, visitor, parent_context=None):
         """
