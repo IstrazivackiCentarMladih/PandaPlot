@@ -8,3 +8,9 @@ We use [uv](https://docs.astral.sh/uv/getting-started/installation/) to manage o
 ```bash
 uv sync
 ```
+
+## Run app
+Activate virtual environment and run the following command.
+```
+python -m pandaplot.app
+```

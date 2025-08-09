@@ -1,0 +1,8 @@
+# PandaPlot Application Test Scenarios
+
+## Core Project Management Scenarios
+
+- id: S001
+  title: Create new project
+  description: User can create a new project from the File menu
+  status: pending
