@@ -96,7 +96,7 @@ class TestEventBus:
         event_bus.subscribe("test_event", callback)
         event_bus.emit("test_event")
         
-        # New implementation adds metadata to empty dict
+        # EventBus converts None to {} and adds metadata
         expected_data = {
             'event_type': 'test_event',
             'original_event': 'test_event'
@@ -112,7 +112,7 @@ class TestEventBus:
         event_bus.subscribe("test_event", callback)
         event_bus.emit("test_event", test_data)
         
-        # New implementation adds metadata to the data
+        # EventBus adds metadata to the data
         expected_data = {
             "key": "value", 
             "number": 42,
@@ -129,7 +129,7 @@ class TestEventBus:
         event_bus.subscribe("test_event", callback)
         event_bus.emit("test_event", None)
         
-        # New implementation treats None as empty dict and adds metadata
+        # EventBus treats None as empty dict and adds metadata
         expected_data = {
             'event_type': 'test_event',
             'original_event': 'test_event'
@@ -172,7 +172,7 @@ class TestEventBus:
         callback1 = Mock()
         callback2 = Mock()
         callback3 = Mock()
-        test_data = {"message": "test_data"}
+        test_data = {"message": {"data":"test_data"}}
         
         event_bus.subscribe("test_event", callback1)
         event_bus.subscribe("test_event", callback2)
@@ -182,7 +182,7 @@ class TestEventBus:
         
         # Expected data includes metadata
         expected_data = {
-            "message": "test_data",
+            "message": {"data":"test_data"},
             'event_type': 'test_event',
             'original_event': 'test_event'
         }
@@ -195,7 +195,7 @@ class TestEventBus:
         event_bus = EventBus()
         
         # Should not raise any error
-        event_bus.emit("nonexistent_event", "data")
+        event_bus.emit("nonexistent_event", {"data": "test"})
     
     def test_emit_multiple_events(self):
         """Test emitting multiple different events."""
@@ -208,13 +208,18 @@ class TestEventBus:
         event_bus.subscribe("event2", callback2)
         event_bus.subscribe("event3", callback3)
         
-        event_bus.emit("event1", "data1")
-        event_bus.emit("event2", "data2")
-        event_bus.emit("event3", "data3")
+        event_bus.emit("event1", {"data": "data1"})
+        event_bus.emit("event2", {"data": "data2"})
+        event_bus.emit("event3", {"data": "data3"})
         
-        callback1.assert_called_once_with("data1")
-        callback2.assert_called_once_with("data2")
-        callback3.assert_called_once_with("data3")
+        # Expect calls with metadata added by EventBus
+        expected_call1 = {"data": "data1", "event_type": "event1", "original_event": "event1"}
+        expected_call2 = {"data": "data2", "event_type": "event2", "original_event": "event2"}
+        expected_call3 = {"data": "data3", "event_type": "event3", "original_event": "event3"}
+        
+        callback1.assert_called_once_with(expected_call1)
+        callback2.assert_called_once_with(expected_call2)
+        callback3.assert_called_once_with(expected_call3)
     
     def test_emit_same_event_multiple_times(self):
         """Test emitting the same event multiple times."""
@@ -223,11 +228,16 @@ class TestEventBus:
         
         event_bus.subscribe("test_event", callback)
         
-        event_bus.emit("test_event", "data1")
-        event_bus.emit("test_event", "data2")
-        event_bus.emit("test_event", "data3")
+        event_bus.emit("test_event", {"data": "data1"})
+        event_bus.emit("test_event", {"data": "data2"})
+        event_bus.emit("test_event", {"data": "data3"})
         
-        expected_calls = [call("data1"), call("data2"), call("data3")]
+        # Expect calls with metadata added by EventBus
+        expected_calls = [
+            call({"data": "data1", "event_type": "test_event", "original_event": "test_event"}),
+            call({"data": "data2", "event_type": "test_event", "original_event": "test_event"}),
+            call({"data": "data3", "event_type": "test_event", "original_event": "test_event"})
+        ]
         callback.assert_has_calls(expected_calls)
         assert callback.call_count == 3
     
@@ -254,16 +264,17 @@ class TestEventBus:
         event_bus.subscribe("test_event", bad_callback)
         event_bus.subscribe("test_event", another_good_callback)
         
-        # The exception should propagate and stop execution
-        with pytest.raises(ValueError, match="Test exception"):
-            event_bus.emit("test_event", "test_data")
+        # The EventBus catches exceptions and prints them, doesn't re-raise
+        event_bus.emit("test_event", {"data":"test_data"})
         
         # The first callback should have been called
+        expected_data = {"data":"test_data", "event_type": "test_event", "original_event": "test_event"}
         assert good_callback.called is True
-        assert good_callback.data == "test_data"
+        assert good_callback.data == expected_data
         
-        # The third callback might not be called depending on order
-        # (since set iteration order is not guaranteed)
+        # The third callback should also be called since exceptions are caught
+        assert another_good_callback.called is True
+        assert another_good_callback.data == expected_data
     
     def test_callback_execution_order(self):
         """Test callback execution order (note: order is not guaranteed with defaultdict(list))."""
@@ -283,7 +294,7 @@ class TestEventBus:
         event_bus.subscribe("test_event", callback2)
         event_bus.subscribe("test_event", callback3)
         
-        event_bus.emit("test_event", "data")
+        event_bus.emit("test_event", {"data": "test"})
         
         # All callbacks should be executed
         assert len(execution_order) == 3
@@ -303,11 +314,13 @@ class TestEventBus:
         event_bus.subscribe("test_event", lambda data: results.append(f"lambda1: {data}"))
         event_bus.subscribe("test_event", lambda data: results.append(f"lambda2: {data}"))
         
-        event_bus.emit("test_event", "test_data")
+        event_bus.emit("test_event", {"data":"test_data"})
         
         assert len(results) == 2
-        assert "lambda1: test_data" in results
-        assert "lambda2: test_data" in results
+        # EventBus adds metadata to the data, so the lambda receives the full dict
+        expected_data_repr = "{'data': 'test_data', 'event_type': 'test_event', 'original_event': 'test_event'}"
+        assert f"lambda1: {expected_data_repr}" in results
+        assert f"lambda2: {expected_data_repr}" in results
     
     def test_method_callbacks(self):
         """Test subscribing class methods as callbacks."""
@@ -326,12 +339,13 @@ class TestEventBus:
         event_bus.subscribe("test_event", subscriber1.handle_event)
         event_bus.subscribe("test_event", subscriber2.handle_event)
         
-        event_bus.emit("test_event", "test_data")
+        event_bus.emit("test_event", {"data":"test_data"})
         
+        expected_data = {"data":"test_data", "event_type": "test_event", "original_event": "test_event"}
         assert len(subscriber1.received_data) == 1
         assert len(subscriber2.received_data) == 1
-        assert subscriber1.received_data[0] == "test_data"
-        assert subscriber2.received_data[0] == "test_data"
+        assert subscriber1.received_data[0] == expected_data
+        assert subscriber2.received_data[0] == expected_data
     
     def test_mixed_callback_types(self):
         """Test mixing different types of callbacks.""" 
@@ -357,12 +371,13 @@ class TestEventBus:
         event_bus.subscribe("test_event", lambda_callback)
         event_bus.subscribe("test_event", test_instance.method_callback)
         
-        event_bus.emit("test_event", "data")
+        event_bus.emit("test_event", {"data":"test_data"})
         
+        expected_data_repr = "{'data': 'test_data', 'event_type': 'test_event', 'original_event': 'test_event'}"
         assert len(results) == 3
-        assert "function: data" in results
-        assert "lambda: data" in results
-        assert "method: data" in results
+        assert f"function: {expected_data_repr}" in results
+        assert f"lambda: {expected_data_repr}" in results
+        assert f"method: {expected_data_repr}" in results
     
     def test_complex_data_structures(self):
         """Test emitting events with complex data structures."""
@@ -391,7 +406,10 @@ class TestEventBus:
         event_bus.subscribe("complex_event", callback)
         event_bus.emit("complex_event", complex_data)
         
-        callback.assert_called_once_with(complex_data)
+        # EventBus adds metadata to the data
+        expected_data = complex_data.copy()
+        expected_data.update({"event_type": "complex_event", "original_event": "complex_event"})
+        callback.assert_called_once_with(expected_data)
         
         # Verify the data structure is preserved
         call_args = callback.call_args[0][0]
@@ -413,17 +431,18 @@ class TestEventBus:
         event_bus2.subscribe("test_event", callback2)
         
         # Emit on first bus
-        event_bus1.emit("test_event", "data1")
+        event_bus1.emit("test_event", {"data":"test_data"})
         
-        callback1.assert_called_once_with("data1")
+        expected_data = {"data":"test_data", "event_type": "test_event", "original_event": "test_event"}
+        callback1.assert_called_once_with(expected_data)
         callback2.assert_not_called()
         
         # Reset and emit on second bus
         callback1.reset_mock()
-        event_bus2.emit("test_event", "data2")
+        event_bus2.emit("test_event", {"data":"test_data"})
         
         callback1.assert_not_called()
-        callback2.assert_called_once_with("data2")
+        callback2.assert_called_once_with(expected_data)
     
     def test_defaultdict_behavior(self):
         """Test that _subscribers uses defaultdict correctly."""
@@ -448,12 +467,13 @@ class TestEventBus:
             callbacks.append(callback)
             event_bus.subscribe("stress_test", callback)
         
-        test_data = "stress_test_data"
+        test_data = {"data":"test_data"}
         event_bus.emit("stress_test", test_data)
         
-        # All callbacks should have been called
+        # All callbacks should have been called with metadata added
+        expected_data = {"data":"test_data", "event_type": "stress_test", "original_event": "stress_test"}
         for callback in callbacks:
-            callback.assert_called_once_with(test_data)
+            callback.assert_called_once_with(expected_data)
     
     def test_stress_test_many_events(self):
         """Test with many different events."""
@@ -470,12 +490,13 @@ class TestEventBus:
         # Emit all events
         for i in range(100):
             event_name = f"event_{i}"
-            event_bus.emit(event_name, f"data_{i}")
+            event_bus.emit(event_name, {"data": f"data_{i}"})
         
         # Verify all callbacks were called with correct data
         for i in range(100):
             event_name = f"event_{i}"
-            callbacks[event_name].assert_called_once_with(f"data_{i}")
+            expected_data = {"data": f"data_{i}", "event_type": event_name, "original_event": event_name}
+            callbacks[event_name].assert_called_once_with(expected_data)
     
     def test_event_names_are_strings(self):
         """Test various event name formats."""
@@ -497,8 +518,9 @@ class TestEventBus:
         for event_name in event_names:
             callback.reset_mock()
             event_bus.subscribe(event_name, callback)
-            event_bus.emit(event_name, f"data_for_{event_name}")
-            callback.assert_called_once_with(f"data_for_{event_name}")
+            event_bus.emit(event_name, {"data": f"data_for_{event_name}"})
+            expected_data = {"data": f"data_for_{event_name}", "event_type": event_name, "original_event": event_name}
+            callback.assert_called_once_with(expected_data)
     
     def test_real_world_usage_scenario(self):
         """Test a realistic usage scenario."""

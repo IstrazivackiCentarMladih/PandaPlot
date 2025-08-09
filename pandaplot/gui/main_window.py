@@ -1,3 +1,4 @@
+import logging
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QSplitter
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QScreen
@@ -20,7 +21,7 @@ from pandaplot.models.events.event_types import AppEvents, DatasetOperationEvent
 class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     def __init__(self, app_context: AppContext):
         super().__init__(event_bus=app_context.event_bus)
-        
+        self.logger = logging.getLogger(__name__)
         self.setWindowTitle("PandaPlot")
         
         # Initialize MVC components
@@ -119,6 +120,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
         self.sidebar.show_panel("explorer")
         
         # Connect project view signals to tab container
+        # TODO: remove signals
         self.project_view_panel.note_open_requested.connect(self.tab_container.open_note_tab)
         self.project_view_panel.dataset_open_requested.connect(self.tab_container.open_dataset_tab)
         self.project_view_panel.chart_open_requested.connect(self.tab_container.open_chart_tab)
@@ -148,6 +150,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def setup_transform_panel(self):
         """Set up the transform panel and register it with conditional panel manager."""
+        # TODO: setup should happen somewhere else
         # Create transform panel
         self.transform_panel = TransformPanel(self.app_context)
         
@@ -172,6 +175,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def setup_analysis_panel(self):
         """Set up the analysis panel and register it with conditional panel manager."""
+        # TODO: setup should happen somewhere else
         # Create analysis panel
         self.analysis_panel = AnalysisPanel(self.app_context)
         
@@ -196,6 +200,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def setup_chart_properties_panel(self):
         """Set up the chart properties panel and register it with conditional panel manager."""
+        # TODO: setup should happen somewhere else
         # Create chart properties panel
         self.chart_properties_panel = ChartPropertiesPanel(self.app_context)
         
@@ -220,6 +225,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def setup_fit_panel(self):
         """Set up the fit panel and register it with conditional panel manager."""
+        # TODO: setup should happen somewhere else
         # Create fit panel
         self.fit_panel = FitPanel(self.app_context)
         
@@ -244,6 +250,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def on_transform_applied(self, dataset_id: str, new_column_name: str):
         """Handle successful transform application."""
+        # TODO: transform applied callback should be handled differently
         print(f"Transform applied to dataset {dataset_id}: new column '{new_column_name}'")
         
         # Find and refresh the dataset tab
@@ -264,6 +271,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def on_transform_error(self, error_message: str):
         """Handle transform error."""
+        # TODO: transform error callback should be handled differently
         print(f"Transform error: {error_message}")
         # TODO: Show error dialog or status message
 
@@ -282,6 +290,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for the main window."""
+        # TODO: remove unrelevant subscriptions
         # Subscribe to dataset operation events to handle transforms
         self.subscribe_to_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, self.on_transform_applied_event)
         
@@ -290,6 +299,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def on_transform_applied_event(self, event_data):
         """Handle transform applied events from the event system."""
+        # TODO: this shouldn't be in main window
         dataset_id = event_data.get('dataset_id')
         column_name = event_data.get('column_name')
         if dataset_id and column_name:
@@ -297,6 +307,7 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
     
     def on_tab_changed_event(self, event_data):
         """Handle tab changed events from the event system."""
+        # TODO: this shouldn't be in main window
         # Update transform panel context when tabs change
         if hasattr(self, 'transform_panel'):
             current_widget = self.tab_container.tab_widget.currentWidget()
@@ -313,6 +324,6 @@ class PandaMainWindow(EventBusComponentMixin, QMainWindow):
             event.accept()
             
         except Exception as e:
-            print(f"Error during cleanup: {e}")
+            self.logger.error(f"Error during cleanup: {e}")
             # Force exit even if cleanup fails
             event.accept()

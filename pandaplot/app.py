@@ -8,10 +8,11 @@ from pandaplot.models.events.event_bus import EventBus
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.utils.log import setup_logging
 
 def main():
     # Setup logging 
-
+    setup_logging()
     # Load configuration
 
     # Initialize application state
@@ -55,3 +56,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # TODO: fix remove series

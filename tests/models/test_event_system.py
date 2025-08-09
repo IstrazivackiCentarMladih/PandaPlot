@@ -112,8 +112,9 @@ class TestEventHierarchy:
 class MockComponent(EventPublisherMixin, EventSubscriberMixin):
     """Mock component for testing mixins."""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, event_bus=None):
+        EventPublisherMixin.__init__(self, event_bus)
+        EventSubscriberMixin.__init__(self, event_bus)
         self.handled_events = []
     
     def handle_event(self, event_data):
@@ -125,8 +126,7 @@ class TestEventMixins:
     def test_event_publisher_mixin(self):
         """Test EventPublisherMixin functionality."""
         bus = EventBus()
-        component = MockComponent()
-        component.set_event_bus(bus)
+        component = MockComponent(bus)
         
         received_events = []
         bus.subscribe("test.event", lambda data: received_events.append(data))
@@ -140,8 +140,7 @@ class TestEventMixins:
     def test_event_subscriber_mixin(self):
         """Test EventSubscriberMixin functionality."""
         bus = EventBus()
-        component = MockComponent()
-        component.set_event_bus(bus)
+        component = MockComponent(bus)
         
         component.subscribe_to_event("test.event", component.handle_event)
         bus.emit("test.event", {"test": "data"})
@@ -152,8 +151,7 @@ class TestEventMixins:
     def test_subscribe_to_changes(self):
         """Test scope-based subscription patterns."""
         bus = EventBus()
-        component = MockComponent()
-        component.set_event_bus(bus)
+        component = MockComponent(bus)
         
         component.subscribe_to_changes("dataset", component.handle_event)
         
@@ -167,8 +165,7 @@ class TestEventMixins:
     def test_unsubscribe_all(self):
         """Test unsubscribing from all events."""
         bus = EventBus()
-        component = MockComponent()
-        component.set_event_bus(bus)
+        component = MockComponent(bus)
         
         component.subscribe_to_event("test.event", component.handle_event)
         bus.emit("test.event", {"test": "data1"})
