@@ -103,11 +103,3 @@ class RenameItemCommand(Command):
     def redo(self):
         """Redo the rename note command."""
         self.execute()
-        
-    def clone(self):
-        """Create a copy of this command."""
-        return RenameItemCommand(self.app_context, self.note_id, self.new_name)
-        
-    def __str__(self):
-        return f"Rename Note to '{self.new_name}'"
-

@@ -151,5 +151,5 @@ class CreateChartCommand(Command):
     def redo(self):
         """Redo the create chart command."""
         if self.dataset_id and self.chart_name:
-            self.execute(self.dataset_id, self.chart_name, self.parent_id)
+            self.execute()
 

@@ -20,13 +20,6 @@ class OpenProjectCommand(Command):
         self.load_command: Optional[LoadProjectCommand] = None
         self.was_executed = False
 
-    def clone(self):
-        """
-        Create a new instance of this command.
-        This is useful to ensure we execute a fresh instance each time.
-        """
-        return OpenProjectCommand(self.app_context)
-
     def execute(self):
         """Execute the open project command."""
         try:
@@ -102,8 +95,3 @@ class OpenProjectCommand(Command):
             # Re-execute the command (will show dialog again)
             print("Re-executing open project command")
             self.execute()
-
-    def __repr__(self):
-        if self.load_command:
-            return f"OpenProjectCommand(delegated_to={self.load_command})"
-        return "OpenProjectCommand(no_file_selected)"

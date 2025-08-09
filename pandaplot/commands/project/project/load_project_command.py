@@ -22,13 +22,6 @@ class LoadProjectCommand(Command):
         self.previous_project: Optional[Project] = None
         self.previous_file_path: Optional[str] = None
         self.loaded_project: Optional[Project] = None
-
-    def clone(self) -> 'LoadProjectCommand':
-        """
-        Create a new instance of this command.
-        This is useful to ensure we execute a fresh instance each time.
-        """
-        return LoadProjectCommand(self.app_context, self.file_path)
         
     def execute(self):
         """Execute the load project command."""
@@ -61,6 +54,3 @@ class LoadProjectCommand(Command):
         else:
             # Re-execute if we don't have the loaded project cached
             self.execute()
-    
-    def __repr__(self):
-        return f"LoadProjectCommand(file_path='{self.file_path}')"

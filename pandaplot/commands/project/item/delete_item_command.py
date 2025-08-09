@@ -177,13 +177,3 @@ class DeleteItemCommand(Command):
             print(f"DeleteItemCommand Redo Error: {error_msg}")
             self.ui_controller.show_error_message("Redo Error", error_msg)
             return False
-        
-    def clone(self) -> 'DeleteItemCommand':
-        """Create a copy of this command."""
-        return DeleteItemCommand(self.app_context, self.item_id)
-        
-    def __str__(self) -> str:
-        if self.deleted_item_class:
-            item_type = self.deleted_item_class.__name__.lower()
-            return f"Delete {item_type} '{self.item_id}'"
-        return f"Delete Item '{self.item_id}'"

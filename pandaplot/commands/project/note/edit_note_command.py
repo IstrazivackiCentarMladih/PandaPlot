@@ -140,10 +140,3 @@ class EditNoteCommand(Command):
             print(f"EditNoteCommand Redo Error: {error_msg}")
             self.ui_controller.show_error_message("Redo Error", error_msg)
             return False
-        
-    def clone(self):
-        """Create a copy of this command."""
-        return EditNoteCommand(self.app_context, self.note_id, self.new_content)
-        
-    def __str__(self):
-        return f"Edit Note '{self.note_id}'"

@@ -3,7 +3,6 @@ from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.services.data_managers.project_manager import ProjectManager
-from typing import Optional
 
 
 class SaveProjectCommand(Command):
@@ -21,7 +20,7 @@ class SaveProjectCommand(Command):
         self.save_as_path = None
         self.previous_file_path = None
         
-    def execute(self, *args, **kwargs):
+    def execute(self):
         """Execute the save project command."""
         try:
             # Check if we have a project to save
@@ -111,16 +110,6 @@ class SaveProjectCommand(Command):
     def redo(self):
         """Redo the save project command."""
         self.execute()
-        
-    def clone(self):
-        """Create a copy of this command."""
-        return SaveProjectCommand(self.app_context)
-        
-    def __str__(self):
-        if self.save_as_path:
-            return f"Save Project As '{self.save_as_path}'"
-        return "Save Project"
-
 
 class SaveProjectAsCommand(SaveProjectCommand):
     """
@@ -130,8 +119,8 @@ class SaveProjectAsCommand(SaveProjectCommand):
     
     def __init__(self, app_context: AppContext):
         super().__init__(app_context)
-        
-    def execute(self, *args, **kwargs):
+
+    def execute(self):
         """Execute the save as command."""
         try:
             # Check if we have a project to save
@@ -166,10 +155,3 @@ class SaveProjectAsCommand(SaveProjectCommand):
             print(f"SaveProjectAsCommand Error: {error_msg}")
             self.ui_controller.show_error_message("Save Project As Error", error_msg)
             raise
-        
-    def clone(self):
-        """Create a copy of this command."""
-        return SaveProjectAsCommand(self.app_context)
-        
-    def __str__(self):
-        return "Save Project As"

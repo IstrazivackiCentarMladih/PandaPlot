@@ -73,10 +73,4 @@ class NewProjectCommand(Command):
     def redo(self):
         """Redo the new project command."""
         self.execute()
-        
-    def clone(self):
-        """Create a copy of this command."""
-        return NewProjectCommand(self.app_context)
-        
-    def __str__(self):
-        return "Create New Project"
+
