@@ -167,9 +167,3 @@ class AddRowCommand(Command):
         """Redo the add row command."""
         # Re-execute with stored parameters
         return self.execute(row_position=self.row_position)
-
-    def get_description(self) -> str:
-        """Get command description for UI display."""
-        if self.inserted_at is not None:
-            return f"Add row at position {self.inserted_at} to dataset"
-        return "Add row to dataset"

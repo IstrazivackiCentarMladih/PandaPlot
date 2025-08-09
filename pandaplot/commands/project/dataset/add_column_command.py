@@ -169,6 +169,3 @@ class AddColumnCommand(Command):
         # Re-execute with stored parameters
         return self.execute(column_name=self.column_name, default_value=self.default_value)
 
-    def get_description(self) -> str:
-        """Get command description for UI display."""
-        return f"Add column '{self.column_name}' to dataset"

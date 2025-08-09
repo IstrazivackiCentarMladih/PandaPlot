@@ -131,13 +131,3 @@ class CreateEmptyDatasetCommand(Command):
             print(f"CreateEmptyDatasetCommand Redo Error: {error_msg}")
             self.ui_controller.show_error_message("Redo Error", error_msg)
             return False
-
-    def can_undo(self) -> bool:
-        """Check if this command can be undone."""
-        return self.dataset_id is not None
-
-    def get_description(self) -> str:
-        """Get description of this command for UI purposes."""
-        if self.dataset_name:
-            return f"Create empty dataset '{self.dataset_name}'"
-        return "Create empty dataset"
