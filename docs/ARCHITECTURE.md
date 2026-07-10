@@ -77,6 +77,7 @@ pandaplot/
 - [Data Persistence](arch/06-data-persistence.md)
 - [Analysis and Curve Fitting](arch/07-analysis-engine.md)
 - [State Management and AppContext](arch/08-state-management.md)
+- [Architectural Issues](arch/09-architectural-issues.md)
 
 ## High-Level Flow Diagram
 
