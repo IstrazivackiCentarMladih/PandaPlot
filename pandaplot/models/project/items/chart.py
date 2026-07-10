@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from pandaplot.models.project.items import Item
+from pandaplot.models.project.items.item import Item
 
 
 @dataclass

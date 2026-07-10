@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-from pandaplot.models.project.items import Item
+from pandaplot.models.project.items.item import Item
 
 
 class Dataset(Item):
