@@ -873,6 +873,7 @@ class ChartPropertiesPanel(PWidget):
 
             series.line_width = self.line_width_spin.value()
             series.marker_size = self.marker_size_spin.value()
+            series.alpha = self.line_transparency_spin.value()
 
             # Line style & marker style (store enum values as strings)
             if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
@@ -1016,7 +1017,11 @@ class ChartPropertiesPanel(PWidget):
             self.marker_size_spin.blockSignals(True)
             self.marker_size_spin.setValue(series.marker_size)
             self.marker_size_spin.blockSignals(False)
-            
+
+            self.line_transparency_spin.blockSignals(True)
+            self.line_transparency_spin.setValue(series.alpha)
+            self.line_transparency_spin.blockSignals(False)
+
             # Update marker color controls
             if hasattr(self, "marker_color_button"):
                 self.marker_color_button.blockSignals(True)
@@ -1363,6 +1368,7 @@ class ChartPropertiesPanel(PWidget):
                 series.marker_edge_color = self.marker_edge_color_button.get_color()
                 series.line_width = self.line_width_spin.value()
                 series.marker_size = self.marker_size_spin.value()
+                series.alpha = self.line_transparency_spin.value()
 
                 if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
                     series.line_style = self.line_style_combo.currentData().value
