@@ -748,7 +748,11 @@ class ChartPropertiesPanel(PWidget):
         legend_layout.addWidget(QLabel("Background:"), 3, 0)
         self.legend_bg_color_button = ColorButton(self.app_context, None, "#ffffff")
         legend_layout.addWidget(self.legend_bg_color_button, 3, 1)
-        
+
+        self.legend_show_frame_check = QCheckBox("Show Frame")
+        self.legend_show_frame_check.setChecked(True)
+        legend_layout.addWidget(self.legend_show_frame_check, 4, 0, 1, 2)
+
         layout.addWidget(legend_group)
         
         layout.addStretch()
@@ -788,6 +792,10 @@ class ChartPropertiesPanel(PWidget):
         self.y_tick_format_combo.currentIndexChanged.connect(self._on_y_tick_format_changed)
         self.y_tick_format_custom_edit.textChanged.connect(self._on_chart_config_changed)
         self.legend_show_check.toggled.connect(self._on_chart_config_changed)
+        self.legend_position_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.legend_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.legend_bg_color_button.colorChanged.connect(self._on_chart_config_changed)
+        self.legend_show_frame_check.toggled.connect(self._on_chart_config_changed)
         
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
@@ -1111,6 +1119,14 @@ class ChartPropertiesPanel(PWidget):
             config["y_tick_format_custom"] = self.y_tick_format_custom_edit.text()
         if hasattr(self, "legend_show_check"):
             config["show_legend"] = self.legend_show_check.isChecked()
+        if hasattr(self, "legend_position_combo") and self.legend_position_combo.currentData():
+            config["legend_position"] = self.legend_position_combo.currentData().value
+        if hasattr(self, "legend_font_size_spin"):
+            config["legend_font_size"] = self.legend_font_size_spin.value()
+        if hasattr(self, "legend_bg_color_button"):
+            config["legend_bg_color"] = self.legend_bg_color_button.get_color()
+        if hasattr(self, "legend_show_frame_check"):
+            config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
             chart_type_map = {
                 ChartType.LINE: "line",
@@ -1564,7 +1580,16 @@ class ChartPropertiesPanel(PWidget):
             self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
 
             self.legend_show_check.setChecked(config.get("show_legend", True))
-            
+            legend_position_value = config.get("legend_position", "upper right")
+            for i in range(self.legend_position_combo.count()):
+                if (self.legend_position_combo.itemData(i)
+                        and self.legend_position_combo.itemData(i).value == legend_position_value):
+                    self.legend_position_combo.setCurrentIndex(i)
+                    break
+            self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
+            self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
+            self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+
         else:
             # Clear/default values
             self._load_default_configuration()
@@ -1613,7 +1638,12 @@ class ChartPropertiesPanel(PWidget):
         chart.config["y_tick_format"] = self.y_tick_format_combo.currentData()
         chart.config["y_tick_format_custom"] = self.y_tick_format_custom_edit.text()
         chart.config["show_legend"] = self.legend_show_check.isChecked()
-        
+        if self.legend_position_combo.currentData():
+            chart.config["legend_position"] = self.legend_position_combo.currentData().value
+        chart.config["legend_font_size"] = self.legend_font_size_spin.value()
+        chart.config["legend_bg_color"] = self.legend_bg_color_button.get_color()
+        chart.config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+
         # Update chart type
         chart_type_map = {
             ChartType.LINE: "line",
