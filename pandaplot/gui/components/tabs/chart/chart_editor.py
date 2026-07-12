@@ -558,6 +558,17 @@ class ChartEditorWidget(PWidget):
             if not config.get("y_auto_limits", True):
                 self.chart_canvas.axes.set_ylim(config.get("y_min", 0.0), config.get("y_max", 1.0))
 
+            apply_axis_ticks(
+                self.chart_canvas.axes.xaxis,
+                config.get("x_tick_mode", "auto"), config.get("x_tick_count", 5),
+                config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
+                config.get("x_tick_format_custom", ""))
+            apply_axis_ticks(
+                self.chart_canvas.axes.yaxis,
+                config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
+                config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
+                config.get("y_tick_format_custom", ""))
+
             self.chart_canvas.axes.grid(
                 config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
             self.chart_canvas.axes.grid(
