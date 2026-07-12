@@ -74,3 +74,10 @@ def test_invalid_custom_format_falls_back_to_plain_number_instead_of_raising():
     apply_axis_ticks(axis, "auto", count=5, step=1.0, fmt="custom", custom_fmt="{:z}")
     formatter = axis.get_major_formatter()
     assert formatter(2.0, 0) == "2.0"
+
+
+def test_custom_format_with_attribute_access_falls_back_instead_of_raising():
+    axis = _make_axis()
+    apply_axis_ticks(axis, "auto", count=5, step=1.0, fmt="custom", custom_fmt="{0.numerator}")
+    formatter = axis.get_major_formatter()
+    assert formatter(2.0, 0) == "2.0"
