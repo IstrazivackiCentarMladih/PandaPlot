@@ -174,4 +174,5 @@ class ChartCanvas(FigureCanvas):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         self.fig.tight_layout()
+        self.resize(*self.get_width_height())
         self.draw()

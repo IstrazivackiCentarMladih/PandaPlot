@@ -265,6 +265,7 @@ class ChartEditorWidget(PWidget):
                     self.chart_canvas.fig.tight_layout()
                 except Exception:
                     pass
+                self.chart_canvas.resize(*self.chart_canvas.get_width_height())
                 self.chart_canvas.draw()
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
@@ -338,7 +339,7 @@ class ChartEditorWidget(PWidget):
             pass
         self.chart_canvas = ChartCanvas(width=cm_to_inches(20), height=cm_to_inches(15), dpi=dpi)
         self.chart_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         # Add navigation toolbar for zoom/pan
         if hasattr(self.chart_canvas, "navigation_toolbar"):
@@ -347,8 +348,9 @@ class ChartEditorWidget(PWidget):
 
         # Wrap chart canvas in scroll area for large charts
         canvas_scroll = QScrollArea()
-        canvas_scroll.setWidgetResizable(True)
+        canvas_scroll.setWidgetResizable(False)
         canvas_scroll.setWidget(self.chart_canvas)
+        canvas_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         canvas_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding
