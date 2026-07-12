@@ -6,7 +6,7 @@ Figure stays in inches internally (a hard API constraint).
 
 import pytest
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import cm_to_inches, inches_to_cm
+from pandaplot.gui.components.tabs.chart.chart_canvas import cm_to_inches, inches_to_cm, fit_size_cm
 
 
 def test_cm_to_inches_known_value():
@@ -27,3 +27,34 @@ def test_default_width_cm_converts_to_expected_inches():
 
 def test_default_height_cm_converts_to_expected_inches():
     assert cm_to_inches(15.0) == pytest.approx(5.906, abs=1e-3)
+
+
+def test_fit_size_cm_converts_pixels_to_cm_via_dpi():
+    # 100 dpi, 393.7 px wide/tall ~= 3.937 in ~= 10.0 cm
+    width_cm, height_cm = fit_size_cm(394, 394, dpi=100)
+    assert width_cm == pytest.approx(10, abs=1)
+    assert height_cm == pytest.approx(10, abs=1)
+
+
+def test_fit_size_cm_clamps_to_minimums():
+    width_cm, height_cm = fit_size_cm(10, 10, dpi=100)
+    assert width_cm == 2
+    assert height_cm == 2
+
+
+def test_fit_size_cm_clamps_to_maximums():
+    width_cm, height_cm = fit_size_cm(100000, 100000, dpi=100)
+    assert width_cm == 50
+    assert height_cm == 40
+
+
+def test_fit_size_cm_returns_ints():
+    width_cm, height_cm = fit_size_cm(500, 400, dpi=100)
+    assert isinstance(width_cm, int)
+    assert isinstance(height_cm, int)
+
+
+def test_fit_size_cm_respects_custom_bounds():
+    width_cm, height_cm = fit_size_cm(10, 10, dpi=100, min_width_cm=5, min_height_cm=6)
+    assert width_cm == 5
+    assert height_cm == 6
