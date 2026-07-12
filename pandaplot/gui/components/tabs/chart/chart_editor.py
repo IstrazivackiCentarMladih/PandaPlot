@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
+from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
@@ -299,10 +299,10 @@ class ChartEditorWidget(PWidget):
 
         # Width control
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(4, 20)
-        self.width_spin.setValue(8)
-        self.width_spin.setSuffix(" in")
-        self.width_spin.setToolTip("Chart width in inches")
+        self.width_spin.setRange(10, 50)
+        self.width_spin.setValue(20)
+        self.width_spin.setSuffix(" cm")
+        self.width_spin.setToolTip("Chart width in centimeters")
         self.width_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.width_spin)
 
@@ -311,10 +311,10 @@ class ChartEditorWidget(PWidget):
 
         # Height control
         self.height_spin = QSpinBox()
-        self.height_spin.setRange(3, 15)
-        self.height_spin.setValue(6)
-        self.height_spin.setSuffix(" in")
-        self.height_spin.setToolTip("Chart height in inches")
+        self.height_spin.setRange(8, 40)
+        self.height_spin.setValue(15)
+        self.height_spin.setSuffix(" cm")
+        self.height_spin.setToolTip("Chart height in centimeters")
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
@@ -336,7 +336,7 @@ class ChartEditorWidget(PWidget):
                 dpi = getattr(cfg.chart_display, "dpi", dpi) or dpi
         except Exception:
             pass
-        self.chart_canvas = ChartCanvas(width=8, height=6, dpi=dpi)
+        self.chart_canvas = ChartCanvas(width=cm_to_inches(20), height=cm_to_inches(15), dpi=dpi)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -653,8 +653,8 @@ class ChartEditorWidget(PWidget):
     def _on_size_changed(self):
         """Handle chart size changes."""
         if hasattr(self, "chart_canvas"):
-            width = self.width_spin.value()
-            height = self.height_spin.value()
+            width = cm_to_inches(self.width_spin.value())
+            height = cm_to_inches(self.height_spin.value())
             self.chart_canvas.set_size(width, height)
             self.update_status("Chart size updated")
 
