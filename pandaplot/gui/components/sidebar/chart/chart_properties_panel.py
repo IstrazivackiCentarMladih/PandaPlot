@@ -592,10 +592,47 @@ class ChartPropertiesPanel(PWidget):
         self.x_max_spin.setEnabled(False)
         x_axis_layout.addWidget(self.x_max_spin, 5, 1)
 
+        x_axis_layout.addWidget(QLabel("Tick Mode:"), 6, 0)
+        self.x_tick_mode_combo = QComboBox()
+        self.x_tick_mode_combo.addItem("Auto", "auto")
+        self.x_tick_mode_combo.addItem("Fixed Count", "count")
+        self.x_tick_mode_combo.addItem("Fixed Step", "step")
+        x_axis_layout.addWidget(self.x_tick_mode_combo, 6, 1)
+
+        x_axis_layout.addWidget(QLabel("Tick Count:"), 7, 0)
+        self.x_tick_count_spin = QSpinBox()
+        self.x_tick_count_spin.setRange(2, 50)
+        self.x_tick_count_spin.setValue(5)
+        self.x_tick_count_spin.setEnabled(False)
+        x_axis_layout.addWidget(self.x_tick_count_spin, 7, 1)
+
+        x_axis_layout.addWidget(QLabel("Tick Step:"), 8, 0)
+        self.x_tick_step_spin = QDoubleSpinBox()
+        self.x_tick_step_spin.setRange(0.001, 1e9)
+        self.x_tick_step_spin.setValue(1.0)
+        self.x_tick_step_spin.setEnabled(False)
+        x_axis_layout.addWidget(self.x_tick_step_spin, 8, 1)
+
+        x_axis_layout.addWidget(QLabel("Tick Format:"), 9, 0)
+        self.x_tick_format_combo = QComboBox()
+        self.x_tick_format_combo.addItem("Auto", "auto")
+        self.x_tick_format_combo.addItem("Integer", "integer")
+        self.x_tick_format_combo.addItem("1 Decimal", "1decimal")
+        self.x_tick_format_combo.addItem("2 Decimals", "2decimal")
+        self.x_tick_format_combo.addItem("Scientific", "scientific")
+        self.x_tick_format_combo.addItem("Custom...", "custom")
+        x_axis_layout.addWidget(self.x_tick_format_combo, 9, 1)
+
+        x_axis_layout.addWidget(QLabel("Custom Format:"), 10, 0)
+        self.x_tick_format_custom_edit = QLineEdit()
+        self.x_tick_format_custom_edit.setPlaceholderText("e.g. {:.2f} units")
+        self.x_tick_format_custom_edit.setEnabled(False)
+        x_axis_layout.addWidget(self.x_tick_format_custom_edit, 10, 1)
+
         self.x_grid_check = QCheckBox("Show Grid")
         self.x_grid_check.setChecked(True)
-        x_axis_layout.addWidget(self.x_grid_check, 6, 0, 1, 2)
-        
+        x_axis_layout.addWidget(self.x_grid_check, 11, 0, 1, 2)
+
         layout.addWidget(x_axis_group)
         
         # Y Axis group
@@ -637,10 +674,47 @@ class ChartPropertiesPanel(PWidget):
         self.y_max_spin.setEnabled(False)
         y_axis_layout.addWidget(self.y_max_spin, 5, 1)
 
+        y_axis_layout.addWidget(QLabel("Tick Mode:"), 6, 0)
+        self.y_tick_mode_combo = QComboBox()
+        self.y_tick_mode_combo.addItem("Auto", "auto")
+        self.y_tick_mode_combo.addItem("Fixed Count", "count")
+        self.y_tick_mode_combo.addItem("Fixed Step", "step")
+        y_axis_layout.addWidget(self.y_tick_mode_combo, 6, 1)
+
+        y_axis_layout.addWidget(QLabel("Tick Count:"), 7, 0)
+        self.y_tick_count_spin = QSpinBox()
+        self.y_tick_count_spin.setRange(2, 50)
+        self.y_tick_count_spin.setValue(5)
+        self.y_tick_count_spin.setEnabled(False)
+        y_axis_layout.addWidget(self.y_tick_count_spin, 7, 1)
+
+        y_axis_layout.addWidget(QLabel("Tick Step:"), 8, 0)
+        self.y_tick_step_spin = QDoubleSpinBox()
+        self.y_tick_step_spin.setRange(0.001, 1e9)
+        self.y_tick_step_spin.setValue(1.0)
+        self.y_tick_step_spin.setEnabled(False)
+        y_axis_layout.addWidget(self.y_tick_step_spin, 8, 1)
+
+        y_axis_layout.addWidget(QLabel("Tick Format:"), 9, 0)
+        self.y_tick_format_combo = QComboBox()
+        self.y_tick_format_combo.addItem("Auto", "auto")
+        self.y_tick_format_combo.addItem("Integer", "integer")
+        self.y_tick_format_combo.addItem("1 Decimal", "1decimal")
+        self.y_tick_format_combo.addItem("2 Decimals", "2decimal")
+        self.y_tick_format_combo.addItem("Scientific", "scientific")
+        self.y_tick_format_combo.addItem("Custom...", "custom")
+        y_axis_layout.addWidget(self.y_tick_format_combo, 9, 1)
+
+        y_axis_layout.addWidget(QLabel("Custom Format:"), 10, 0)
+        self.y_tick_format_custom_edit = QLineEdit()
+        self.y_tick_format_custom_edit.setPlaceholderText("e.g. {:.2f} units")
+        self.y_tick_format_custom_edit.setEnabled(False)
+        y_axis_layout.addWidget(self.y_tick_format_custom_edit, 10, 1)
+
         self.y_grid_check = QCheckBox("Show Grid")
         self.y_grid_check.setChecked(True)
-        y_axis_layout.addWidget(self.y_grid_check, 6, 0, 1, 2)
-        
+        y_axis_layout.addWidget(self.y_grid_check, 11, 0, 1, 2)
+
         layout.addWidget(y_axis_group)
         
         layout.addStretch()
@@ -703,6 +777,16 @@ class ChartPropertiesPanel(PWidget):
         self.y_auto_limits_check.toggled.connect(self._on_y_auto_limits_toggled)
         self.y_min_spin.valueChanged.connect(self._on_chart_config_changed)
         self.y_max_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.x_tick_mode_combo.currentIndexChanged.connect(self._on_x_tick_mode_changed)
+        self.x_tick_count_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.x_tick_step_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.x_tick_format_combo.currentIndexChanged.connect(self._on_x_tick_format_changed)
+        self.x_tick_format_custom_edit.textChanged.connect(self._on_chart_config_changed)
+        self.y_tick_mode_combo.currentIndexChanged.connect(self._on_y_tick_mode_changed)
+        self.y_tick_count_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.y_tick_step_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.y_tick_format_combo.currentIndexChanged.connect(self._on_y_tick_format_changed)
+        self.y_tick_format_custom_edit.textChanged.connect(self._on_chart_config_changed)
         self.legend_show_check.toggled.connect(self._on_chart_config_changed)
         
         # Connect series configuration change signals
@@ -959,6 +1043,26 @@ class ChartPropertiesPanel(PWidget):
         self.y_max_spin.setEnabled(not checked)
         self._on_chart_config_changed()
 
+    def _on_x_tick_mode_changed(self):
+        mode = self.x_tick_mode_combo.currentData()
+        self.x_tick_count_spin.setEnabled(mode == "count")
+        self.x_tick_step_spin.setEnabled(mode == "step")
+        self._on_chart_config_changed()
+
+    def _on_x_tick_format_changed(self):
+        self.x_tick_format_custom_edit.setEnabled(self.x_tick_format_combo.currentData() == "custom")
+        self._on_chart_config_changed()
+
+    def _on_y_tick_mode_changed(self):
+        mode = self.y_tick_mode_combo.currentData()
+        self.y_tick_count_spin.setEnabled(mode == "count")
+        self.y_tick_step_spin.setEnabled(mode == "step")
+        self._on_chart_config_changed()
+
+    def _on_y_tick_format_changed(self):
+        self.y_tick_format_custom_edit.setEnabled(self.y_tick_format_combo.currentData() == "custom")
+        self._on_chart_config_changed()
+
     def _on_chart_config_changed(self):
         """Handle chart-level configuration changes."""
         if not self.current_chart or self._updating_controls:
@@ -993,6 +1097,18 @@ class ChartPropertiesPanel(PWidget):
             config["y_auto_limits"] = self.y_auto_limits_check.isChecked()
             config["y_min"] = self.y_min_spin.value()
             config["y_max"] = self.y_max_spin.value()
+        if hasattr(self, "x_tick_mode_combo"):
+            config["x_tick_mode"] = self.x_tick_mode_combo.currentData()
+            config["x_tick_count"] = self.x_tick_count_spin.value()
+            config["x_tick_step"] = self.x_tick_step_spin.value()
+            config["x_tick_format"] = self.x_tick_format_combo.currentData()
+            config["x_tick_format_custom"] = self.x_tick_format_custom_edit.text()
+        if hasattr(self, "y_tick_mode_combo"):
+            config["y_tick_mode"] = self.y_tick_mode_combo.currentData()
+            config["y_tick_count"] = self.y_tick_count_spin.value()
+            config["y_tick_step"] = self.y_tick_step_spin.value()
+            config["y_tick_format"] = self.y_tick_format_combo.currentData()
+            config["y_tick_format_custom"] = self.y_tick_format_custom_edit.text()
         if hasattr(self, "legend_show_check"):
             config["show_legend"] = self.legend_show_check.isChecked()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
@@ -1411,6 +1527,42 @@ class ChartPropertiesPanel(PWidget):
             self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
             self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
 
+            x_tick_mode = config.get("x_tick_mode", "auto")
+            for i in range(self.x_tick_mode_combo.count()):
+                if self.x_tick_mode_combo.itemData(i) == x_tick_mode:
+                    self.x_tick_mode_combo.setCurrentIndex(i)
+                    break
+            self.x_tick_count_spin.setValue(config.get("x_tick_count", 5))
+            self.x_tick_step_spin.setValue(config.get("x_tick_step", 1.0))
+            self.x_tick_count_spin.setEnabled(x_tick_mode == "count")
+            self.x_tick_step_spin.setEnabled(x_tick_mode == "step")
+
+            x_tick_format = config.get("x_tick_format", "auto")
+            for i in range(self.x_tick_format_combo.count()):
+                if self.x_tick_format_combo.itemData(i) == x_tick_format:
+                    self.x_tick_format_combo.setCurrentIndex(i)
+                    break
+            self.x_tick_format_custom_edit.setText(config.get("x_tick_format_custom", ""))
+            self.x_tick_format_custom_edit.setEnabled(x_tick_format == "custom")
+
+            y_tick_mode = config.get("y_tick_mode", "auto")
+            for i in range(self.y_tick_mode_combo.count()):
+                if self.y_tick_mode_combo.itemData(i) == y_tick_mode:
+                    self.y_tick_mode_combo.setCurrentIndex(i)
+                    break
+            self.y_tick_count_spin.setValue(config.get("y_tick_count", 5))
+            self.y_tick_step_spin.setValue(config.get("y_tick_step", 1.0))
+            self.y_tick_count_spin.setEnabled(y_tick_mode == "count")
+            self.y_tick_step_spin.setEnabled(y_tick_mode == "step")
+
+            y_tick_format = config.get("y_tick_format", "auto")
+            for i in range(self.y_tick_format_combo.count()):
+                if self.y_tick_format_combo.itemData(i) == y_tick_format:
+                    self.y_tick_format_combo.setCurrentIndex(i)
+                    break
+            self.y_tick_format_custom_edit.setText(config.get("y_tick_format_custom", ""))
+            self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
+
             self.legend_show_check.setChecked(config.get("show_legend", True))
             
         else:
@@ -1450,6 +1602,16 @@ class ChartPropertiesPanel(PWidget):
         chart.config["y_auto_limits"] = self.y_auto_limits_check.isChecked()
         chart.config["y_min"] = self.y_min_spin.value()
         chart.config["y_max"] = self.y_max_spin.value()
+        chart.config["x_tick_mode"] = self.x_tick_mode_combo.currentData()
+        chart.config["x_tick_count"] = self.x_tick_count_spin.value()
+        chart.config["x_tick_step"] = self.x_tick_step_spin.value()
+        chart.config["x_tick_format"] = self.x_tick_format_combo.currentData()
+        chart.config["x_tick_format_custom"] = self.x_tick_format_custom_edit.text()
+        chart.config["y_tick_mode"] = self.y_tick_mode_combo.currentData()
+        chart.config["y_tick_count"] = self.y_tick_count_spin.value()
+        chart.config["y_tick_step"] = self.y_tick_step_spin.value()
+        chart.config["y_tick_format"] = self.y_tick_format_combo.currentData()
+        chart.config["y_tick_format_custom"] = self.y_tick_format_custom_edit.text()
         chart.config["show_legend"] = self.legend_show_check.isChecked()
         
         # Update chart type
