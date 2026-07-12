@@ -471,7 +471,7 @@ class ChartEditorWidget(PWidget):
                                                                 markerfacecolor=mfc,
                                                                 markeredgecolor=mec,
                                                                 label=series.label,
-                                                                alpha=1.0 if series.visible else 0.3)
+                                                                alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "scatter":
                                     mfc = series.marker_color or series.color
                                     mec = series.marker_edge_color or series.color
@@ -481,17 +481,17 @@ class ChartEditorWidget(PWidget):
                                                                    marker=_marker_map.get(series.marker_style, "o"),
                                                                    s=series.marker_size*10,
                                                                    label=series.label,
-                                                                   alpha=1.0 if series.visible else 0.3)
+                                                                   alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "bar":
                                     self.chart_canvas.axes.bar(x_data, y_data,
                                                                color=series.color,
                                                                label=series.label,
-                                                               alpha=1.0 if series.visible else 0.3)
+                                                               alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "hist":
                                     self.chart_canvas.axes.hist(y_data, bins=20,
                                                                 color=series.color,
                                                                 label=series.label,
-                                                                alpha=0.7 if series.visible else 0.3)
+                                                                alpha=series.alpha if series.visible else 0.3)
                             else:
                                 # Column not found - use sample data as fallback
                                 x_data = self.sample_data["x"]
