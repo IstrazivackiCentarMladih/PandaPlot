@@ -549,9 +549,10 @@ class ChartEditorWidget(PWidget):
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
 
-            if config.get("show_grid", True):
-                self.chart_canvas.axes.grid(
-                    True, alpha=config.get("grid_alpha", 0.3))
+            self.chart_canvas.axes.grid(
+                config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
+            self.chart_canvas.axes.grid(
+                config.get("show_grid_y", True), axis="y", alpha=config.get("grid_alpha", 0.3))
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(

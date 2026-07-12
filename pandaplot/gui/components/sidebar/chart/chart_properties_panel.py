@@ -914,8 +914,10 @@ class ChartPropertiesPanel(PWidget):
             config["x_label"] = self.x_label_edit.text()
         if hasattr(self, "y_label_edit"):
             config["y_label"] = self.y_label_edit.text()
-        if hasattr(self, "x_grid_check") and hasattr(self, "y_grid_check"):
-            config["show_grid"] = self.x_grid_check.isChecked() and self.y_grid_check.isChecked()
+        if hasattr(self, "x_grid_check"):
+            config["show_grid_x"] = self.x_grid_check.isChecked()
+        if hasattr(self, "y_grid_check"):
+            config["show_grid_y"] = self.y_grid_check.isChecked()
         if hasattr(self, "legend_show_check"):
             config["show_legend"] = self.legend_show_check.isChecked()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
@@ -1303,8 +1305,8 @@ class ChartPropertiesPanel(PWidget):
             config = chart.config
             self.x_label_edit.setText(config.get("x_label", ""))
             self.y_label_edit.setText(config.get("y_label", ""))
-            self.x_grid_check.setChecked(config.get("show_grid", True))
-            self.y_grid_check.setChecked(config.get("show_grid", True))
+            self.x_grid_check.setChecked(config.get("show_grid_x", True))
+            self.y_grid_check.setChecked(config.get("show_grid_y", True))
             self.legend_show_check.setChecked(config.get("show_legend", True))
             
         else:
@@ -1330,7 +1332,8 @@ class ChartPropertiesPanel(PWidget):
         chart.config["title"] = self.title_edit.text()
         chart.config["x_label"] = self.x_label_edit.text()
         chart.config["y_label"] = self.y_label_edit.text()
-        chart.config["show_grid"] = self.x_grid_check.isChecked() and self.y_grid_check.isChecked()
+        chart.config["show_grid_x"] = self.x_grid_check.isChecked()
+        chart.config["show_grid_y"] = self.y_grid_check.isChecked()
         chart.config["show_legend"] = self.legend_show_check.isChecked()
         
         # Update chart type
