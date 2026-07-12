@@ -280,6 +280,7 @@ class ChartEditorWidget(PWidget):
 
         # Preview toolbar with chart actions and size controls
         self.preview_toolbar = QToolBar()
+        self.preview_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         # Add chart actions
         self.create_chart_toolbar_actions(self.preview_toolbar)
@@ -312,14 +313,6 @@ class ChartEditorWidget(PWidget):
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
-        # Reset zoom button
-        reset_zoom_action = QAction("🔍 Reset Zoom", self)
-        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
-        reset_zoom_action.triggered.connect(self._on_reset_zoom)
-        self.preview_toolbar.addAction(reset_zoom_action)
-
-        preview_layout.addWidget(self.preview_toolbar)
-
         # Chart canvas
         # Fetch preferred DPI from config manager
         dpi = 100
@@ -334,10 +327,18 @@ class ChartEditorWidget(PWidget):
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-        # Add navigation toolbar for zoom/pan
+        # Combine our chart-action toolbar and matplotlib's pan/zoom/save
+        # toolbar into a single row instead of stacking them, to save space.
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setContentsMargins(0, 0, 0, 0)
+        toolbar_row.setSpacing(4)
+        toolbar_row.addWidget(self.preview_toolbar)
         if hasattr(self.chart_canvas, "navigation_toolbar"):
             nav_toolbar = self.chart_canvas.navigation_toolbar
-            preview_layout.addWidget(nav_toolbar)
+            nav_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            toolbar_row.addWidget(nav_toolbar)
+        toolbar_row.addStretch()
+        preview_layout.addLayout(toolbar_row)
 
         # Wrap chart canvas in scroll area for large charts
         canvas_scroll = QScrollArea()
@@ -387,17 +388,20 @@ class ChartEditorWidget(PWidget):
         save_action.triggered.connect(self.save_chart)
         toolbar.addAction(save_action)
 
-        # Export action
-        export_action = QAction("📤 Export", self)
-        export_action.triggered.connect(self.export_chart)
-        toolbar.addAction(export_action)
-
-        toolbar.addSeparator()
-
         # Reset action
         reset_action = QAction("🔄 Reset", self)
         reset_action.triggered.connect(self.reset_chart)
         toolbar.addAction(reset_action)
+
+        # Reset zoom button (the nav toolbar's own Home/Back/Forward are
+        # removed since they rely on a view stack that goes stale whenever
+        # the chart re-renders; this uses the chart's own tracked limits)
+        reset_zoom_action = QAction("🔍 Reset Zoom", self)
+        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
+        reset_zoom_action.triggered.connect(self._on_reset_zoom)
+        toolbar.addAction(reset_zoom_action)
+
+        toolbar.addSeparator()
 
     def generate_sample_data(self):
         """Generate sample data for chart preview."""
@@ -611,21 +615,6 @@ class ChartEditorWidget(PWidget):
         """Auto-save the chart configuration."""
         if self.is_modified:
             self.save_chart()
-
-    def export_chart(self):
-        """Export the chart to file."""
-        try:
-            # Save the current figure
-            filename = f"{self.chart.name}.png"
-            self.chart_canvas.fig.savefig(
-                filename, dpi=300, bbox_inches="tight")
-            self.update_status(f"Exported to {filename} ✓")
-
-            # Reset status after 3 seconds
-            QTimer.singleShot(3000, lambda: self.update_status("Ready"))
-
-        except Exception as e:
-            self.update_status(f"Export error: {str(e)}")
 
     def reset_chart(self):
         """Reset chart to default configuration."""
