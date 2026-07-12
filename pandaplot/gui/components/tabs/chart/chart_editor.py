@@ -1,6 +1,7 @@
 from typing import override
 
 import pandas as pd
+from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -15,8 +16,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from shiboken6 import isValid
-
-from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
 from pandaplot.gui.core.widget_extension import PWidget
