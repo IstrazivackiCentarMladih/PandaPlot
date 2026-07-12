@@ -392,7 +392,7 @@ class ChartEditorWidget(PWidget):
             "star": "*", "plus": "+", "cross": "x", "none": "",
         }
         _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.",
+            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
         }
 
         try:
