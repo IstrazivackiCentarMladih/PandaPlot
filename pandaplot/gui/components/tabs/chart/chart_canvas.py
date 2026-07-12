@@ -3,6 +3,19 @@ from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
 
+CM_PER_INCH = 2.54
+
+
+def cm_to_inches(cm):
+    """Convert centimeters to inches (matplotlib's Figure sizing is always in inches)."""
+    return cm / CM_PER_INCH
+
+
+def inches_to_cm(inches):
+    """Convert inches to centimeters."""
+    return inches * CM_PER_INCH
+
+
 class ChartCanvas(FigureCanvas):
     """Custom matplotlib canvas for displaying charts."""
 
