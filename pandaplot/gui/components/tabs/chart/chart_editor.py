@@ -567,10 +567,15 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
                 config.get("y_tick_format_custom", ""))
 
-            self.chart_canvas.axes.grid(
-                config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
-            self.chart_canvas.axes.grid(
-                config.get("show_grid_y", True), axis="y", alpha=config.get("grid_alpha", 0.3))
+            grid_alpha = config.get("grid_alpha", 0.3)
+            if config.get("show_grid_x", True):
+                self.chart_canvas.axes.grid(True, axis="x", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="x")
+            if config.get("show_grid_y", True):
+                self.chart_canvas.axes.grid(True, axis="y", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="y")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(
