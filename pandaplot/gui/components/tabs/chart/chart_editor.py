@@ -56,7 +56,7 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         def _safe_custom(v, _, _fmt=custom_fmt):
             try:
                 return _fmt.format(v)
-            except (ValueError, IndexError, KeyError):
+            except Exception:
                 return str(v)
         axis.set_major_formatter(FuncFormatter(_safe_custom))
     # "auto" -> leave matplotlib's default formatter in place
