@@ -655,6 +655,10 @@ class ChartPropertiesPanel(PWidget):
         self.y_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_grid_check.toggled.connect(self._on_chart_config_changed)
         self.y_grid_check.toggled.connect(self._on_chart_config_changed)
+        self.x_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.x_scale_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.y_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.y_scale_combo.currentIndexChanged.connect(self._on_chart_config_changed)
         self.legend_show_check.toggled.connect(self._on_chart_config_changed)
         
         # Connect series configuration change signals
@@ -919,6 +923,14 @@ class ChartPropertiesPanel(PWidget):
             config["show_grid_x"] = self.x_grid_check.isChecked()
         if hasattr(self, "y_grid_check"):
             config["show_grid_y"] = self.y_grid_check.isChecked()
+        if hasattr(self, "x_font_size_spin"):
+            config["x_font_size"] = self.x_font_size_spin.value()
+        if hasattr(self, "y_font_size_spin"):
+            config["y_font_size"] = self.y_font_size_spin.value()
+        if hasattr(self, "x_scale_combo") and self.x_scale_combo.currentData():
+            config["x_scale"] = self.x_scale_combo.currentData().value
+        if hasattr(self, "y_scale_combo") and self.y_scale_combo.currentData():
+            config["y_scale"] = self.y_scale_combo.currentData().value
         if hasattr(self, "legend_show_check"):
             config["show_legend"] = self.legend_show_check.isChecked()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
@@ -1312,6 +1324,18 @@ class ChartPropertiesPanel(PWidget):
             self.y_label_edit.setText(config.get("y_label", ""))
             self.x_grid_check.setChecked(config.get("show_grid_x", True))
             self.y_grid_check.setChecked(config.get("show_grid_y", True))
+            self.x_font_size_spin.setValue(config.get("x_font_size", 12))
+            self.y_font_size_spin.setValue(config.get("y_font_size", 12))
+            x_scale_value = config.get("x_scale", "linear")
+            for i in range(self.x_scale_combo.count()):
+                if self.x_scale_combo.itemData(i) and self.x_scale_combo.itemData(i).value == x_scale_value:
+                    self.x_scale_combo.setCurrentIndex(i)
+                    break
+            y_scale_value = config.get("y_scale", "linear")
+            for i in range(self.y_scale_combo.count()):
+                if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
+                    self.y_scale_combo.setCurrentIndex(i)
+                    break
             self.legend_show_check.setChecked(config.get("show_legend", True))
             
         else:
@@ -1339,6 +1363,12 @@ class ChartPropertiesPanel(PWidget):
         chart.config["y_label"] = self.y_label_edit.text()
         chart.config["show_grid_x"] = self.x_grid_check.isChecked()
         chart.config["show_grid_y"] = self.y_grid_check.isChecked()
+        chart.config["x_font_size"] = self.x_font_size_spin.value()
+        chart.config["y_font_size"] = self.y_font_size_spin.value()
+        if self.x_scale_combo.currentData():
+            chart.config["x_scale"] = self.x_scale_combo.currentData().value
+        if self.y_scale_combo.currentData():
+            chart.config["y_scale"] = self.y_scale_combo.currentData().value
         chart.config["show_legend"] = self.legend_show_check.isChecked()
         
         # Update chart type
