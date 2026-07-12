@@ -553,6 +553,11 @@ class ChartEditorWidget(PWidget):
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
 
+            if not config.get("x_auto_limits", True):
+                self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
+            if not config.get("y_auto_limits", True):
+                self.chart_canvas.axes.set_ylim(config.get("y_min", 0.0), config.get("y_max", 1.0))
+
             self.chart_canvas.axes.grid(
                 config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
             self.chart_canvas.axes.grid(

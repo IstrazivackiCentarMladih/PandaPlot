@@ -572,10 +572,29 @@ class ChartPropertiesPanel(PWidget):
         for scale in ScaleType:
             self.x_scale_combo.addItem(scale.value.title(), scale)
         x_axis_layout.addWidget(self.x_scale_combo, 2, 1)
-        
+
+        x_axis_layout.addWidget(QLabel("Limits:"), 3, 0)
+        self.x_auto_limits_check = QCheckBox("Auto")
+        self.x_auto_limits_check.setChecked(True)
+        x_axis_layout.addWidget(self.x_auto_limits_check, 3, 1)
+
+        x_axis_layout.addWidget(QLabel("Min:"), 4, 0)
+        self.x_min_spin = QDoubleSpinBox()
+        self.x_min_spin.setRange(-1e9, 1e9)
+        self.x_min_spin.setValue(0.0)
+        self.x_min_spin.setEnabled(False)
+        x_axis_layout.addWidget(self.x_min_spin, 4, 1)
+
+        x_axis_layout.addWidget(QLabel("Max:"), 5, 0)
+        self.x_max_spin = QDoubleSpinBox()
+        self.x_max_spin.setRange(-1e9, 1e9)
+        self.x_max_spin.setValue(1.0)
+        self.x_max_spin.setEnabled(False)
+        x_axis_layout.addWidget(self.x_max_spin, 5, 1)
+
         self.x_grid_check = QCheckBox("Show Grid")
         self.x_grid_check.setChecked(True)
-        x_axis_layout.addWidget(self.x_grid_check, 3, 0, 1, 2)
+        x_axis_layout.addWidget(self.x_grid_check, 6, 0, 1, 2)
         
         layout.addWidget(x_axis_group)
         
@@ -598,10 +617,29 @@ class ChartPropertiesPanel(PWidget):
         for scale in ScaleType:
             self.y_scale_combo.addItem(scale.value.title(), scale)
         y_axis_layout.addWidget(self.y_scale_combo, 2, 1)
-        
+
+        y_axis_layout.addWidget(QLabel("Limits:"), 3, 0)
+        self.y_auto_limits_check = QCheckBox("Auto")
+        self.y_auto_limits_check.setChecked(True)
+        y_axis_layout.addWidget(self.y_auto_limits_check, 3, 1)
+
+        y_axis_layout.addWidget(QLabel("Min:"), 4, 0)
+        self.y_min_spin = QDoubleSpinBox()
+        self.y_min_spin.setRange(-1e9, 1e9)
+        self.y_min_spin.setValue(0.0)
+        self.y_min_spin.setEnabled(False)
+        y_axis_layout.addWidget(self.y_min_spin, 4, 1)
+
+        y_axis_layout.addWidget(QLabel("Max:"), 5, 0)
+        self.y_max_spin = QDoubleSpinBox()
+        self.y_max_spin.setRange(-1e9, 1e9)
+        self.y_max_spin.setValue(1.0)
+        self.y_max_spin.setEnabled(False)
+        y_axis_layout.addWidget(self.y_max_spin, 5, 1)
+
         self.y_grid_check = QCheckBox("Show Grid")
         self.y_grid_check.setChecked(True)
-        y_axis_layout.addWidget(self.y_grid_check, 3, 0, 1, 2)
+        y_axis_layout.addWidget(self.y_grid_check, 6, 0, 1, 2)
         
         layout.addWidget(y_axis_group)
         
@@ -659,6 +697,12 @@ class ChartPropertiesPanel(PWidget):
         self.x_scale_combo.currentIndexChanged.connect(self._on_chart_config_changed)
         self.y_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
         self.y_scale_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.x_auto_limits_check.toggled.connect(self._on_x_auto_limits_toggled)
+        self.x_min_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.x_max_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.y_auto_limits_check.toggled.connect(self._on_y_auto_limits_toggled)
+        self.y_min_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.y_max_spin.valueChanged.connect(self._on_chart_config_changed)
         self.legend_show_check.toggled.connect(self._on_chart_config_changed)
         
         # Connect series configuration change signals
@@ -905,6 +949,16 @@ class ChartPropertiesPanel(PWidget):
                 "update_type": "series_updated"
             })
 
+    def _on_x_auto_limits_toggled(self, checked):
+        self.x_min_spin.setEnabled(not checked)
+        self.x_max_spin.setEnabled(not checked)
+        self._on_chart_config_changed()
+
+    def _on_y_auto_limits_toggled(self, checked):
+        self.y_min_spin.setEnabled(not checked)
+        self.y_max_spin.setEnabled(not checked)
+        self._on_chart_config_changed()
+
     def _on_chart_config_changed(self):
         """Handle chart-level configuration changes."""
         if not self.current_chart or self._updating_controls:
@@ -931,6 +985,14 @@ class ChartPropertiesPanel(PWidget):
             config["x_scale"] = self.x_scale_combo.currentData().value
         if hasattr(self, "y_scale_combo") and self.y_scale_combo.currentData():
             config["y_scale"] = self.y_scale_combo.currentData().value
+        if hasattr(self, "x_auto_limits_check"):
+            config["x_auto_limits"] = self.x_auto_limits_check.isChecked()
+            config["x_min"] = self.x_min_spin.value()
+            config["x_max"] = self.x_max_spin.value()
+        if hasattr(self, "y_auto_limits_check"):
+            config["y_auto_limits"] = self.y_auto_limits_check.isChecked()
+            config["y_min"] = self.y_min_spin.value()
+            config["y_max"] = self.y_max_spin.value()
         if hasattr(self, "legend_show_check"):
             config["show_legend"] = self.legend_show_check.isChecked()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
@@ -1336,6 +1398,19 @@ class ChartPropertiesPanel(PWidget):
                 if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
                     self.y_scale_combo.setCurrentIndex(i)
                     break
+
+            self.x_auto_limits_check.setChecked(config.get("x_auto_limits", True))
+            self.x_min_spin.setValue(config.get("x_min", 0.0))
+            self.x_max_spin.setValue(config.get("x_max", 1.0))
+            self.x_min_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+            self.x_max_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+
+            self.y_auto_limits_check.setChecked(config.get("y_auto_limits", True))
+            self.y_min_spin.setValue(config.get("y_min", 0.0))
+            self.y_max_spin.setValue(config.get("y_max", 1.0))
+            self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+            self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+
             self.legend_show_check.setChecked(config.get("show_legend", True))
             
         else:
@@ -1369,6 +1444,12 @@ class ChartPropertiesPanel(PWidget):
             chart.config["x_scale"] = self.x_scale_combo.currentData().value
         if self.y_scale_combo.currentData():
             chart.config["y_scale"] = self.y_scale_combo.currentData().value
+        chart.config["x_auto_limits"] = self.x_auto_limits_check.isChecked()
+        chart.config["x_min"] = self.x_min_spin.value()
+        chart.config["x_max"] = self.x_max_spin.value()
+        chart.config["y_auto_limits"] = self.y_auto_limits_check.isChecked()
+        chart.config["y_min"] = self.y_min_spin.value()
+        chart.config["y_max"] = self.y_max_spin.value()
         chart.config["show_legend"] = self.legend_show_check.isChecked()
         
         # Update chart type
