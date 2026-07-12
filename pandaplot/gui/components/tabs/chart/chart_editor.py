@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
+
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents
@@ -24,6 +26,40 @@ from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
+    """Apply tick placement and label formatting to a matplotlib Axis.
+
+    axis: a matplotlib Axis object (e.g. ax.xaxis or ax.yaxis)
+    mode: "auto" | "count" | "step" - tick placement strategy
+    count: number of ticks when mode == "count"
+    step: fixed spacing between ticks when mode == "step"
+    fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
+    custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
+    """
+    if mode == "count":
+        axis.set_major_locator(MaxNLocator(nbins=count))
+    elif mode == "step":
+        axis.set_major_locator(MultipleLocator(step))
+    # "auto" -> leave matplotlib's default locator in place
+
+    if fmt == "integer":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
+    elif fmt == "1decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}"))
+    elif fmt == "2decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2f}"))
+    elif fmt == "scientific":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2e}"))
+    elif fmt == "custom" and custom_fmt:
+        def _safe_custom(v, _, _fmt=custom_fmt):
+            try:
+                return _fmt.format(v)
+            except (ValueError, IndexError, KeyError):
+                return str(v)
+        axis.set_major_formatter(FuncFormatter(_safe_custom))
+    # "auto" -> leave matplotlib's default formatter in place
 
 
 class ChartEditorWidget(PWidget):
