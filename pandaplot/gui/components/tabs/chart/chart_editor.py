@@ -548,6 +548,10 @@ class ChartEditorWidget(PWidget):
                 "title", self.chart.name), fontsize=14, fontweight="bold")
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
+            self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
+            self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
+            self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
+            self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
 
             self.chart_canvas.axes.grid(
                 config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
