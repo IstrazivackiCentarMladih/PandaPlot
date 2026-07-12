@@ -258,15 +258,8 @@ class ChartEditorWidget(PWidget):
             if not cfg:
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
-            if dpi and self.chart_canvas and self.chart_canvas.fig.dpi != dpi:
-                self.chart_canvas.fig.set_dpi(dpi)
-                # Matplotlib may need a tight_layout or redraw
-                try:
-                    self.chart_canvas.fig.tight_layout()
-                except Exception:
-                    pass
-                self.chart_canvas.resize(*self.chart_canvas.get_width_height())
-                self.chart_canvas.draw()
+            if dpi and self.chart_canvas:
+                self.chart_canvas.set_dpi(dpi)
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -655,10 +648,13 @@ class ChartEditorWidget(PWidget):
     def _on_size_changed(self):
         """Handle chart size changes."""
         if hasattr(self, "chart_canvas"):
-            width = cm_to_inches(self.width_spin.value())
-            height = cm_to_inches(self.height_spin.value())
-            self.chart_canvas.set_size(width, height)
-            self.update_status("Chart size updated")
+            try:
+                width = cm_to_inches(self.width_spin.value())
+                height = cm_to_inches(self.height_spin.value())
+                self.chart_canvas.set_size(width, height)
+                self.update_status("Chart size updated")
+            except Exception as e:
+                self.update_status(f"Resize error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
@@ -666,8 +662,11 @@ class ChartEditorWidget(PWidget):
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
         if hasattr(self, "chart_canvas"):
-            self.chart_canvas.reset_zoom()
-            self.update_status("Zoom reset")
+            try:
+                self.chart_canvas.reset_zoom()
+                self.update_status("Zoom reset")
+            except Exception as e:
+                self.update_status(f"Zoom reset error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))

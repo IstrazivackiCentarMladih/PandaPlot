@@ -1,6 +1,19 @@
+import logging
 
+from matplotlib.backends.backend_qt import NavigationToolbar2QT
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+
+logger = logging.getLogger(__name__)
+
+
+# Maps a NavigationToolbar2QT action name to its icon file, derived from
+# matplotlib's own toolitems so it can't drift out of sync on a matplotlib upgrade.
+NAV_ICON_FILES = {
+    callback_name: image_file
+    for _, _, image_file, callback_name in NavigationToolbar2QT.toolitems
+    if callback_name
+}
 
 
 CM_PER_INCH = 2.54
@@ -36,7 +49,6 @@ class ChartCanvas(FigureCanvas):
         """Set up zoom and pan functionality."""
         # Enable matplotlib's built-in navigation toolbar functionality
         # This provides zoom, pan, and reset functionality
-        from matplotlib.backends.backend_qt import NavigationToolbar2QT
         self.toolbar = NavigationToolbar2QT(self, self.parent())
 
         # Store the navigation toolbar for external access
@@ -133,39 +145,28 @@ class ChartCanvas(FigureCanvas):
                         # This forces matplotlib to re-evaluate the colors
                         try:
                             # Get the icon file from the toolbar's _icon method
-                            # Based on matplotlib's NavigationToolbar2QT.toolitems
-                            icon_mapping = {
-                                "home": "home",
-                                "back": "back",
-                                "forward": "forward",
-                                "pan": "move",
-                                "zoom": "zoom_to_rect",
-                                "configure_subplots": "subplots",
-                                "edit_parameters": "qt4_editor_options",  # Edit axis button
-                                "save_figure": "filesave"  # Save figure button
-                            }
-                            if action_name in icon_mapping:
+                            # to force matplotlib to re-evaluate the colors
+                            if action_name in NAV_ICON_FILES:
                                 new_icon = self.navigation_toolbar._icon(
-                                    f"{icon_mapping[action_name]}.png")
+                                    f"{NAV_ICON_FILES[action_name]}.png")
                                 action.setIcon(new_icon)
                         except Exception as e:
                             # If regeneration fails, continue with other actions
-                            # Add some debug info
-                            if hasattr(self, "logger"):
-                                self.logger.debug(
-                                    f"Failed to regenerate icon for {action_name}: {e}")
-                            pass
+                            logger.debug(
+                                "Failed to regenerate icon for %s: %s", action_name, e)
 
     def store_original_limits(self):
-        """Store the original axis limits for reset functionality."""
-        if self.original_xlim is None:
-            self.original_xlim = self.axes.get_xlim()
-        if self.original_ylim is None:
-            self.original_ylim = self.axes.get_ylim()
+        """Store the current axis limits as the reset-zoom baseline.
+
+        Called after every re-render, so 'reset zoom' returns to the most
+        recently configured view rather than the chart's very first render.
+        """
+        self.original_xlim = self.axes.get_xlim()
+        self.original_ylim = self.axes.get_ylim()
 
     def reset_zoom(self):
         """Reset zoom to original view."""
-        if self.original_xlim and self.original_ylim:
+        if self.original_xlim is not None and self.original_ylim is not None:
             self.axes.set_xlim(self.original_xlim)
             self.axes.set_ylim(self.original_ylim)
             self.draw()
@@ -173,6 +174,21 @@ class ChartCanvas(FigureCanvas):
     def set_size(self, width, height):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
-        self.fig.tight_layout()
+        try:
+            self.fig.tight_layout()
+        except Exception:
+            logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
+        self.resize(*self.get_width_height())
+        self.draw()
+
+    def set_dpi(self, dpi):
+        """Change the figure DPI, keeping the widget's pixel size in sync."""
+        if self.fig.dpi == dpi:
+            return
+        self.fig.set_dpi(dpi)
+        try:
+            self.fig.tight_layout()
+        except Exception:
+            logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())
         self.draw()
