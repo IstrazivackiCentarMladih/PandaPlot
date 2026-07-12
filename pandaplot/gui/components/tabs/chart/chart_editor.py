@@ -576,7 +576,10 @@ class ChartEditorWidget(PWidget):
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(
-                    loc=config.get("legend_position", "upper right"))
+                    loc=config.get("legend_position", "upper right"),
+                    fontsize=config.get("legend_font_size", 10),
+                    facecolor=config.get("legend_bg_color", "#ffffff"),
+                    frameon=config.get("legend_show_frame", True))
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
