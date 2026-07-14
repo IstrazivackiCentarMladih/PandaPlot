@@ -2,7 +2,7 @@ from typing import override
 
 from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -18,7 +18,6 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
@@ -98,10 +97,6 @@ class ChartEditorWidget(PWidget):
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
-        self.is_modified = False
-        self.auto_save_timer = QTimer()
-        self.auto_save_timer.timeout.connect(self.auto_save)
-        self.auto_save_timer.setSingleShot(True)
 
         self._initialize()
         self.load_chart_config()
@@ -407,12 +402,6 @@ class ChartEditorWidget(PWidget):
 
     def create_chart_toolbar_actions(self, toolbar):
         """Create toolbar actions for chart operations."""
-        # Save chart action
-        save_action = QAction("💾 Save", self)
-        save_action.setShortcut(QKeySequence.StandardKey.Save)
-        save_action.triggered.connect(self.save_chart)
-        toolbar.addAction(save_action)
-
         # Reset action
         reset_action = QAction("🔄 Reset", self)
         reset_action.triggered.connect(self.reset_chart)
@@ -569,33 +558,6 @@ class ChartEditorWidget(PWidget):
         except Exception as e:
             self.logger.exception("Error updating chart")
             self.update_status(f"Chart error: {str(e)}")
-
-    def save_chart(self):
-        """Save the chart configuration."""
-        try:
-            # Update modification time
-            self.chart.update_modified_time()
-
-            # Update UI
-            self.is_modified = False
-            self.update_status("Saved ✓")
-
-            # Publish chart updated event
-            self.publish_event(ChartEvents.CHART_UPDATED, {
-                "chart_id": self.chart.id,
-                "chart_name": self.chart.name
-            })
-
-            # Reset status after 2 seconds
-            QTimer.singleShot(2000, lambda: self.update_status("Ready"))
-
-        except Exception as e:
-            self.update_status(f"Error: {str(e)}")
-
-    def auto_save(self):
-        """Auto-save the chart configuration."""
-        if self.is_modified:
-            self.save_chart()
 
     def reset_chart(self):
         """Reset chart to default configuration."""
