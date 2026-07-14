@@ -1,5 +1,5 @@
 """Chart properties side panel for configuring chart appearance and data."""
-from typing import Any, List, Optional, override
+from typing import List, Optional, override
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter
@@ -30,18 +30,12 @@ from pandaplot.commands.project.chart import (
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
-    AxisStyle,
-    ChartConfiguration,
     ChartType,
     LegendPosition,
-    LegendStyle,
-    LineStyle,
     LineStyleType,
-    MarkerStyle,
     MarkerType,
     ScaleType,
 )
-from pandaplot.models.chart.chart_style_manager import ChartStyleManager
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -115,16 +109,11 @@ class ColorButton(QPushButton):
 
 class ChartPropertiesPanel(PWidget):
     """Side panel for configuring chart properties."""
-    
-    chart_created = Signal(str)  # chart_id
-    chart_updated = Signal(str)  # chart_id
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
         super().__init__(app_context=app_context, parent=parent)
         self.command_executor = app_context.command_executor
-        self.style_manager = ChartStyleManager()
         self.current_project = None
-        self.current_chart_id: Optional[str] = None
         self.current_chart = None  # Current Chart object being edited
         self.datasets: List = []
         # Internal flags/state for safe UI updates
@@ -1328,7 +1317,26 @@ class ChartPropertiesPanel(PWidget):
         self.dataset_combo.setEnabled(True)
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
-    
+
+    def _clear_controls(self):
+        """Reset panel controls to neutral defaults without touching any chart."""
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.title_edit.clear()
+            self.chart_type_combo.setCurrentIndex(0)
+            self.x_label_edit.clear()
+            self.y_label_edit.clear()
+            self.x_grid_check.setChecked(True)
+            self.y_grid_check.setChecked(True)
+            self.x_auto_limits_check.setChecked(True)
+            self.y_auto_limits_check.setChecked(True)
+            self.legend_show_check.setChecked(True)
+            self.legend_show_frame_check.setChecked(True)
+            self.series_label_edit.clear()
+        finally:
+            self._updating_controls = previous_guard
+
     def _get_next_series_color(self) -> str:
         """Get the next color for a new series."""
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", 
@@ -1377,58 +1385,6 @@ class ChartPropertiesPanel(PWidget):
                     self.x_column_combo.setCurrentIndex(0)
                     self.y_column_combo.setCurrentIndex(1)
     
-    def _get_current_configuration(self) -> ChartConfiguration:
-        """Get the current configuration from UI."""
-        config = ChartConfiguration()
-        
-        # Basic info
-        config.title = self.title_edit.text()
-        config.chart_type = self.chart_type_combo.currentData() or ChartType.LINE
-        config.dataset_id = self.dataset_combo.currentData() or ""
-        config.x_column = self.x_column_combo.currentText()
-        config.y_column = self.y_column_combo.currentText()
-        
-        # Line style
-        config.line_style = LineStyle(
-            color=self.line_color_button.get_color(),
-            width=self.line_width_spin.value(),
-            style=self.line_style_combo.currentData() or LineStyleType.SOLID,
-            transparency=self.line_transparency_spin.value()
-        )
-        
-        # Marker style
-        config.marker_style = MarkerStyle(
-            type=self.marker_type_combo.currentData() or MarkerType.CIRCLE,
-            size=self.marker_size_spin.value(),
-            color=self.marker_color_button.get_color(),
-            edge_color=self.marker_edge_color_button.get_color()
-        )
-        
-        # Axes
-        config.x_axis = AxisStyle(
-            label=self.x_label_edit.text(),
-            font_size=self.x_font_size_spin.value(),
-            scale=self.x_scale_combo.currentData() or ScaleType.LINEAR,
-            show_grid=self.x_grid_check.isChecked()
-        )
-        
-        config.y_axis = AxisStyle(
-            label=self.y_label_edit.text(),
-            font_size=self.y_font_size_spin.value(),
-            scale=self.y_scale_combo.currentData() or ScaleType.LINEAR,
-            show_grid=self.y_grid_check.isChecked()
-        )
-        
-        # Legend
-        config.legend = LegendStyle(
-            show=self.legend_show_check.isChecked(),
-            position=self.legend_position_combo.currentData() or LegendPosition.UPPER_RIGHT,
-            font_size=self.legend_font_size_spin.value(),
-            background_color=self.legend_bg_color_button.get_color()
-        )
-        
-        return config
-    
     def _on_apply(self):
         """Handle apply button click."""
         if not self.current_chart:
@@ -1456,26 +1412,6 @@ class ChartPropertiesPanel(PWidget):
             "chart_id": self.current_chart.id,
             "update_type": "config_updated",
         })
-    
-    def load_chart(self, chart_id: Optional[str]):
-        """Load a chart configuration into the panel.
-        
-        Args:
-            chart_id: The chart ID to load, or None for new chart
-        """
-        self.current_chart_id = chart_id
-        
-        if chart_id and self.current_project:
-            # Load existing chart
-            if hasattr(self.current_project, "charts") and chart_id in self.current_project.charts:
-                chart_dict = self.current_project.charts[chart_id]
-                config = ChartConfiguration.from_dict(chart_dict)
-                self._load_configuration(config)
-            else:
-                self._load_default_configuration()
-        else:
-            # New chart
-            self._load_default_configuration()
     
     def load_chart_object(self, chart):
         """Load a Chart object into the panel for editing.
@@ -1618,7 +1554,7 @@ class ChartPropertiesPanel(PWidget):
 
         else:
             # Clear/default values
-            self._load_default_configuration()
+            self._clear_controls()
             self.series_list.clear()
             self.series_config_group.setEnabled(False)
             if hasattr(self, "add_series_button"):
@@ -1741,83 +1677,3 @@ class ChartPropertiesPanel(PWidget):
         
         chart.update_modified_time()
     
-    def _load_configuration(self, config: ChartConfiguration):
-        """Load a configuration into the UI widgets."""
-        # Basic info
-        self.title_edit.setText(config.title)
-        
-        # Find and set chart type
-        for i in range(self.chart_type_combo.count()):
-            if self.chart_type_combo.itemData(i) == config.chart_type:
-                self.chart_type_combo.setCurrentIndex(i)
-                break
-        
-        # Find and set dataset
-        for i in range(self.dataset_combo.count()):
-            if self.dataset_combo.itemData(i) == config.dataset_id:
-                self.dataset_combo.setCurrentIndex(i)
-                break
-        
-        # Set columns
-        x_index = self.x_column_combo.findText(config.x_column)
-        if x_index >= 0:
-            self.x_column_combo.setCurrentIndex(x_index)
-        
-        y_index = self.y_column_combo.findText(config.y_column)
-        if y_index >= 0:
-            self.y_column_combo.setCurrentIndex(y_index)
-        
-        # Line style
-        self.line_color_button.set_color(config.line_style.color)
-        self.line_width_spin.setValue(config.line_style.width)
-        
-        for i in range(self.line_style_combo.count()):
-            if self.line_style_combo.itemData(i) == config.line_style.style:
-                self.line_style_combo.setCurrentIndex(i)
-                break
-        
-        self.line_transparency_spin.setValue(config.line_style.transparency)
-        
-        # Marker style
-        for i in range(self.marker_type_combo.count()):
-            if self.marker_type_combo.itemData(i) == config.marker_style.type:
-                self.marker_type_combo.setCurrentIndex(i)
-                break
-        
-        self.marker_size_spin.setValue(config.marker_style.size)
-        self.marker_color_button.set_color(config.marker_style.color)
-        self.marker_edge_color_button.set_color(config.marker_style.edge_color)
-        
-        # Axes
-        self.x_label_edit.setText(config.x_axis.label)
-        self.x_font_size_spin.setValue(config.x_axis.font_size)
-        self.x_grid_check.setChecked(config.x_axis.show_grid)
-        
-        for i in range(self.x_scale_combo.count()):
-            if self.x_scale_combo.itemData(i) == config.x_axis.scale:
-                self.x_scale_combo.setCurrentIndex(i)
-                break
-        
-        self.y_label_edit.setText(config.y_axis.label)
-        self.y_font_size_spin.setValue(config.y_axis.font_size)
-        self.y_grid_check.setChecked(config.y_axis.show_grid)
-        
-        for i in range(self.y_scale_combo.count()):
-            if self.y_scale_combo.itemData(i) == config.y_axis.scale:
-                self.y_scale_combo.setCurrentIndex(i)
-                break
-        
-        # Legend
-        self.legend_show_check.setChecked(config.legend.show)
-        self.legend_font_size_spin.setValue(config.legend.font_size)
-        self.legend_bg_color_button.set_color(config.legend.background_color)
-        
-        for i in range(self.legend_position_combo.count()):
-            if self.legend_position_combo.itemData(i) == config.legend.position:
-                self.legend_position_combo.setCurrentIndex(i)
-                break
-    
-    def _load_default_configuration(self):
-        """Load default configuration."""
-        config = self.style_manager.get_default_configuration()
-        self._load_configuration(config)
