@@ -1186,6 +1186,7 @@ class ChartPropertiesPanel(PWidget):
     def _load_series_into_controls(self, series):
         """Load a data series into the configuration controls."""
         # Enable all controls for series editing
+        previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             self._reset_controls_for_series()
@@ -1255,10 +1256,11 @@ class ChartPropertiesPanel(PWidget):
                         break
                 self.marker_type_combo.blockSignals(False)
         finally:
-            self._updating_controls = False
-    
+            self._updating_controls = previous_guard
+
     def _load_fit_into_controls(self, fit):
         """Load fit data into the configuration controls."""
+        previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             # For fit data, disable dataset/column controls since they're not editable
@@ -1285,7 +1287,7 @@ class ChartPropertiesPanel(PWidget):
             self.marker_size_spin.setValue(0.0)  # Fit lines typically don't have markers
             self.marker_size_spin.blockSignals(False)
         finally:
-            self._updating_controls = False
+            self._updating_controls = previous_guard
 
     def _on_label_typing(self, text: str):
         """Buffer label text while user is typing without mutating the model."""
@@ -1473,122 +1475,130 @@ class ChartPropertiesPanel(PWidget):
         if chart:
             # Ensure datasets are available (important after opening a project file)
             self._ensure_datasets_loaded()
-            # Load basic info
-            self.title_edit.setText(chart.config.get("title", chart.name))
+            # Populate controls without letting their change signals write
+            # half-loaded values back into chart.config (that feedback loop
+            # corrupted chart settings on every tab switch).
+            previous_guard = self._updating_controls
+            self._updating_controls = True
+            try:
+                # Load basic info
+                self.title_edit.setText(chart.config.get("title", chart.name))
             
-            # Set chart type
-            chart_type_map = {
-                "line": ChartType.LINE,
-                "scatter": ChartType.SCATTER,
-                "bar": ChartType.BAR,
-                "hist": ChartType.HISTOGRAM,
-                "box": ChartType.BOX,
-                "violin": ChartType.VIOLIN
-            }
-            chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-            for i in range(self.chart_type_combo.count()):
-                if self.chart_type_combo.itemData(i) == chart_type:
-                    self.chart_type_combo.setCurrentIndex(i)
-                    break
+                # Set chart type
+                chart_type_map = {
+                    "line": ChartType.LINE,
+                    "scatter": ChartType.SCATTER,
+                    "bar": ChartType.BAR,
+                    "hist": ChartType.HISTOGRAM,
+                    "box": ChartType.BOX,
+                    "violin": ChartType.VIOLIN
+                }
+                chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
+                for i in range(self.chart_type_combo.count()):
+                    if self.chart_type_combo.itemData(i) == chart_type:
+                        self.chart_type_combo.setCurrentIndex(i)
+                        break
             
-            # Update series list
-            self._update_series_list()
+                # Update series list
+                self._update_series_list()
             
-            # If there are data series, select the first one
-            if chart.data_series:
-                self.series_list.setCurrentRow(0)
-                self._load_series_into_controls(chart.data_series[0])
-                self.series_config_group.setEnabled(True)
+                # If there are data series, select the first one
+                if chart.data_series:
+                    self.series_list.setCurrentRow(0)
+                    self._load_series_into_controls(chart.data_series[0])
+                    self.series_config_group.setEnabled(True)
                 
-                # Set style from first series for the style tab
-                first_series = chart.data_series[0]
-                self.line_color_button.set_color(first_series.color)
-                self.line_width_spin.setValue(first_series.line_width)
-                self.marker_size_spin.setValue(first_series.marker_size)
-                self.add_series_button.show()
-                self.remove_series_button.show()
-            else:
-                self.series_config_group.setEnabled(False)
-                self.add_series_button.show()
-                self.remove_series_button.hide()
+                    # Set style from first series for the style tab
+                    first_series = chart.data_series[0]
+                    self.line_color_button.set_color(first_series.color)
+                    self.line_width_spin.setValue(first_series.line_width)
+                    self.marker_size_spin.setValue(first_series.marker_size)
+                    self.add_series_button.show()
+                    self.remove_series_button.show()
+                else:
+                    self.series_config_group.setEnabled(False)
+                    self.add_series_button.show()
+                    self.remove_series_button.hide()
             
-            # Load configuration
-            config = chart.config
-            self.x_label_edit.setText(config.get("x_label", ""))
-            self.y_label_edit.setText(config.get("y_label", ""))
-            self.x_grid_check.setChecked(config.get("show_grid_x", True))
-            self.y_grid_check.setChecked(config.get("show_grid_y", True))
-            self.x_font_size_spin.setValue(config.get("x_font_size", 12))
-            self.y_font_size_spin.setValue(config.get("y_font_size", 12))
-            x_scale_value = config.get("x_scale", "linear")
-            for i in range(self.x_scale_combo.count()):
-                if self.x_scale_combo.itemData(i) and self.x_scale_combo.itemData(i).value == x_scale_value:
-                    self.x_scale_combo.setCurrentIndex(i)
-                    break
-            y_scale_value = config.get("y_scale", "linear")
-            for i in range(self.y_scale_combo.count()):
-                if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
-                    self.y_scale_combo.setCurrentIndex(i)
-                    break
+                # Load configuration
+                config = chart.config
+                self.x_label_edit.setText(config.get("x_label", ""))
+                self.y_label_edit.setText(config.get("y_label", ""))
+                self.x_grid_check.setChecked(config.get("show_grid_x", True))
+                self.y_grid_check.setChecked(config.get("show_grid_y", True))
+                self.x_font_size_spin.setValue(config.get("x_font_size", 12))
+                self.y_font_size_spin.setValue(config.get("y_font_size", 12))
+                x_scale_value = config.get("x_scale", "linear")
+                for i in range(self.x_scale_combo.count()):
+                    if self.x_scale_combo.itemData(i) and self.x_scale_combo.itemData(i).value == x_scale_value:
+                        self.x_scale_combo.setCurrentIndex(i)
+                        break
+                y_scale_value = config.get("y_scale", "linear")
+                for i in range(self.y_scale_combo.count()):
+                    if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
+                        self.y_scale_combo.setCurrentIndex(i)
+                        break
 
-            self.x_auto_limits_check.setChecked(config.get("x_auto_limits", True))
-            self.x_min_spin.setValue(config.get("x_min", 0.0))
-            self.x_max_spin.setValue(config.get("x_max", 1.0))
-            self.x_min_spin.setEnabled(not self.x_auto_limits_check.isChecked())
-            self.x_max_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+                self.x_auto_limits_check.setChecked(config.get("x_auto_limits", True))
+                self.x_min_spin.setValue(config.get("x_min", 0.0))
+                self.x_max_spin.setValue(config.get("x_max", 1.0))
+                self.x_min_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+                self.x_max_spin.setEnabled(not self.x_auto_limits_check.isChecked())
 
-            self.y_auto_limits_check.setChecked(config.get("y_auto_limits", True))
-            self.y_min_spin.setValue(config.get("y_min", 0.0))
-            self.y_max_spin.setValue(config.get("y_max", 1.0))
-            self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
-            self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+                self.y_auto_limits_check.setChecked(config.get("y_auto_limits", True))
+                self.y_min_spin.setValue(config.get("y_min", 0.0))
+                self.y_max_spin.setValue(config.get("y_max", 1.0))
+                self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+                self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
 
-            x_tick_mode = config.get("x_tick_mode", "auto")
-            for i in range(self.x_tick_mode_combo.count()):
-                if self.x_tick_mode_combo.itemData(i) == x_tick_mode:
-                    self.x_tick_mode_combo.setCurrentIndex(i)
-                    break
-            self.x_tick_count_spin.setValue(config.get("x_tick_count", 5))
-            self.x_tick_step_spin.setValue(config.get("x_tick_step", 1.0))
-            self.x_tick_count_spin.setEnabled(x_tick_mode == "count")
-            self.x_tick_step_spin.setEnabled(x_tick_mode == "step")
+                x_tick_mode = config.get("x_tick_mode", "auto")
+                for i in range(self.x_tick_mode_combo.count()):
+                    if self.x_tick_mode_combo.itemData(i) == x_tick_mode:
+                        self.x_tick_mode_combo.setCurrentIndex(i)
+                        break
+                self.x_tick_count_spin.setValue(config.get("x_tick_count", 5))
+                self.x_tick_step_spin.setValue(config.get("x_tick_step", 1.0))
+                self.x_tick_count_spin.setEnabled(x_tick_mode == "count")
+                self.x_tick_step_spin.setEnabled(x_tick_mode == "step")
 
-            x_tick_format = config.get("x_tick_format", "auto")
-            for i in range(self.x_tick_format_combo.count()):
-                if self.x_tick_format_combo.itemData(i) == x_tick_format:
-                    self.x_tick_format_combo.setCurrentIndex(i)
-                    break
-            self.x_tick_format_custom_edit.setText(config.get("x_tick_format_custom", ""))
-            self.x_tick_format_custom_edit.setEnabled(x_tick_format == "custom")
+                x_tick_format = config.get("x_tick_format", "auto")
+                for i in range(self.x_tick_format_combo.count()):
+                    if self.x_tick_format_combo.itemData(i) == x_tick_format:
+                        self.x_tick_format_combo.setCurrentIndex(i)
+                        break
+                self.x_tick_format_custom_edit.setText(config.get("x_tick_format_custom", ""))
+                self.x_tick_format_custom_edit.setEnabled(x_tick_format == "custom")
 
-            y_tick_mode = config.get("y_tick_mode", "auto")
-            for i in range(self.y_tick_mode_combo.count()):
-                if self.y_tick_mode_combo.itemData(i) == y_tick_mode:
-                    self.y_tick_mode_combo.setCurrentIndex(i)
-                    break
-            self.y_tick_count_spin.setValue(config.get("y_tick_count", 5))
-            self.y_tick_step_spin.setValue(config.get("y_tick_step", 1.0))
-            self.y_tick_count_spin.setEnabled(y_tick_mode == "count")
-            self.y_tick_step_spin.setEnabled(y_tick_mode == "step")
+                y_tick_mode = config.get("y_tick_mode", "auto")
+                for i in range(self.y_tick_mode_combo.count()):
+                    if self.y_tick_mode_combo.itemData(i) == y_tick_mode:
+                        self.y_tick_mode_combo.setCurrentIndex(i)
+                        break
+                self.y_tick_count_spin.setValue(config.get("y_tick_count", 5))
+                self.y_tick_step_spin.setValue(config.get("y_tick_step", 1.0))
+                self.y_tick_count_spin.setEnabled(y_tick_mode == "count")
+                self.y_tick_step_spin.setEnabled(y_tick_mode == "step")
 
-            y_tick_format = config.get("y_tick_format", "auto")
-            for i in range(self.y_tick_format_combo.count()):
-                if self.y_tick_format_combo.itemData(i) == y_tick_format:
-                    self.y_tick_format_combo.setCurrentIndex(i)
-                    break
-            self.y_tick_format_custom_edit.setText(config.get("y_tick_format_custom", ""))
-            self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
+                y_tick_format = config.get("y_tick_format", "auto")
+                for i in range(self.y_tick_format_combo.count()):
+                    if self.y_tick_format_combo.itemData(i) == y_tick_format:
+                        self.y_tick_format_combo.setCurrentIndex(i)
+                        break
+                self.y_tick_format_custom_edit.setText(config.get("y_tick_format_custom", ""))
+                self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
 
-            self.legend_show_check.setChecked(config.get("show_legend", True))
-            legend_position_value = config.get("legend_position", "upper right")
-            for i in range(self.legend_position_combo.count()):
-                if (self.legend_position_combo.itemData(i)
-                        and self.legend_position_combo.itemData(i).value == legend_position_value):
-                    self.legend_position_combo.setCurrentIndex(i)
-                    break
-            self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
-            self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
-            self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+                self.legend_show_check.setChecked(config.get("show_legend", True))
+                legend_position_value = config.get("legend_position", "upper right")
+                for i in range(self.legend_position_combo.count()):
+                    if (self.legend_position_combo.itemData(i)
+                            and self.legend_position_combo.itemData(i).value == legend_position_value):
+                        self.legend_position_combo.setCurrentIndex(i)
+                        break
+                self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
+                self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
+                self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+            finally:
+                self._updating_controls = previous_guard
 
         else:
             # Clear/default values
