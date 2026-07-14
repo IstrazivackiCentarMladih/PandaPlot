@@ -14,10 +14,10 @@ New file `pandaplot/commands/project/dataset/rename_column_command.py`, class `R
 **execute():**
 1. Validate: project loaded; dataset exists and is a `Dataset` with non-empty data; `column_index` in range. Error/warning dialogs via `ui_controller`, return `False` on failure.
 2. Resolve `old_name = df.columns[column_index]`.
-3. Validate `new_name`: stripped, non-empty, different from `old_name`, not already a column in this dataset. On violation: error dialog, return `False` (nothing lands on the undo stack).
+3. Validate `new_name`: stripped, non-empty and not already a column in this dataset (error dialog + return `False` on violation; nothing lands on the undo stack). A name identical to `old_name` is a silent no-op (return `False`, no dialog).
 4. Rename: `dataset.data.rename(columns={old_name: new_name}, inplace=True)`.
 5. Cascade: walk `project.get_all_items()` for `Chart` items. For each chart, for every `DataSeries` with `dataset_id == self.dataset_id`, replace `x_column`/`y_column` values equal to `old_name` with `new_name`; likewise `FitData.source_x_column`/`source_y_column` where `source_dataset_id` matches. Record the ids of affected charts. Series/fit **labels are not touched** (user-editable text).
-6. Events: emit `DatasetEvents.DATASET_DATA_CHANGED` for the dataset (refreshes the table), and `ChartEvents.CHART_UPDATED` with `{"chart_id", "chart"}` for each affected chart (the `"chart"` key makes the properties panel do a full resync, and open chart tabs re-render).
+6. Events: emit `DatasetOperationEvents.DATASET_COLUMN_RENAMED` (existing, currently unused constant) with a new `DatasetColumnRenamedData` payload (`dataset_id`, `column_index`, `old_name`, `new_name`) — the table model handles it by emitting `headerDataChanged` (a header change, not a cell-data change, so `DATASET_DATA_CHANGED` is the wrong event). Also emit `ChartEvents.CHART_UPDATED` with `{"chart_id", "chart"}` for each affected chart (the `"chart"` key makes the properties panel do a full resync, and open chart tabs re-render).
 
 **undo()/redo():** run the same rename + cascade with old/new names swapped (undo) or as in execute (redo), emitting the same events. The command stores `old_name`/`new_name`; no data snapshot is needed because the rename walk is symmetric and lossless.
 
