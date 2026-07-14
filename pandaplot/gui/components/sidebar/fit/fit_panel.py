@@ -547,18 +547,17 @@ class FitPanel(PWidget):
         perr = results['errors']
         param_names = results['param_names']
         r_squared = results['r_squared']
-        
+        params = results["params"]
+
         # Format equation
-        equation = self.fit_command.format_equation(fit_type, popt)
+        equation = self.fit_command.format_equation(fit_type, params)
         self.equation_label.setText(equation)
-        
+
         # Format results text
         results_text = f"Fit Type: {fit_type}\n\n"
         results_text += "Parameters:\n"
-        
-        for i, (name, value, error) in enumerate(zip(param_names, popt, perr)):
-            results_text += f"  {name} = {value:.6g} ± {error:.6g}\n"
-        
+        results_text += self.fit_command.format_parameters(param_names, params, perr)
+
         if r_squared is not None:
             results_text += f"\nR² = {r_squared:.6f}\n"
         
@@ -629,4 +628,4 @@ class FitPanel(PWidget):
             self.update_data_points_display()
 
 #TODO: fix equation box
-#TODO: fix custom equation display -2.3*x+b instead of 4.2*x-2.3
+#TODO: show confidence bands
