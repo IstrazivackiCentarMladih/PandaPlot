@@ -428,7 +428,14 @@ class ChartPropertiesPanel(PWidget):
         for chart_type in IMPLEMENTED_CHART_TYPES:
             self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
         info_layout.addWidget(self.chart_type_combo, 1, 1)
-        
+
+        info_layout.addWidget(QLabel("Histogram Bins:"), 2, 0)
+        self.hist_bins_spin = QSpinBox()
+        self.hist_bins_spin.setRange(2, 200)
+        self.hist_bins_spin.setValue(20)
+        self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
+        info_layout.addWidget(self.hist_bins_spin, 2, 1)
+
         layout.addWidget(info_group)
     
     def _create_series_management_section(self, layout):
@@ -769,6 +776,7 @@ class ChartPropertiesPanel(PWidget):
         
         # Connect chart-level configuration changes
         self.chart_type_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.y_label_edit.textChanged.connect(self._on_chart_config_changed)
@@ -1138,6 +1146,8 @@ class ChartPropertiesPanel(PWidget):
             config["legend_bg_color"] = self.legend_bg_color_button.get_color()
         if hasattr(self, "legend_show_frame_check"):
             config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        if hasattr(self, "hist_bins_spin"):
+            config["hist_bins"] = self.hist_bins_spin.value()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
             chart_type_map = {
                 ChartType.LINE: "line",
@@ -1341,6 +1351,7 @@ class ChartPropertiesPanel(PWidget):
         try:
             self.title_edit.clear()
             self.chart_type_combo.setCurrentIndex(0)
+            self.hist_bins_spin.setValue(20)
             self.x_label_edit.clear()
             self.y_label_edit.clear()
             self.x_grid_check.setChecked(True)
@@ -1563,6 +1574,7 @@ class ChartPropertiesPanel(PWidget):
                 self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
                 self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
                 self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+                self.hist_bins_spin.setValue(config.get("hist_bins", 20))
             finally:
                 self._updating_controls = previous_guard
 
@@ -1619,6 +1631,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["legend_font_size"] = self.legend_font_size_spin.value()
         chart.config["legend_bg_color"] = self.legend_bg_color_button.get_color()
         chart.config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        chart.config["hist_bins"] = self.hist_bins_spin.value()
 
         # Update chart type
         chart_type_map = {

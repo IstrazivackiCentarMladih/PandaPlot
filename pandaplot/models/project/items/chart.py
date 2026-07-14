@@ -113,6 +113,7 @@ class Chart(Item):
             "y_tick_format": "auto",
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
+            "hist_bins": 20,
         }
 
         self.style = {
