@@ -42,6 +42,16 @@ from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
+# Only chart types that ChartEditorWidget.update_chart can actually render.
+# BOX and VIOLIN exist in the enum but have no rendering branch yet.
+IMPLEMENTED_CHART_TYPES = [
+    ChartType.LINE,
+    ChartType.SCATTER,
+    ChartType.BAR,
+    ChartType.HISTOGRAM,
+]
+
+
 class ColorButton(QPushButton):
     """A button that displays and allows selection of colors."""
     
@@ -415,7 +425,7 @@ class ChartPropertiesPanel(PWidget):
         
         info_layout.addWidget(QLabel("Chart Type:"), 1, 0)
         self.chart_type_combo = QComboBox()
-        for chart_type in ChartType:
+        for chart_type in IMPLEMENTED_CHART_TYPES:
             self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
         info_layout.addWidget(self.chart_type_combo, 1, 1)
         
@@ -1126,8 +1136,6 @@ class ChartPropertiesPanel(PWidget):
                 ChartType.SCATTER: "scatter",
                 ChartType.BAR: "bar",
                 ChartType.HISTOGRAM: "hist",
-                ChartType.BOX: "box",
-                ChartType.VIOLIN: "violin"
             }
             chart_type = self.chart_type_combo.currentData()
             if chart_type in chart_type_map:
@@ -1442,8 +1450,6 @@ class ChartPropertiesPanel(PWidget):
                     "scatter": ChartType.SCATTER,
                     "bar": ChartType.BAR,
                     "hist": ChartType.HISTOGRAM,
-                    "box": ChartType.BOX,
-                    "violin": ChartType.VIOLIN
                 }
                 chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
                 for i in range(self.chart_type_combo.count()):
@@ -1612,8 +1618,6 @@ class ChartPropertiesPanel(PWidget):
             ChartType.SCATTER: "scatter",
             ChartType.BAR: "bar",
             ChartType.HISTOGRAM: "hist",
-            ChartType.BOX: "box",
-            ChartType.VIOLIN: "violin"
         }
         chart_type = self.chart_type_combo.currentData()
         if chart_type in chart_type_map:
