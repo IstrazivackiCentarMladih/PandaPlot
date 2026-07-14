@@ -122,6 +122,7 @@ class ColumnHeaderContextMenu(QMenu):
 
         new_name, ok = QInputDialog.getText(
             self.parentWidget(), "Rename Column", "New column name:", text=current_name)
-        if ok and new_name.strip():
+        new_name = new_name.strip() if ok else ""
+        if new_name and new_name != current_name:
             self.app_context.command_executor.execute_command(RenameColumnCommand(
                 self.app_context, self.dataset_id, column_index, new_name))
