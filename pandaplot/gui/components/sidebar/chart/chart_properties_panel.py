@@ -1,5 +1,5 @@
 """Chart properties side panel for configuring chart appearance and data."""
-from typing import List, Optional, override
+from typing import Any, List, Optional, override
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter
@@ -27,6 +27,7 @@ from pandaplot.commands.project.chart import (
     ApplyChartPropertiesCommand,
     RemoveSeriesCommand,
 )
+from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     AxisStyle,
@@ -130,6 +131,9 @@ class ChartPropertiesPanel(PWidget):
         self._updating_controls: bool = False  # Guard to prevent feedback loops
         self._pending_label: str = ""        # Buffer while user types label
         self._has_unsaved_changes: bool = False
+        # Baseline for Cancel and for Apply's undo: the chart state as of the
+        # last load into this panel or the last Apply.
+        self._loaded_snapshot: Optional[dict] = None
 
         self._initialize()
         self._connect_signals()
@@ -1427,20 +1431,31 @@ class ChartPropertiesPanel(PWidget):
     
     def _on_apply(self):
         """Handle apply button click."""
-        if self.current_chart:
-            command = ApplyChartPropertiesCommand(
-                self.app_context,
-                chart_id=self.current_chart.id,
-                apply_fn=self.apply_to_chart,
-            )
-            self.command_executor.execute_command(command)
+        if not self.current_chart:
+            return
+        command = ApplyChartPropertiesCommand(
+            self.app_context,
+            chart_id=self.current_chart.id,
+            apply_fn=self.apply_to_chart,
+            old_snapshot=self._loaded_snapshot,
+        )
+        self.command_executor.execute_command(command)
 
-            self._has_unsaved_changes = False
-            self._update_status_indicator()
+        # The applied state is the new baseline for Cancel / the next Apply.
+        self._loaded_snapshot = snapshot_chart_state(self.current_chart)
+        self._has_unsaved_changes = False
+        self._update_status_indicator()
     
     def _on_reset(self):
-        """Handle reset button click."""
-        self.load_chart(None)
+        """Revert live edits back to the last loaded/applied state."""
+        if not self.current_chart or self._loaded_snapshot is None:
+            return
+        restore_chart_state(self.current_chart, self._loaded_snapshot)
+        self.load_chart_object(self.current_chart)
+        self.publish_event(ChartEvents.CHART_UPDATED, {
+            "chart_id": self.current_chart.id,
+            "update_type": "config_updated",
+        })
     
     def load_chart(self, chart_id: Optional[str]):
         """Load a chart configuration into the panel.
@@ -1464,11 +1479,12 @@ class ChartPropertiesPanel(PWidget):
     
     def load_chart_object(self, chart):
         """Load a Chart object into the panel for editing.
-        
+
         Args:
             chart: Chart object to load, or None to clear
         """
         self.current_chart = chart
+        self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
         self._has_unsaved_changes = False
         self._update_status_indicator()
 
