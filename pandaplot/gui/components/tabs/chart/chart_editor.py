@@ -484,7 +484,7 @@ class ChartEditorWidget(PWidget):
                                                    label=series.label,
                                                    alpha=alpha)
                     elif self.chart.chart_type == "hist":
-                        self.chart_canvas.axes.hist(y_data, bins=20,
+                        self.chart_canvas.axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
                                                     color=series.color,
                                                     label=series.label,
                                                     alpha=alpha)
