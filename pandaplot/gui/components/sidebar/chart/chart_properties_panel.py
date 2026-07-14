@@ -542,7 +542,7 @@ class ChartPropertiesPanel(PWidget):
         marker_layout.addWidget(QLabel("Size:"), 1, 0)
         self.marker_size_spin = QDoubleSpinBox()
         self.marker_size_spin.setRange(1.0, 20.0)
-        self.marker_size_spin.setValue(6.0)
+        self.marker_size_spin.setValue(2.0)
         marker_layout.addWidget(self.marker_size_spin, 1, 1)
         
         marker_layout.addWidget(QLabel("Color:"), 2, 0)

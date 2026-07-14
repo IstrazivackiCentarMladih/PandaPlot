@@ -25,7 +25,7 @@ class DataSeries:
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
-    marker_size: float = 6.0
+    marker_size: float = 2.0
     visible: bool = True
     alpha: float = 1.0
 
@@ -365,7 +365,7 @@ class Chart(Item):
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
-                marker_size=series_dict.get("marker_size", 6.0),
+                marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 alpha=series_dict.get("alpha", 1.0)
             )
