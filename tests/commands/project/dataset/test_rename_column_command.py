@@ -55,6 +55,7 @@ def test_rename_updates_dataframe_and_matching_references(env):
     assert chart.data_series[0].x_column == "time"
     assert chart.data_series[0].y_column == "b"
     assert chart.fit_data[0].source_x_column == "time"
+    assert chart.fit_data[0].source_y_column == "b"
     # same column name in another dataset: untouched
     assert chart.data_series[1].x_column == "a"
     assert list(other.data.columns) == ["a"]
@@ -96,6 +97,19 @@ def test_unchanged_name_is_silent_noop(env):
     assert command.execute() is False
     assert list(dataset.data.columns) == ["a", "b"]
     app_context.get_ui_controller.return_value.show_error_message.assert_not_called()
+
+
+def test_undo_after_rejected_execute_is_a_noop(env):
+    app_context, dataset, _, chart = env
+    command = RenameColumnCommand(app_context, dataset.id, 0, "b")  # duplicate -> rejected
+    assert command.execute() is False
+
+    command.undo()  # CommandExecutor pushes commands even on failure; undo must not corrupt
+    assert list(dataset.data.columns) == ["a", "b"]
+    assert chart.data_series[0].y_column == "b"
+
+    command.redo()
+    assert list(dataset.data.columns) == ["a", "b"]
 
 
 def test_events_emitted_only_for_affected_charts(env):
