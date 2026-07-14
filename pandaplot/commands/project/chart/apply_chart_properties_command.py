@@ -16,12 +16,16 @@ class ApplyChartPropertiesCommand(Command):
     """Command that captures chart state before/after applying property changes."""
 
     def __init__(self, app_context: AppContext, chart_id: str,
-                 apply_fn: Callable[[Chart], None]):
+                 apply_fn: Callable[[Chart], None],
+                 old_snapshot: Optional[Dict[str, Any]] = None):
         super().__init__()
         self.app_context = app_context
         self.chart_id = chart_id
         self._apply_fn = apply_fn
-        self.old_snapshot: Optional[Dict[str, Any]] = None
+        # Baseline for undo. The panel edits the chart live, so the state at
+        # execute() time already contains the user's changes; callers pass the
+        # snapshot taken when the chart was loaded into the panel.
+        self.old_snapshot: Optional[Dict[str, Any]] = old_snapshot
         self.new_snapshot: Optional[Dict[str, Any]] = None
 
     def _find_chart(self) -> Optional[Chart]:
@@ -42,8 +46,8 @@ class ApplyChartPropertiesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
-        # Snapshot before applying
-        self.old_snapshot = snapshot_chart_state(chart)
+        if self.old_snapshot is None:
+            self.old_snapshot = snapshot_chart_state(chart)
 
         # Apply changes via the provided callback
         self._apply_fn(chart)
