@@ -475,7 +475,7 @@ class ChartEditorWidget(PWidget):
                                                        c=mfc,
                                                        edgecolors=mec,
                                                        marker=_marker_map.get(series.marker_style, "o"),
-                                                       s=series.marker_size * 10,
+                                                       s=series.marker_size ** 2,
                                                        label=series.label,
                                                        alpha=alpha)
                     elif self.chart.chart_type == "bar":
