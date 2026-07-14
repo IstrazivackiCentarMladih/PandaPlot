@@ -871,14 +871,22 @@ class ChartPropertiesPanel(PWidget):
     def _on_chart_updated(self, event_data):
         """Handle chart updated events to refresh the panel."""
         chart_id = event_data.get("chart_id")
+        if not self.current_chart or chart_id != self.current_chart.id:
+            return
+
+        if "chart" in event_data:
+            # Command-originated update (Apply execute/undo/redo, add/remove
+            # series, fit added): the model changed outside this panel's live
+            # edits, so re-sync all controls and re-capture the Cancel/Apply
+            # baseline to match the new command boundary.
+            self.load_chart_object(self.current_chart)
+            self.logger.debug("Chart properties panel reloaded for command-originated update")
+            return
+
         update_type = event_data.get("update_type", "")
-        
-        # If this is our current chart, refresh the display
-        if self.current_chart and chart_id == self.current_chart.id:
-            # Refresh the series list to show new series (like fit lines)
-            if update_type in ["fit_added", "series_added", "series_removed"]:
-                self._update_series_list()
-                self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
+        if update_type in ["fit_added", "series_added", "series_removed"]:
+            self._update_series_list()
+            self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
     
     def _add_series(self):
         """Add a new data series."""
