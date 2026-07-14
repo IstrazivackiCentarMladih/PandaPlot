@@ -30,6 +30,7 @@ class RenameColumnCommand(Command):
         self.new_name = new_name.strip()
         self.old_name: Optional[str] = None
         self.dataset: Optional[Dataset] = None
+        self._applied: bool = False
 
     @override
     def execute(self) -> bool:
@@ -67,6 +68,7 @@ class RenameColumnCommand(Command):
                 return False
 
             self._apply_rename(self.old_name, self.new_name)
+            self._applied = True
             return True
 
         except Exception as e:
@@ -134,11 +136,11 @@ class RenameColumnCommand(Command):
     @override
     def undo(self):
         """Rename back and restore references (same walk, names swapped)."""
-        if self.old_name:
+        if self._applied and self.old_name:
             self._apply_rename(self.new_name, self.old_name)
 
     @override
     def redo(self):
         """Re-apply the rename and reference cascade."""
-        if self.old_name:
+        if self._applied and self.old_name:
             self._apply_rename(self.old_name, self.new_name)
