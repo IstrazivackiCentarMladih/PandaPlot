@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="Electron" version="21.0.0">
+  <diagram name="PandaPlot High-Level Flow" id="pandaplot-arch">
+    <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="PandaPlot — High-Level Architecture and Data Flow" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="327" y="20" width="1000" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== GUI LAYER ===== -->
+        <mxCell id="gui-layer" value="GUI Layer (PySide6)" style="swimlane;fontStyle=1;align=center;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1560" height="200" as="geometry" />
+        </mxCell>
+
+        <mxCell id="main-window" value="PandaMainWindow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="20" y="50" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="menu-bar" value="MenuBar&#xa;(File/Edit/View…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="190" y="50" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="sidebar" value="CollapsibleSidebar&#xa;(ProjectViewPanel&#xa;+ context panels)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="360" y="50" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tab-container" value="TabContainer&#xa;(WelcomeTab | DatasetTab&#xa;| ChartTab | NoteTab)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="540" y="50" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ui-controller" value="UIController&#xa;(dialogs facade)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="740" y="50" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="chart-renderer" value="ChartRenderEngine&#xa;(matplotlib → Qt canvas)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="910" y="50" width="170" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="task-scheduler" value="TaskScheduler&#xa;(QThreadPool)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="1100" y="50" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="theme-manager" value="ThemeManager&#xa;(light / dark)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="gui-layer">
+          <mxGeometry x="1260" y="50" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="widget-note" value="All widgets extend WidgetExtension: subscribe_to_event() auto-cleanup, _apply_theme(), _init_ui()" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="gui-layer">
+          <mxGeometry x="20" y="130" width="600" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ARROW: GUI → Commands ===== -->
+        <mxCell id="arrow-gui-cmd" value="User actions create &amp; execute Commands" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#0066CC;fontColor=#0066CC;fontStyle=1;" edge="1" parent="1" source="tab-container" target="cmd-executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== COMMAND LAYER ===== -->
+        <mxCell id="cmd-layer" value="Command Layer" style="swimlane;fontStyle=1;align=center;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="1560" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-executor" value="CommandExecutor&#xa;undo_stack (max 10)&#xa;redo_stack" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="20" y="50" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-project" value="Project Commands&#xa;(Create / Open / Save)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="210" y="50" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-dataset" value="Dataset Commands&#xa;(Import / Edit / Transform&#xa;/ Analyze)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="390" y="45" width="160" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-chart" value="Chart Commands&#xa;(Create / Series&#xa;/ Properties)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="570" y="45" width="150" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-fit" value="Fit Commands&#xa;(Apply / Remove)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="740" y="50" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-item" value="Item Commands&#xa;(Delete / Rename&#xa;/ Folder)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="900" y="45" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cmd-note" value="All Commands:&#xa;execute() → undo() → redo()&#xa;emit Events on completion" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;" vertex="1" parent="cmd-layer">
+          <mxGeometry x="1070" y="50" width="440" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ARROW: Commands → EventBus ===== -->
+        <mxCell id="arrow-cmd-event" value="emit events" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#009900;fontColor=#009900;fontStyle=1;" edge="1" parent="1" source="cmd-executor" target="event-bus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EVENT BUS ===== -->
+        <mxCell id="event-bus" value="EventBus (Pub/Sub)&#xa;50+ event types | hierarchical emission | pattern subscriptions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="340" y="530" width="980" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ARROW: EventBus → GUI ===== -->
+        <mxCell id="arrow-event-gui" value="notify subscribers" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#009900;fontColor=#009900;fontStyle=1;" edge="1" parent="1" source="event-bus" target="tab-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== MODEL LAYER ===== -->
+        <mxCell id="model-layer" value="Model Layer" style="swimlane;fontStyle=1;align=center;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="620" width="900" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app-context" value="AppContext&#xa;(DI container)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="model-layer">
+          <mxGeometry x="20" y="50" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="app-state" value="AppState&#xa;current_project" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="model-layer">
+          <mxGeometry x="180" y="50" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="project" value="Project&#xa;(ItemCollection + flat index)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="model-layer">
+          <mxGeometry x="330" y="50" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="items" value="Items&#xa;Dataset | Chart&#xa;Note | Folder" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="model-layer">
+          <mxGeometry x="520" y="50" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="config-manager" value="ConfigManager&#xa;~/.pandaplot/config.json" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="model-layer">
+          <mxGeometry x="680" y="50" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== STORAGE LAYER ===== -->
+        <mxCell id="storage-layer" value="Storage Layer" style="swimlane;fontStyle=1;align=center;startSize=30;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="980" y="620" width="620" height="180" as="geometry" />
+        </mxCell>
+
+        <mxCell id="proj-data-mgr" value="ProjectDataManager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="storage-layer">
+          <mxGeometry x="20" y="50" width="170" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="item-factory" value="ItemDataManagerFactory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="storage-layer">
+          <mxGeometry x="210" y="50" width="170" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pplot-file" value=".pplot (ZIP)&#xa;project.json&#xa;dataset_*.parquet&#xa;chart_*.json&#xa;note_*.json" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="storage-layer">
+          <mxGeometry x="400" y="40" width="140" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ANALYSIS LAYER ===== -->
+        <mxCell id="analysis-layer" value="Analysis / Fit Layer" style="swimlane;fontStyle=1;align=center;startSize=30;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="840" width="900" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="analysis-engine" value="AnalysisEngine&#xa;Derivative | Integral&#xa;Smoothing | Interpolation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="analysis-layer">
+          <mxGeometry x="20" y="50" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="fit-service" value="FitService&#xa;Linear | Quadratic&#xa;Exponential | Power | Custom" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="analysis-layer">
+          <mxGeometry x="240" y="50" width="200" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="scipy-box" value="scipy&#xa;(optimize, signal,&#xa;integrate, interpolate)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="analysis-layer">
+          <mxGeometry x="460" y="50" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pandas-box" value="pandas / numpy&#xa;(DataFrames, arrays)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="analysis-layer">
+          <mxGeometry x="660" y="50" width="180" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ===== CONNECTING ARROWS ===== -->
+
+        <!-- Commands → Models -->
+        <mxCell id="arrow-cmd-model" value="mutate state" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#b85450;fontColor=#b85450;fontStyle=1;" edge="1" parent="1" source="cmd-dataset" target="items">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Commands → Analysis -->
+        <mxCell id="arrow-cmd-analysis" value="delegate to" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;" edge="1" parent="1" source="cmd-dataset" target="analysis-engine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Commands → Fit -->
+        <mxCell id="arrow-cmd-fit2" value="delegate to" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d79b00;fontColor=#d79b00;fontStyle=1;" edge="1" parent="1" source="cmd-fit" target="fit-service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Commands → Storage -->
+        <mxCell id="arrow-cmd-storage" value="save / load" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;fontColor=#9673a6;fontStyle=1;" edge="1" parent="1" source="cmd-project" target="proj-data-mgr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- EventBus → Models (state queries) -->
+        <mxCell id="arrow-model-event" value="state changes trigger events" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#009900;fontColor=#009900;fontStyle=1;" edge="1" parent="1" source="app-state" target="event-bus">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- AppContext wires everything -->
+        <mxCell id="arrow-ctx1" value="AppContext passed to all" style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#666666;fontColor=#666666;" edge="1" parent="1" source="app-context" target="cmd-executor">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Analysis → pandas -->
+        <mxCell id="arrow-analysis-scipy" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d79b00;" edge="1" parent="analysis-layer" source="analysis-engine" target="scipy-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-fit-scipy" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#d79b00;" edge="1" parent="analysis-layer" source="fit-service" target="scipy-box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Storage ↔ disk -->
+        <mxCell id="arrow-storage-disk" value="read / write" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;" edge="1" parent="storage-layer" source="proj-data-mgr" target="pplot-file">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-factory-disk" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#9673a6;" edge="1" parent="storage-layer" source="item-factory" target="pplot-file">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="840" width="400" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontStyle=1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1220" y="850" width="100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="" style="endArrow=block;endFill=1;strokeColor=#0066CC;" edge="1" parent="1">
+          <mxGeometry x="1220" y="895" width="60" height="10" as="geometry"><Array as="sourcePoint"><mxPoint x="1220" y="895"/></Array><Array as="targetPoint"><mxPoint x="1280" y="895"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg1-lbl" value="GUI → Commands (user action)" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="885" width="290" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="" style="endArrow=block;endFill=1;strokeColor=#009900;" edge="1" parent="1">
+          <mxGeometry x="1220" y="925" width="60" height="10" as="geometry"><Array as="sourcePoint"><mxPoint x="1220" y="925"/></Array><Array as="targetPoint"><mxPoint x="1280" y="925"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg2-lbl" value="Events (state change notifications)" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="915" width="290" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="" style="endArrow=block;endFill=1;strokeColor=#9673a6;" edge="1" parent="1">
+          <mxGeometry x="1220" y="955" width="60" height="10" as="geometry"><Array as="sourcePoint"><mxPoint x="1220" y="955"/></Array><Array as="targetPoint"><mxPoint x="1280" y="955"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg3-lbl" value="Persistence (ZIP file I/O)" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="945" width="290" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="" style="endArrow=block;endFill=1;strokeColor=#d79b00;" edge="1" parent="1">
+          <mxGeometry x="1220" y="985" width="60" height="10" as="geometry"><Array as="sourcePoint"><mxPoint x="1220" y="985"/></Array><Array as="targetPoint"><mxPoint x="1280" y="985"/></Array></mxGeometry>
+        </mxCell>
+        <mxCell id="leg4-lbl" value="Analysis / Fit delegation (scipy)" style="text;html=1;strokeColor=none;fillColor=none;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="975" width="290" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

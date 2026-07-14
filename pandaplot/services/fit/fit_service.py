@@ -1,6 +1,7 @@
+import logging
+
 import numpy as np
 from scipy.optimize import curve_fit
-import logging
 
 from pandaplot.models.events import FitEvents
 
@@ -157,9 +158,9 @@ class FitService:
 
             # Publish fit completed event
             self.fit_panel.publish_event(FitEvents.FIT_COMPLETED, {
-                'fit_results': self.fit_results,
-                'chart_id': self.fit_panel.current_chart.id if self.fit_panel.current_chart else None,
-                'fit_type': self.fit_results.get('fit_type', 'Unknown')
+                "fit_results": self.fit_results,
+                "chart_id": self.fit_panel.current_chart.id if self.fit_panel.current_chart else None,
+                "fit_type": self.fit_results.get("fit_type", "Unknown")
             })
 
         except Exception as e:
