@@ -1216,6 +1216,12 @@ class ChartPropertiesPanel(PWidget):
                     self.dataset_combo.setCurrentIndex(i)
                     break
 
+            # Repopulate column combos from the (possibly changed) dataset before
+            # selecting the series' columns, so stale entries from a previous
+            # dataset/column state (e.g. after undo/redo of a column rename)
+            # don't linger.
+            self._populate_column_combos(series.dataset_id)
+
             # Set columns
             x_index = self.x_column_combo.findText(series.x_column)
             if x_index >= 0:
@@ -1391,26 +1397,43 @@ class ChartPropertiesPanel(PWidget):
                     self.dataset_combo.addItem(item.name, item.id)
                     self.datasets.append(item)
     
-    def _on_dataset_changed(self):
-        """Handle dataset selection change."""
-        dataset_id = self.dataset_combo.currentData()
-        if dataset_id and self.current_project:
-            dataset = self.current_project.find_item(dataset_id)
-            if isinstance(dataset, Dataset) and dataset.data is not None:
-                columns = list(dataset.data.columns)
-                
-                # Update column combos
+    def _populate_column_combos(self, dataset_id):
+        """Fill the x/y column combos with the columns of the given dataset.
+
+        Signals are blocked while clearing/populating so this can safely be
+        called from contexts that don't want side effects from
+        currentTextChanged (e.g. while loading a series into controls).
+
+        Returns the list of columns populated (empty list if none).
+        """
+        if not dataset_id or not self.current_project:
+            return []
+        dataset = self.current_project.find_item(dataset_id)
+        if isinstance(dataset, Dataset) and dataset.data is not None:
+            columns = list(dataset.data.columns)
+            self.x_column_combo.blockSignals(True)
+            self.y_column_combo.blockSignals(True)
+            try:
                 self.x_column_combo.clear()
                 self.y_column_combo.clear()
-                
                 for column in columns:
                     self.x_column_combo.addItem(column)
                     self.y_column_combo.addItem(column)
-                
-                # Set defaults if possible
-                if len(columns) >= 2:
-                    self.x_column_combo.setCurrentIndex(0)
-                    self.y_column_combo.setCurrentIndex(1)
+            finally:
+                self.x_column_combo.blockSignals(False)
+                self.y_column_combo.blockSignals(False)
+            return columns
+        return []
+
+    def _on_dataset_changed(self):
+        """Handle dataset selection change."""
+        dataset_id = self.dataset_combo.currentData()
+        columns = self._populate_column_combos(dataset_id)
+
+        # Set defaults if possible
+        if len(columns) >= 2:
+            self.x_column_combo.setCurrentIndex(0)
+            self.y_column_combo.setCurrentIndex(1)
     
     def _on_apply(self):
         """Handle apply button click."""
