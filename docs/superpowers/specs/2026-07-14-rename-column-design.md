@@ -37,6 +37,16 @@ Model-level pytest (no Qt widgets/QApplication), in `tests/commands/project/data
 - duplicate, empty, and unchanged names are rejected (`execute()` returns `False`, DataFrame unchanged),
 - CHART_UPDATED emitted only for charts that actually referenced the column.
 
+## Why references stay name-based (and duplicate names stay rejected)
+
+Charts and fits reference columns by name (`DataSeries.x_column`/`y_column`, `FitData.source_*`), and this feature keeps that, cascading renames instead of switching to positional or ID-based references. The alternatives were considered and rejected:
+
+- **Index-based references** are fragile across structural edits: a chart saved pointing at column 2 silently plots the *wrong data* after a column is inserted or deleted. Name-based references fail loudly instead (the series is skipped and reported), which is the safer failure mode for persisted references. Indices are fine transiently — the context menu passes `column_index` at click time and the command resolves it to a name immediately — but must not be persisted.
+- **(index, name) pairs** create two identities that can disagree after any edit; every consumer would need a resolution rule for "name matches at a different index". The pair relocates the ambiguity rather than removing it.
+- **Duplicate column names fight pandas itself**: with two columns named `a`, `df["a"]` returns a two-column DataFrame instead of a Series (breaking the chart resolver, fits, transforms, and analysis), `df.rename(columns={"a": ...})` renames *both*, CSV round-trips mangle them to `a`/`a.1`, and column dropdowns would show indistinguishable entries. Hence the duplicate-name rejection in this command.
+
+**Future alternative — stable column IDs:** if duplicate display names ever become a requirement, the right design is a persistent per-column UUID in dataset metadata; charts/fits reference IDs and the name becomes a display label. That removes the rename cascade entirely, but requires ID indirection through the whole stack (datasets, charts, fits, transforms, serialization, and a `.pplot` migration), so it is deliberately deferred.
+
 ## Out of scope
 
 - Renaming when multiple columns are selected.
