@@ -59,12 +59,13 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
     # "auto" -> leave matplotlib's default formatter in place
 
 
-def resolve_series_data(project, series):
+def resolve_series_data(project, series, chart_type=None):
     """Resolve a DataSeries against the project's datasets.
 
     Returns (x_data, y_data, None) on success, or (None, None, message)
     when the dataset or a column can't be found. An empty x_column means
-    "plot against the DataFrame index".
+    "plot against the DataFrame index". Histograms only ever plot
+    y_column, so a stale/unused x_column is ignored when chart_type == "hist".
     """
     from pandaplot.models.project.items.dataset import Dataset
 
@@ -79,13 +80,16 @@ def resolve_series_data(project, series):
     if not series.y_column:
         return None, None, "no Y column configured"
 
-    missing = [c for c in (series.x_column, series.y_column)
+    needs_x_column = chart_type != "hist"
+    x_column = series.x_column if needs_x_column else None
+
+    missing = [c for c in (x_column, series.y_column)
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
         return None, None, f"column {cols} not found in '{dataset.name}'"
 
-    x_data = df[series.x_column] if series.x_column else df.index
+    x_data = df[x_column] if x_column else df.index
     return x_data, df[series.y_column], None
 
 
@@ -448,7 +452,8 @@ class ChartEditorWidget(PWidget):
             else:
                 project = self.app_context.get_app_state().current_project
                 for i, series in enumerate(self.chart.data_series):
-                    x_data, y_data, error = resolve_series_data(project, series)
+                    x_data, y_data, error = resolve_series_data(
+                        project, series, self.chart.chart_type)
                     if error:
                         series_errors.append(
                             f"{series.label or f'Series {i + 1}'}: {error}")

@@ -52,3 +52,11 @@ def test_no_project_returns_error():
     series = DataSeries(dataset_id="ds", x_column="a", y_column="b")
     x, y, error = resolve_series_data(None, series)
     assert error is not None
+
+
+def test_histogram_ignores_stale_x_column():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="gone", y_column="b")
+    x, y, error = resolve_series_data(project, series, chart_type="hist")
+    assert error is None
+    assert list(y) == [3, 4]
