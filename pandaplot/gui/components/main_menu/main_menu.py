@@ -1,7 +1,7 @@
 from typing import override
 
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QMenu, QMessageBox, QWidget
+from PySide6.QtWidgets import QMenu, QWidget
 
 from pandaplot.commands.app.exit_command import ExitCommand
 from pandaplot.commands.project.dataset import ImportCsvCommand
@@ -17,14 +17,10 @@ from pandaplot.commands.project.project import (
     SaveProjectCommand,
 )
 from pandaplot.gui.core.widget_extension import PMenuBar
+from pandaplot.gui.dialogs.about_dialog import AboutDialog
 from pandaplot.gui.dialogs.settings_dialog import SettingsDialog
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
-
-
-def show_about():
-    # TODO: Implement a proper about dialog
-    QMessageBox.about(None, "About", "This is a sample app")
 
 
 class MainMenu(PMenuBar):
@@ -124,7 +120,7 @@ class MainMenu(PMenuBar):
         self.addMenu(help_menu)
 
         about_action = QAction("About", self)
-        about_action.triggered.connect(show_about)
+        about_action.triggered.connect(self.show_about_dialog)
         help_menu.addAction(about_action)
 
     def _create_file_menu(self) -> QMenu:
@@ -210,4 +206,9 @@ class MainMenu(PMenuBar):
     def show_settings_dialog(self):
         """Show the settings dialog."""
         dialog = SettingsDialog(self.app_context, self.parent())
+        dialog.exec()
+
+    def show_about_dialog(self):
+        """Show the about dialog."""
+        dialog = AboutDialog(self.app_context, self.parent())
         dialog.exec()
