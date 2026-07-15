@@ -66,8 +66,25 @@ class ChartCanvas(FigureCanvas):
         # This provides zoom, pan, and reset functionality
         self.toolbar = NavigationToolbar2QT(self, self.parent())
 
+        # Home/Back/Forward rely on matplotlib's own navigation stack, which
+        # goes stale every time update_chart() clears and rebuilds the axes.
+        # This app's "Reset Zoom" action (store_original_limits/reset_zoom)
+        # covers the same need reliably, so drop the fragile duplicates.
+        self._remove_toolbar_actions(("home", "back", "forward"))
+
         # Store the navigation toolbar for external access
         self.navigation_toolbar = self.toolbar
+
+    def _remove_toolbar_actions(self, action_names):
+        """Remove named actions (by their matplotlib callback name) from the nav toolbar."""
+        for name in action_names:
+            action = self.toolbar._actions.pop(name, None)
+            if action is not None:
+                self.toolbar.removeAction(action)
+
+        remaining = self.toolbar.actions()
+        if remaining and remaining[0].isSeparator():
+            self.toolbar.removeAction(remaining[0])
 
     def apply_navigation_theme(self, base_fg="#495057", surface_bg="#f8f9fa", border_color="#e9ecef"):
         """Apply theme-aware styling to the navigation toolbar."""
