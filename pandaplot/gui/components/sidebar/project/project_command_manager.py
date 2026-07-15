@@ -3,7 +3,7 @@ import logging
 from PySide6.QtCore import Qt
 
 from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
-from pandaplot.commands.project.dataset import ImportCsvCommand
+from pandaplot.commands.project.dataset import ImportDataCommand
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
@@ -51,14 +51,14 @@ class ProjectPanelCommandManager:
         command = CreateNoteCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
 
-    def import_csv(self):
-        """Import a CSV file as a dataset."""
+    def import_data(self):
+        """Import a CSV or single-sheet Excel file as a dataset."""
         if not self.app_state.has_project:
             return
 
         folder_id = self.get_target_folder_id()
 
-        command = ImportCsvCommand(self.app_context, folder_id=folder_id)
+        command = ImportDataCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
 
     def create_empty_dataset(self):

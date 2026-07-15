@@ -4,7 +4,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu, QMessageBox, QWidget
 
 from pandaplot.commands.app.exit_command import ExitCommand
-from pandaplot.commands.project.dataset import ImportCsvCommand
+from pandaplot.commands.project.dataset import ImportDataCommand
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
@@ -189,10 +189,10 @@ class MainMenu(PMenuBar):
     def _create_data_menu(self) -> QMenu:
         data_menu = QMenu("Data", self)
 
-        import_csv_action = QAction("Import CSV...", self)
-        import_csv_action.triggered.connect(lambda: self.app_context.get_command_executor(
-        ).execute_command(ImportCsvCommand(self.app_context)))
-        data_menu.addAction(import_csv_action)
+        import_data_action = QAction("Import Data...", self)
+        import_data_action.triggered.connect(lambda: self.app_context.get_command_executor(
+        ).execute_command(ImportDataCommand(self.app_context)))
+        data_menu.addAction(import_data_action)
 
         create_empty_dataset_action = QAction("Create Empty Dataset", self)
         create_empty_dataset_action.triggered.connect(lambda: self.app_context.get_command_executor(

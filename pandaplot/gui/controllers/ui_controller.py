@@ -51,22 +51,25 @@ class UIController:
         
         return file_path if file_path else None
     
-    def show_import_csv_dialog(self) -> Optional[str]:
+    def show_import_data_dialog(self) -> Optional[str]:
         """
-        Show file dialog to import a CSV file.
-        
+        Show file dialog to import a data file (CSV/TSV or single-sheet Excel workbook).
+
         Returns:
             str: Selected file path, or None if cancelled
         """
         file_path, _ = QFileDialog.getOpenFileName(
             self.parent_widget,
-            "Import CSV File",
+            "Import Data File",
             "",
-            "CSV files (*.csv);;Text files (*.txt);;All files (*.*)"
+            "Data files (*.csv *.txt *.tsv *.xlsx *.xls);;"
+            "CSV files (*.csv *.txt *.tsv);;"
+            "Excel files (*.xlsx *.xls);;"
+            "All files (*.*)"
         )
-        
+
         return file_path if file_path else None
-    
+
     def show_error_message(self, title: str, message: str):
         """
         Show an error message dialog.

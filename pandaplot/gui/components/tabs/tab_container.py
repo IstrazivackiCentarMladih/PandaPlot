@@ -212,11 +212,11 @@ class TabContainer(PWidget):
                 # Create a new project first
                 self.handle_new_project()
 
-            # Show file dialog for CSV import
-            from pandaplot.commands.project.dataset.import_csv_command import (
-                ImportCsvCommand,
+            # Show file dialog for data import (CSV or single-sheet Excel)
+            from pandaplot.commands.project.dataset.import_data_command import (
+                ImportDataCommand,
             )
-            command = ImportCsvCommand(self.app_context)
+            command = ImportDataCommand(self.app_context)
             self.app_context.get_command_executor().execute_command(command)
 
     def create_welcome_tab(self):
