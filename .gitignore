@@ -208,3 +208,7 @@ __marimo__/
 
 .idea/
 docs/temp/*.worktrees/
+
+# Internal working docs (plans, specs, review notes) - kept local only
+docs/superpowers/
+docs/temp/
