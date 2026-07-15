@@ -163,8 +163,11 @@ class ChangeColumnDtypeCommand(Command):
                 errors_count = converted_data.isna().sum() - original_series.isna().sum()
                 
             elif self.target_dtype == "float64":
-                # Convert to float
-                converted_data = pd.to_numeric(original_series, errors="coerce")
+                # Convert to float. pd.to_numeric alone is not enough: it picks
+                # the tightest numeric dtype for the values, so a column of
+                # whole numbers (e.g. 1, 2, 3) would stay int64 instead of
+                # becoming float64.
+                converted_data = pd.to_numeric(original_series, errors="coerce").astype("float64")
                 errors_count = converted_data.isna().sum() - original_series.isna().sum()
                 
             elif self.target_dtype == "object" or self.target_dtype == "string":
