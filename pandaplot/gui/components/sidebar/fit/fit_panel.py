@@ -1,6 +1,7 @@
 """Curve fitting panel for performing regression analysis on chart data."""
 import logging
 from typing import Optional, override
+from dataclasses import replace
 
 import pandas as pd
 from PySide6.QtCore import Qt, Signal
@@ -554,12 +555,12 @@ class FitPanel(PWidget):
             return
         
         results = self.fit_command.fit_results
-        fit_type = results['fit_type']
-        popt = results['parameters']
-        perr = results['errors']
-        param_names = results['param_names']
-        r_squared = results['r_squared']
-        params = results["params"]
+        fit_type = results.fit_type
+        popt = results.parameters
+        perr = results.errors
+        param_names = results.param_names
+        r_squared = results.r_squared
+        params = results.params
 
         # Format equation
         equation = self.fit_command.format_equation(fit_type, params)
@@ -572,9 +573,9 @@ class FitPanel(PWidget):
 
         if r_squared is not None:
             results_text += f"\nR² = {r_squared:.6f}\n"
-        
-        results_text += f"\nData points: {len(results['x_data'])}\n"
-        results_text += f"Fit points: {len(results['x_fit'])}"
+
+        results_text += f"\nData points: {len(results.x_data)}\n"
+        results_text += f"Fit points: {len(results.x_fit)}"
         
         self.results_text.setPlainText(results_text)
     
@@ -590,19 +591,19 @@ class FitPanel(PWidget):
             y_column = self.y_column_combo.currentText()
             
             # Add source dataset info to fit results
-            enhanced_fit_results = self.fit_command.fit_results.copy()
-            enhanced_fit_results.update({
-                "source_dataset_id": dataset_id,
-                "source_x_column": x_column,
-                "source_y_column": y_column
-            })
+            enhanced_fit_results = replace(
+                self.fit_command.fit_results,
+                source_dataset_id=dataset_id,
+                source_x_column=x_column,
+                source_y_column=y_column,
+            )
             
             # Publish fit applied event
             self.publish_event(FitEvents.FIT_APPLIED, {
                 "fit_results": enhanced_fit_results,
                 "chart_id": self.current_chart.id if self.current_chart else None,
                 "chart": self.current_chart,
-                "fit_type": self.fit_command.fit_results.get("fit_type", "Unknown"),
+                "fit_type": self.fit_command.fit_results.fit_type,
                 "dataset_name": dataset_name
             })
     

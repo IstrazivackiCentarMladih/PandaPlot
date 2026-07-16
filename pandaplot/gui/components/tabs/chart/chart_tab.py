@@ -77,14 +77,14 @@ class ChartTab(PWidget):
 
         # Only respond if this is our chart
         if fit_chart_id == self.chart.id:
-            fit_results = event_data.get("fit_results", {})
-            fit_type = fit_results.get("fit_type", "Unknown")
+            fit_results = event_data.get("fit_results")
+            fit_type = fit_results.fit_type if fit_results else "Unknown"
             source_dataset_name = event_data.get("dataset_name", "Unknown")
 
             # Get the source dataset info from the fit results
-            source_dataset_id = fit_results.get("source_dataset_id", "")
-            source_x_column = fit_results.get("source_x_column", "")
-            source_y_column = fit_results.get("source_y_column", "")
+            source_dataset_id = fit_results.source_dataset_id if fit_results else ""
+            source_x_column = fit_results.source_x_column if fit_results else ""
+            source_y_column = fit_results.source_y_column if fit_results else ""
 
             # Generate unique color for fit line based on fit type
             fit_colors = {
@@ -99,11 +99,11 @@ class ChartTab(PWidget):
 
             # Add fit data directly to the chart
             import numpy as np
-            x_fit = np.array(fit_results.get("x_fit", []))
-            y_fit = np.array(fit_results.get("y_fit", []))
+            x_fit = np.array(fit_results.x_fit)
+            y_fit = np.array(fit_results.y_fit)
 
-            fit_params = fit_results.get("fit_params", {})
-            fit_stats = fit_results.get("fit_stats", {})
+            fit_params = fit_results.params
+            fit_stats = {"r_squared": fit_results.r_squared}
 
             self.chart.add_fit_data(
                 source_dataset_id=source_dataset_id,
