@@ -1,6 +1,7 @@
 """Curve fitting panel for performing regression analysis on chart data."""
 import logging
 from typing import Optional, override
+from dataclasses import replace
 
 import pandas as pd
 from PySide6.QtCore import Qt, Signal
@@ -590,19 +591,19 @@ class FitPanel(PWidget):
             y_column = self.y_column_combo.currentText()
             
             # Add source dataset info to fit results
-            enhanced_fit_results = self.fit_command.fit_results.copy()
-            enhanced_fit_results.update({
-                "source_dataset_id": dataset_id,
-                "source_x_column": x_column,
-                "source_y_column": y_column
-            })
+            enhanced_fit_results = replace(
+                self.fit_command.fit_results,
+                source_dataset_id=dataset_id,
+                source_x_column=x_column,
+                source_y_column=y_column,
+            )
             
             # Publish fit applied event
             self.publish_event(FitEvents.FIT_APPLIED, {
                 "fit_results": enhanced_fit_results,
                 "chart_id": self.current_chart.id if self.current_chart else None,
                 "chart": self.current_chart,
-                "fit_type": self.fit_command.fit_results.get("fit_type", "Unknown"),
+                "fit_type": self.fit_command.fit_results.fit_type,
                 "dataset_name": dataset_name
             })
     

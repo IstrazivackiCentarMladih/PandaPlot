@@ -46,6 +46,9 @@ class FitResult:
     x_data: np.ndarray
     y_data: np.ndarray
     covariance: np.ndarray
+    source_dataset_id: str | None = None
+    source_x_column: str | None = None
+    source_y_column: str | None = None
 
 #performs fit, doesn't include combobox methods
 class FitService:
