@@ -3,6 +3,7 @@ from typing import override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.config.config_manager import ConfigManager
 
 
 class CloseProjectCommand(Command):
@@ -27,7 +28,18 @@ class CloseProjectCommand(Command):
             
             # Close the project - this will emit PROJECT_CLOSED event
             app_state.close_project()
-            
+
+            # Explicit close means don't reopen this project/its tabs next launch
+            try:
+                cfg_manager = self.app_context.get_manager(ConfigManager)
+                cfg_manager.update({
+                    "last_project_path": None,
+                    "last_open_tabs": [],
+                    "last_active_tab_id": None,
+                }, save=True)
+            except Exception as e:  # noqa: BLE001
+                self.logger.warning("Failed to clear session state: %s", e)
+
             self.logger.info("Project closed successfully")
             return True
             

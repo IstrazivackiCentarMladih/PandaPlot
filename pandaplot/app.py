@@ -1,9 +1,11 @@
 import logging
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.commands.command_executor import CommandExecutor
+from pandaplot.commands.project.project import LoadProjectCommand
 from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.models.events import EventBus
@@ -70,6 +72,27 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     return app, main_window
 
 
+def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) -> None:
+    """Reopen the project (and tabs) that were open at the end of the previous session.
+
+    No-op if no project was remembered, or the remembered file no longer exists.
+    """
+    config_manager = app_context.get_manager(ConfigManager)
+    cfg = config_manager.config
+    last_path = cfg.last_project_path
+    if not last_path or not os.path.isfile(last_path):
+        return
+
+    tab_ids = list(cfg.last_open_tabs)
+    active_tab_id = cfg.last_active_tab_id
+
+    def _on_loaded(project) -> None:  # noqa: ANN001 - Project, avoiding import cycle concerns
+        main_window.tab_container.restore_tab_session(tab_ids, active_tab_id)
+
+    command = LoadProjectCommand(app_context, last_path, on_loaded=_on_loaded)
+    app_context.get_command_executor().execute_command(command)
+
+
 def launch(app_context: AppContext) -> int:
     """Launch the GUI event loop.
 
@@ -80,6 +103,7 @@ def launch(app_context: AppContext) -> int:
 
     app, main_window = create_qt_application(app_context)
     main_window.show()
+    restore_last_session(app_context, main_window)
     return app.exec()
 
 

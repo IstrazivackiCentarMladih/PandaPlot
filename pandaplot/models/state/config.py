@@ -117,6 +117,12 @@ class ApplicationConfig:
 	chart_display: ChartDisplayConfig = field(default_factory=ChartDisplayConfig)
 	recent_projects: list[str] = field(default_factory=list)
 
+	# ----- session persistence ---------------------------------------------------
+	# Remembers what was open so it can be restored on the next launch.
+	last_project_path: str | None = None
+	last_open_tabs: list[str] = field(default_factory=list)
+	last_active_tab_id: str | None = None
+
 	# ----- construction helpers -------------------------------------------------
 	@classmethod
 	def default(cls) -> "ApplicationConfig":
@@ -140,6 +146,9 @@ class ApplicationConfig:
 			"project": asdict(self.project),
 			"chart_display": asdict(self.chart_display),
 			"recent_projects": list(self.recent_projects),
+			"last_project_path": self.last_project_path,
+			"last_open_tabs": list(self.last_open_tabs),
+			"last_active_tab_id": self.last_active_tab_id,
 		}
 
 	def to_json(self, *, indent: int | None = 2) -> str:
@@ -184,6 +193,18 @@ class ApplicationConfig:
 					seen.add(p)
 					unique.append(p)
 			self.recent_projects = unique[:50]  # Cap to avoid unbounded growth
+
+		# Session persistence fields (flat, not nested sections)
+		if "last_project_path" in data:
+			value = data["last_project_path"]
+			self.last_project_path = value if isinstance(value, str) and value else None
+
+		if isinstance(data.get("last_open_tabs"), list):
+			self.last_open_tabs = [t for t in data["last_open_tabs"] if isinstance(t, str) and t]
+
+		if "last_active_tab_id" in data:
+			value = data["last_active_tab_id"]
+			self.last_active_tab_id = value if isinstance(value, str) and value else None
 
 		for key, value in data.items():
 			if key == "version":

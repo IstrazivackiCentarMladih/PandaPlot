@@ -72,6 +72,11 @@ class ProjectViewPanelContextManager(QMenu):
             self.command_manager.import_csv)
         self.addAction(self.import_csv_action)
 
+        self.import_excel_action = QAction("Import Excel...", self)
+        self.import_excel_action.triggered.connect(
+            self.command_manager.import_excel)
+        self.addAction(self.import_excel_action)
+
         self.create_empty_dataset_action = QAction(
             "Create Empty Dataset", self)
         self.create_empty_dataset_action.triggered.connect(

@@ -4,6 +4,7 @@ from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.storage.project_data_manager import ProjectDataManager
 
@@ -185,6 +186,13 @@ class SaveProjectCommand(Command):
                     self.app_state.event_bus.emit(
                         ProjectEvents.PROJECT_SAVED, {"project": project, "file_path": save_path, "previous_path": self.previous_file_path}
                     )
+
+                    # Remember this project so it can be restored on next launch
+                    try:
+                        cfg_manager = self.app_context.get_manager(ConfigManager)
+                        cfg_manager.update({"last_project_path": save_path}, save=True)
+                    except Exception as e:  # noqa: BLE001
+                        self.logger.warning("Failed to persist last_project_path: %s", e)
 
                     self.logger.info("Project '%s' saved successfully to '%s'", project.name, save_path)
 
