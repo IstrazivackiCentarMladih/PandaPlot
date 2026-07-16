@@ -52,7 +52,7 @@ class ProjectPanelCommandManager:
         self.app_context.get_command_executor().execute_command(command)
 
     def import_data(self):
-        """Import a CSV or single-sheet Excel file as a dataset."""
+        """Import a data file (CSV/TSV or single-sheet Excel) as a dataset."""
         if not self.app_state.has_project:
             return
 
