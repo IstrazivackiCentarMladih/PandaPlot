@@ -10,6 +10,7 @@ class ChartCanvas(FigureCanvas):
         self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor="white")
         super().__init__(self.fig)
         self.axes = self.fig.add_subplot(111)
+        self.axes2 = None  # Secondary Y axis (created via twinx() when needed)
         self.setParent(None)
 
         # Enable zoom and pan functionality
@@ -18,6 +19,7 @@ class ChartCanvas(FigureCanvas):
         # Store original limits for reset functionality
         self.original_xlim = None
         self.original_ylim = None
+        self.original_ylim2 = None
 
     def setup_navigation(self):
         """Set up zoom and pan functionality."""
@@ -149,12 +151,16 @@ class ChartCanvas(FigureCanvas):
             self.original_xlim = self.axes.get_xlim()
         if self.original_ylim is None:
             self.original_ylim = self.axes.get_ylim()
+        if self.axes2 is not None and self.original_ylim2 is None:
+            self.original_ylim2 = self.axes2.get_ylim()
 
     def reset_zoom(self):
         """Reset zoom to original view."""
         if self.original_xlim and self.original_ylim:
             self.axes.set_xlim(self.original_xlim)
             self.axes.set_ylim(self.original_ylim)
+            if self.axes2 is not None and self.original_ylim2:
+                self.axes2.set_ylim(self.original_ylim2)
             self.draw()
 
     def set_size(self, width, height):

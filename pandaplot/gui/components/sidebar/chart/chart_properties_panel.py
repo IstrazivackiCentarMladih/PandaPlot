@@ -474,9 +474,15 @@ class ChartPropertiesPanel(PWidget):
         self.y_column_combo = QComboBox()
         series_config_layout.addWidget(self.y_column_combo, 2, 1)
 
-        series_config_layout.addWidget(QLabel("Label:"), 3, 0)
+        series_config_layout.addWidget(QLabel("Y Axis:"), 3, 0)
+        self.series_y_axis_combo = QComboBox()
+        self.series_y_axis_combo.addItem("Primary", "primary")
+        self.series_y_axis_combo.addItem("Secondary", "secondary")
+        series_config_layout.addWidget(self.series_y_axis_combo, 3, 1)
+
+        series_config_layout.addWidget(QLabel("Label:"), 4, 0)
         self.series_label_edit = QLineEdit()
-        series_config_layout.addWidget(self.series_label_edit, 3, 1)
+        series_config_layout.addWidget(self.series_label_edit, 4, 1)
 
         # Disable series configuration initially
         series_config_group.setEnabled(False)
@@ -602,9 +608,20 @@ class ChartPropertiesPanel(PWidget):
         self.y_grid_check = QCheckBox("Show Grid")
         self.y_grid_check.setChecked(True)
         y_axis_layout.addWidget(self.y_grid_check, 3, 0, 1, 2)
-        
+
         layout.addWidget(y_axis_group)
-        
+
+        # Secondary Y Axis group - only used by series set to "Secondary" in
+        # the Data Series section.
+        y2_axis_group = QGroupBox("Secondary Y Axis")
+        y2_axis_layout = QGridLayout(y2_axis_group)
+
+        y2_axis_layout.addWidget(QLabel("Label:"), 0, 0)
+        self.y2_label_edit = QLineEdit()
+        y2_axis_layout.addWidget(self.y2_label_edit, 0, 1)
+
+        layout.addWidget(y2_axis_group)
+
         layout.addStretch()
         return widget
     
@@ -653,6 +670,7 @@ class ChartPropertiesPanel(PWidget):
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.y_label_edit.textChanged.connect(self._on_chart_config_changed)
+        self.y2_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_grid_check.toggled.connect(self._on_chart_config_changed)
         self.y_grid_check.toggled.connect(self._on_chart_config_changed)
         self.legend_show_check.toggled.connect(self._on_chart_config_changed)
@@ -660,6 +678,7 @@ class ChartPropertiesPanel(PWidget):
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.y_column_combo.currentTextChanged.connect(self._on_series_config_changed)
+        self.series_y_axis_combo.currentIndexChanged.connect(self._on_series_config_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
@@ -842,6 +861,7 @@ class ChartPropertiesPanel(PWidget):
                 series.dataset_id = self.dataset_combo.currentData()
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
+            series.y_axis = self.series_y_axis_combo.currentData() or "primary"
         else:
             # Fit data: columns/dataset not editable, ignore
             return
@@ -914,6 +934,8 @@ class ChartPropertiesPanel(PWidget):
             config["x_label"] = self.x_label_edit.text()
         if hasattr(self, "y_label_edit"):
             config["y_label"] = self.y_label_edit.text()
+        if hasattr(self, "y2_label_edit"):
+            config["y2_label"] = self.y2_label_edit.text()
         if hasattr(self, "x_grid_check") and hasattr(self, "y_grid_check"):
             config["show_grid"] = self.x_grid_check.isChecked() and self.y_grid_check.isChecked()
         if hasattr(self, "legend_show_check"):
@@ -996,6 +1018,12 @@ class ChartPropertiesPanel(PWidget):
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
 
+            # Set Y axis (primary/secondary)
+            self.series_y_axis_combo.blockSignals(True)
+            axis_index = self.series_y_axis_combo.findData(series.y_axis)
+            self.series_y_axis_combo.setCurrentIndex(axis_index if axis_index >= 0 else 0)
+            self.series_y_axis_combo.blockSignals(False)
+
             # Set label (block signals while populating)
             self.series_label_edit.blockSignals(True)
             self.series_label_edit.setText(series.label)
@@ -1052,6 +1080,7 @@ class ChartPropertiesPanel(PWidget):
             self.dataset_combo.setEnabled(False)
             self.x_column_combo.setEnabled(False)
             self.y_column_combo.setEnabled(False)
+            self.series_y_axis_combo.setEnabled(False)
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)
@@ -1109,6 +1138,7 @@ class ChartPropertiesPanel(PWidget):
         self.dataset_combo.setEnabled(True)
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
+        self.series_y_axis_combo.setEnabled(True)
     
     def _get_next_series_color(self) -> str:
         """Get the next color for a new series."""
@@ -1303,6 +1333,7 @@ class ChartPropertiesPanel(PWidget):
             config = chart.config
             self.x_label_edit.setText(config.get("x_label", ""))
             self.y_label_edit.setText(config.get("y_label", ""))
+            self.y2_label_edit.setText(config.get("y2_label", ""))
             self.x_grid_check.setChecked(config.get("show_grid", True))
             self.y_grid_check.setChecked(config.get("show_grid", True))
             self.legend_show_check.setChecked(config.get("show_legend", True))
@@ -1330,6 +1361,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["title"] = self.title_edit.text()
         chart.config["x_label"] = self.x_label_edit.text()
         chart.config["y_label"] = self.y_label_edit.text()
+        chart.config["y2_label"] = self.y2_label_edit.text()
         chart.config["show_grid"] = self.x_grid_check.isChecked() and self.y_grid_check.isChecked()
         chart.config["show_legend"] = self.legend_show_check.isChecked()
         
@@ -1360,6 +1392,7 @@ class ChartPropertiesPanel(PWidget):
                 series.marker_edge_color = self.marker_edge_color_button.get_color()
                 series.line_width = self.line_width_spin.value()
                 series.marker_size = self.marker_size_spin.value()
+                series.y_axis = self.series_y_axis_combo.currentData() or "primary"
 
                 if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
                     series.line_style = self.line_style_combo.currentData().value
@@ -1398,7 +1431,8 @@ class ChartPropertiesPanel(PWidget):
                     color=self.line_color_button.get_color(),
                     line_width=self.line_width_spin.value(),
                     marker_size=self.marker_size_spin.value(),
-                    label=f"{dataset_name}:{y_column}"
+                    label=f"{dataset_name}:{y_column}",
+                    y_axis=self.series_y_axis_combo.currentData() or "primary"
                 )
         
         chart.update_modified_time()

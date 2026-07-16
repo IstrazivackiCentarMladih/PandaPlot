@@ -26,6 +26,7 @@ class DataSeries:
     line_width: float = 2.0
     marker_size: float = 6.0
     visible: bool = True
+    y_axis: str = "primary"  # "primary" or "secondary" - which Y axis this series plots against
 
 
 @dataclass
@@ -82,6 +83,7 @@ class Chart(Item):
             "title": self.name,
             "x_label": "",
             "y_label": "",
+            "y2_label": "",
             "show_legend": True,
             "show_grid": True,
             "legend_position": "upper right",
@@ -279,7 +281,8 @@ class Chart(Item):
                     "marker_style": series.marker_style,
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
-                    "visible": series.visible
+                    "visible": series.visible,
+                    "y_axis": series.y_axis
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -338,7 +341,8 @@ class Chart(Item):
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
                 marker_size=series_dict.get("marker_size", 6.0),
-                visible=series_dict.get("visible", True)
+                visible=series_dict.get("visible", True),
+                y_axis=series_dict.get("y_axis", "primary")
             )
             chart.data_series.append(series)
         
