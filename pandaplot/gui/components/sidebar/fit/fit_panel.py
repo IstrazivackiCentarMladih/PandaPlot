@@ -554,12 +554,12 @@ class FitPanel(PWidget):
             return
         
         results = self.fit_command.fit_results
-        fit_type = results['fit_type']
-        popt = results['parameters']
-        perr = results['errors']
-        param_names = results['param_names']
-        r_squared = results['r_squared']
-        params = results["params"]
+        fit_type = results.fit_type
+        popt = results.parameters
+        perr = results.errors
+        param_names = results.param_names
+        r_squared = results.r_squared
+        params = results.params
 
         # Format equation
         equation = self.fit_command.format_equation(fit_type, params)
@@ -572,9 +572,9 @@ class FitPanel(PWidget):
 
         if r_squared is not None:
             results_text += f"\nR² = {r_squared:.6f}\n"
-        
-        results_text += f"\nData points: {len(results['x_data'])}\n"
-        results_text += f"Fit points: {len(results['x_fit'])}"
+
+        results_text += f"\nData points: {len(results.x_data)}\n"
+        results_text += f"Fit points: {len(results.x_fit)}"
         
         self.results_text.setPlainText(results_text)
     
