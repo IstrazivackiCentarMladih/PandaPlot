@@ -9,6 +9,7 @@ from pandaplot.models.events import FitEvents
 #performs fit, doesn't include combobox methods
 class FitService:
     def __init__(self, fit_panel):
+        self.fixed_params = None
         self.fit_results = None
         self.fit_panel = fit_panel
         self.logger = logging.getLogger(__name__)
@@ -65,8 +66,8 @@ class FitService:
                     key, val = item.split("=")
                     fixed_params[key.strip()] = float(val)
 
-        # free parameters for fit
-        free_params = [p for p in params if p not in fixed_params]
+        self.fixed_params = fixed_params.copy()
+        free_params = [p for p in params if p not in fixed_params] #free parameters for fit
 
         # Create function dynamically
         def custom_func(x, *free_args):
@@ -79,7 +80,7 @@ class FitService:
                 local_vars[p] = free_args[i]
             return eval(function_str, {"__builtins__": {}}, local_vars)
 
-        return custom_func, free_params
+        return custom_func, params
 
     def perform_fit(self): #fit_services
         """Perform the curve fitting."""
@@ -122,18 +123,31 @@ class FitService:
             x_fit = np.linspace(x_data.min(), x_data.max(), self.fit_panel.fit_points_spin.value())
             y_fit = fit_func(x_fit, *popt)
 
+            # param dictionary define
+            fixed_params = dict(self.fixed_params) if self.fixed_params else {}
+            params = {}
+            popt_index = 0
+
+            for name in param_names:
+                if name in fixed_params:
+                    params[name] = fixed_params[name]
+                else:
+                    params[name] = popt[popt_index]
+                    popt_index += 1
+
             # Store results
             self.fit_results = {
-                "fit_type": fit_type,
-                "parameters": popt,
-                "errors": perr,
-                "param_names": param_names,
-                "r_squared": r_squared,
-                "x_fit": x_fit,
-                "y_fit": y_fit,
-                "x_data": x_data,
-                "y_data": y_data,
-                "covariance": pcov
+                'fit_type': fit_type,
+                'parameters': popt,
+                'errors': perr,
+                'param_names': param_names,
+                'params': params,
+                'r_squared': r_squared,
+                'x_fit': x_fit,
+                'y_fit': y_fit,
+                'x_data': x_data,
+                'y_data': y_data,
+                'covariance': pcov
             }
 
             # Display results
@@ -155,33 +169,48 @@ class FitService:
             self.fit_panel.equation_label.setText("Fit failed")
             self.fit_panel.apply_button.setEnabled(False)
 
-    def format_equation(self, fit_type: str, params):
-        """Format the equation string."""
+    def format_equation(self, fit_type: str, params: dict):
         if "Linear" in fit_type:
-            a, b = params
-            return f"y = {a:.6g}x + {b:.6g}"
+            equation = "a*x + b"
         elif "Quadratic" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}x² + {b:.6g}x + {c:.6g}"
+            equation = "a*x**2 + b*x + c"
         elif "Exponential" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}e^({b:.6g}x) + {c:.6g}"
+            equation = "a*exp(b*x) + c"
         elif "Power" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}x^{b:.6g} + {c:.6g}"
+            equation = "a*x**b + c"
         elif "Logarithmic" in fit_type:
-            a, b = params
-            return f"y = {a:.6g}ln(x) + {b:.6g}"
+            equation = "a*ln(x) + b"
         elif "Custom" in fit_type:
-            function_str = self.fit_panel.custom_function_edit.text().strip()
-            params_str = self.fit_panel.custom_params_edit.text().strip()
-            param_names = [p.strip() for p in params_str.split(",")]
-
-            # Substitute parameter values
-            equation = function_str
-            for name, value in zip(param_names, params, strict=False):
-                equation = equation.replace(name, f"{value:.6g}")
-            return f"y = {equation}"
+            equation = self.fit_panel.custom_function_edit.text().strip()
         else:
             return "Unknown equation"
 
+        for name, value in params.items():
+            try:
+                num = float(value)
+                equation = equation.replace(name, f"{num:.6g}")
+            except ValueError:
+                equation = equation.replace(name, str(value))
+
+        equation = equation.replace("+-", "-").replace("+ -", "-")
+        return f"y = {equation}"
+
+    def format_parameters(self, param_names, params, errors):
+        """format fitted parameters for display"""
+        lines = []
+        fixed_params = self.fixed_params or {}
+        free_index = 0
+
+        for name in param_names:
+            value = params[name]
+            if name in fixed_params:
+                lines.append(f"  {name} = {value:.6g}  (fixed)")
+            else:
+                error = errors[free_index]
+                if np.isinf(error) or np.isnan(error):
+                    lines.append(f"  {name} = {value:.6g}  (no error estimate)")
+                else:
+                    lines.append(f"  {name} = {value:.6g} ± {error:.6g}")
+                free_index += 1
+
+        return "\n".join(lines)
