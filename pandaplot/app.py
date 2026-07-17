@@ -9,6 +9,7 @@ from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.models.events import EventBus
 from pandaplot.models.project.items import Chart, Dataset, Folder, Note
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.autosave import AutoSaveManager
 from pandaplot.services.config import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.theme import ThemeManager
@@ -40,14 +41,23 @@ def build_app_context() -> AppContext:
     config_manager = ConfigManager(event_bus)
     config_manager.load()
     theme_manager = ThemeManager(event_bus, config_manager)
+    auto_save_manager = AutoSaveManager(event_bus, config_manager, app_state)
     ui_controller = UIController()
     command_executor = CommandExecutor()
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext
-    managers = [command_executor, ui_controller, config_manager, theme_manager, task_scheduler, project_data_manager]
+    managers = [
+        command_executor, ui_controller, config_manager, theme_manager,
+        auto_save_manager, task_scheduler, project_data_manager,
+    ]
 
-    return AppContext(app_state=app_state, event_bus=event_bus, managers=managers)
+    app_context = AppContext(app_state=app_state, event_bus=event_bus, managers=managers)
+    # AutoSaveManager needs the AppContext itself (to construct SaveProjectCommand),
+    # which doesn't exist yet while the manager list above is being built.
+    auto_save_manager.set_app_context(app_context)
+
+    return app_context
 
 
 def create_qt_application(app_context: AppContext, argv: list[str] | None = None) -> tuple[QApplication, PandaMainWindow]:
@@ -67,6 +77,11 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     except Exception:
         logging.getLogger(__name__).exception("Failed applying initial theme")
     app_context.ui_controller.set_parent_widget(main_window)
+
+    # QTimer needs a running Qt event loop, so start auto-save here rather
+    # than in build_app_context().
+    app_context.get_manager(AutoSaveManager).start()
+
     return app, main_window
 
 
