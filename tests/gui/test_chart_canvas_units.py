@@ -6,7 +6,7 @@ Figure stays in inches internally (a hard API constraint).
 
 import pytest
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import cm_to_inches, inches_to_cm, fit_size_cm
+from pandaplot.gui.components.tabs.chart.chart_canvas import cm_to_inches, fit_size_cm, inches_to_cm
 
 
 def test_cm_to_inches_known_value():
