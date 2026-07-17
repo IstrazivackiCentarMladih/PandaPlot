@@ -265,7 +265,7 @@ class ChartEditorWidget(PWidget):
             if not cfg:
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
-            if dpi and self.chart_canvas:
+            if dpi and isValid(self.chart_canvas):
                 self.chart_canvas.set_dpi(dpi)
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
@@ -677,7 +677,7 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.set_size(width, height)
                 self.update_status("Chart size updated")
             except Exception as e:
-                self.update_status(f"Resize error: {str(e)}")
+                self.update_status(f"Resize Error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
@@ -689,7 +689,7 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.reset_zoom()
                 self.update_status("Zoom reset")
             except Exception as e:
-                self.update_status(f"Zoom reset error: {str(e)}")
+                self.update_status(f"Zoom Reset Error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))

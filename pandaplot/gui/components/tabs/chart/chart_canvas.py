@@ -37,6 +37,8 @@ def fit_size_cm(viewport_width_px, viewport_height_px, dpi,
     Used to size a chart's initial preview to fill the visible preview
     panel when no size has been saved for it yet.
     """
+    if dpi <= 0:
+        raise ValueError(f"dpi must be positive, got {dpi}")
     width_cm = inches_to_cm(viewport_width_px / dpi)
     height_cm = inches_to_cm(viewport_height_px / dpi)
     width_cm = max(min_width_cm, min(max_width_cm, round(width_cm)))
