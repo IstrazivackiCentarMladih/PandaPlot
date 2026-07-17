@@ -23,6 +23,12 @@ from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -316,7 +322,7 @@ class ChartEditorWidget(PWidget):
 
         # Width control
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(10, 50)
+        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.width_spin.setValue(default_width_cm)
         self.width_spin.setSuffix(" cm")
         self.width_spin.setToolTip("Chart width in centimeters")
@@ -328,7 +334,7 @@ class ChartEditorWidget(PWidget):
 
         # Height control
         self.height_spin = QSpinBox()
-        self.height_spin.setRange(8, 40)
+        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.height_spin.setValue(default_height_cm)
         self.height_spin.setSuffix(" cm")
         self.height_spin.setToolTip("Chart height in centimeters")

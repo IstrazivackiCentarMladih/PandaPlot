@@ -26,7 +26,13 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.events.event_types import ConfigEvents
-from pandaplot.models.state.config import ApplicationConfig
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+    ApplicationConfig,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -265,7 +271,7 @@ class SettingsDialog(PDialog):
         size_label.setStyleSheet("color: #495057;")
         size_layout.addWidget(size_label)
         self.chart_width_spin = QSpinBox()
-        self.chart_width_spin.setRange(10, 50)
+        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.chart_width_spin.setValue(20)
         self.chart_width_spin.setSuffix(" cm")
         self.chart_width_spin.setToolTip("Default chart width in centimeters")
@@ -276,7 +282,7 @@ class SettingsDialog(PDialog):
         size_layout.addWidget(multiply_label)
 
         self.chart_height_spin = QSpinBox()
-        self.chart_height_spin.setRange(8, 40)
+        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.chart_height_spin.setValue(15)
         self.chart_height_spin.setSuffix(" cm")
         self.chart_height_spin.setToolTip("Default chart height in centimeters")
