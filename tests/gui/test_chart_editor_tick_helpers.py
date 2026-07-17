@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("Agg")  # headless backend, no display/Qt required
 
 from matplotlib.figure import Figure
-from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
+from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 
 from pandaplot.gui.components.tabs.chart.chart_editor import apply_axis_ticks
 
@@ -20,11 +20,12 @@ def _make_axis():
     return ax.xaxis
 
 
-def test_auto_mode_leaves_default_locator_untouched():
+def test_auto_mode_resets_to_default_locator_and_formatter():
     axis = _make_axis()
-    default_locator = axis.get_major_locator()
+    apply_axis_ticks(axis, "count", count=8, step=1.0, fmt="integer", custom_fmt="")
     apply_axis_ticks(axis, "auto", count=5, step=1.0, fmt="auto", custom_fmt="")
-    assert axis.get_major_locator() is default_locator
+    assert isinstance(axis.get_major_locator(), AutoLocator)
+    assert isinstance(axis.get_major_formatter(), ScalarFormatter)
 
 
 def test_count_mode_sets_max_n_locator():

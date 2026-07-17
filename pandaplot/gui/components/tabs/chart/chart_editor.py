@@ -1,7 +1,7 @@
 from typing import override
 
 import pandas as pd
-from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
+from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -41,7 +41,8 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         axis.set_major_locator(MaxNLocator(nbins=count))
     elif mode == "step":
         axis.set_major_locator(MultipleLocator(step))
-    # "auto" -> leave matplotlib's default locator in place
+    else:
+        axis.set_major_locator(AutoLocator())
 
     if fmt == "integer":
         axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
@@ -58,7 +59,8 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
             except Exception:
                 return str(v)
         axis.set_major_formatter(FuncFormatter(_safe_custom))
-    # "auto" -> leave matplotlib's default formatter in place
+    else:
+        axis.set_major_formatter(ScalarFormatter())
 
 
 class ChartEditorWidget(PWidget):
