@@ -77,8 +77,13 @@ class ChartCanvas(FigureCanvas):
 
     def _remove_toolbar_actions(self, action_names):
         """Remove named actions (by their matplotlib callback name) from the nav toolbar."""
+        actions_map = getattr(self.toolbar, "_actions", None)
+        if actions_map is None:
+            logger.debug("Navigation toolbar has no '_actions' mapping; skipping action removal")
+            return
+
         for name in action_names:
-            action = self.toolbar._actions.pop(name, None)
+            action = actions_map.pop(name, None)
             if action is not None:
                 self.toolbar.removeAction(action)
 

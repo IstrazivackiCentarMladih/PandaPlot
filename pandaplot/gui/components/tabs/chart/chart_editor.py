@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches
+from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
@@ -84,6 +84,11 @@ class ChartEditorWidget(PWidget):
 
         # Apply theme after UI is fully constructed
         QTimer.singleShot(100, self._apply_theme)
+
+        # Fit the chart to the preview panel once the layout has settled and
+        # the panel's real viewport size is known (a new chart has no saved
+        # size yet, so start it filling the visible preview area).
+        QTimer.singleShot(100, self._apply_initial_fit_size)
 
     @override
     def _apply_theme(self):
@@ -352,6 +357,7 @@ class ChartEditorWidget(PWidget):
         canvas_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         canvas_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        self.canvas_scroll = canvas_scroll
         preview_layout.addWidget(canvas_scroll)
 
         layout.addWidget(self.preview_frame)
@@ -400,8 +406,6 @@ class ChartEditorWidget(PWidget):
         reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
         reset_zoom_action.triggered.connect(self._on_reset_zoom)
         toolbar.addAction(reset_zoom_action)
-
-        toolbar.addSeparator()
 
     def generate_sample_data(self):
         """Generate sample data for chart preview."""
@@ -638,6 +642,29 @@ class ChartEditorWidget(PWidget):
 
         self.status_label.setText(status)
         self._update_status_label_style()
+
+    def _apply_initial_fit_size(self):
+        """Size a freshly opened chart to fill the visible preview panel.
+
+        Runs once, shortly after construction, once the scroll area has a
+        real viewport size to measure. Has no effect if the widget was
+        already closed or the panel hasn't been laid out yet.
+        """
+        if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        viewport = self.canvas_scroll.viewport()
+        width_px = viewport.width()
+        height_px = viewport.height()
+        if width_px <= 0 or height_px <= 0:
+            return
+
+        width_cm, height_cm = fit_size_cm(
+            width_px, height_px, self.chart_canvas.fig.dpi,
+            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
+            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+        self.width_spin.setValue(width_cm)
+        self.height_spin.setValue(height_cm)
 
     def _on_size_changed(self):
         """Handle chart size changes."""
