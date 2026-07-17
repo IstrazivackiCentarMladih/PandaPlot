@@ -204,6 +204,12 @@ class TabContainer(PWidget):
             command = LoadProjectCommand(self.app_context, project_path)
             self.app_context.get_command_executor().execute_command(command)
 
+    def handle_example_project(self, project_path: str):
+        """Handle example project selection from welcome tab."""
+        if self.app_context:
+            command = LoadProjectCommand(self.app_context, project_path)
+            self.app_context.get_command_executor().execute_command(command)
+
     def handle_import_data(self):
         """Handle import data request from welcome tab."""
         if self.app_context:
@@ -228,6 +234,7 @@ class TabContainer(PWidget):
         welcome_tab.open_project_requested.connect(self.handle_open_project)
         welcome_tab.recent_project_selected.connect(self.handle_recent_project)
         welcome_tab.import_data_requested.connect(self.handle_import_data)
+        welcome_tab.example_project_selected.connect(self.handle_example_project)
 
         self.tab_widget.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab

@@ -1,8 +1,8 @@
 from typing import override
 
-import pandas as pd
+from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,14 +16,89 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
+from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
+    """Apply tick placement and label formatting to a matplotlib Axis.
+
+    axis: a matplotlib Axis object (e.g. ax.xaxis or ax.yaxis)
+    mode: "auto" | "count" | "step" - tick placement strategy
+    count: number of ticks when mode == "count"
+    step: fixed spacing between ticks when mode == "step"
+    fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
+    custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
+    """
+    if mode == "count":
+        axis.set_major_locator(MaxNLocator(nbins=count))
+    elif mode == "step":
+        axis.set_major_locator(MultipleLocator(step))
+    else:
+        axis.set_major_locator(AutoLocator())
+
+    if fmt == "integer":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
+    elif fmt == "1decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}"))
+    elif fmt == "2decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2f}"))
+    elif fmt == "scientific":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2e}"))
+    elif fmt == "custom" and custom_fmt:
+        def _safe_custom(v, _, _fmt=custom_fmt):
+            try:
+                return _fmt.format(v)
+            except Exception:
+                return str(v)
+        axis.set_major_formatter(FuncFormatter(_safe_custom))
+    else:
+        axis.set_major_formatter(ScalarFormatter())
+
+
+def resolve_series_data(project, series, chart_type=None):
+    """Resolve a DataSeries against the project's datasets.
+
+    Returns (x_data, y_data, None) on success, or (None, None, message)
+    when the dataset or a column can't be found. An empty x_column means
+    "plot against the DataFrame index". Histograms only ever plot
+    y_column, so a stale/unused x_column is ignored when chart_type == "hist".
+    """
+    from pandaplot.models.project.items.dataset import Dataset
+
+    if project is None:
+        return None, None, "no project loaded"
+
+    dataset = project.find_item(series.dataset_id)
+    if not isinstance(dataset, Dataset) or dataset.data is None:
+        return None, None, f"dataset '{series.dataset_id}' not found"
+
+    df = dataset.data
+    if not series.y_column:
+        return None, None, "no Y column configured"
+
+    needs_x_column = chart_type != "hist"
+    x_column = series.x_column if needs_x_column else None
+
+    missing = [c for c in (x_column, series.y_column)
+               if c and c not in df.columns]
+    if missing:
+        cols = ", ".join(f"'{c}'" for c in missing)
+        return None, None, f"column {cols} not found in '{dataset.name}'"
+
+    x_data = df[x_column] if x_column else df.index
+    return x_data, df[series.y_column], None
 
 
 class ChartEditorWidget(PWidget):
@@ -34,14 +109,6 @@ class ChartEditorWidget(PWidget):
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
-        self.is_modified = False
-        self.auto_save_timer = QTimer()
-        self.auto_save_timer.timeout.connect(self.auto_save)
-        self.auto_save_timer.setSingleShot(True)
-
-        # Sample data for preview
-        # TODO: do we need this?
-        self.sample_data = self.generate_sample_data()
 
         self._initialize()
         self.load_chart_config()
@@ -49,6 +116,11 @@ class ChartEditorWidget(PWidget):
 
         # Apply theme after UI is fully constructed
         QTimer.singleShot(100, self._apply_theme)
+
+        # Fit the chart to the preview panel once the layout has settled and
+        # the panel's real viewport size is known (a new chart has no saved
+        # size yet, so start it filling the visible preview area).
+        QTimer.singleShot(100, self._apply_initial_fit_size)
 
     @override
     def _apply_theme(self):
@@ -190,7 +262,7 @@ class ChartEditorWidget(PWidget):
         # Determine color based on status
         if "Modified" in status_text:
             color = "#ffc107"  # Warning yellow
-        elif "Saved" in status_text or "Exported" in status_text:
+        elif "Saved" in status_text:
             color = "#28a745"  # Success green
         elif "Error" in status_text:
             color = "#dc3545"  # Error red
@@ -223,14 +295,8 @@ class ChartEditorWidget(PWidget):
             if not cfg:
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
-            if dpi and self.chart_canvas and self.chart_canvas.fig.dpi != dpi:
-                self.chart_canvas.fig.set_dpi(dpi)
-                # Matplotlib may need a tight_layout or redraw
-                try:
-                    self.chart_canvas.fig.tight_layout()
-                except Exception:
-                    pass
-                self.chart_canvas.draw()
+            if dpi and isValid(self.chart_canvas):
+                self.chart_canvas.set_dpi(dpi)
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -251,6 +317,7 @@ class ChartEditorWidget(PWidget):
 
         # Preview toolbar with chart actions and size controls
         self.preview_toolbar = QToolBar()
+        self.preview_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         # Add chart actions
         self.create_chart_toolbar_actions(self.preview_toolbar)
@@ -262,12 +329,27 @@ class ChartEditorWidget(PWidget):
         self.size_label = QLabel("Size:")
         self.preview_toolbar.addWidget(self.size_label)
 
+        # Fetch preferred DPI and default chart size from config manager
+        dpi = 100
+        default_width_cm = 20
+        default_height_cm = 15
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            cfg = getattr(cfg_manager, "config", None)
+            chart_display = getattr(cfg, "chart_display", None) if cfg else None
+            if chart_display:
+                dpi = getattr(chart_display, "dpi", dpi) or dpi
+                default_width_cm = getattr(chart_display, "default_width_cm", default_width_cm) or default_width_cm
+                default_height_cm = getattr(chart_display, "default_height_cm", default_height_cm) or default_height_cm
+        except Exception:
+            pass
+
         # Width control
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(4, 20)
-        self.width_spin.setValue(8)
-        self.width_spin.setSuffix(" in")
-        self.width_spin.setToolTip("Chart width in inches")
+        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.width_spin.setValue(default_width_cm)
+        self.width_spin.setSuffix(" cm")
+        self.width_spin.setToolTip("Chart width in centimeters")
         self.width_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.width_spin)
 
@@ -276,44 +358,37 @@ class ChartEditorWidget(PWidget):
 
         # Height control
         self.height_spin = QSpinBox()
-        self.height_spin.setRange(3, 15)
-        self.height_spin.setValue(6)
-        self.height_spin.setSuffix(" in")
-        self.height_spin.setToolTip("Chart height in inches")
+        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.height_spin.setValue(default_height_cm)
+        self.height_spin.setSuffix(" cm")
+        self.height_spin.setToolTip("Chart height in centimeters")
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
-        # Reset zoom button
-        reset_zoom_action = QAction("🔍 Reset Zoom", self)
-        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
-        reset_zoom_action.triggered.connect(self._on_reset_zoom)
-        self.preview_toolbar.addAction(reset_zoom_action)
-
-        preview_layout.addWidget(self.preview_toolbar)
-
         # Chart canvas
-        # Fetch preferred DPI from config manager
-        dpi = 100
-        try:
-            cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = getattr(cfg_manager, "config", None)
-            if cfg and getattr(cfg, "chart_display", None):
-                dpi = getattr(cfg.chart_display, "dpi", dpi) or dpi
-        except Exception:
-            pass
-        self.chart_canvas = ChartCanvas(width=8, height=6, dpi=dpi)
+        self.chart_canvas = ChartCanvas(
+            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-        # Add navigation toolbar for zoom/pan
+        # Combine our chart-action toolbar and matplotlib's pan/zoom/save
+        # toolbar into a single row instead of stacking them, to save space.
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setContentsMargins(0, 0, 0, 0)
+        toolbar_row.setSpacing(4)
+        toolbar_row.addWidget(self.preview_toolbar)
         if hasattr(self.chart_canvas, "navigation_toolbar"):
             nav_toolbar = self.chart_canvas.navigation_toolbar
-            preview_layout.addWidget(nav_toolbar)
+            nav_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            toolbar_row.addWidget(nav_toolbar)
+        toolbar_row.addStretch()
+        preview_layout.addLayout(toolbar_row)
 
         # Wrap chart canvas in scroll area for large charts
         canvas_scroll = QScrollArea()
-        canvas_scroll.setWidgetResizable(True)
+        canvas_scroll.setWidgetResizable(False)
         canvas_scroll.setWidget(self.chart_canvas)
+        canvas_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         canvas_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding
@@ -321,6 +396,7 @@ class ChartEditorWidget(PWidget):
         canvas_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         canvas_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        self.canvas_scroll = canvas_scroll
         preview_layout.addWidget(canvas_scroll)
 
         layout.addWidget(self.preview_frame)
@@ -351,28 +427,18 @@ class ChartEditorWidget(PWidget):
 
     def create_chart_toolbar_actions(self, toolbar):
         """Create toolbar actions for chart operations."""
-        # Save chart action
-        save_action = QAction("💾 Save", self)
-        save_action.setShortcut(QKeySequence.StandardKey.Save)
-        save_action.triggered.connect(self.save_chart)
-        toolbar.addAction(save_action)
-
-        # Export action
-        export_action = QAction("📤 Export", self)
-        export_action.triggered.connect(self.export_chart)
-        toolbar.addAction(export_action)
-
-        toolbar.addSeparator()
-
         # Reset action
         reset_action = QAction("🔄 Reset", self)
         reset_action.triggered.connect(self.reset_chart)
         toolbar.addAction(reset_action)
 
-    def generate_sample_data(self):
-        """Generate sample data for chart preview."""
-        # TODO: remove
-        return pd.DataFrame()
+        # Reset zoom button (the nav toolbar's own Home/Back/Forward are
+        # removed since they rely on a view stack that goes stale whenever
+        # the chart re-renders; this uses the chart's own tracked limits)
+        reset_zoom_action = QAction("🔍 Reset Zoom", self)
+        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
+        reset_zoom_action.triggered.connect(self._on_reset_zoom)
+        toolbar.addAction(reset_zoom_action)
 
     def load_chart_config(self):
         """Load chart configuration into UI controls."""
@@ -392,108 +458,60 @@ class ChartEditorWidget(PWidget):
             "star": "*", "plus": "+", "cross": "x", "none": "",
         }
         _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.",
+            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
         }
 
         try:
             # Clear the current plot
             self.chart_canvas.axes.clear()
 
-            # If no data series, show sample data
+            series_errors = []
             if not self.chart.data_series:
-                # TODO: remove this, we want to know there is no data as it can showcase whether we have an error
-                # instead of showing some data, rather write no data loaded
                 self.dataset_label.setText("No Data Loaded")
             else:
-                # Plot actual data series from real datasets
+                project = self.app_context.get_app_state().current_project
                 for i, series in enumerate(self.chart.data_series):
-                    # Get the actual dataset from the project
-                    project = self.app_context.get_app_state().current_project
-                    if project:
-                        dataset_item = project.find_item(series.dataset_id)
-                        from pandaplot.models.project.items.dataset import Dataset
+                    x_data, y_data, error = resolve_series_data(
+                        project, series, self.chart.chart_type)
+                    if error:
+                        series_errors.append(
+                            f"{series.label or f'Series {i + 1}'}: {error}")
+                        continue
 
-                        if isinstance(dataset_item, Dataset) and dataset_item.data is not None:
-                            # Use real data from the dataset
-                            df = dataset_item.data
-
-                            # Check if the required columns exist
-                            if series.x_column in df.columns and series.y_column in df.columns:
-                                x_data = df[series.x_column]
-                                y_data = df[series.y_column]
-
-                                # Plot based on chart type for regular data series
-                                if self.chart.chart_type == "line":
-                                    mfc = series.marker_color or series.color
-                                    mec = series.marker_edge_color or series.color
-                                    self.chart_canvas.axes.plot(x_data, y_data,
-                                                                color=series.color,
-                                                                linewidth=series.line_width,
-                                                                linestyle=_linestyle_map.get(series.line_style, "-"),
-                                                                marker=_marker_map.get(series.marker_style, "o"),
-                                                                markersize=series.marker_size,
-                                                                markerfacecolor=mfc,
-                                                                markeredgecolor=mec,
-                                                                label=series.label,
-                                                                alpha=1.0 if series.visible else 0.3)
-                                elif self.chart.chart_type == "scatter":
-                                    mfc = series.marker_color or series.color
-                                    mec = series.marker_edge_color or series.color
-                                    self.chart_canvas.axes.scatter(x_data, y_data,
-                                                                   c=mfc,
-                                                                   edgecolors=mec,
-                                                                   marker=_marker_map.get(series.marker_style, "o"),
-                                                                   s=series.marker_size*10,
-                                                                   label=series.label,
-                                                                   alpha=1.0 if series.visible else 0.3)
-                                elif self.chart.chart_type == "bar":
-                                    self.chart_canvas.axes.bar(x_data, y_data,
-                                                               color=series.color,
-                                                               label=series.label,
-                                                               alpha=1.0 if series.visible else 0.3)
-                                elif self.chart.chart_type == "hist":
-                                    self.chart_canvas.axes.hist(y_data, bins=20,
-                                                                color=series.color,
-                                                                label=series.label,
-                                                                alpha=0.7 if series.visible else 0.3)
-                            else:
-                                # Column not found - use sample data as fallback
-                                x_data = self.sample_data["x"]
-                                y_col = "y1" if i == 0 else "y2"
-                                y_data = self.sample_data[y_col] if y_col in self.sample_data.columns else self.sample_data["y1"]
-
-                                if self.chart.chart_type == "line":
-                                    mfc = series.marker_color or series.color
-                                    mec = series.marker_edge_color or series.color
-                                    self.chart_canvas.axes.plot(x_data, y_data,
-                                                                color=series.color,
-                                                                linewidth=series.line_width,
-                                                                linestyle="--",
-                                                                marker=_marker_map.get(series.marker_style, "o"),
-                                                                markersize=series.marker_size,
-                                                                markerfacecolor=mfc,
-                                                                markeredgecolor=mec,
-                                                                label=f"{series.label} (Column not found)",
-                                                                alpha=0.5)
-                        else:
-                            # Dataset not found - use sample data as fallback
-                            x_data = self.sample_data["x"]
-                            y_col = "y1" if i == 0 else "y2"
-                            y_data = self.sample_data[y_col] if y_col in self.sample_data.columns else self.sample_data["y1"]
-
-                            if self.chart.chart_type == "line":
-                                mfc = series.marker_color or series.color
-                                mec = series.marker_edge_color or series.color
-                                self.chart_canvas.axes.plot(x_data, y_data,
-                                                            color=series.color,
-                                                            linewidth=series.line_width,
-                                                            linestyle=":",
-                                                            marker=_marker_map.get(series.marker_style, "o"),
-                                                            markersize=series.marker_size,
-                                                            markerfacecolor=mfc,
-                                                            markeredgecolor=mec,
-                                                            label=f"{series.label} (Dataset not found)",
-                                                            alpha=0.5)
+                    alpha = series.alpha if series.visible else 0.3
+                    if self.chart.chart_type == "line":
+                        mfc = series.marker_color or series.color
+                        mec = series.marker_edge_color or series.color
+                        self.chart_canvas.axes.plot(x_data, y_data,
+                                                    color=series.color,
+                                                    linewidth=series.line_width,
+                                                    linestyle=_linestyle_map.get(series.line_style, "-"),
+                                                    marker=_marker_map.get(series.marker_style, "o"),
+                                                    markersize=series.marker_size,
+                                                    markerfacecolor=mfc,
+                                                    markeredgecolor=mec,
+                                                    label=series.label,
+                                                    alpha=alpha)
+                    elif self.chart.chart_type == "scatter":
+                        mfc = series.marker_color or series.color
+                        mec = series.marker_edge_color or series.color
+                        self.chart_canvas.axes.scatter(x_data, y_data,
+                                                       c=mfc,
+                                                       edgecolors=mec,
+                                                       marker=_marker_map.get(series.marker_style, "o"),
+                                                       s=series.marker_size ** 2,
+                                                       label=series.label,
+                                                       alpha=alpha)
+                    elif self.chart.chart_type == "bar":
+                        self.chart_canvas.axes.bar(x_data, y_data,
+                                                   color=series.color,
+                                                   label=series.label,
+                                                   alpha=alpha)
+                    elif self.chart.chart_type == "hist":
+                        self.chart_canvas.axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
+                                                    color=series.color,
+                                                    label=series.label,
+                                                    alpha=alpha)
 
                 # Plot fit data from chart.fit_data
                 for i, fit in enumerate(self.chart.fit_data):
@@ -512,14 +530,43 @@ class ChartEditorWidget(PWidget):
                 "title", self.chart.name), fontsize=14, fontweight="bold")
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
+            self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
+            self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
+            self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
+            self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
 
-            if config.get("show_grid", True):
-                self.chart_canvas.axes.grid(
-                    True, alpha=config.get("grid_alpha", 0.3))
+            if not config.get("x_auto_limits", True):
+                self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
+            if not config.get("y_auto_limits", True):
+                self.chart_canvas.axes.set_ylim(config.get("y_min", 0.0), config.get("y_max", 1.0))
+
+            apply_axis_ticks(
+                self.chart_canvas.axes.xaxis,
+                config.get("x_tick_mode", "auto"), config.get("x_tick_count", 5),
+                config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
+                config.get("x_tick_format_custom", ""))
+            apply_axis_ticks(
+                self.chart_canvas.axes.yaxis,
+                config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
+                config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
+                config.get("y_tick_format_custom", ""))
+
+            grid_alpha = config.get("grid_alpha", 0.3)
+            if config.get("show_grid_x", True):
+                self.chart_canvas.axes.grid(True, axis="x", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="x")
+            if config.get("show_grid_y", True):
+                self.chart_canvas.axes.grid(True, axis="y", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="y")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(
-                    loc=config.get("legend_position", "upper right"))
+                    loc=config.get("legend_position", "upper right"),
+                    fontsize=config.get("legend_font_size", 10),
+                    facecolor=config.get("legend_bg_color", "#ffffff"),
+                    frameon=config.get("legend_show_frame", True))
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
@@ -527,51 +574,14 @@ class ChartEditorWidget(PWidget):
             # Refresh canvas
             self.chart_canvas.draw()
 
+            if series_errors:
+                self.update_status("Skipped: " + "; ".join(series_errors))
+            else:
+                self.update_status("Ready")
+
         except Exception as e:
             self.logger.exception("Error updating chart")
             self.update_status(f"Chart error: {str(e)}")
-
-    def save_chart(self):
-        """Save the chart configuration."""
-        try:
-            # Update modification time
-            self.chart.update_modified_time()
-
-            # Update UI
-            self.is_modified = False
-            self.update_status("Saved ✓")
-
-            # Publish chart updated event
-            self.publish_event(ChartEvents.CHART_UPDATED, {
-                "chart_id": self.chart.id,
-                "chart_name": self.chart.name
-            })
-
-            # Reset status after 2 seconds
-            QTimer.singleShot(2000, lambda: self.update_status("Ready"))
-
-        except Exception as e:
-            self.update_status(f"Error: {str(e)}")
-
-    def auto_save(self):
-        """Auto-save the chart configuration."""
-        if self.is_modified:
-            self.save_chart()
-
-    def export_chart(self):
-        """Export the chart to file."""
-        try:
-            # Save the current figure
-            filename = f"{self.chart.name}.png"
-            self.chart_canvas.fig.savefig(
-                filename, dpi=300, bbox_inches="tight")
-            self.update_status(f"Exported to {filename} ✓")
-
-            # Reset status after 3 seconds
-            QTimer.singleShot(3000, lambda: self.update_status("Ready"))
-
-        except Exception as e:
-            self.update_status(f"Export error: {str(e)}")
 
     def reset_chart(self):
         """Reset chart to default configuration."""
@@ -591,13 +601,45 @@ class ChartEditorWidget(PWidget):
         self.status_label.setText(status)
         self._update_status_label_style()
 
+    def _apply_initial_fit_size(self):
+        """Size a freshly opened chart to fill the visible preview panel.
+
+        Runs once, shortly after construction, once the scroll area has a
+        real viewport size to measure. Has no effect if the widget was
+        already closed or the panel hasn't been laid out yet.
+        """
+        if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        viewport = self.canvas_scroll.viewport()
+        width_px = viewport.width()
+        height_px = viewport.height()
+        if width_px <= 0 or height_px <= 0:
+            return
+
+        width_cm, height_cm = fit_size_cm(
+            width_px, height_px, self.chart_canvas.fig.dpi,
+            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
+            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+
+        self.width_spin.blockSignals(True)
+        self.height_spin.blockSignals(True)
+        self.width_spin.setValue(width_cm)
+        self.height_spin.setValue(height_cm)
+        self.width_spin.blockSignals(False)
+        self.height_spin.blockSignals(False)
+        self._on_size_changed()
+
     def _on_size_changed(self):
         """Handle chart size changes."""
         if hasattr(self, "chart_canvas"):
-            width = self.width_spin.value()
-            height = self.height_spin.value()
-            self.chart_canvas.set_size(width, height)
-            self.update_status("Chart size updated")
+            try:
+                width = cm_to_inches(self.width_spin.value())
+                height = cm_to_inches(self.height_spin.value())
+                self.chart_canvas.set_size(width, height)
+                self.update_status("Chart size updated")
+            except Exception as e:
+                self.update_status(f"Resize error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
@@ -605,8 +647,11 @@ class ChartEditorWidget(PWidget):
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
         if hasattr(self, "chart_canvas"):
-            self.chart_canvas.reset_zoom()
-            self.update_status("Zoom reset")
+            try:
+                self.chart_canvas.reset_zoom()
+                self.update_status("Zoom reset")
+            except Exception as e:
+                self.update_status(f"Zoom reset error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))

@@ -24,6 +24,7 @@ class CreateChartCommand(Command):
         self.ui_controller: UIController = app_context.get_ui_controller()
 
         self.created_chart_id: Optional[str] = None
+        self.created_chart: Optional[Chart] = None
         self.dataset_id: str = dataset_id
         self.chart_name: Optional[str] = chart_name
         self.parent_id: Optional[str] = parent_id
@@ -103,6 +104,7 @@ class CreateChartCommand(Command):
             project.add_item(chart, parent_id=self.parent_id)
 
             self.created_chart_id = chart.id
+            self.created_chart = chart
 
             # Publish chart creation event
             event_bus = self.app_context.event_bus
@@ -154,7 +156,20 @@ class CreateChartCommand(Command):
 
     @override
     def redo(self):
-        """Redo the create chart command."""
-        if self.dataset_id and self.chart_name:
+        """Redo the chart creation, re-adding the original chart instance."""
+        if self.created_chart is None:
             self.execute()
+            return
+
+        app_state = self.app_context.get_app_state()
+        if not app_state.has_project or not app_state.current_project:
+            return
+        project = app_state.current_project
+
+        project.add_item(self.created_chart, parent_id=self.parent_id)
+        self.created_chart_id = self.created_chart.id
+
+        self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
+            chart_id=self.created_chart.id
+        ).to_dict())
 

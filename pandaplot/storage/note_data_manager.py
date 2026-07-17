@@ -1,12 +1,14 @@
 import json
 from typing import override
+from zipfile import ZipFile
 
+from pandaplot.models.project.items.note import Note
 from pandaplot.storage.item_data_manager import ItemDataManager
 
 
-class NoteDataManager(ItemDataManager):
+class NoteDataManager(ItemDataManager[Note]):
     @override
-    def save(self, item, zip_file, path_in_zip: str) -> None:
+    def save(self, item: Note, zip_file: ZipFile, path_in_zip: str) -> None:
         """
         Save note content as markdown, and metadata as JSON.
         path_in_zip should be without extension, e.g. 'items/<id>'
@@ -27,7 +29,7 @@ class NoteDataManager(ItemDataManager):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
 
     @override
-    def load(self, item_class, zip_file, path_in_zip: str):
+    def load(self, item_class: type[Note], zip_file: ZipFile, path_in_zip: str) -> Note:
         """
         Load note from markdown + metadata json.
         path_in_zip is without extension.
