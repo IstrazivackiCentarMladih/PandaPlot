@@ -232,7 +232,7 @@ class ChartEditorWidget(PWidget):
         # Determine color based on status
         if "Modified" in status_text:
             color = "#ffc107"  # Warning yellow
-        elif "Saved" in status_text or "Exported" in status_text:
+        elif "Saved" in status_text:
             color = "#28a745"  # Success green
         elif "Error" in status_text:
             color = "#dc3545"  # Error red
@@ -665,8 +665,14 @@ class ChartEditorWidget(PWidget):
             width_px, height_px, self.chart_canvas.fig.dpi,
             min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
             min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+
+        self.width_spin.blockSignals(True)
+        self.height_spin.blockSignals(True)
         self.width_spin.setValue(width_cm)
         self.height_spin.setValue(height_cm)
+        self.width_spin.blockSignals(False)
+        self.height_spin.blockSignals(False)
+        self._on_size_changed()
 
     def _on_size_changed(self):
         """Handle chart size changes."""
