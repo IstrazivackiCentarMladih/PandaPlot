@@ -92,12 +92,22 @@ class ProjectConfig:
 class ChartDisplayConfig:
 	"""Configuration for global chart display defaults (rendering / preview)."""
 	dpi: int = 100
+	default_width_cm: int = 20
+	default_height_cm: int = 15
 
 	def validate(self) -> None:
 		if self.dpi < 50:
 			self.dpi = 50
 		if self.dpi > 600:
 			self.dpi = 600
+		if self.default_width_cm < 10:
+			self.default_width_cm = 10
+		if self.default_width_cm > 50:
+			self.default_width_cm = 50
+		if self.default_height_cm < 8:
+			self.default_height_cm = 8
+		if self.default_height_cm > 40:
+			self.default_height_cm = 40
 
 
 @dataclass(slots=True)

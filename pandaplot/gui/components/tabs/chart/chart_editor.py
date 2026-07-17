@@ -299,10 +299,25 @@ class ChartEditorWidget(PWidget):
         self.size_label = QLabel("Size:")
         self.preview_toolbar.addWidget(self.size_label)
 
+        # Fetch preferred DPI and default chart size from config manager
+        dpi = 100
+        default_width_cm = 20
+        default_height_cm = 15
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            cfg = getattr(cfg_manager, "config", None)
+            chart_display = getattr(cfg, "chart_display", None) if cfg else None
+            if chart_display:
+                dpi = getattr(chart_display, "dpi", dpi) or dpi
+                default_width_cm = getattr(chart_display, "default_width_cm", default_width_cm) or default_width_cm
+                default_height_cm = getattr(chart_display, "default_height_cm", default_height_cm) or default_height_cm
+        except Exception:
+            pass
+
         # Width control
         self.width_spin = QSpinBox()
         self.width_spin.setRange(10, 50)
-        self.width_spin.setValue(20)
+        self.width_spin.setValue(default_width_cm)
         self.width_spin.setSuffix(" cm")
         self.width_spin.setToolTip("Chart width in centimeters")
         self.width_spin.valueChanged.connect(self._on_size_changed)
@@ -314,23 +329,15 @@ class ChartEditorWidget(PWidget):
         # Height control
         self.height_spin = QSpinBox()
         self.height_spin.setRange(8, 40)
-        self.height_spin.setValue(15)
+        self.height_spin.setValue(default_height_cm)
         self.height_spin.setSuffix(" cm")
         self.height_spin.setToolTip("Chart height in centimeters")
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
         # Chart canvas
-        # Fetch preferred DPI from config manager
-        dpi = 100
-        try:
-            cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = getattr(cfg_manager, "config", None)
-            if cfg and getattr(cfg, "chart_display", None):
-                dpi = getattr(cfg.chart_display, "dpi", dpi) or dpi
-        except Exception:
-            pass
-        self.chart_canvas = ChartCanvas(width=cm_to_inches(20), height=cm_to_inches(15), dpi=dpi)
+        self.chart_canvas = ChartCanvas(
+            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 

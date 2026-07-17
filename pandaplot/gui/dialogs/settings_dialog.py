@@ -444,6 +444,8 @@ class SettingsDialog(PDialog):
             "line_numbers": cfg.editor.line_numbers,
             "tab_size": cfg.editor.tab_size,
             "chart_dpi": getattr(getattr(cfg, "chart_display", None), "dpi", 100),
+            "chart_width": getattr(getattr(cfg, "chart_display", None), "default_width_cm", 20),
+            "chart_height": getattr(getattr(cfg, "chart_display", None), "default_height_cm", 15),
         }
         self.current_settings = self.original_settings.copy()
 
@@ -551,7 +553,9 @@ class SettingsDialog(PDialog):
                         "tab_size": self.current_settings["tab_size"],
                     },
                     "chart_display": {
-                        "dpi": self.current_settings.get("chart_dpi", 100)
+                        "dpi": self.current_settings.get("chart_dpi", 100),
+                        "default_width_cm": self.current_settings.get("chart_width", 20),
+                        "default_height_cm": self.current_settings.get("chart_height", 15),
                     }
                 }
                 self._config_manager.update(mapping, save=True)
