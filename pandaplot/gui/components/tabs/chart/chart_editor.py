@@ -17,12 +17,18 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
+from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -86,6 +92,11 @@ class ChartEditorWidget(PWidget):
 
         # Apply theme after UI is fully constructed
         QTimer.singleShot(100, self._apply_theme)
+
+        # Fit the chart to the preview panel once the layout has settled and
+        # the panel's real viewport size is known (a new chart has no saved
+        # size yet, so start it filling the visible preview area).
+        QTimer.singleShot(100, self._apply_initial_fit_size)
 
     @override
     def _apply_theme(self):
@@ -227,7 +238,7 @@ class ChartEditorWidget(PWidget):
         # Determine color based on status
         if "Modified" in status_text:
             color = "#ffc107"  # Warning yellow
-        elif "Saved" in status_text or "Exported" in status_text:
+        elif "Saved" in status_text:
             color = "#28a745"  # Success green
         elif "Error" in status_text:
             color = "#dc3545"  # Error red
@@ -260,14 +271,8 @@ class ChartEditorWidget(PWidget):
             if not cfg:
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
-            if dpi and self.chart_canvas and self.chart_canvas.fig.dpi != dpi:
-                self.chart_canvas.fig.set_dpi(dpi)
-                # Matplotlib may need a tight_layout or redraw
-                try:
-                    self.chart_canvas.fig.tight_layout()
-                except Exception:
-                    pass
-                self.chart_canvas.draw()
+            if dpi and isValid(self.chart_canvas):
+                self.chart_canvas.set_dpi(dpi)
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -288,6 +293,7 @@ class ChartEditorWidget(PWidget):
 
         # Preview toolbar with chart actions and size controls
         self.preview_toolbar = QToolBar()
+        self.preview_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         # Add chart actions
         self.create_chart_toolbar_actions(self.preview_toolbar)
@@ -299,12 +305,27 @@ class ChartEditorWidget(PWidget):
         self.size_label = QLabel("Size:")
         self.preview_toolbar.addWidget(self.size_label)
 
+        # Fetch preferred DPI and default chart size from config manager
+        dpi = 100
+        default_width_cm = 20
+        default_height_cm = 15
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            cfg = getattr(cfg_manager, "config", None)
+            chart_display = getattr(cfg, "chart_display", None) if cfg else None
+            if chart_display:
+                dpi = getattr(chart_display, "dpi", dpi) or dpi
+                default_width_cm = getattr(chart_display, "default_width_cm", default_width_cm) or default_width_cm
+                default_height_cm = getattr(chart_display, "default_height_cm", default_height_cm) or default_height_cm
+        except Exception:
+            pass
+
         # Width control
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(4, 20)
-        self.width_spin.setValue(8)
-        self.width_spin.setSuffix(" in")
-        self.width_spin.setToolTip("Chart width in inches")
+        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.width_spin.setValue(default_width_cm)
+        self.width_spin.setSuffix(" cm")
+        self.width_spin.setToolTip("Chart width in centimeters")
         self.width_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.width_spin)
 
@@ -313,44 +334,37 @@ class ChartEditorWidget(PWidget):
 
         # Height control
         self.height_spin = QSpinBox()
-        self.height_spin.setRange(3, 15)
-        self.height_spin.setValue(6)
-        self.height_spin.setSuffix(" in")
-        self.height_spin.setToolTip("Chart height in inches")
+        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.height_spin.setValue(default_height_cm)
+        self.height_spin.setSuffix(" cm")
+        self.height_spin.setToolTip("Chart height in centimeters")
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
-        # Reset zoom button
-        reset_zoom_action = QAction("🔍 Reset Zoom", self)
-        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
-        reset_zoom_action.triggered.connect(self._on_reset_zoom)
-        self.preview_toolbar.addAction(reset_zoom_action)
-
-        preview_layout.addWidget(self.preview_toolbar)
-
         # Chart canvas
-        # Fetch preferred DPI from config manager
-        dpi = 100
-        try:
-            cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = getattr(cfg_manager, "config", None)
-            if cfg and getattr(cfg, "chart_display", None):
-                dpi = getattr(cfg.chart_display, "dpi", dpi) or dpi
-        except Exception:
-            pass
-        self.chart_canvas = ChartCanvas(width=8, height=6, dpi=dpi)
+        self.chart_canvas = ChartCanvas(
+            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-        # Add navigation toolbar for zoom/pan
+        # Combine our chart-action toolbar and matplotlib's pan/zoom/save
+        # toolbar into a single row instead of stacking them, to save space.
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setContentsMargins(0, 0, 0, 0)
+        toolbar_row.setSpacing(4)
+        toolbar_row.addWidget(self.preview_toolbar)
         if hasattr(self.chart_canvas, "navigation_toolbar"):
             nav_toolbar = self.chart_canvas.navigation_toolbar
-            preview_layout.addWidget(nav_toolbar)
+            nav_toolbar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            toolbar_row.addWidget(nav_toolbar)
+        toolbar_row.addStretch()
+        preview_layout.addLayout(toolbar_row)
 
         # Wrap chart canvas in scroll area for large charts
         canvas_scroll = QScrollArea()
-        canvas_scroll.setWidgetResizable(True)
+        canvas_scroll.setWidgetResizable(False)
         canvas_scroll.setWidget(self.chart_canvas)
+        canvas_scroll.setAlignment(Qt.AlignmentFlag.AlignCenter)
         canvas_scroll.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding
@@ -358,6 +372,7 @@ class ChartEditorWidget(PWidget):
         canvas_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         canvas_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        self.canvas_scroll = canvas_scroll
         preview_layout.addWidget(canvas_scroll)
 
         layout.addWidget(self.preview_frame)
@@ -394,17 +409,18 @@ class ChartEditorWidget(PWidget):
         save_action.triggered.connect(self.save_chart)
         toolbar.addAction(save_action)
 
-        # Export action
-        export_action = QAction("📤 Export", self)
-        export_action.triggered.connect(self.export_chart)
-        toolbar.addAction(export_action)
-
-        toolbar.addSeparator()
-
         # Reset action
         reset_action = QAction("🔄 Reset", self)
         reset_action.triggered.connect(self.reset_chart)
         toolbar.addAction(reset_action)
+
+        # Reset zoom button (the nav toolbar's own Home/Back/Forward are
+        # removed since they rely on a view stack that goes stale whenever
+        # the chart re-renders; this uses the chart's own tracked limits)
+        reset_zoom_action = QAction("🔍 Reset Zoom", self)
+        reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
+        reset_zoom_action.triggered.connect(self._on_reset_zoom)
+        toolbar.addAction(reset_zoom_action)
 
     def generate_sample_data(self):
         """Generate sample data for chart preview."""
@@ -570,10 +586,15 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
                 config.get("y_tick_format_custom", ""))
 
-            self.chart_canvas.axes.grid(
-                config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
-            self.chart_canvas.axes.grid(
-                config.get("show_grid_y", True), axis="y", alpha=config.get("grid_alpha", 0.3))
+            grid_alpha = config.get("grid_alpha", 0.3)
+            if config.get("show_grid_x", True):
+                self.chart_canvas.axes.grid(True, axis="x", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="x")
+            if config.get("show_grid_y", True):
+                self.chart_canvas.axes.grid(True, axis="y", alpha=grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="y")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(
@@ -619,21 +640,6 @@ class ChartEditorWidget(PWidget):
         if self.is_modified:
             self.save_chart()
 
-    def export_chart(self):
-        """Export the chart to file."""
-        try:
-            # Save the current figure
-            filename = f"{self.chart.name}.png"
-            self.chart_canvas.fig.savefig(
-                filename, dpi=300, bbox_inches="tight")
-            self.update_status(f"Exported to {filename} ✓")
-
-            # Reset status after 3 seconds
-            QTimer.singleShot(3000, lambda: self.update_status("Ready"))
-
-        except Exception as e:
-            self.update_status(f"Export error: {str(e)}")
-
     def reset_chart(self):
         """Reset chart to default configuration."""
         self.chart._init_default_config()
@@ -652,13 +658,45 @@ class ChartEditorWidget(PWidget):
         self.status_label.setText(status)
         self._update_status_label_style()
 
+    def _apply_initial_fit_size(self):
+        """Size a freshly opened chart to fill the visible preview panel.
+
+        Runs once, shortly after construction, once the scroll area has a
+        real viewport size to measure. Has no effect if the widget was
+        already closed or the panel hasn't been laid out yet.
+        """
+        if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        viewport = self.canvas_scroll.viewport()
+        width_px = viewport.width()
+        height_px = viewport.height()
+        if width_px <= 0 or height_px <= 0:
+            return
+
+        width_cm, height_cm = fit_size_cm(
+            width_px, height_px, self.chart_canvas.fig.dpi,
+            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
+            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+
+        self.width_spin.blockSignals(True)
+        self.height_spin.blockSignals(True)
+        self.width_spin.setValue(width_cm)
+        self.height_spin.setValue(height_cm)
+        self.width_spin.blockSignals(False)
+        self.height_spin.blockSignals(False)
+        self._on_size_changed()
+
     def _on_size_changed(self):
         """Handle chart size changes."""
         if hasattr(self, "chart_canvas"):
-            width = self.width_spin.value()
-            height = self.height_spin.value()
-            self.chart_canvas.set_size(width, height)
-            self.update_status("Chart size updated")
+            try:
+                width = cm_to_inches(self.width_spin.value())
+                height = cm_to_inches(self.height_spin.value())
+                self.chart_canvas.set_size(width, height)
+                self.update_status("Chart size updated")
+            except Exception as e:
+                self.update_status(f"Resize Error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
@@ -666,8 +704,11 @@ class ChartEditorWidget(PWidget):
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
         if hasattr(self, "chart_canvas"):
-            self.chart_canvas.reset_zoom()
-            self.update_status("Zoom reset")
+            try:
+                self.chart_canvas.reset_zoom()
+                self.update_status("Zoom reset")
+            except Exception as e:
+                self.update_status(f"Zoom Reset Error: {str(e)}")
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
