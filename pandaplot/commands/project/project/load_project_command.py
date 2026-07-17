@@ -5,8 +5,8 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
-from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
+from pandaplot.services.session import SessionPersistenceManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
 
 
@@ -149,8 +149,8 @@ class LoadProjectCommand(Command):
 
                     # Remember this project so it can be restored on next launch
                     try:
-                        cfg_manager = self.app_context.get_manager(ConfigManager)
-                        cfg_manager.update({"last_project_path": file_path}, save=True)
+                        session_manager = self.app_context.get_manager(SessionPersistenceManager)
+                        session_manager.update_project(file_path)
                     except Exception as e:  # noqa: BLE001
                         self.logger.warning("Failed to persist last_project_path: %s", e)
 

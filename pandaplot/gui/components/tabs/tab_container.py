@@ -16,7 +16,7 @@ from pandaplot.models.events import (
 )
 from pandaplot.models.project.items import Chart, Dataset, Note
 from pandaplot.models.state.app_context import AppContext
-from pandaplot.services.config.config_manager import ConfigManager
+from pandaplot.services.session import SessionPersistenceManager
 
 
 class TabContainer(PWidget):
@@ -203,17 +203,14 @@ class TabContainer(PWidget):
         if not self.app_context or not self.app_context.get_app_state().has_project:
             return
         try:
-            cfg_manager = self.app_context.get_manager(ConfigManager)
+            session_manager = self.app_context.get_manager(SessionPersistenceManager)
             active_widget = self.tab_widget.currentWidget()
             active_id = None
             if active_widget is not None:
                 data = self.get_tab_data(active_widget)
                 if data.get("type") != "other":
                     active_id = data.get("id")
-            cfg_manager.update({
-                "last_open_tabs": list(self.tabs.keys()),
-                "last_active_tab_id": active_id,
-            }, save=True)
+            session_manager.update_tabs(list(self.tabs.keys()), active_id)
         except Exception as e:  # noqa: BLE001
             self.logger.warning("Failed to persist tab session: %s", e)
 
@@ -263,11 +260,11 @@ class TabContainer(PWidget):
                 # Create a new project first
                 self.handle_new_project()
 
-            # Show file dialog for CSV import
-            from pandaplot.commands.project.dataset.import_csv_command import (
-                ImportCsvCommand,
+            # Show file dialog for data import (CSV or single-sheet Excel)
+            from pandaplot.commands.project.dataset.import_data_command import (
+                ImportDataCommand,
             )
-            command = ImportCsvCommand(self.app_context)
+            command = ImportDataCommand(self.app_context)
             self.app_context.get_command_executor().execute_command(command)
 
     def create_welcome_tab(self):

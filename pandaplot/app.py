@@ -13,6 +13,7 @@ from pandaplot.models.project.items import Chart, Dataset, Folder, Note
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
+from pandaplot.services.session import SessionPersistenceManager
 from pandaplot.services.theme import ThemeManager
 from pandaplot.storage.chart_data_manager import ChartDataManager
 from pandaplot.storage.dataset_data_manager import DatasetDataManager
@@ -42,12 +43,13 @@ def build_app_context() -> AppContext:
     config_manager = ConfigManager(event_bus)
     config_manager.load()
     theme_manager = ThemeManager(event_bus, config_manager)
+    session_manager = SessionPersistenceManager(config_manager)
     ui_controller = UIController()
     command_executor = CommandExecutor()
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext
-    managers = [command_executor, ui_controller, config_manager, theme_manager, task_scheduler, project_data_manager]
+    managers = [command_executor, ui_controller, config_manager, theme_manager, session_manager, task_scheduler, project_data_manager]
 
     return AppContext(app_state=app_state, event_bus=event_bus, managers=managers)
 
@@ -77,14 +79,13 @@ def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) 
 
     No-op if no project was remembered, or the remembered file no longer exists.
     """
-    config_manager = app_context.get_manager(ConfigManager)
-    cfg = config_manager.config
-    last_path = cfg.last_project_path
+    session_manager = app_context.get_manager(SessionPersistenceManager)
+    last_path = session_manager.last_project_path
     if not last_path or not os.path.isfile(last_path):
         return
 
-    tab_ids = list(cfg.last_open_tabs)
-    active_tab_id = cfg.last_active_tab_id
+    tab_ids = session_manager.last_open_tabs
+    active_tab_id = session_manager.last_active_tab_id
 
     def _on_loaded(project) -> None:  # noqa: ANN001 - Project, avoiding import cycle concerns
         main_window.tab_container.restore_tab_session(tab_ids, active_tab_id)
