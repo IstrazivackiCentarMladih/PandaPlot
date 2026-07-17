@@ -1,35 +1,80 @@
 import logging
+import re
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.optimize import curve_fit
 
 from pandaplot.models.events import FitEvents
 
+FIT_DEFINITIONS = {
+    "Linear": {
+        "function": lambda x, a, b: a * x + b,
+        "parameters": ["a", "b"],
+        "equation": "a*x + b",
+    },
+    "Quadratic": {
+        "function": lambda x, a, b, c: a * x ** 2 + b * x + c,
+        "parameters": ["a", "b", "c"],
+        "equation": "a*x**2 + b*x + c",
+    },
+    "Exponential": {
+        "function": lambda x, a, b, c: a * np.exp(b * x) + c,
+        "parameters": ["a", "b", "c"],
+        "equation": "a*exp(b*x) + c",
+    },
+    "Power": {
+        "function": lambda x, a, b, c: a * (x ** b) + c,
+        "parameters": ["a", "b", "c"],
+        "equation": "a*x**b + c",
+    },
+    "Logarithmic": {
+        "function": lambda x, a, b: a * np.log(x) + b,
+        "parameters": ["a", "b"],
+        "equation": "a*ln(x) + b",
+    },
+}
+
+@dataclass
+class FitResult:
+    fit_type: str
+    parameters: np.ndarray
+    errors: np.ndarray
+    param_names: list[str]
+    params: dict[str, float]
+    r_squared: float | None
+    x_fit: np.ndarray
+    y_fit: np.ndarray
+    x_data: np.ndarray
+    y_data: np.ndarray
+    covariance: np.ndarray
+    source_dataset_id: str | None = None
+    source_x_column: str | None = None
+    source_y_column: str | None = None
 
 #performs fit, doesn't include combobox methods
 class FitService:
     def __init__(self, fit_panel):
+        self.fixed_params = {}
         self.fit_results = None
         self.fit_panel = fit_panel
         self.logger = logging.getLogger(__name__)
 
+    def _get_fit_name(self, fit_type: str) -> str:
+        return fit_type.split(" (")[0]
+
     def _get_fit_func(self, fit_type: str):
         """Get the fitting function based on the selected type."""
-        if "Linear" in fit_type:
-            return lambda x, a, b: a * x + b, ["a", "b"]
-        elif "Quadratic" in fit_type:
-            return lambda x, a, b, c: a * x ** 2 + b * x + c, ["a", "b", "c"]
-        elif "Exponential" in fit_type:
-            return lambda x, a, b, c: a * np.exp(b * x) + c, ["a", "b", "c"]
-        elif "Power" in fit_type:
-            return lambda x, a, b, c: a * (x ** b) + c, ["a", "b", "c"]
-        elif "Logarithmic" in fit_type:
-            return lambda x, a, b: a * np.log(x) + b, ["a", "b"]
-        elif "Custom" in fit_type:
+        fit_name = self._get_fit_name(fit_type)
+        if fit_name == "Custom Function":
             return self._create_custom_function()
-        else:
+
+        fit = FIT_DEFINITIONS.get(fit_name)
+        if fit is None:
             self.logger.error("Unknown fit type: %s", fit_type)
             raise ValueError(f"Unknown fit type: {fit_type}")
+
+        return fit["function"], fit["parameters"]
 
     def insert_function(self, function_str):
         cursor_pos = self.fit_panel.custom_function_edit.cursorPosition()
@@ -65,8 +110,8 @@ class FitService:
                     key, val = item.split("=")
                     fixed_params[key.strip()] = float(val)
 
-        # free parameters for fit
-        free_params = [p for p in params if p not in fixed_params]
+        self.fixed_params = fixed_params.copy()
+        free_params = [p for p in params if p not in fixed_params] #free parameters for fit
 
         # Create function dynamically
         def custom_func(x, *free_args):
@@ -79,7 +124,7 @@ class FitService:
                 local_vars[p] = free_args[i]
             return eval(function_str, {"__builtins__": {}}, local_vars)
 
-        return custom_func, free_params
+        return custom_func, params
 
     def perform_fit(self): #fit_services
         """Perform the curve fitting."""
@@ -122,19 +167,32 @@ class FitService:
             x_fit = np.linspace(x_data.min(), x_data.max(), self.fit_panel.fit_points_spin.value())
             y_fit = fit_func(x_fit, *popt)
 
+            # param dictionary define
+            fixed_params = dict(self.fixed_params)
+            params = {}
+            popt_index = 0
+
+            for name in param_names:
+                if name in fixed_params:
+                    params[name] = fixed_params[name]
+                else:
+                    params[name] = popt[popt_index]
+                    popt_index += 1
+
             # Store results
-            self.fit_results = {
-                "fit_type": fit_type,
-                "parameters": popt,
-                "errors": perr,
-                "param_names": param_names,
-                "r_squared": r_squared,
-                "x_fit": x_fit,
-                "y_fit": y_fit,
-                "x_data": x_data,
-                "y_data": y_data,
-                "covariance": pcov
-            }
+            self.fit_results = FitResult(
+                fit_type=fit_type,
+                parameters=popt,
+                errors=perr,
+                param_names=param_names,
+                params=params,
+                r_squared=r_squared,
+                x_fit=x_fit,
+                y_fit=y_fit,
+                x_data=x_data,
+                y_data=y_data,
+                covariance=pcov,
+            )
 
             # Display results
             self.fit_panel.display_results()
@@ -146,7 +204,7 @@ class FitService:
             self.fit_panel.publish_event(FitEvents.FIT_COMPLETED, {
                 "fit_results": self.fit_results,
                 "chart_id": self.fit_panel.current_chart.id if self.fit_panel.current_chart else None,
-                "fit_type": self.fit_results.get("fit_type", "Unknown")
+                "fit_type": self.fit_results.fit_type
             })
 
         except Exception as e:
@@ -155,33 +213,48 @@ class FitService:
             self.fit_panel.equation_label.setText("Fit failed")
             self.fit_panel.apply_button.setEnabled(False)
 
-    def format_equation(self, fit_type: str, params):
-        """Format the equation string."""
-        if "Linear" in fit_type:
-            a, b = params
-            return f"y = {a:.6g}x + {b:.6g}"
-        elif "Quadratic" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}x² + {b:.6g}x + {c:.6g}"
-        elif "Exponential" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}e^({b:.6g}x) + {c:.6g}"
-        elif "Power" in fit_type:
-            a, b, c = params
-            return f"y = {a:.6g}x^{b:.6g} + {c:.6g}"
-        elif "Logarithmic" in fit_type:
-            a, b = params
-            return f"y = {a:.6g}ln(x) + {b:.6g}"
-        elif "Custom" in fit_type:
-            function_str = self.fit_panel.custom_function_edit.text().strip()
-            params_str = self.fit_panel.custom_params_edit.text().strip()
-            param_names = [p.strip() for p in params_str.split(",")]
-
-            # Substitute parameter values
-            equation = function_str
-            for name, value in zip(param_names, params, strict=False):
-                equation = equation.replace(name, f"{value:.6g}")
-            return f"y = {equation}"
+    def format_equation(self, fit_type: str, params: dict) -> str:
+        fit_name = self._get_fit_name(fit_type)
+        if fit_name == "Custom Function":
+            equation = self.fit_panel.custom_function_edit.text().strip()
         else:
-            return "Unknown equation"
+            fit = FIT_DEFINITIONS.get(fit_name)
+            if fit is None:
+                return "Unknown equation"
+            equation = fit["equation"]
 
+        for name, value in params.items():
+            try:
+                num = float(value)
+                replacement = f"{num:.6g}"
+            except (ValueError, TypeError):
+                replacement = str(value)
+
+            equation = re.sub(
+                rf"\b{re.escape(name)}\b",
+                replacement,
+                equation,
+            )
+
+        equation = equation.replace("+-", "-").replace("+ -", "-")
+        return f"y = {equation}"
+
+    def format_parameters(self, param_names, params, errors) -> str:
+        """format fitted parameters for display"""
+        lines = []
+        fixed_params = self.fixed_params
+        free_index = 0
+
+        for name in param_names:
+            value = params[name]
+            if name in fixed_params:
+                lines.append(f"  {name} = {value:.6g}  (fixed)")
+            else:
+                error = errors[free_index]
+                if np.isinf(error) or np.isnan(error):
+                    lines.append(f"  {name} = {value:.6g}  (no error estimate)")
+                else:
+                    lines.append(f"  {name} = {value:.6g} ± {error:.6g}")
+                free_index += 1
+
+        return "\n".join(lines)
