@@ -133,6 +133,12 @@ class ChartPropertiesPanel(PWidget):
         # Baseline for Cancel and for Apply's undo: the chart state as of the
         # last load into this panel or the last Apply.
         self._loaded_snapshot: Optional[dict] = None
+        # Tracks whether the loaded chart's type is one the combo can
+        # represent, so an unsupported/hidden type (e.g. a saved "box" or
+        # "violin" chart) isn't silently overwritten with "line" just
+        # because that's what the combo defaults to for display.
+        self._loaded_chart_type_supported: bool = True
+        self._chart_type_touched_by_user: bool = False
 
         self._initialize()
         self._connect_signals()
@@ -775,7 +781,7 @@ class ChartPropertiesPanel(PWidget):
         self.reset_button.clicked.connect(self._on_reset)
         
         # Connect chart-level configuration changes
-        self.chart_type_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.chart_type_combo.currentIndexChanged.connect(self._on_chart_type_index_changed)
         self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_label_edit.textChanged.connect(self._on_chart_config_changed)
@@ -1065,6 +1071,16 @@ class ChartPropertiesPanel(PWidget):
                 "update_type": "series_updated"
             })
 
+    def _on_chart_type_index_changed(self):
+        """Handle chart type combo changes, tracking explicit user intent.
+
+        Distinguishes a user picking a chart type from the combo being set
+        programmatically while loading a chart (see _loaded_chart_type_supported).
+        """
+        if not self._updating_controls:
+            self._chart_type_touched_by_user = True
+        self._on_chart_config_changed()
+
     def _on_x_auto_limits_toggled(self, checked):
         self.x_min_spin.setEnabled(not checked)
         self.x_max_spin.setEnabled(not checked)
@@ -1161,7 +1177,9 @@ class ChartPropertiesPanel(PWidget):
                 ChartType.HISTOGRAM: "hist",
             }
             chart_type = self.chart_type_combo.currentData()
-            if chart_type in chart_type_map:
+            if chart_type in chart_type_map and (
+                self._loaded_chart_type_supported or self._chart_type_touched_by_user
+            ):
                 self.current_chart.chart_type = chart_type_map[chart_type]
         
         # Emit update event so any open chart tab refreshes immediately
@@ -1454,6 +1472,7 @@ class ChartPropertiesPanel(PWidget):
         self.current_chart = chart
         self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
         self._has_unsaved_changes = False
+        self._chart_type_touched_by_user = False
         self._update_status_indicator()
 
         if chart:
@@ -1475,6 +1494,7 @@ class ChartPropertiesPanel(PWidget):
                     "bar": ChartType.BAR,
                     "hist": ChartType.HISTOGRAM,
                 }
+                self._loaded_chart_type_supported = chart.chart_type in chart_type_map
                 chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
                 for i in range(self.chart_type_combo.count()):
                     if self.chart_type_combo.itemData(i) == chart_type:
@@ -1501,7 +1521,7 @@ class ChartPropertiesPanel(PWidget):
                     self.series_config_group.setEnabled(False)
                     self.add_series_button.show()
                     self.remove_series_button.hide()
-            
+
                 # Load configuration
                 config = chart.config
                 self.x_label_edit.setText(config.get("x_label", ""))

@@ -1,6 +1,6 @@
 from typing import override
 
-from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator
+from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -16,11 +16,17 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches
+from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -39,7 +45,8 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         axis.set_major_locator(MaxNLocator(nbins=count))
     elif mode == "step":
         axis.set_major_locator(MultipleLocator(step))
-    # "auto" -> leave matplotlib's default locator in place
+    else:
+        axis.set_major_locator(AutoLocator())
 
     if fmt == "integer":
         axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
@@ -56,7 +63,8 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
             except Exception:
                 return str(v)
         axis.set_major_formatter(FuncFormatter(_safe_custom))
-    # "auto" -> leave matplotlib's default formatter in place
+    else:
+        axis.set_major_formatter(ScalarFormatter())
 
 
 def resolve_series_data(project, series, chart_type=None):
@@ -108,6 +116,11 @@ class ChartEditorWidget(PWidget):
 
         # Apply theme after UI is fully constructed
         QTimer.singleShot(100, self._apply_theme)
+
+        # Fit the chart to the preview panel once the layout has settled and
+        # the panel's real viewport size is known (a new chart has no saved
+        # size yet, so start it filling the visible preview area).
+        QTimer.singleShot(100, self._apply_initial_fit_size)
 
     @override
     def _apply_theme(self):
@@ -249,7 +262,7 @@ class ChartEditorWidget(PWidget):
         # Determine color based on status
         if "Modified" in status_text:
             color = "#ffc107"  # Warning yellow
-        elif "Saved" in status_text or "Exported" in status_text:
+        elif "Saved" in status_text:
             color = "#28a745"  # Success green
         elif "Error" in status_text:
             color = "#dc3545"  # Error red
@@ -282,7 +295,7 @@ class ChartEditorWidget(PWidget):
             if not cfg:
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
-            if dpi and self.chart_canvas:
+            if dpi and isValid(self.chart_canvas):
                 self.chart_canvas.set_dpi(dpi)
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
@@ -316,10 +329,25 @@ class ChartEditorWidget(PWidget):
         self.size_label = QLabel("Size:")
         self.preview_toolbar.addWidget(self.size_label)
 
+        # Fetch preferred DPI and default chart size from config manager
+        dpi = 100
+        default_width_cm = 20
+        default_height_cm = 15
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            cfg = getattr(cfg_manager, "config", None)
+            chart_display = getattr(cfg, "chart_display", None) if cfg else None
+            if chart_display:
+                dpi = getattr(chart_display, "dpi", dpi) or dpi
+                default_width_cm = getattr(chart_display, "default_width_cm", default_width_cm) or default_width_cm
+                default_height_cm = getattr(chart_display, "default_height_cm", default_height_cm) or default_height_cm
+        except Exception:
+            pass
+
         # Width control
         self.width_spin = QSpinBox()
-        self.width_spin.setRange(10, 50)
-        self.width_spin.setValue(20)
+        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.width_spin.setValue(default_width_cm)
         self.width_spin.setSuffix(" cm")
         self.width_spin.setToolTip("Chart width in centimeters")
         self.width_spin.valueChanged.connect(self._on_size_changed)
@@ -330,24 +358,16 @@ class ChartEditorWidget(PWidget):
 
         # Height control
         self.height_spin = QSpinBox()
-        self.height_spin.setRange(8, 40)
-        self.height_spin.setValue(15)
+        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.height_spin.setValue(default_height_cm)
         self.height_spin.setSuffix(" cm")
         self.height_spin.setToolTip("Chart height in centimeters")
         self.height_spin.valueChanged.connect(self._on_size_changed)
         self.preview_toolbar.addWidget(self.height_spin)
 
         # Chart canvas
-        # Fetch preferred DPI from config manager
-        dpi = 100
-        try:
-            cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = getattr(cfg_manager, "config", None)
-            if cfg and getattr(cfg, "chart_display", None):
-                dpi = getattr(cfg.chart_display, "dpi", dpi) or dpi
-        except Exception:
-            pass
-        self.chart_canvas = ChartCanvas(width=cm_to_inches(20), height=cm_to_inches(15), dpi=dpi)
+        self.chart_canvas = ChartCanvas(
+            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -376,6 +396,7 @@ class ChartEditorWidget(PWidget):
         canvas_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         canvas_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
+        self.canvas_scroll = canvas_scroll
         preview_layout.addWidget(canvas_scroll)
 
         layout.addWidget(self.preview_frame)
@@ -418,8 +439,6 @@ class ChartEditorWidget(PWidget):
         reset_zoom_action.setToolTip("Reset chart zoom to fit all data")
         reset_zoom_action.triggered.connect(self._on_reset_zoom)
         toolbar.addAction(reset_zoom_action)
-
-        toolbar.addSeparator()
 
     def load_chart_config(self):
         """Load chart configuration into UI controls."""
@@ -581,6 +600,35 @@ class ChartEditorWidget(PWidget):
 
         self.status_label.setText(status)
         self._update_status_label_style()
+
+    def _apply_initial_fit_size(self):
+        """Size a freshly opened chart to fill the visible preview panel.
+
+        Runs once, shortly after construction, once the scroll area has a
+        real viewport size to measure. Has no effect if the widget was
+        already closed or the panel hasn't been laid out yet.
+        """
+        if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        viewport = self.canvas_scroll.viewport()
+        width_px = viewport.width()
+        height_px = viewport.height()
+        if width_px <= 0 or height_px <= 0:
+            return
+
+        width_cm, height_cm = fit_size_cm(
+            width_px, height_px, self.chart_canvas.fig.dpi,
+            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
+            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+
+        self.width_spin.blockSignals(True)
+        self.height_spin.blockSignals(True)
+        self.width_spin.setValue(width_cm)
+        self.height_spin.setValue(height_cm)
+        self.width_spin.blockSignals(False)
+        self.height_spin.blockSignals(False)
+        self._on_size_changed()
 
     def _on_size_changed(self):
         """Handle chart size changes."""

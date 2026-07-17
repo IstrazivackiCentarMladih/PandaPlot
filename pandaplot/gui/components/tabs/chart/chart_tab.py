@@ -120,29 +120,26 @@ class ChartTab(PWidget):
 
         # Only respond if this is our chart
         if fit_chart_id == self.chart.id:
-            fit_results = event_data.get("fit_results", {})
-            fit_type = fit_results.get("fit_type", "Unknown")
+            fit_results = event_data.get("fit_results")
+            fit_type = fit_results.fit_type if fit_results else "Unknown"
             source_dataset_name = event_data.get("dataset_name", "Unknown")
 
             # Get the source dataset info from the fit results
-            source_dataset_id = fit_results.get("source_dataset_id", "")
-            source_x_column = fit_results.get("source_x_column", "")
-            source_y_column = fit_results.get("source_y_column", "")
+            source_dataset_id = fit_results.source_dataset_id if fit_results else ""
+            source_x_column = fit_results.source_x_column if fit_results else ""
+            source_y_column = fit_results.source_y_column if fit_results else ""
 
             # fit_type is a full descriptive string (e.g. "Linear (y = ax + b)"),
             # so resolve both a short display name and its color together.
             short_fit_name, fit_color = _resolve_fit_style(fit_type)
 
-            x_fit = np.array(fit_results.get("x_fit", []))
-            y_fit = np.array(fit_results.get("y_fit", []))
+            x_fit = np.array(fit_results.x_fit)
+            y_fit = np.array(fit_results.y_fit)
 
-            param_names = fit_results.get("param_names", [])
-            parameters = fit_results.get("parameters", [])
-            errors = fit_results.get("errors", [])
-            fit_params = {name: float(value) for name, value in zip(param_names, parameters, strict=False)}
+            fit_params = fit_results.params
             fit_stats = {
-                "errors": {name: float(value) for name, value in zip(param_names, errors, strict=False)},
-                "r_squared": fit_results.get("r_squared"),
+                "errors": {name: float(value) for name, value in zip(fit_results.param_names, fit_results.errors, strict=False)},
+                "r_squared": fit_results.r_squared,
             }
 
             self.chart.add_fit_data(

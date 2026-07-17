@@ -347,9 +347,10 @@ class Chart(Item):
         chart.modified_at = data.get("modified_at", chart.created_at)
         chart.metadata = data.get("metadata", {})
         
-        # Set chart-specific attributes
-        chart.config = data.get("config", {})
-        chart.style = data.get("style", {})
+        # Set chart-specific attributes, merging persisted values over the
+        # defaults so older saved charts still get any newly added keys
+        chart.config.update(data.get("config", {}))
+        chart.style.update(data.get("style", {}))
         
         # Load data series
         series_data = data.get("data_series", [])
@@ -390,7 +391,7 @@ class Chart(Item):
                 fit_stats=fit_dict.get("fit_stats", {})
             )
             chart.fit_data.append(fit)
-        
+
         # Ensure required config keys exist
         if not chart.config:
             chart._init_default_config()
