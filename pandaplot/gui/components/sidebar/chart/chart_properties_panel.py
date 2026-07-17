@@ -1454,9 +1454,16 @@ class ChartPropertiesPanel(PWidget):
         columns = self._populate_column_combos(dataset_id)
 
         # Set defaults if possible
-        if len(columns) >= 2:
+        if columns:
             self.x_column_combo.setCurrentIndex(0)
-            self.y_column_combo.setCurrentIndex(1)
+            self.y_column_combo.setCurrentIndex(1 if len(columns) >= 2 else 0)
+
+        # setCurrentIndex() only emits currentTextChanged when the index
+        # actually changes, which it won't for indices auto-selected by
+        # _populate_column_combos while signals were blocked. Sync
+        # explicitly so the selected series' x_column/y_column never go
+        # stale relative to the combos.
+        self._on_series_config_changed()
     
     def _on_apply(self):
         """Handle apply button click."""
