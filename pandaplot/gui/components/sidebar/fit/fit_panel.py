@@ -1,7 +1,7 @@
 """Curve fitting panel for performing regression analysis on chart data."""
 import logging
-from typing import Optional, override
 from dataclasses import replace
+from typing import Optional, override
 
 import pandas as pd
 from PySide6.QtCore import Qt, Signal

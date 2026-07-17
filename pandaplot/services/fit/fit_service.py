@@ -1,8 +1,10 @@
 import logging
 import re
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.optimize import curve_fit
-from dataclasses import dataclass
+
 from pandaplot.models.events import FitEvents
 
 FIT_DEFINITIONS = {
