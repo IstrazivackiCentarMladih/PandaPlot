@@ -1,6 +1,7 @@
 from typing import override
 
 import pandas as pd
+from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
@@ -24,6 +25,42 @@ from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
+    """Apply tick placement and label formatting to a matplotlib Axis.
+
+    axis: a matplotlib Axis object (e.g. ax.xaxis or ax.yaxis)
+    mode: "auto" | "count" | "step" - tick placement strategy
+    count: number of ticks when mode == "count"
+    step: fixed spacing between ticks when mode == "step"
+    fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
+    custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
+    """
+    if mode == "count":
+        axis.set_major_locator(MaxNLocator(nbins=count))
+    elif mode == "step":
+        axis.set_major_locator(MultipleLocator(step))
+    else:
+        axis.set_major_locator(AutoLocator())
+
+    if fmt == "integer":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.0f}"))
+    elif fmt == "1decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.1f}"))
+    elif fmt == "2decimal":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2f}"))
+    elif fmt == "scientific":
+        axis.set_major_formatter(FuncFormatter(lambda v, _: f"{v:.2e}"))
+    elif fmt == "custom" and custom_fmt:
+        def _safe_custom(v, _, _fmt=custom_fmt):
+            try:
+                return _fmt.format(v)
+            except Exception:
+                return str(v)
+        axis.set_major_formatter(FuncFormatter(_safe_custom))
+    else:
+        axis.set_major_formatter(ScalarFormatter())
 
 
 class ChartEditorWidget(PWidget):
@@ -392,7 +429,7 @@ class ChartEditorWidget(PWidget):
             "star": "*", "plus": "+", "cross": "x", "none": "",
         }
         _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.",
+            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
         }
 
         try:
@@ -435,7 +472,7 @@ class ChartEditorWidget(PWidget):
                                                                 markerfacecolor=mfc,
                                                                 markeredgecolor=mec,
                                                                 label=series.label,
-                                                                alpha=1.0 if series.visible else 0.3)
+                                                                alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "scatter":
                                     mfc = series.marker_color or series.color
                                     mec = series.marker_edge_color or series.color
@@ -445,17 +482,17 @@ class ChartEditorWidget(PWidget):
                                                                    marker=_marker_map.get(series.marker_style, "o"),
                                                                    s=series.marker_size*10,
                                                                    label=series.label,
-                                                                   alpha=1.0 if series.visible else 0.3)
+                                                                   alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "bar":
                                     self.chart_canvas.axes.bar(x_data, y_data,
                                                                color=series.color,
                                                                label=series.label,
-                                                               alpha=1.0 if series.visible else 0.3)
+                                                               alpha=series.alpha if series.visible else 0.3)
                                 elif self.chart.chart_type == "hist":
                                     self.chart_canvas.axes.hist(y_data, bins=20,
                                                                 color=series.color,
                                                                 label=series.label,
-                                                                alpha=0.7 if series.visible else 0.3)
+                                                                alpha=series.alpha if series.visible else 0.3)
                             else:
                                 # Column not found - use sample data as fallback
                                 x_data = self.sample_data["x"]
@@ -512,14 +549,38 @@ class ChartEditorWidget(PWidget):
                 "title", self.chart.name), fontsize=14, fontweight="bold")
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
+            self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
+            self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
+            self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
+            self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
 
-            if config.get("show_grid", True):
-                self.chart_canvas.axes.grid(
-                    True, alpha=config.get("grid_alpha", 0.3))
+            if not config.get("x_auto_limits", True):
+                self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
+            if not config.get("y_auto_limits", True):
+                self.chart_canvas.axes.set_ylim(config.get("y_min", 0.0), config.get("y_max", 1.0))
+
+            apply_axis_ticks(
+                self.chart_canvas.axes.xaxis,
+                config.get("x_tick_mode", "auto"), config.get("x_tick_count", 5),
+                config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
+                config.get("x_tick_format_custom", ""))
+            apply_axis_ticks(
+                self.chart_canvas.axes.yaxis,
+                config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
+                config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
+                config.get("y_tick_format_custom", ""))
+
+            self.chart_canvas.axes.grid(
+                config.get("show_grid_x", True), axis="x", alpha=config.get("grid_alpha", 0.3))
+            self.chart_canvas.axes.grid(
+                config.get("show_grid_y", True), axis="y", alpha=config.get("grid_alpha", 0.3))
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 self.chart_canvas.axes.legend(
-                    loc=config.get("legend_position", "upper right"))
+                    loc=config.get("legend_position", "upper right"),
+                    fontsize=config.get("legend_font_size", 10),
+                    facecolor=config.get("legend_bg_color", "#ffffff"),
+                    frameon=config.get("legend_show_frame", True))
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
