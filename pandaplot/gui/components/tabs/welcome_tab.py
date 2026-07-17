@@ -18,12 +18,13 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
-    
+
 class WelcomeTab(PWidget):
     """
     Welcome tab widget similar to VS Code's welcome screen.
@@ -34,6 +35,7 @@ class WelcomeTab(PWidget):
     open_project_requested = Signal()
     recent_project_selected = Signal(str)  # project file path
     import_data_requested = Signal()  # importing data
+    example_project_selected = Signal(str)  # example project file path
 
     def __init__(self, app_context:AppContext, parent:QWidget):
         super().__init__(app_context=app_context, parent=parent)
@@ -251,12 +253,18 @@ class WelcomeTab(PWidget):
         examples_btn = self.create_action_button(
             "📚 Examples",
             "Browse sample projects and tutorials",
-            lambda: self.logger.info("Examples action triggered")  # TODO: Implement
+            self.show_examples_dialog
         )
         actions_layout.addWidget(examples_btn, 1, 1)
 
         layout.addLayout(actions_layout)
-    
+
+    def show_examples_dialog(self):
+        """Open the examples dialog and emit the chosen project's path, if any."""
+        dialog = ExamplesDialog(self.app_context, self)
+        if dialog.exec() and dialog.selected_path:
+            self.example_project_selected.emit(dialog.selected_path)
+
     def create_recent_projects_section(self, layout):
         """Create the recent projects section."""
         # Section title
