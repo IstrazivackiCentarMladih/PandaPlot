@@ -143,6 +143,7 @@ class MainMenu(PMenuBar):
         file_menu.addSeparator()
 
         save_action = QAction("Save", self)
+        save_action.setShortcut(QKeySequence.StandardKey.Save)
         save_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(SaveProjectCommand(self.app_context)))
         file_menu.addAction(save_action)

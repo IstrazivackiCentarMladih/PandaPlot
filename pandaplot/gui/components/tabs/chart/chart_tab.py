@@ -2,16 +2,39 @@
 
 from typing import override
 
+import numpy as np
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Chart
 from pandaplot.models.state.app_context import AppContext
+
+# Maps a short fit-type name to its chart color. `fit_type` from the fit panel is a
+# full descriptive string (e.g. "Linear (y = ax + b)"), so lookups use substring
+# matching rather than exact-match, mirroring FitService._get_fit_func.
+FIT_TYPE_COLORS = {
+    "Linear": "#ff0000",       # Red
+    "Quadratic": "#00aa00",    # Green
+    "Exponential": "#0066cc",  # Blue
+    "Power": "#cc00cc",        # Magenta
+    "Logarithmic": "#ff6600",  # Orange
+    "Custom": "#00cccc",       # Cyan
+}
+
+
+def _resolve_fit_style(fit_type: str) -> tuple[str, str]:
+    """Return (short_name, color) for a fit_type string like 'Linear (y = ax + b)'."""
+    for short_name, color in FIT_TYPE_COLORS.items():
+        if short_name in fit_type:
+            return short_name, color
+    return fit_type, "#ff0000"
 
 
 class ChartTab(PWidget):
@@ -44,16 +67,33 @@ class ChartTab(PWidget):
         self.subscribe_to_event(
             UIEvents.TAB_TITLE_CHANGED, self.on_tab_title_changed)
         self.subscribe_to_event(
+            ProjectEvents.PROJECT_ITEM_RENAMED, self.on_chart_renamed)
+        self.subscribe_to_event(
             ChartEvents.CHART_UPDATED, self.on_chart_updated)
         self.subscribe_to_event(FitEvents.FIT_APPLIED, self.on_fit_applied)
 
     def on_tab_title_changed(self, event_data: dict):
         """Handle tab title change events."""
-        # Check if this title change is for our chart
-        chart_name = event_data.get("new_title")
-        if chart_name and event_data.get("tab_type") == "chart":
-            # This is handled by the tab container - we just need to acknowledge the event
-            pass
+        if event_data.get("tab_type") == "chart" and event_data.get("chart_id") == self.chart.id:
+            self.refresh_tab_title()
+
+    def on_chart_renamed(self, event_data: dict):
+        """Update the tab title when the underlying chart item is renamed."""
+        if event_data.get("item_id") == self.chart.id:
+            self.refresh_tab_title()
+
+    def refresh_tab_title(self):
+        """Push the current tab title up to the tab container."""
+        parent_container = self.parent()
+        while parent_container is not None and not hasattr(parent_container, "update_tab_title"):
+            parent_container = parent_container.parent()
+        if parent_container:
+            update_fn = getattr(parent_container, "update_tab_title", None)
+            if callable(update_fn):
+                try:
+                    update_fn(self, self.get_tab_title())
+                except Exception:
+                    pass
 
     def on_chart_updated(self, event_data: dict):
         """Handle chart update events from other components."""
@@ -61,15 +101,18 @@ class ChartTab(PWidget):
 
         # Only respond if this is our chart
         if updated_chart_id == self.chart.id:
-            # Guard: Check if editor still exists before refreshing
-            if hasattr(self, "chart_editor") and self.chart_editor is not None:
-                try:
-                    self.chart_editor.refresh_chart()
-                    self.logger.debug(
-                        "ChartTab refreshed for chart %s", self.chart.name)
-                except RuntimeError as e:
-                    # Widget was deleted during callback
-                    self.logger.debug(f"Chart editor deleted during update: {e}")
+            self._refresh_chart_editor()
+
+    def _refresh_chart_editor(self):
+        """Refresh the chart editor's preview, guarding against a deleted widget."""
+        if hasattr(self, "chart_editor") and isValid(self.chart_editor):
+            try:
+                self.chart_editor.refresh_chart()
+                self.logger.debug(
+                    "ChartTab refreshed for chart %s", self.chart.name)
+            except RuntimeError as e:
+                # Widget was deleted during callback
+                self.logger.debug(f"Chart editor deleted during update: {e}")
 
     def on_fit_applied(self, event_data: dict):
         """Handle fit applied events to add fit curves to the chart."""
@@ -86,24 +129,18 @@ class ChartTab(PWidget):
             source_x_column = fit_results.source_x_column if fit_results else ""
             source_y_column = fit_results.source_y_column if fit_results else ""
 
-            # Generate unique color for fit line based on fit type
-            fit_colors = {
-                "Linear": "#ff0000",      # Red
-                "Polynomial": "#00aa00",  # Green
-                "Exponential": "#0066cc",  # Blue
-                "Logarithmic": "#ff6600",  # Orange
-                "Power": "#cc00cc",       # Magenta
-                "Gaussian": "#00cccc",    # Cyan
-            }
-            fit_color = fit_colors.get(fit_type, "#ff0000")  # Default to red
+            # fit_type is a full descriptive string (e.g. "Linear (y = ax + b)"),
+            # so resolve both a short display name and its color together.
+            short_fit_name, fit_color = _resolve_fit_style(fit_type)
 
-            # Add fit data directly to the chart
-            import numpy as np
             x_fit = np.array(fit_results.x_fit)
             y_fit = np.array(fit_results.y_fit)
 
             fit_params = fit_results.params
-            fit_stats = {"r_squared": fit_results.r_squared}
+            fit_stats = {
+                "errors": {name: float(value) for name, value in zip(fit_results.param_names, fit_results.errors, strict=False)},
+                "r_squared": fit_results.r_squared,
+            }
 
             self.chart.add_fit_data(
                 source_dataset_id=source_dataset_id,
@@ -112,7 +149,7 @@ class ChartTab(PWidget):
                 fit_type=fit_type,
                 x_data=x_fit,
                 y_data=y_fit,
-                label=f"{fit_type} Fit ({source_dataset_name})",
+                label=f"{short_fit_name} Fit ({source_dataset_name})",
                 color=fit_color,
                 line_style="dashed",
                 line_width=2.0,
@@ -120,11 +157,9 @@ class ChartTab(PWidget):
                 fit_stats=fit_stats
             )
 
-            # Refresh the chart display to show the new fit
-            if hasattr(self.chart_editor, "refresh_chart"):
-                self.chart_editor.refresh_chart()
-
-            # Publish chart updated event to notify other components
+            # Publish chart updated event to notify other components; this
+            # loops back into on_chart_updated above and refreshes our own
+            # chart_editor too, so no separate direct refresh call is needed.
             self.publish_event(ChartEvents.CHART_UPDATED, {
                 "chart_id": self.chart.id,
                 "chart": self.chart,
@@ -138,8 +173,3 @@ class ChartTab(PWidget):
     def get_chart(self) -> Chart:
         """Get the chart object."""
         return self.chart
-
-    def refresh_chart(self):
-        """Refresh the chart display when properties are updated externally."""
-        if hasattr(self.chart_editor, "refresh_chart"):
-            self.chart_editor.refresh_chart()

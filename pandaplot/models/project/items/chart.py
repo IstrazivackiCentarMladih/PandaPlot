@@ -2,7 +2,8 @@
 Chart model for managing chart/visualization items in the project.
 """
 
-from dataclasses import dataclass
+import copy
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -24,7 +25,7 @@ class DataSeries:
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
-    marker_size: float = 6.0
+    marker_size: float = 2.0
     visible: bool = True
     alpha: float = 1.0
 
@@ -112,6 +113,7 @@ class Chart(Item):
             "y_tick_format": "auto",
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
+            "hist_bins": 20,
         }
 
         self.style = {
@@ -364,7 +366,7 @@ class Chart(Item):
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
-                marker_size=series_dict.get("marker_size", 6.0),
+                marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 alpha=series_dict.get("alpha", 1.0)
             )
@@ -389,6 +391,42 @@ class Chart(Item):
                 fit_stats=fit_dict.get("fit_stats", {})
             )
             chart.fit_data.append(fit)
-        
+
+        # Ensure required config keys exist
+        if not chart.config:
+            chart._init_default_config()
+
         return chart
+
+
+def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
+    """Capture the mutable chart state that the properties panel can change.
+
+    Fit data x/y arrays are intentionally not snapshotted — only their
+    editable style fields — because the arrays are immutable in the panel
+    and can be large.
+    """
+    return {
+        "config": copy.deepcopy(chart.config),
+        "chart_type": chart.chart_type,
+        "name": chart.name,
+        "data_series": [asdict(s) for s in chart.data_series],
+        "fit_data_styles": [
+            {"color": f.color, "line_width": f.line_width}
+            for f in chart.fit_data
+        ],
+    }
+
+
+def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
+    """Restore chart state captured by snapshot_chart_state."""
+    chart.config = copy.deepcopy(snapshot["config"])
+    chart.chart_type = snapshot["chart_type"]
+    chart.name = snapshot["name"]
+    chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
+    for i, fit_style in enumerate(snapshot["fit_data_styles"]):
+        if i < len(chart.fit_data):
+            chart.fit_data[i].color = fit_style["color"]
+            chart.fit_data[i].line_width = fit_style["line_width"]
+    chart.update_modified_time()
 
