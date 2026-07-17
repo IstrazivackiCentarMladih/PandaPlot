@@ -5,6 +5,7 @@ matplotlib Axis (no Qt/QApplication involved).
 """
 
 import matplotlib
+
 matplotlib.use("Agg")  # headless backend, no display/Qt required
 
 from matplotlib.figure import Figure
