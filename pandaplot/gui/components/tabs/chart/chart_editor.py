@@ -4,12 +4,13 @@ from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleL
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QScrollArea,
     QSizePolicy,
-    QSpinBox,
     QToolBar,
     QVBoxLayout,
     QWidget,
@@ -174,17 +175,18 @@ class ChartEditorWidget(PWidget):
         self.chart_canvas.apply_navigation_theme(base_fg, card_bg, card_border)
 
     def _apply_spinbox_style(self, spinbox):
-        """Apply theme-aware styling to a QSpinBox"""
+        """Apply theme-aware styling to a spin box (QSpinBox or QDoubleSpinBox)"""
         try:
             theme_manager = self.app_context.get_manager(ThemeManager)
             palette = theme_manager.get_surface_palette()
-            
+
             base_fg = palette.get("base_fg", "#000000")
             card_border = palette.get("card_border", "#dee2e6")
             card_bg = palette.get("card_bg", "#f8f9fa")
 
+            spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
             spinbox.setStyleSheet(f"""
-                QSpinBox {{
+                QAbstractSpinBox {{
                     background-color: {card_bg};
                     border: 1px solid {card_border};
                     border-radius: 3px;
@@ -192,7 +194,7 @@ class ChartEditorWidget(PWidget):
                     color: {base_fg};
                     font-size: 12px;
                 }}
-                QSpinBox:focus {{
+                QAbstractSpinBox:focus {{
                     border-color: #007bff;
                     background-color: {card_bg};
                 }}
@@ -345,7 +347,9 @@ class ChartEditorWidget(PWidget):
             pass
 
         # Width control
-        self.width_spin = QSpinBox()
+        self.width_spin = QDoubleSpinBox()
+        self.width_spin.setDecimals(1)
+        self.width_spin.setSingleStep(0.1)
         self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.width_spin.setValue(default_width_cm)
         self.width_spin.setSuffix(" cm")
@@ -357,7 +361,9 @@ class ChartEditorWidget(PWidget):
         self.preview_toolbar.addWidget(self.multiply_label)
 
         # Height control
-        self.height_spin = QSpinBox()
+        self.height_spin = QDoubleSpinBox()
+        self.height_spin.setDecimals(1)
+        self.height_spin.setSingleStep(0.1)
         self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.height_spin.setValue(default_height_cm)
         self.height_spin.setSuffix(" cm")

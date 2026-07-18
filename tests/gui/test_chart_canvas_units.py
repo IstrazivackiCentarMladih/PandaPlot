@@ -48,10 +48,12 @@ def test_fit_size_cm_clamps_to_maximums():
     assert height_cm == 40
 
 
-def test_fit_size_cm_returns_ints():
+def test_fit_size_cm_returns_floats_rounded_to_one_decimal():
     width_cm, height_cm = fit_size_cm(500, 400, dpi=100)
-    assert isinstance(width_cm, int)
-    assert isinstance(height_cm, int)
+    assert isinstance(width_cm, float)
+    assert isinstance(height_cm, float)
+    assert width_cm == round(width_cm, 1)
+    assert height_cm == round(height_cm, 1)
 
 
 def test_fit_size_cm_respects_custom_bounds():

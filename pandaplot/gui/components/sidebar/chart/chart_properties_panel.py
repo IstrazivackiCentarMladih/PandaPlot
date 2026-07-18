@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from pandaplot.commands.project.chart import (
     AddSeriesCommand,
     ApplyChartPropertiesCommand,
+    RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
@@ -435,12 +436,14 @@ class ChartPropertiesPanel(PWidget):
             self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
         info_layout.addWidget(self.chart_type_combo, 1, 1)
 
-        info_layout.addWidget(QLabel("Histogram Bins:"), 2, 0)
+        self.hist_bins_label = QLabel("Histogram Bins:")
+        info_layout.addWidget(self.hist_bins_label, 2, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
         self.hist_bins_spin.setValue(20)
         self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
         info_layout.addWidget(self.hist_bins_spin, 2, 1)
+        self._update_hist_bins_visibility()
 
         layout.addWidget(info_group)
     
@@ -937,28 +940,41 @@ class ChartPropertiesPanel(PWidget):
             self.series_list.setCurrentRow(len(self.current_chart.data_series) - 1)
     
     def _remove_series(self):
-        """Remove the selected data series."""
-        if not self.current_chart or not self.current_chart.data_series:
+        """Remove the selected data series or fit data."""
+        if not self.current_chart:
             return
-        
+
+        total_series = len(self.current_chart.data_series)
+        total_items = total_series + len(self.current_chart.fit_data)
+
         current_row = self.series_list.currentRow()
-        if current_row >= 0 and current_row < len(self.current_chart.data_series):
+        if current_row < 0 or current_row >= total_items:
+            return
+
+        if current_row < total_series:
             command = RemoveSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
                 series_index=current_row,
             )
-            self.command_executor.execute_command(command)
+        else:
+            command = RemoveFitDataCommand(
+                self.app_context,
+                chart_id=self.current_chart.id,
+                fit_index=current_row - total_series,
+            )
+        self.command_executor.execute_command(command)
 
-            # Update the series list
-            self._update_series_list()
+        # Update the series list
+        self._update_series_list()
 
-            # Select previous series or disable if no series left
-            if self.current_chart.data_series:
-                new_row = min(current_row, len(self.current_chart.data_series) - 1)
-                self.series_list.setCurrentRow(new_row)
-            else:
-                self.series_config_group.setEnabled(False)
+        # Select previous item or disable if nothing left
+        remaining_items = len(self.current_chart.data_series) + len(self.current_chart.fit_data)
+        if remaining_items:
+            new_row = min(current_row, remaining_items - 1)
+            self.series_list.setCurrentRow(new_row)
+        else:
+            self.series_config_group.setEnabled(False)
     
     def _on_series_selection_changed(self, current_row: int):
         """Handle series selection change."""
@@ -1079,7 +1095,14 @@ class ChartPropertiesPanel(PWidget):
         """
         if not self._updating_controls:
             self._chart_type_touched_by_user = True
+        self._update_hist_bins_visibility()
         self._on_chart_config_changed()
+
+    def _update_hist_bins_visibility(self):
+        """Show the Histogram Bins control only when the chart type is Histogram."""
+        is_histogram = self.chart_type_combo.currentData() == ChartType.HISTOGRAM
+        self.hist_bins_label.setVisible(is_histogram)
+        self.hist_bins_spin.setVisible(is_histogram)
 
     def _on_x_auto_limits_toggled(self, checked):
         self.x_min_spin.setEnabled(not checked)
@@ -1381,6 +1404,7 @@ class ChartPropertiesPanel(PWidget):
             self.title_edit.clear()
             self.chart_type_combo.setCurrentIndex(0)
             self.hist_bins_spin.setValue(20)
+            self._update_hist_bins_visibility()
             self.x_label_edit.clear()
             self.y_label_edit.clear()
             self.x_grid_check.setChecked(True)
@@ -1530,7 +1554,8 @@ class ChartPropertiesPanel(PWidget):
                     if self.chart_type_combo.itemData(i) == chart_type:
                         self.chart_type_combo.setCurrentIndex(i)
                         break
-            
+                self._update_hist_bins_visibility()
+
                 # Update series list
                 self._update_series_list()
             

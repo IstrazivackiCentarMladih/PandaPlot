@@ -111,14 +111,12 @@ class ProjectViewPanelContextManager(QMenu):
 
         item_type = item_data.get("type", "")
 
-        # Disable rename and delete for project root
-        can_rename = item_type != "project"
+        # Delete is not available for project root; rename uses a dialog for it
         can_delete = item_type != "project"
 
         # Show chart creation only for datasets
         self.create_chart_action.setVisible(item_type == "dataset")
 
-        self.rename_action.setEnabled(can_rename)
         self.delete_action.setEnabled(can_delete)
 
         self.exec(self.getGlobalPosition(position))

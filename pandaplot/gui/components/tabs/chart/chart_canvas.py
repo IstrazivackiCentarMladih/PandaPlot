@@ -32,7 +32,7 @@ def inches_to_cm(inches):
 def fit_size_cm(viewport_width_px, viewport_height_px, dpi,
                  min_width_cm=2, max_width_cm=50,
                  min_height_cm=2, max_height_cm=40):
-    """Convert a pixel viewport size to a clamped, whole-cm chart size.
+    """Convert a pixel viewport size to a clamped chart size, rounded to 0.1 cm.
 
     Used to size a chart's initial preview to fill the visible preview
     panel when no size has been saved for it yet.
@@ -41,8 +41,8 @@ def fit_size_cm(viewport_width_px, viewport_height_px, dpi,
         raise ValueError(f"dpi must be positive, got {dpi}")
     width_cm = inches_to_cm(viewport_width_px / dpi)
     height_cm = inches_to_cm(viewport_height_px / dpi)
-    width_cm = max(min_width_cm, min(max_width_cm, round(width_cm)))
-    height_cm = max(min_height_cm, min(max_height_cm, round(height_cm)))
+    width_cm = max(min_width_cm, min(max_width_cm, round(width_cm, 1)))
+    height_cm = max(min_height_cm, min(max_height_cm, round(height_cm, 1)))
     return width_cm, height_cm
 
 
