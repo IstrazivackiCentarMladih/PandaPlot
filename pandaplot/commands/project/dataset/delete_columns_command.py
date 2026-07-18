@@ -312,5 +312,7 @@ class DeleteColumnsCommand(Command):
             self.logger.info(f"Redid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
             return True
         except Exception as e:
-            self.logger.error(f"DeleteColumnsCommand Redo Error: {e}")
+            error_msg = f"Failed to redo deleting {len(self.column_names)} columns: {e}"
+            self.logger.error(f"DeleteColumnsCommand Redo Error: {error_msg}")
+            self.ui_controller.show_error_message("Delete Columns Error", error_msg)
             return False
