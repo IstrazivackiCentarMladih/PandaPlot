@@ -4,7 +4,6 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from pandaplot.commands.project.chart import CreateChartCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
-from pandaplot.gui.components.tabs import ChartTab, DatasetTab, NoteTab
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
 from pandaplot.gui.core.widget_extension import PWidget
@@ -170,12 +169,15 @@ class TabContainer(PWidget):
         #TODO: move to a separate factory class
         if item is None:
             raise ValueError("Item cannot be None")
-        
+
         if isinstance(item, Note):
+            from pandaplot.gui.components.tabs.note.note_tab import NoteTab
             return NoteTab(app_context=self.app_context, note=item, parent=self)
         elif isinstance(item, Chart):
+            from pandaplot.gui.components.tabs.chart.chart_tab import ChartTab
             return ChartTab(app_context=self.app_context, chart=item, parent=self)
         elif isinstance(item, Dataset):
+            from pandaplot.gui.components.tabs.dataset.dataset_tab import DatasetTab
             return DatasetTab(app_context=self.app_context, dataset=item, parent=self)
         else:
             raise ValueError(f"Unsupported item type, item class {item.__class__.__name__}")

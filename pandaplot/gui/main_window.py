@@ -4,7 +4,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
-from pandaplot.gui.components import CollapsibleSidebar, MainMenu, TabContainer
+from pandaplot.gui.components import CollapsibleSidebar, TabContainer
+from pandaplot.gui.components.main_menu.main_menu import MainMenu
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
 from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSetupManager
 from pandaplot.gui.core.widget_extension import PMainWindow
