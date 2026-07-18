@@ -67,10 +67,10 @@ class ProjectViewPanelContextManager(QMenu):
         self.add_note_action.triggered.connect(self.command_manager.add_note)
         self.addAction(self.add_note_action)
 
-        self.import_csv_action = QAction("Import CSV...", self)
-        self.import_csv_action.triggered.connect(
-            self.command_manager.import_csv)
-        self.addAction(self.import_csv_action)
+        self.import_data_action = QAction("Import Data...", self)
+        self.import_data_action.triggered.connect(
+            self.command_manager.import_data)
+        self.addAction(self.import_data_action)
 
         self.create_empty_dataset_action = QAction(
             "Create Empty Dataset", self)
