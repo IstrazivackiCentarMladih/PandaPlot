@@ -102,8 +102,8 @@ MAX_CHART_HEIGHT_CM = 100
 class ChartDisplayConfig:
 	"""Configuration for global chart display defaults (rendering / preview)."""
 	dpi: int = 100
-	default_width_cm: float = 20
-	default_height_cm: float = 15
+	default_width_cm: float = 20.0
+	default_height_cm: float = 15.0
 
 	def validate(self) -> None:
 		if self.dpi < 50:
@@ -240,6 +240,15 @@ class ApplicationConfig:
 								setattr(section_obj, skey, True)
 							elif lowered in {"false", "0", "no", "off"}:
 								setattr(section_obj, skey, False)
+						continue
+					if isinstance(current, float):
+						if isinstance(sval, (int, float)):
+							setattr(section_obj, skey, float(sval))
+						elif isinstance(sval, str):
+							try:
+								setattr(section_obj, skey, float(sval))
+							except ValueError:
+								pass
 						continue
 					if isinstance(current, int):
 						if isinstance(sval, (int, float)):

@@ -349,7 +349,7 @@ class ChartEditorWidget(PWidget):
         # Width control
         self.width_spin = QDoubleSpinBox()
         self.width_spin.setDecimals(1)
-        self.width_spin.setSingleStep(0.5)
+        self.width_spin.setSingleStep(0.1)
         self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.width_spin.setValue(default_width_cm)
         self.width_spin.setSuffix(" cm")
@@ -363,7 +363,7 @@ class ChartEditorWidget(PWidget):
         # Height control
         self.height_spin = QDoubleSpinBox()
         self.height_spin.setDecimals(1)
-        self.height_spin.setSingleStep(0.5)
+        self.height_spin.setSingleStep(0.1)
         self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.height_spin.setValue(default_height_cm)
         self.height_spin.setSuffix(" cm")

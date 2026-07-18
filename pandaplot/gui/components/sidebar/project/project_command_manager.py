@@ -123,10 +123,10 @@ class ProjectPanelCommandManager:
         project = self.app_state.current_project
         new_name, ok = QInputDialog.getText(
             self.parent_widget, "Rename Project", "New project name:", text=project.name)
-        new_name = new_name.strip() if ok else ""
-        if new_name and new_name != project.name:
-            command = RenameProjectCommand(self.app_context, new_name)
-            self.app_context.get_command_executor().execute_command(command)
+        if not ok:
+            return
+        command = RenameProjectCommand(self.app_context, new_name)
+        self.app_context.get_command_executor().execute_command(command)
 
     def delete_selected_item(self):
         """Delete the selected item."""
