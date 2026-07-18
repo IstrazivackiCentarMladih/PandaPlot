@@ -435,12 +435,14 @@ class ChartPropertiesPanel(PWidget):
             self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
         info_layout.addWidget(self.chart_type_combo, 1, 1)
 
-        info_layout.addWidget(QLabel("Histogram Bins:"), 2, 0)
+        self.hist_bins_label = QLabel("Histogram Bins:")
+        info_layout.addWidget(self.hist_bins_label, 2, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
         self.hist_bins_spin.setValue(20)
         self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
         info_layout.addWidget(self.hist_bins_spin, 2, 1)
+        self._update_hist_bins_visibility()
 
         layout.addWidget(info_group)
     
@@ -1079,7 +1081,14 @@ class ChartPropertiesPanel(PWidget):
         """
         if not self._updating_controls:
             self._chart_type_touched_by_user = True
+        self._update_hist_bins_visibility()
         self._on_chart_config_changed()
+
+    def _update_hist_bins_visibility(self):
+        """Show the Histogram Bins control only when the chart type is Histogram."""
+        is_histogram = self.chart_type_combo.currentData() == ChartType.HISTOGRAM
+        self.hist_bins_label.setVisible(is_histogram)
+        self.hist_bins_spin.setVisible(is_histogram)
 
     def _on_x_auto_limits_toggled(self, checked):
         self.x_min_spin.setEnabled(not checked)
@@ -1381,6 +1390,7 @@ class ChartPropertiesPanel(PWidget):
             self.title_edit.clear()
             self.chart_type_combo.setCurrentIndex(0)
             self.hist_bins_spin.setValue(20)
+            self._update_hist_bins_visibility()
             self.x_label_edit.clear()
             self.y_label_edit.clear()
             self.x_grid_check.setChecked(True)
@@ -1530,7 +1540,8 @@ class ChartPropertiesPanel(PWidget):
                     if self.chart_type_combo.itemData(i) == chart_type:
                         self.chart_type_combo.setCurrentIndex(i)
                         break
-            
+                self._update_hist_bins_visibility()
+
                 # Update series list
                 self._update_series_list()
             

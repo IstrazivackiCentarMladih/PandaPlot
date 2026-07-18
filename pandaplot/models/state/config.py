@@ -102,8 +102,8 @@ MAX_CHART_HEIGHT_CM = 100
 class ChartDisplayConfig:
 	"""Configuration for global chart display defaults (rendering / preview)."""
 	dpi: int = 100
-	default_width_cm: int = 20
-	default_height_cm: int = 15
+	default_width_cm: float = 20
+	default_height_cm: float = 15
 
 	def validate(self) -> None:
 		if self.dpi < 50:
