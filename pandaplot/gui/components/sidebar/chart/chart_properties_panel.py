@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from pandaplot.commands.project.chart import (
     AddSeriesCommand,
     ApplyChartPropertiesCommand,
+    RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
@@ -939,28 +940,41 @@ class ChartPropertiesPanel(PWidget):
             self.series_list.setCurrentRow(len(self.current_chart.data_series) - 1)
     
     def _remove_series(self):
-        """Remove the selected data series."""
-        if not self.current_chart or not self.current_chart.data_series:
+        """Remove the selected data series or fit data."""
+        if not self.current_chart:
             return
-        
+
+        total_series = len(self.current_chart.data_series)
+        total_items = total_series + len(self.current_chart.fit_data)
+
         current_row = self.series_list.currentRow()
-        if current_row >= 0 and current_row < len(self.current_chart.data_series):
+        if current_row < 0 or current_row >= total_items:
+            return
+
+        if current_row < total_series:
             command = RemoveSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
                 series_index=current_row,
             )
-            self.command_executor.execute_command(command)
+        else:
+            command = RemoveFitDataCommand(
+                self.app_context,
+                chart_id=self.current_chart.id,
+                fit_index=current_row - total_series,
+            )
+        self.command_executor.execute_command(command)
 
-            # Update the series list
-            self._update_series_list()
+        # Update the series list
+        self._update_series_list()
 
-            # Select previous series or disable if no series left
-            if self.current_chart.data_series:
-                new_row = min(current_row, len(self.current_chart.data_series) - 1)
-                self.series_list.setCurrentRow(new_row)
-            else:
-                self.series_config_group.setEnabled(False)
+        # Select previous item or disable if nothing left
+        remaining_items = len(self.current_chart.data_series) + len(self.current_chart.fit_data)
+        if remaining_items:
+            new_row = min(current_row, remaining_items - 1)
+            self.series_list.setCurrentRow(new_row)
+        else:
+            self.series_config_group.setEnabled(False)
     
     def _on_series_selection_changed(self, current_row: int):
         """Handle series selection change."""
