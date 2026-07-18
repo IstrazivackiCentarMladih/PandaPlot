@@ -136,11 +136,11 @@ class RenameColumnCommand(Command):
     @override
     def undo(self):
         """Rename back and restore references (same walk, names swapped)."""
-        if self._applied and self.old_name:
+        if self._applied and self.old_name is not None:
             self._apply_rename(self.new_name, self.old_name)
 
     @override
     def redo(self):
         """Re-apply the rename and reference cascade."""
-        if self._applied and self.old_name:
+        if self._applied and self.old_name is not None:
             self._apply_rename(self.old_name, self.new_name)

@@ -88,16 +88,36 @@ class ProjectConfig:
 		return
 
 
+# Shared bounds for chart size in centimeters. The single source of truth for
+# the min/max a chart can be sized to, referenced by both this config's
+# validation and the GUI's size controls (chart_canvas.py, chart_editor.py,
+# settings_dialog.py) so they can't drift out of sync.
+MIN_CHART_WIDTH_CM = 2
+MAX_CHART_WIDTH_CM = 100
+MIN_CHART_HEIGHT_CM = 2
+MAX_CHART_HEIGHT_CM = 100
+
+
 @dataclass(slots=True)
 class ChartDisplayConfig:
 	"""Configuration for global chart display defaults (rendering / preview)."""
 	dpi: int = 100
+	default_width_cm: int = 20
+	default_height_cm: int = 15
 
 	def validate(self) -> None:
 		if self.dpi < 50:
 			self.dpi = 50
 		if self.dpi > 600:
 			self.dpi = 600
+		if self.default_width_cm < MIN_CHART_WIDTH_CM:
+			self.default_width_cm = MIN_CHART_WIDTH_CM
+		if self.default_width_cm > MAX_CHART_WIDTH_CM:
+			self.default_width_cm = MAX_CHART_WIDTH_CM
+		if self.default_height_cm < MIN_CHART_HEIGHT_CM:
+			self.default_height_cm = MIN_CHART_HEIGHT_CM
+		if self.default_height_cm > MAX_CHART_HEIGHT_CM:
+			self.default_height_cm = MAX_CHART_HEIGHT_CM
 
 
 @dataclass(slots=True)

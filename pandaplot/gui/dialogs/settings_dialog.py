@@ -26,7 +26,13 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.events.event_types import ConfigEvents
-from pandaplot.models.state.config import ApplicationConfig
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+    ApplicationConfig,
+)
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -265,21 +271,21 @@ class SettingsDialog(PDialog):
         size_label.setStyleSheet("color: #495057;")
         size_layout.addWidget(size_label)
         self.chart_width_spin = QSpinBox()
-        self.chart_width_spin.setRange(4, 20)
-        self.chart_width_spin.setValue(8)
-        self.chart_width_spin.setSuffix(" in")
-        self.chart_width_spin.setToolTip("Default chart width in inches")
+        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.chart_width_spin.setValue(20)
+        self.chart_width_spin.setSuffix(" cm")
+        self.chart_width_spin.setToolTip("Default chart width in centimeters")
         size_layout.addWidget(self.chart_width_spin)
-        
+
         multiply_label = QLabel("×")
         multiply_label.setStyleSheet("color: #495057;")
         size_layout.addWidget(multiply_label)
-        
+
         self.chart_height_spin = QSpinBox()
-        self.chart_height_spin.setRange(3, 15)
-        self.chart_height_spin.setValue(6)
-        self.chart_height_spin.setSuffix(" in")
-        self.chart_height_spin.setToolTip("Default chart height in inches")
+        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.chart_height_spin.setValue(15)
+        self.chart_height_spin.setSuffix(" cm")
+        self.chart_height_spin.setToolTip("Default chart height in centimeters")
         size_layout.addWidget(self.chart_height_spin)
         size_layout.addStretch()
         cd_layout.addLayout(size_layout)
@@ -444,6 +450,8 @@ class SettingsDialog(PDialog):
             "line_numbers": cfg.editor.line_numbers,
             "tab_size": cfg.editor.tab_size,
             "chart_dpi": getattr(getattr(cfg, "chart_display", None), "dpi", 100),
+            "chart_width": getattr(getattr(cfg, "chart_display", None), "default_width_cm", 20),
+            "chart_height": getattr(getattr(cfg, "chart_display", None), "default_height_cm", 15),
         }
         self.current_settings = self.original_settings.copy()
 
@@ -551,7 +559,9 @@ class SettingsDialog(PDialog):
                         "tab_size": self.current_settings["tab_size"],
                     },
                     "chart_display": {
-                        "dpi": self.current_settings.get("chart_dpi", 100)
+                        "dpi": self.current_settings.get("chart_dpi", 100),
+                        "default_width_cm": self.current_settings.get("chart_width", 20),
+                        "default_height_cm": self.current_settings.get("chart_height", 15),
                     }
                 }
                 self._config_manager.update(mapping, save=True)
