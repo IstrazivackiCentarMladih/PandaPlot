@@ -57,12 +57,9 @@ class FitPanel(PWidget):
             self._show_scipy_warning()
 
     def _check_scipy_available(self) -> bool:
-        """Check if scipy is available (lazy import)."""
-        try:
-            from scipy.optimize import curve_fit  # noqa: F401
-            return True
-        except ImportError:
-            return False
+        """Check if scipy is installed without importing it (import is deferred to fit time)."""
+        import importlib.util
+        return importlib.util.find_spec("scipy") is not None
     
     @override
     def _init_ui(self):
