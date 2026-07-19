@@ -29,20 +29,13 @@ from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
 
-# Import scipy for curve fitting (will handle gracefully if not available)
-try:
-    from scipy.optimize import curve_fit
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
 
 class FitPanel(PWidget):
     """Side panel for performing curve fitting on chart data."""
-    
+
     fit_completed = Signal(dict)  # Emitted when fit is completed with results
     fit_applied = Signal(dict)   # Emitted when fit should be applied to chart
-    
+
     def __init__(self, app_context: AppContext, parent: Optional[QWidget]=None):
         super().__init__(app_context=app_context, parent=parent)
         self.fit_command=FitService(self)
@@ -54,11 +47,22 @@ class FitPanel(PWidget):
         self.fit_command.fit_results = None
         self.datasets = []
 
+        # Check scipy availability lazily (only when FitPanel is instantiated)
+        self.scipy_available = self._check_scipy_available()
+
         self._initialize()
         self._connect_signals()
 
-        if not SCIPY_AVAILABLE:
+        if not self.scipy_available:
             self._show_scipy_warning()
+
+    def _check_scipy_available(self) -> bool:
+        """Check if scipy is available (lazy import)."""
+        try:
+            from scipy.optimize import curve_fit  # noqa: F401
+            return True
+        except ImportError:
+            return False
     
     @override
     def _init_ui(self):
@@ -394,9 +398,9 @@ class FitPanel(PWidget):
     def _create_action_buttons(self, layout):
         """Create action buttons."""
         button_layout = QHBoxLayout()
-        
+
         self.fit_button = QPushButton("Perform Fit")
-        self.fit_button.setEnabled(SCIPY_AVAILABLE)
+        self.fit_button.setEnabled(self.scipy_available)
         button_layout.addWidget(self.fit_button)
 
         self.apply_button = QPushButton("Apply to Chart")

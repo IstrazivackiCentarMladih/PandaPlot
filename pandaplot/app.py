@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -85,7 +86,8 @@ def launch(app_context: AppContext) -> int:
 
 def main() -> None:
     """CLI entry point for `python -m pandaplot.app`."""
-    logger = setup_logging(level=logging.DEBUG)
+    debug = os.environ.get("PANDAPLOT_DEBUG", "").lower() in ("1", "true", "yes")
+    logger = setup_logging(level=logging.DEBUG if debug else logging.INFO)
     logger.info("--------------Starting PandaPlot application--------------")
     app_context = build_app_context()
     sys.exit(launch(app_context))
