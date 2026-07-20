@@ -23,10 +23,12 @@ class PandaMainWindow(PMainWindow):
     def _init_ui(self):
         self.setWindowTitle("PandaPlot")
 
-        # Get screen dimensions and set window to maximized
+        # Set window geometry before showing, but defer showing the window
+        # until all widgets are built -- otherwise the OS displays a blank
+        # maximized window while the menu/sidebar/panels/tabs are still
+        # being constructed on the main thread.
         screen = QScreen.availableGeometry(self.screen())
         self.setGeometry(screen)
-        self.showMaximized()
 
         # Create central widget
         central_widget = QWidget()
@@ -38,6 +40,8 @@ class PandaMainWindow(PMainWindow):
         main_layout.setSpacing(0)  # Remove spacing between widgets
 
         self.create_widgets(main_layout)
+
+        self.showMaximized()
 
 
     @override
