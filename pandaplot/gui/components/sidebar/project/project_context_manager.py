@@ -67,10 +67,10 @@ class ProjectViewPanelContextManager(QMenu):
         self.add_note_action.triggered.connect(self.command_manager.add_note)
         self.addAction(self.add_note_action)
 
-        self.import_csv_action = QAction("Import CSV...", self)
-        self.import_csv_action.triggered.connect(
-            self.command_manager.import_csv)
-        self.addAction(self.import_csv_action)
+        self.import_data_action = QAction("Import Data...", self)
+        self.import_data_action.triggered.connect(
+            self.command_manager.import_data)
+        self.addAction(self.import_data_action)
 
         self.create_empty_dataset_action = QAction(
             "Create Empty Dataset", self)
@@ -111,14 +111,12 @@ class ProjectViewPanelContextManager(QMenu):
 
         item_type = item_data.get("type", "")
 
-        # Disable rename and delete for project root
-        can_rename = item_type != "project"
+        # Delete is not available for project root; rename uses a dialog for it
         can_delete = item_type != "project"
 
         # Show chart creation only for datasets
         self.create_chart_action.setVisible(item_type == "dataset")
 
-        self.rename_action.setEnabled(can_rename)
         self.delete_action.setEnabled(can_delete)
 
         self.exec(self.getGlobalPosition(position))

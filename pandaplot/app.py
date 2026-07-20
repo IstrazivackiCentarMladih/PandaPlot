@@ -122,9 +122,11 @@ if __name__ == "__main__":
     # TODO: fix remove series
     # TODO: log error messages to the user
     # TODO: fix how we treat transformed columns, they aren't saved correctly
-    # TODO: allow project rename, consider creating project creation dialog
+    # TODO: consider creating project creation dialog
     # TODO: improve view of project name
+    # TODO: when opening a project which is already open, we should just switch to it instead of reloading it
     # TODO: create process for multi-threaded operations
+    # TODO: use mm instead of cm or make it configurable
     # TODO: improve initial loading of the app
     # TODO: clean state on opening new project or add support for multiple projects
     # TODO: list and implement copy paste capabilities we want to support
