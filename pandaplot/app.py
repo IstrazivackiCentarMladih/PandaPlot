@@ -125,7 +125,10 @@ def launch(app_context: AppContext) -> int:
     # emission ("RuntimeError: Signal source has been deleted", printed by
     # Qt but non-fatal). Give it a bounded window to finish before the app
     # actually exits -- a no-op once warm-up has already completed, which is
-    # true for the vast majority of real sessions.
+    # true for the vast majority of real sessions. This is a mitigation, not
+    # a guarantee: on a slow/cold-cache import, waitForDone(2000) can still
+    # time out and shutdown proceeds regardless, leaving the same race (and
+    # its harmless stderr noise) possible -- just less likely.
     task_scheduler = app_context.get_manager(TaskScheduler)
     app.aboutToQuit.connect(lambda: task_scheduler.threadpool.waitForDone(2000))
 
