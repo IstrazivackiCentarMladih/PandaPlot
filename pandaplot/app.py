@@ -60,13 +60,19 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
         argv = sys.argv
     app = QApplication(argv)
 
-    main_window = PandaMainWindow(app_context)
+    # Apply the theme (QApplication-wide palette/stylesheet/font) before any
+    # widgets exist. Setting these on a QApplication forces Qt to re-polish
+    # every already-constructed widget -- doing it first means new widgets
+    # simply inherit the theme instead of paying that repolish cost after
+    # the whole window (menu/sidebar/panels/tabs) has already been built.
     theme_mgr = app_context.get_manager(ThemeManager)
     theme_mgr.set_qt_app(app)
     try:
         theme_mgr.apply_current()
     except Exception:
         logging.getLogger(__name__).exception("Failed applying initial theme")
+
+    main_window = PandaMainWindow(app_context)
     app_context.ui_controller.set_parent_widget(main_window)
     return app, main_window
 
