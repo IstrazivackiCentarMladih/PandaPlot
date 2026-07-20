@@ -4,6 +4,7 @@ from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.session import SessionPersistenceManager
 
 
 class NewProjectCommand(Command):
@@ -47,6 +48,14 @@ class NewProjectCommand(Command):
 
             # Update app state - use load_project method
             self.app_state.load_project(new_project)
+
+            # A brand new project has no file yet; don't restore the previous
+            # project's path next launch until this one is saved.
+            try:
+                session_manager = self.app_context.get_manager(SessionPersistenceManager)
+                session_manager.update_project(None)
+            except Exception as e:  # noqa: BLE001
+                self.logger.warning("Failed to clear last_project_path: %s", e)
 
             self.logger.info(
                 "Created new project '%s'", new_project.name
