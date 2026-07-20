@@ -6,6 +6,7 @@ from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
 from pandaplot.services.qtasks import TaskScheduler
+from pandaplot.services.session import SessionPersistenceManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
 
 
@@ -18,7 +19,8 @@ class LoadProjectCommand(Command):
     - Updating app state which emits events to update UI
     """
 
-    def __init__(self, app_context: AppContext, file_path: str):
+    def __init__(self, app_context: AppContext, file_path: str,
+                 on_loaded: Optional[Callable[[Project], None]] = None):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
@@ -26,6 +28,9 @@ class LoadProjectCommand(Command):
         self.task_scheduler: TaskScheduler = app_context.get_task_scheduler()
         self.project_data_manager = app_context.get_manager(ProjectDataManager)
         self.file_path = file_path
+        # Called after the project has been loaded into app state (e.g. so the
+        # caller can restore session tabs once the project is actually ready).
+        self.on_loaded = on_loaded
         self.previous_project: Optional[Project] = None
         self.previous_file_path: Optional[str] = None
         self.loaded_project: Optional[Project] = None
@@ -142,10 +147,23 @@ class LoadProjectCommand(Command):
                     # Update app state with the loaded project
                     self.app_state.load_project(project)
 
+                    # Remember this project so it can be restored on next launch
+                    try:
+                        session_manager = self.app_context.get_manager(SessionPersistenceManager)
+                        session_manager.update_project(file_path)
+                    except Exception as e:  # noqa: BLE001
+                        self.logger.warning("Failed to persist last_project_path: %s", e)
+
                     self.logger.info(f"Project '{project.name}' loaded successfully from '{file_path}'")
 
                     # Show success message
                     self.ui_controller.show_info_message("Project Loaded", f"Project '{project.name}' loaded successfully from:\n{file_path}")
+
+                    if self.on_loaded:
+                        try:
+                            self.on_loaded(project)
+                        except Exception as e:  # noqa: BLE001
+                            self.logger.error("on_loaded callback failed: %s", e, exc_info=True)
                 else:
                     error_msg = "Missing project or file path in load result"
                     self.ui_controller.show_error_message("Load Failed", error_msg)
