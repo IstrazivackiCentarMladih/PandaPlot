@@ -1,9 +1,11 @@
 import logging
+import os
 import sys
 
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.commands.command_executor import CommandExecutor
+from pandaplot.commands.project.project import LoadProjectCommand
 from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.models.events import EventBus
@@ -11,6 +13,7 @@ from pandaplot.models.project.items import Chart, Dataset, Folder, Note
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
+from pandaplot.services.session import SessionPersistenceManager
 from pandaplot.services.theme import ThemeManager
 from pandaplot.storage.chart_data_manager import ChartDataManager
 from pandaplot.storage.dataset_data_manager import DatasetDataManager
@@ -40,12 +43,13 @@ def build_app_context() -> AppContext:
     config_manager = ConfigManager(event_bus)
     config_manager.load()
     theme_manager = ThemeManager(event_bus, config_manager)
+    session_manager = SessionPersistenceManager(config_manager)
     ui_controller = UIController()
     command_executor = CommandExecutor()
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext
-    managers = [command_executor, ui_controller, config_manager, theme_manager, task_scheduler, project_data_manager]
+    managers = [command_executor, ui_controller, config_manager, theme_manager, session_manager, task_scheduler, project_data_manager]
 
     return AppContext(app_state=app_state, event_bus=event_bus, managers=managers)
 
@@ -70,6 +74,26 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     return app, main_window
 
 
+def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) -> None:
+    """Reopen the project (and tabs) that were open at the end of the previous session.
+
+    No-op if no project was remembered, or the remembered file no longer exists.
+    """
+    session_manager = app_context.get_manager(SessionPersistenceManager)
+    last_path = session_manager.last_project_path
+    if not last_path or not os.path.isfile(last_path):
+        return
+
+    tab_ids = session_manager.last_open_tabs
+    active_tab_id = session_manager.last_active_tab_id
+
+    def _on_loaded(project) -> None:  # noqa: ANN001 - Project, avoiding import cycle concerns
+        main_window.tab_container.restore_tab_session(tab_ids, active_tab_id)
+
+    command = LoadProjectCommand(app_context, last_path, on_loaded=_on_loaded)
+    app_context.get_command_executor().execute_command(command)
+
+
 def launch(app_context: AppContext) -> int:
     """Launch the GUI event loop.
 
@@ -80,6 +104,7 @@ def launch(app_context: AppContext) -> int:
 
     app, main_window = create_qt_application(app_context)
     main_window.show()
+    restore_last_session(app_context, main_window)
     return app.exec()
 
 
@@ -97,9 +122,11 @@ if __name__ == "__main__":
     # TODO: fix remove series
     # TODO: log error messages to the user
     # TODO: fix how we treat transformed columns, they aren't saved correctly
-    # TODO: allow project rename, consider creating project creation dialog
+    # TODO: consider creating project creation dialog
     # TODO: improve view of project name
+    # TODO: when opening a project which is already open, we should just switch to it instead of reloading it
     # TODO: create process for multi-threaded operations
+    # TODO: use mm instead of cm or make it configurable
     # TODO: improve initial loading of the app
     # TODO: clean state on opening new project or add support for multiple projects
     # TODO: list and implement copy paste capabilities we want to support

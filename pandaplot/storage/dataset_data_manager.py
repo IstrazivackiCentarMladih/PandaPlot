@@ -1,18 +1,20 @@
 import json
 import logging
 from typing import override
+from zipfile import ZipFile
 
 import pandas as pd
 
+from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.storage.item_data_manager import ItemDataManager
 
 
-class DatasetDataManager(ItemDataManager):
+class DatasetDataManager(ItemDataManager[Dataset]):
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
-        
+
     @override
-    def save(self, item, zip_file, path_in_zip: str) -> None:
+    def save(self, item: Dataset, zip_file: ZipFile, path_in_zip: str) -> None:
         """
         Save dataset metadata as JSON and data as CSV.
         path_in_zip should be without extension, e.g. 'items/<id>'
@@ -53,7 +55,7 @@ class DatasetDataManager(ItemDataManager):
         self.logger.info("Successfully saved dataset '%s' (ID: %s)", item.name, item.id)
 
     @override
-    def load(self, item_class, zip_file, path_in_zip: str):
+    def load(self, item_class: type[Dataset], zip_file: ZipFile, path_in_zip: str) -> Dataset:
         """
         Load dataset from CSV data + metadata JSON.
         path_in_zip is without extension.

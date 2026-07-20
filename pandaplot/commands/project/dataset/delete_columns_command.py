@@ -1,9 +1,10 @@
-from typing import List, Union, override
+from typing import List, Tuple, Union, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData
-from pandaplot.models.events.event_types import DatasetOperationEvents
+from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
+from pandaplot.models.project.items import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
@@ -34,6 +35,10 @@ class DeleteColumnsCommand(Command):
         self.deleted_columns_data = None
         self.project = None
         self.dataset = None
+
+        # chart_id -> {"series": [(index, DataSeries)], "fits": [(index, FitData)]}
+        # populated when columns being deleted are referenced by chart series/fits
+        self.removed_chart_refs = {}
 
     @override
     def execute(self) -> bool:
@@ -125,33 +130,126 @@ class DeleteColumnsCommand(Command):
                 )
                 return False
             
+            # Warn if any chart depends on the columns being deleted, since those
+            # series/fit curves will be removed from the chart as part of this action
+            references = self._find_chart_references(self.column_names)
+            if references:
+                details = "\n".join(
+                    f"{chart.name}: " + ", ".join(
+                        ([f"{len(series_idx)} series"] if series_idx else [])
+                        + ([f"{len(fit_idx)} fit curve(s)"] if fit_idx else [])
+                    )
+                    for chart, series_idx, fit_idx in references
+                )
+                proceed = self.ui_controller.show_confirmation(
+                    "Delete Columns",
+                    f"{len(self.column_names)} column(s) are used by {len(references)} "
+                    "chart(s). Deleting them will remove the dependent series/fit "
+                    "curves from those charts. Continue?",
+                    details=details
+                )
+                if not proceed:
+                    return False
+
             # Store original data for undo
             self.original_data = self.dataset.data.copy()
-            
+
             # Store the deleted columns data for potential restoration
             self.deleted_columns_data = {}
             for col_name in self.column_names:
                 self.deleted_columns_data[col_name] = self.dataset.data[col_name].copy()
-            
-            # Create new DataFrame with the columns removed
-            new_data = self.dataset.data.drop(columns=self.column_names)
-            
-            # Update dataset
-            self.dataset.set_data(new_data)
-            
-            # Emit event
-            self.app_state.event_bus.emit(DatasetOperationEvents.DATASET_COLUMN_REMOVED, 
-                                          DatasetColumnsRemovedData(dataset_id=self.dataset_id, column_positions=self.column_positions).to_dict()
-            )
+
+            self._perform_deletion(references)
 
             self.logger.info(f"Deleted {len(self.column_names)} columns from dataset '{self.dataset.name}' (ID: {self.dataset_id})")
             return True
-            
+
         except Exception as e:
             error_msg = f"Failed to delete {len(self.column_specs) if self.column_specs else 0} columns: {str(e)}"
             self.logger.error(error_msg)
             self.ui_controller.show_error_message("Delete Columns Error", error_msg)
             return False
+
+    def _find_chart_references(
+        self, column_names: List[str]
+    ) -> List[Tuple[Chart, List[int], List[int]]]:
+        """Find charts whose series/fits reference this dataset's columns.
+
+        Returns a list of (chart, data_series indices, fit_data indices) for
+        every chart with at least one matching reference.
+        """
+        if not self.project:
+            return []
+        column_set = set(column_names)
+        matches: List[Tuple[Chart, List[int], List[int]]] = []
+        for item in self.project.get_all_items():
+            if not isinstance(item, Chart):
+                continue
+            series_idx = [
+                i for i, series in enumerate(item.data_series)
+                if series.dataset_id == self.dataset_id
+                and (series.x_column in column_set or series.y_column in column_set)
+            ]
+            fit_idx = [
+                i for i, fit in enumerate(item.fit_data)
+                if fit.source_dataset_id == self.dataset_id
+                and (fit.source_x_column in column_set or fit.source_y_column in column_set)
+            ]
+            if series_idx or fit_idx:
+                matches.append((item, series_idx, fit_idx))
+        return matches
+
+    def _perform_deletion(self, references: List[Tuple[Chart, List[int], List[int]]]) -> None:
+        """Drop the columns from the dataset and remove dependent chart references."""
+        # Create new DataFrame with the columns removed
+        new_data = self.dataset.data.drop(columns=self.column_names)
+
+        # Update dataset
+        self.dataset.set_data(new_data)
+
+        # Emit event
+        self.app_state.event_bus.emit(DatasetOperationEvents.DATASET_COLUMN_REMOVED,
+                                      DatasetColumnsRemovedData(dataset_id=self.dataset_id, column_positions=self.column_positions).to_dict()
+        )
+
+        self.removed_chart_refs = {}
+        for chart, series_idx, fit_idx in references:
+            removed_series = [(i, chart.data_series[i]) for i in series_idx]
+            removed_fits = [(i, chart.fit_data[i]) for i in fit_idx]
+            for i in sorted(series_idx, reverse=True):
+                del chart.data_series[i]
+            for i in sorted(fit_idx, reverse=True):
+                del chart.fit_data[i]
+            if removed_series or removed_fits:
+                chart.update_modified_time()
+                self.removed_chart_refs[chart.id] = {
+                    "series": removed_series,
+                    "fits": removed_fits,
+                }
+                self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
+                    "chart_id": chart.id,
+                    "chart": chart,
+                })
+
+    def _restore_chart_references(self) -> None:
+        """Re-insert chart series/fits removed by _perform_deletion, for undo."""
+        if not self.project or not self.removed_chart_refs:
+            return
+        for chart_id, removed in self.removed_chart_refs.items():
+            chart = self.project.find_item(chart_id)
+            if not isinstance(chart, Chart):
+                continue
+            for i, series in sorted(removed["series"], key=lambda pair: pair[0]):
+                chart.data_series.insert(i, series)
+            for i, fit in sorted(removed["fits"], key=lambda pair: pair[0]):
+                chart.fit_data.insert(i, fit)
+            if removed["series"] or removed["fits"]:
+                chart.update_modified_time()
+                self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
+                    "chart_id": chart.id,
+                    "chart": chart,
+                })
+        self.removed_chart_refs = {}
 
     def _resolve_columns(self):
         """
@@ -186,17 +284,18 @@ class DeleteColumnsCommand(Command):
                 self.logger.warning(f"Invalid column specification: {spec}")
 
     def undo(self):
-        """Undo the delete columns command by restoring the original data."""
+        """Undo the delete columns command by restoring the original data and chart refs."""
         try:
             if self.dataset and self.original_data is not None and self.column_positions:
                 # Restore original data
                 self.dataset.set_data(self.original_data)
-                
+                self._restore_chart_references()
+
                 # Emit event
                 self.app_state.event_bus.emit(
-                    DatasetOperationEvents.DATASET_COLUMN_ADDED, 
+                    DatasetOperationEvents.DATASET_COLUMN_ADDED,
                     DatasetColumnsAddedData(dataset_id=self.dataset_id, column_positions=self.column_positions).to_dict())
-                
+
                 self.logger.info(f"Undid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
                 return True
         except Exception as e:
@@ -204,6 +303,16 @@ class DeleteColumnsCommand(Command):
             return False
 
     def redo(self):
-        """Redo the delete columns command."""
-        # Re-execute with stored parameters
-        return self.execute()
+        """Redo the delete columns command using the already-confirmed parameters."""
+        try:
+            if not (self.dataset and self.original_data is not None and self.column_names):
+                return False
+            references = self._find_chart_references(self.column_names)
+            self._perform_deletion(references)
+            self.logger.info(f"Redid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
+            return True
+        except Exception as e:
+            error_msg = f"Failed to redo deleting {len(self.column_names)} columns: {e}"
+            self.logger.error(f"DeleteColumnsCommand Redo Error: {error_msg}")
+            self.ui_controller.show_error_message("Delete Columns Error", error_msg)
+            return False

@@ -1,5 +1,6 @@
 """Curve fitting panel for performing regression analysis on chart data."""
 import logging
+from dataclasses import replace
 from typing import Optional, override
 from dataclasses import replace
 

@@ -62,6 +62,13 @@ class DatasetColumnsRemovedData(EventData):
     column_positions: List[int]
 
 @dataclass(frozen=True)
+class DatasetColumnRenamedData(EventData):
+    dataset_id: str
+    column_index: int
+    old_name: str
+    new_name: str
+
+@dataclass(frozen=True)
 class DatasetRowsAddedData(EventData):
     dataset_id: str
     row_positions: List[int]

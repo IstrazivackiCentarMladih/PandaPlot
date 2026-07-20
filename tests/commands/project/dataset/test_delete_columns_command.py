@@ -1,0 +1,138 @@
+"""Tests for DeleteColumnsCommand (column drop + chart-reference cascade)."""
+
+from unittest.mock import Mock
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from pandaplot.commands.project.dataset.delete_columns_command import DeleteColumnsCommand
+from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
+from pandaplot.models.project import Project
+from pandaplot.models.project.items import Chart, Dataset
+
+
+@pytest.fixture
+def env():
+    project = Project("P")
+    dataset = Dataset(name="ds", data=pd.DataFrame({"a": [1, 2], "b": [3, 4], "c": [5, 6], "d": [7, 8]}))
+    other = Dataset(name="other", data=pd.DataFrame({"a": [7]}))
+    project.add_item(dataset)
+    project.add_item(other)
+
+    chart = Chart(name="c")
+    chart.add_data_series(dataset.id, "a", "b", label="s1")
+    chart.add_data_series(other.id, "a", "a", label="s2")  # other dataset: must not be touched
+    chart.add_fit_data(dataset.id, "a", "b", "Linear",
+                       np.array([1.0]), np.array([2.0]))
+    project.add_item(chart)
+
+    untouched_chart = Chart(name="c2")
+    untouched_chart.add_data_series(dataset.id, "c", "c", label="s3")  # unrelated column: unaffected
+    project.add_item(untouched_chart)
+
+    app_state = Mock()
+    app_state.has_project = True
+    app_state.current_project = project
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    ui_controller = Mock()
+    ui_controller.show_confirmation.return_value = True
+    app_context.get_ui_controller.return_value = ui_controller
+    app_context.event_bus = Mock()
+    app_state.event_bus = app_context.event_bus
+    return app_context, dataset, other, chart, untouched_chart
+
+
+def _chart_updated_calls(app_context):
+    return [c for c in app_context.event_bus.emit.call_args_list
+            if c.args[0] == ChartEvents.CHART_UPDATED]
+
+
+def test_delete_removes_column_and_cascades_referencing_series_and_fits(env):
+    app_context, dataset, other, chart, untouched_chart = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert list(dataset.data.columns) == ["b", "c", "d"]
+    assert len(chart.data_series) == 1  # s1 (column 'a') removed, s2 (other dataset) kept
+    assert chart.data_series[0].label == "s2"
+    assert chart.fit_data == []
+    # unrelated-column chart is untouched
+    assert untouched_chart.data_series[0].x_column == "c"
+
+
+def test_delete_with_no_chart_references_skips_confirmation(env):
+    app_context, dataset, _, _, untouched_chart = env
+    ui_controller = app_context.get_ui_controller.return_value
+    command = DeleteColumnsCommand(app_context, dataset.id, ["d"])
+
+    assert command.execute() is True
+    ui_controller.show_confirmation.assert_not_called()
+    assert untouched_chart.data_series[0].x_column == "c"  # unaffected
+
+
+def test_delete_declined_confirmation_aborts(env):
+    app_context, dataset, _, chart, _ = env
+    ui_controller = app_context.get_ui_controller.return_value
+    ui_controller.show_confirmation.return_value = False
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is False
+    assert list(dataset.data.columns) == ["a", "b", "c", "d"]
+    assert len(chart.data_series) == 2
+
+
+def test_undo_restores_data_and_chart_references(env):
+    app_context, dataset, _, chart, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    assert command.undo() is True
+    assert list(dataset.data.columns) == ["a", "b", "c", "d"]
+    assert len(chart.data_series) == 2
+    assert chart.data_series[0].x_column == "a"
+    assert len(chart.fit_data) == 1
+
+
+def test_redo_reapplies_deletion_and_removes_references_again(env):
+    app_context, dataset, _, chart, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+    command.undo()
+
+    assert command.redo() is True
+    assert list(dataset.data.columns) == ["b", "c", "d"]
+    assert len(chart.data_series) == 1
+    assert chart.data_series[0].label == "s2"
+    assert chart.fit_data == []
+
+
+def test_redo_failure_surfaces_error_message(env):
+    app_context, dataset, _, chart, _ = env
+    ui_controller = app_context.get_ui_controller.return_value
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+    command.undo()
+
+    # Simulate the dataset having changed out from under the command since undo
+    # (e.g. another operation already removed the column), so the drop() in
+    # redo's _perform_deletion raises instead of silently succeeding.
+    dataset.set_data(dataset.data.drop(columns=["a"]))
+
+    assert command.redo() is False
+    ui_controller.show_error_message.assert_called_once()
+
+
+def test_events_emitted_only_for_affected_charts(env):
+    app_context, dataset, _, chart, untouched_chart = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    removed_calls = [c for c in app_context.event_bus.emit.call_args_list
+                      if c.args[0] == DatasetOperationEvents.DATASET_COLUMN_REMOVED]
+    assert len(removed_calls) == 1
+
+    updated = _chart_updated_calls(app_context)
+    assert len(updated) == 1  # 'untouched_chart' has no reference to column 'a'
+    assert updated[0].args[1]["chart_id"] == chart.id

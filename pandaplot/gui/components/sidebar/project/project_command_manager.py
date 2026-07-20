@@ -1,15 +1,17 @@
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QInputDialog
 
 from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
-from pandaplot.commands.project.dataset import ImportCsvCommand
+from pandaplot.commands.project.dataset import ImportDataCommand
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
 from pandaplot.commands.project.folder import CreateFolderCommand
 from pandaplot.commands.project.item import DeleteItemCommand
 from pandaplot.commands.project.note import CreateNoteCommand
+from pandaplot.commands.project.project import RenameProjectCommand
 from pandaplot.models.events.event_data import TabOpenRequestedData
 from pandaplot.models.events.event_types import UIEvents
 from pandaplot.models.project.items import Dataset
@@ -22,7 +24,8 @@ class ProjectPanelCommandManager:
                  get_target_folder_id,
                  get_current_item,
                  get_selected_item_info,
-                 edit_item):
+                 edit_item,
+                 parent_widget=None):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.app_context = app_context
         self.app_state = app_context.get_app_state()
@@ -30,6 +33,7 @@ class ProjectPanelCommandManager:
         self.get_current_item = get_current_item
         self.get_selected_item_info = get_selected_item_info
         self.edit_item = edit_item
+        self.parent_widget = parent_widget
 
     def add_folder(self):
         """Add a new folder."""
@@ -51,14 +55,14 @@ class ProjectPanelCommandManager:
         command = CreateNoteCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
 
-    def import_csv(self):
-        """Import a CSV file as a dataset."""
+    def import_data(self):
+        """Import a data file (CSV/TSV or single-sheet Excel) as a dataset."""
         if not self.app_state.has_project:
             return
 
         folder_id = self.get_target_folder_id()
 
-        command = ImportCsvCommand(self.app_context, folder_id=folder_id)
+        command = ImportDataCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
 
     def create_empty_dataset(self):
@@ -92,9 +96,17 @@ class ProjectPanelCommandManager:
         self.app_context.get_command_executor().execute_command(command)
 
     def rename_selected_item(self):
-        """Rename the selected item by starting inline editing."""
+        """Rename the selected item.
+
+        The project root has no `Item` to inline-edit, so it is renamed
+        through a dialog and a dedicated command instead.
+        """
         selected_info = self.get_selected_item_info()
-        if not selected_info or selected_info["type"] == "project":
+        if not selected_info:
+            return
+
+        if selected_info["type"] == "project":
+            self.rename_project()
             return
 
         # Start inline editing on the current item
@@ -102,6 +114,19 @@ class ProjectPanelCommandManager:
         if current_item:
             # Start editing the first column (name)
             self.edit_item(current_item, 0)
+
+    def rename_project(self):
+        """Prompt for a new project name and execute the rename."""
+        if not self.app_state.has_project or not self.app_state.current_project:
+            return
+
+        project = self.app_state.current_project
+        new_name, ok = QInputDialog.getText(
+            self.parent_widget, "Rename Project", "New project name:", text=project.name)
+        if not ok:
+            return
+        command = RenameProjectCommand(self.app_context, new_name)
+        self.app_context.get_command_executor().execute_command(command)
 
     def delete_selected_item(self):
         """Delete the selected item."""
