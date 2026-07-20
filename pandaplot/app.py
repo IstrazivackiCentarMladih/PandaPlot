@@ -77,6 +77,31 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     return app, main_window
 
 
+def _warm_up_heavy_imports(progress_callback=None) -> None:
+    """Pre-import dependencies that are otherwise lazily loaded on first use
+    (running a fit, opening a chart tab, opening a note tab). Each of those
+    imports costs 1+ seconds; without warm-up, that cost is paid synchronously
+    on the UI thread the first time the user triggers the feature, which
+    looks like a freeze. Runs on a background thread, so import errors here
+    must never propagate to the caller -- the feature will just import (and
+    freeze, or fail) normally on first real use instead.
+    """
+    try:
+        from markdown import markdown  # noqa: F401
+        from matplotlib.backends.backend_qt import NavigationToolbar2QT  # noqa: F401
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: F401
+        from matplotlib.figure import Figure  # noqa: F401
+        from scipy.optimize import curve_fit  # noqa: F401
+    except Exception:
+        logging.getLogger(__name__).exception("Background import warm-up failed (non-fatal)")
+
+
+def _schedule_import_warmup(app_context: AppContext) -> None:
+    """Kick off _warm_up_heavy_imports on a background thread."""
+    task_scheduler = app_context.get_manager(TaskScheduler)
+    task_scheduler.run_task(_warm_up_heavy_imports)
+
+
 def launch(app_context: AppContext) -> int:
     """Launch the GUI event loop.
 
@@ -87,6 +112,7 @@ def launch(app_context: AppContext) -> int:
 
     app, main_window = create_qt_application(app_context)
     main_window.show()
+    _schedule_import_warmup(app_context)
     return app.exec()
 
 
