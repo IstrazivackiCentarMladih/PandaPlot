@@ -44,7 +44,9 @@ class FitData:
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
-    
+    confidence_lower: np.ndarray | None = None
+    confidence_upper: np.ndarray | None = None
+
     def __post_init__(self):
         if self.fit_params is None:
             self.fit_params = {}

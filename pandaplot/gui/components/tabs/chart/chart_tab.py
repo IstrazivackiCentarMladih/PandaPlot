@@ -117,7 +117,9 @@ class ChartTab(PWidget):
                 line_style="dashed",
                 line_width=2.0,
                 fit_params=fit_params,
-                fit_stats=fit_stats
+                fit_stats=fit_stats,
+                confidence_lower=fit_results.confidence_lower,
+                confidence_upper=fit_results.confidence_upper
             )
 
             # Refresh the chart display to show the new fit
