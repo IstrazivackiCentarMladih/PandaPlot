@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p /Users/elenalukacevic/Documents/GitHub/PandaPlot/examples/statistics_basics *)",
+      "Bash(python examples/statistics_basics/create_statistics_example.py)",
+      "Bash(python -c ' *)",
+      "Bash(QT_QPA_PLATFORM=offscreen python -c ' *)",
+      "Bash(mkdir -p /private/tmp/claude-502/-Users-elenalukacevic-Documents-GitHub-PandaPlot/cc417645-7f68-4914-a73a-0ce1cfabe1c2/scratchpad *)",
+      "Read(//tmp/**)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(cp /tmp/pp_screens/*_fixed.png /private/tmp/claude-502/-Users-elenalukacevic-Documents-GitHub-PandaPlot/cc417645-7f68-4914-a73a-0ce1cfabe1c2/scratchpad/)",
+      "Bash(rm -rf /tmp/pp_screens)",
+      "Bash(ruff check *)"
+    ],
+    "additionalDirectories": [
+      "/Users/elenalukacevic/Documents/GitHub/PandaPlot/examples",
+      "/tmp/pp_screens"
+    ]
+  }
+}
