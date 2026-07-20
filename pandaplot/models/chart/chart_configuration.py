@@ -21,6 +21,7 @@ class LineStyleType(Enum):
     DASHED = "dashed"
     DOTTED = "dotted"
     DASHDOT = "dashdot"
+    NONE = "none"
 
 
 class MarkerType(Enum):

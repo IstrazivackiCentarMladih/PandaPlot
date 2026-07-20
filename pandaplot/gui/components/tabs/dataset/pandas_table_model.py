@@ -11,7 +11,7 @@ from typing import Any, override
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pandaplot.commands.project.dataset.edit_command import EditCommand
-from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData, DatasetRowsAddedData, DatasetRowsRemovedData
+from pandaplot.models.events.event_data import DatasetColumnRenamedData, DatasetColumnsAddedData, DatasetColumnsRemovedData, DatasetRowsAddedData, DatasetRowsRemovedData
 from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationEvents
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -77,6 +77,12 @@ class PandasTableModel(QAbstractTableModel):
 
         self.endRemoveColumns()
 
+    def on_rename_column_event(self, event):
+        self.logger.info("On rename column event")
+        event_data = DatasetColumnRenamedData.from_dict(event)
+        self.headerDataChanged.emit(
+            Qt.Orientation.Horizontal, event_data.column_index, event_data.column_index)
+
     def on_add_row_event(self, event):
         self.logger.info("On add row event")
         event_data = DatasetRowsAddedData.from_dict(event)
@@ -95,6 +101,7 @@ class PandasTableModel(QAbstractTableModel):
         self.app_context.event_bus.subscribe(DatasetEvents.DATASET_DATA_CHANGED, self.on_dataset_changed)
         self.app_context.event_bus.subscribe(DatasetOperationEvents.DATASET_COLUMN_ADDED, self.on_add_column_event)
         self.app_context.event_bus.subscribe(DatasetOperationEvents.DATASET_COLUMN_REMOVED, self.on_remove_column_event)
+        self.app_context.event_bus.subscribe(DatasetOperationEvents.DATASET_COLUMN_RENAMED, self.on_rename_column_event)
         self.app_context.event_bus.subscribe(DatasetOperationEvents.DATASET_ROW_ADDED, self.on_add_row_event)
         self.app_context.event_bus.subscribe(DatasetOperationEvents.DATASET_ROW_REMOVED, self.on_remove_row_event)
 

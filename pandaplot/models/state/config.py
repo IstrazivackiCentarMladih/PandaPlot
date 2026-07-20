@@ -88,16 +88,36 @@ class ProjectConfig:
 		return
 
 
+# Shared bounds for chart size in centimeters. The single source of truth for
+# the min/max a chart can be sized to, referenced by both this config's
+# validation and the GUI's size controls (chart_canvas.py, chart_editor.py,
+# settings_dialog.py) so they can't drift out of sync.
+MIN_CHART_WIDTH_CM = 2
+MAX_CHART_WIDTH_CM = 100
+MIN_CHART_HEIGHT_CM = 2
+MAX_CHART_HEIGHT_CM = 100
+
+
 @dataclass(slots=True)
 class ChartDisplayConfig:
 	"""Configuration for global chart display defaults (rendering / preview)."""
 	dpi: int = 100
+	default_width_cm: float = 20.0
+	default_height_cm: float = 15.0
 
 	def validate(self) -> None:
 		if self.dpi < 50:
 			self.dpi = 50
 		if self.dpi > 600:
 			self.dpi = 600
+		if self.default_width_cm < MIN_CHART_WIDTH_CM:
+			self.default_width_cm = MIN_CHART_WIDTH_CM
+		if self.default_width_cm > MAX_CHART_WIDTH_CM:
+			self.default_width_cm = MAX_CHART_WIDTH_CM
+		if self.default_height_cm < MIN_CHART_HEIGHT_CM:
+			self.default_height_cm = MIN_CHART_HEIGHT_CM
+		if self.default_height_cm > MAX_CHART_HEIGHT_CM:
+			self.default_height_cm = MAX_CHART_HEIGHT_CM
 
 
 @dataclass(slots=True)
@@ -116,6 +136,12 @@ class ApplicationConfig:
 	project: ProjectConfig = field(default_factory=ProjectConfig)
 	chart_display: ChartDisplayConfig = field(default_factory=ChartDisplayConfig)
 	recent_projects: list[str] = field(default_factory=list)
+
+	# ----- session persistence ---------------------------------------------------
+	# Remembers what was open so it can be restored on the next launch.
+	last_project_path: str | None = None
+	last_open_tabs: list[str] = field(default_factory=list)
+	last_active_tab_id: str | None = None
 
 	# ----- construction helpers -------------------------------------------------
 	@classmethod
@@ -140,6 +166,9 @@ class ApplicationConfig:
 			"project": asdict(self.project),
 			"chart_display": asdict(self.chart_display),
 			"recent_projects": list(self.recent_projects),
+			"last_project_path": self.last_project_path,
+			"last_open_tabs": list(self.last_open_tabs),
+			"last_active_tab_id": self.last_active_tab_id,
 		}
 
 	def to_json(self, *, indent: int | None = 2) -> str:
@@ -185,6 +214,18 @@ class ApplicationConfig:
 					unique.append(p)
 			self.recent_projects = unique[:50]  # Cap to avoid unbounded growth
 
+		# Session persistence fields (flat, not nested sections)
+		if "last_project_path" in data:
+			value = data["last_project_path"]
+			self.last_project_path = value if isinstance(value, str) and value else None
+
+		if isinstance(data.get("last_open_tabs"), list):
+			self.last_open_tabs = [t for t in data["last_open_tabs"] if isinstance(t, str) and t]
+
+		if "last_active_tab_id" in data:
+			value = data["last_active_tab_id"]
+			self.last_active_tab_id = value if isinstance(value, str) and value else None
+
 		for key, value in data.items():
 			if key == "version":
 				# We keep existing version if mismatch; manager handles migration.
@@ -220,6 +261,15 @@ class ApplicationConfig:
 								setattr(section_obj, skey, True)
 							elif lowered in {"false", "0", "no", "off"}:
 								setattr(section_obj, skey, False)
+						continue
+					if isinstance(current, float):
+						if isinstance(sval, (int, float)):
+							setattr(section_obj, skey, float(sval))
+						elif isinstance(sval, str):
+							try:
+								setattr(section_obj, skey, float(sval))
+							except ValueError:
+								pass
 						continue
 					if isinstance(current, int):
 						if isinstance(sval, (int, float)):

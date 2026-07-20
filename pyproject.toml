@@ -5,27 +5,28 @@ description = "PandaPlot is educational scientific visualization and analysis ap
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "markdown>=3.8.2",
-    "matplotlib>=3.10.5",
+    "markdown>=3.10.2",
+    "matplotlib>=3.11.0",
     "openpyxl>=3.1.5",
-    "pandas>=2.3.1",
-    "pyarrow>=21.0.0",
-    "pyside6>=6.9.1",
-    "scipy>=1.16.1",
-    "statsmodels>=0.14.5",
+    "pandas>=3.0.3",
+    "pyarrow>=25.0.0",
+    "pyside6>=6.11.1",
+    "scipy>=1.18.0",
+    "statsmodels>=0.14.6",
+    "xlrd>=2.0.2",
 ]
 
 [dependency-groups]
 dev = [
-    "bandit>=1.8.6",
-    "pip-audit>=2.9.0",
-    "pytest>=8.4.1",
-    "pytest-asyncio>=1.1.0",
-    "pytest-cov>=6.2.1",
-    "pytest-mock>=3.14.1",
-    "ruff>=0.12.9",
-    "viztracer>=1.0.4",
-    "vulture>=2.14",
+    "bandit>=1.9.4",
+    "pip-audit>=2.10.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "ruff>=0.15.22",
+    "viztracer>=1.1.1",
+    "vulture>=2.16",
 ]
 
 [tool.ruff]

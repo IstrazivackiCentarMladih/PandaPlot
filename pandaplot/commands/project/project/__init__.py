@@ -2,6 +2,7 @@ from pandaplot.commands.project.project.close_project_command import CloseProjec
 from pandaplot.commands.project.project.load_project_command import LoadProjectCommand
 from pandaplot.commands.project.project.new_project_command import NewProjectCommand
 from pandaplot.commands.project.project.open_project_command import OpenProjectCommand
+from pandaplot.commands.project.project.rename_project_command import RenameProjectCommand
 from pandaplot.commands.project.project.save_project_command import SaveProjectAsCommand, SaveProjectCommand
 
 __all__ = [
@@ -10,5 +11,6 @@ __all__ = [
     "SaveProjectCommand",
     "SaveProjectAsCommand",
     "LoadProjectCommand",
-    "CloseProjectCommand"
+    "CloseProjectCommand",
+    "RenameProjectCommand"
 ]
