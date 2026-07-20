@@ -4,7 +4,6 @@ import numpy as np
 from scipy.optimize import curve_fit
 from dataclasses import dataclass
 from pandaplot.models.events import FitEvents
-from scipy.stats import t
 
 FIT_DEFINITIONS = {
     "Linear": {
@@ -269,6 +268,7 @@ class FitService:
 
     def _calculate_confidence_band(self, fit_func, x_fit, popt, pcov, x_data, confidence=0.95,):
         """Calculate confidence band for fitted curve."""
+        from scipy.stats import t
 
         y_fit = fit_func(x_fit, *popt)
         n = len(x_data)
