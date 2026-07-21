@@ -5,11 +5,19 @@ Chart model for managing chart/visualization items in the project.
 import copy
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from pandaplot.models.project.items.item import Item
+
+
+class ErrorDirection(StrEnum):
+    """Which side(s) of a data point a symmetric error bar's magnitude is drawn on."""
+    BOTH = "both"
+    PLUS = "plus"
+    MINUS = "minus"
 
 
 @dataclass
@@ -28,6 +36,14 @@ class DataSeries:
     marker_size: float = 2.0
     visible: bool = True
     alpha: float = 1.0
+    x_error_column: str = ""
+    y_error_column: str = ""
+    x_error_minus_column: str = ""  # only used when error_symmetric is False
+    y_error_minus_column: str = ""  # only used when error_symmetric is False
+    error_symmetric: bool = True
+    error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
+    error_color: str = ""  # "" => inherit series.color
+    error_cap_size: float = 3.0
 
 
 @dataclass
@@ -309,7 +325,15 @@ class Chart(Item):
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
                     "visible": series.visible,
-                    "alpha": series.alpha
+                    "alpha": series.alpha,
+                    "x_error_column": series.x_error_column,
+                    "y_error_column": series.y_error_column,
+                    "x_error_minus_column": series.x_error_minus_column,
+                    "y_error_minus_column": series.y_error_minus_column,
+                    "error_symmetric": series.error_symmetric,
+                    "error_direction": series.error_direction,
+                    "error_color": series.error_color,
+                    "error_cap_size": series.error_cap_size
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -370,7 +394,15 @@ class Chart(Item):
                 line_width=series_dict.get("line_width", 2.0),
                 marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
-                alpha=series_dict.get("alpha", 1.0)
+                alpha=series_dict.get("alpha", 1.0),
+                x_error_column=series_dict.get("x_error_column", ""),
+                y_error_column=series_dict.get("y_error_column", ""),
+                x_error_minus_column=series_dict.get("x_error_minus_column", ""),
+                y_error_minus_column=series_dict.get("y_error_minus_column", ""),
+                error_symmetric=series_dict.get("error_symmetric", True),
+                error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
+                error_color=series_dict.get("error_color", ""),
+                error_cap_size=series_dict.get("error_cap_size", 3.0)
             )
             chart.data_series.append(series)
         

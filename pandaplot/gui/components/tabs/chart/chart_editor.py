@@ -1,5 +1,6 @@
 from typing import override
 
+import numpy as np
 from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
@@ -20,7 +21,7 @@ from shiboken6 import isValid
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ConfigEvents
-from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.project.items.chart import Chart, ErrorDirection
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
@@ -68,26 +69,42 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         axis.set_major_formatter(ScalarFormatter())
 
 
+def _resolve_error_column(df, column_name):
+    """Best-effort lookup of an optional error column.
+
+    Returns None (never an error) when the column isn't configured or no
+    longer exists, so a stale error-column reference just silently drops
+    the error bars instead of hiding the whole series.
+    """
+    if not column_name or column_name not in df.columns:
+        return None
+    return df[column_name].to_numpy()
+
+
 def resolve_series_data(project, series, chart_type=None):
     """Resolve a DataSeries against the project's datasets.
 
-    Returns (x_data, y_data, None) on success, or (None, None, message)
-    when the dataset or a column can't be found. An empty x_column means
-    "plot against the DataFrame index". Histograms only ever plot
-    y_column, so a stale/unused x_column is ignored when chart_type == "hist".
+    Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
+    success, or all-None with a message when the dataset or a required
+    column can't be found. An empty x_column means "plot against the
+    DataFrame index". Histograms only ever plot y_column, so a stale/unused
+    x_column is ignored when chart_type == "hist". The error columns are
+    resolved leniently (see _resolve_error_column) since they're optional;
+    x_err_minus/y_err_minus are only meaningful when series.error_symmetric
+    is False.
     """
     from pandaplot.models.project.items.dataset import Dataset
 
     if project is None:
-        return None, None, "no project loaded"
+        return None, None, None, None, None, None, "no project loaded"
 
     dataset = project.find_item(series.dataset_id)
     if not isinstance(dataset, Dataset) or dataset.data is None:
-        return None, None, f"dataset '{series.dataset_id}' not found"
+        return None, None, None, None, None, None, f"dataset '{series.dataset_id}' not found"
 
     df = dataset.data
     if not series.y_column:
-        return None, None, "no Y column configured"
+        return None, None, None, None, None, None, "no Y column configured"
 
     needs_x_column = chart_type != "hist"
     x_column = series.x_column if needs_x_column else None
@@ -96,10 +113,49 @@ def resolve_series_data(project, series, chart_type=None):
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
-        return None, None, f"column {cols} not found in '{dataset.name}'"
+        return None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'"
 
     x_data = df[x_column] if x_column else df.index
-    return x_data, df[series.y_column], None
+    x_err = _resolve_error_column(df, series.x_error_column)
+    y_err = _resolve_error_column(df, series.y_error_column)
+    x_err_minus = _resolve_error_column(df, series.x_error_minus_column)
+    y_err_minus = _resolve_error_column(df, series.y_error_minus_column)
+    return x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None
+
+
+def _symmetric_directional_error(magnitude, direction: ErrorDirection):
+    """Turn a symmetric error magnitude into the array matplotlib expects.
+
+    ErrorDirection.PLUS/MINUS produce an asymmetric (2, N) array with the
+    unused side zeroed out, since matplotlib's errorbar() only accepts a
+    single magnitude or an explicit lower/upper pair.
+    """
+    if magnitude is None:
+        return None
+    if direction == ErrorDirection.BOTH:
+        return magnitude
+    zeros = np.zeros_like(magnitude)
+    return np.vstack([zeros, magnitude]) if direction == ErrorDirection.PLUS else np.vstack([magnitude, zeros])
+
+
+def build_error_array(magnitude, minus_magnitude, direction, symmetric):
+    """Combine a series' resolved error column(s) into what errorbar() expects.
+
+    In symmetric mode only `magnitude` is used, expanded per `direction` via
+    _symmetric_directional_error. In asymmetric mode `magnitude` is the
+    upper (+) error and `minus_magnitude` the lower (-) error; either side
+    missing is treated as zero so a one-sided uncertainty column is still
+    usable on its own.
+    """
+    if symmetric:
+        return _symmetric_directional_error(magnitude, direction)
+    if magnitude is None and minus_magnitude is None:
+        return None
+    n = len(magnitude) if magnitude is not None else len(minus_magnitude)
+    zeros = np.zeros(n)
+    lower = minus_magnitude if minus_magnitude is not None else zeros
+    upper = magnitude if magnitude is not None else zeros
+    return np.vstack([lower, upper])
 
 
 class ChartEditorWidget(PWidget):
@@ -477,7 +533,7 @@ class ChartEditorWidget(PWidget):
             else:
                 project = self.app_context.get_app_state().current_project
                 for i, series in enumerate(self.chart.data_series):
-                    x_data, y_data, error = resolve_series_data(
+                    x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, error = resolve_series_data(
                         project, series, self.chart.chart_type)
                     if error:
                         series_errors.append(
@@ -518,6 +574,21 @@ class ChartEditorWidget(PWidget):
                                                     color=series.color,
                                                     label=series.label,
                                                     alpha=alpha)
+
+                    if self.chart.chart_type in ("line", "scatter", "bar"):
+                        xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
+                        yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
+                        if xerr is not None or yerr is not None:
+                            err_color = series.error_color or series.color
+                            self.chart_canvas.axes.errorbar(
+                                x_data, y_data,
+                                xerr=xerr,
+                                yerr=yerr,
+                                fmt="none",
+                                ecolor=err_color,
+                                elinewidth=series.line_width,
+                                capsize=series.error_cap_size,
+                                alpha=alpha)
 
                 # Plot fit data from chart.fit_data
                 for i, fit in enumerate(self.chart.fit_data):
