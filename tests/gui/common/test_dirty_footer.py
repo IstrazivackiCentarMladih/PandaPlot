@@ -53,3 +53,11 @@ def test_revert_button_click_emits_revert_clicked():
     footer.revertClicked.connect(lambda: seen.append(True))
     footer._revert_button.click()
     assert seen == [True]
+
+
+def test_set_modified_true_with_zero_changes_disables_buttons():
+    footer = DirtyFooter()
+    footer.setModified(True, 0)
+    assert not footer._apply_button.isEnabled()
+    assert not footer._revert_button.isEnabled()
+    assert footer._status_label.text() == "No changes"

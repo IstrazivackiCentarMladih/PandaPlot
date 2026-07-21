@@ -36,8 +36,9 @@ class DirtyFooter(QWidget):
 
     def setModified(self, is_modified: bool, change_count: int = 0):  # noqa: N802
         self._status_label.setText(format_status_text(is_modified, change_count))
-        self._revert_button.setEnabled(is_modified)
-        self._apply_button.setEnabled(is_modified)
+        is_effectively_modified = is_modified and change_count > 0
+        self._revert_button.setEnabled(is_effectively_modified)
+        self._apply_button.setEnabled(is_effectively_modified)
 
     def set_tokens(self, tokens: dict):
         modified_color = tokens.get("status_modified_text", "#B06A00")
