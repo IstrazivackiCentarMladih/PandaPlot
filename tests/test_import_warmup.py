@@ -22,7 +22,9 @@ def test_background_import_warmup_loads_heavy_deps_off_the_main_thread():
         "assert 'matplotlib.backends.backend_qtagg' in sys.modules, 'matplotlib backend was not warmed up'\n"
         "assert 'markdown' in sys.modules, 'markdown was not warmed up'\n"
     )
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=os.environ.copy())
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=15)
     assert result.returncode == 0, result.stderr
 
 
