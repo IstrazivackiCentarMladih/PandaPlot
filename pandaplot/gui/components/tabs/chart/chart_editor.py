@@ -32,6 +32,12 @@ from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
+def apply_chart_title(axes, title: str, subtitle: str, title_font_size: float) -> None:
+    """Set the chart title (with an optional subtitle on a second line)."""
+    text = f"{title}\n{subtitle}" if subtitle else title
+    axes.set_title(text, fontsize=title_font_size, fontweight="bold")
+
+
 def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
     """Apply tick placement and label formatting to a matplotlib Axis.
 
@@ -576,8 +582,12 @@ class ChartEditorWidget(PWidget):
 
             # Apply chart configuration
             config = self.chart.config
-            self.chart_canvas.axes.set_title(config.get(
-                "title", self.chart.name), fontsize=14, fontweight="bold")
+            apply_chart_title(
+                self.chart_canvas.axes,
+                title=config.get("title", self.chart.name),
+                subtitle=config.get("subtitle", ""),
+                title_font_size=config.get("title_font_size", 14),
+            )
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
             self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
