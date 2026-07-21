@@ -51,3 +51,12 @@ def test_clicking_a_chip_emits_current_value_changed():
     row.currentValueChanged.connect(seen.append)
     row._buttons[1].click()
     assert seen == ["s2"]
+
+
+def test_clicking_already_selected_chip_does_not_emit_signal():
+    row = ChipRow()
+    row.setItems([("Series 1", "s1"), ("Series 2", "s2")])
+    seen = []
+    row.currentValueChanged.connect(seen.append)
+    row._buttons[0].click()  # Click the already-selected chip
+    assert seen == []  # Signal should not fire
