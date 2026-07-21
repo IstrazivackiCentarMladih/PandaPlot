@@ -1,5 +1,3 @@
-from pandaplot.gui.components.tabs.chart import ChartTab
-from pandaplot.gui.components.tabs.dataset.dataset_tab import DatasetTab
-from pandaplot.gui.components.tabs.note import NoteTab
-
-__all__ = ["ChartTab", "NoteTab", "DatasetTab"]
+# Tab classes are intentionally NOT re-exported here: ChartTab pulls in the
+# matplotlib Qt backend and NoteTab pulls in markdown. Import them from their
+# own modules at point of use so app startup stays fast.

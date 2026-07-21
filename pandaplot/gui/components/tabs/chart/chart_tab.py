@@ -133,14 +133,12 @@ class ChartTab(PWidget):
             # so resolve both a short display name and its color together.
             short_fit_name, fit_color = _resolve_fit_style(fit_type)
 
-            x_fit = np.array(fit_results.x_fit)
-            y_fit = np.array(fit_results.y_fit)
+            # Add fit data directly to the chart
+            x_fit = np.asarray(fit_results.x_fit)
+            y_fit = np.asarray(fit_results.y_fit)
 
             fit_params = fit_results.params
-            fit_stats = {
-                "errors": {name: float(value) for name, value in zip(fit_results.param_names, fit_results.errors, strict=False)},
-                "r_squared": fit_results.r_squared,
-            }
+            fit_stats = {"r_squared": fit_results.r_squared}
 
             self.chart.add_fit_data(
                 source_dataset_id=source_dataset_id,
@@ -154,7 +152,9 @@ class ChartTab(PWidget):
                 line_style="dashed",
                 line_width=2.0,
                 fit_params=fit_params,
-                fit_stats=fit_stats
+                fit_stats=fit_stats,
+                confidence_lower=fit_results.confidence_lower,
+                confidence_upper=fit_results.confidence_upper
             )
 
             # Publish chart updated event to notify other components; this
