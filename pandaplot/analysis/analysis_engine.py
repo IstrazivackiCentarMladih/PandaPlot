@@ -6,9 +6,6 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-from scipy.integrate import cumulative_trapezoid, trapezoid
-from scipy.interpolate import CubicSpline, interp1d
-from scipy.signal import savgol_filter
 
 from .analysis_types import AnalysisParameters, AnalysisResult, AnalysisType, DerivativeMethod, InterpolationMethod, SmoothingMethod
 
@@ -103,11 +100,12 @@ class AnalysisEngine:
         # Handle data slicing
         if end_index == -1:
             end_index = len(x_data)
-        
+
         x_slice = x_data.iloc[start_index:end_index]
         y_slice = y_data.iloc[start_index:end_index]
-        
+
         # Calculate cumulative integral
+        from scipy.integrate import cumulative_trapezoid, trapezoid
         try:
             integral_values = cumulative_trapezoid(y_slice, x_slice, initial=0)
             total_integral = trapezoid(y_slice, x_slice)
@@ -221,11 +219,12 @@ class AnalysisEngine:
         # Handle data slicing
         if end_index == -1:
             end_index = len(x_data)
-        
+
         x_slice = x_data.iloc[start_index:end_index]
         y_slice = y_data.iloc[start_index:end_index]
-        
+
         # Apply smoothing based on method
+        from scipy.signal import savgol_filter
         if method == SmoothingMethod.SAVGOL.value:
             window_length = kwargs.get("window_length", min(11, len(y_slice) // 2 * 2 + 1))
             poly_order = kwargs.get("polynomial_order", min(3, window_length - 1))
@@ -306,22 +305,23 @@ class AnalysisEngine:
         # Handle data slicing
         if end_index == -1:
             end_index = len(x_data)
-        
+
         x_slice = x_data.iloc[start_index:end_index]
         y_slice = y_data.iloc[start_index:end_index]
-        
+
         # Determine number of interpolation points
         if num_points is None:
             num_points = len(x_slice) * 2
-        
+
         # Create new x values for interpolation
         x_new = np.linspace(x_slice.min(), x_slice.max(), num_points)
-        
+
         # Adjust method for small datasets
         if len(x_slice) < 4 and method == InterpolationMethod.CUBIC.value:
             method = InterpolationMethod.LINEAR.value
-        
+
         # Perform interpolation
+        from scipy.interpolate import CubicSpline, interp1d
         if method == InterpolationMethod.CUBIC.value:
             try:
                 cs = CubicSpline(x_slice, y_slice)

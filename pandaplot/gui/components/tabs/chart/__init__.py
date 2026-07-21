@@ -1,3 +1,2 @@
-from pandaplot.gui.components.tabs.chart.chart_tab import ChartTab
-
-__all__ = ["ChartTab"]
+# ChartTab is NOT re-exported here to defer matplotlib loading
+# Import directly from chart_tab module

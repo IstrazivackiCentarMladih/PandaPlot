@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import curve_fit
 
 from pandaplot.models.events import FitEvents
 
@@ -128,6 +127,7 @@ class FitService:
 
     def perform_fit(self): #fit_services
         """Perform the curve fitting."""
+        from scipy.optimize import curve_fit
 
         # Get data
         data = self.fit_panel.get_current_data()
