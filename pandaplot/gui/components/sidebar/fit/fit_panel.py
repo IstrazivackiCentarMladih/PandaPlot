@@ -2,7 +2,6 @@
 import logging
 from dataclasses import replace
 from typing import Optional, override
-from dataclasses import replace
 
 import pandas as pd
 from PySide6.QtCore import Qt, Signal
