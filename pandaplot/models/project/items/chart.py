@@ -5,11 +5,18 @@ Chart model for managing chart/visualization items in the project.
 import copy
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from pandaplot.models.project.items.item import Item
+
+
+class YAxis(StrEnum):
+    """Y-axis selection for a data series."""
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
 
 
 @dataclass
@@ -27,8 +34,15 @@ class DataSeries:
     line_width: float = 2.0
     marker_size: float = 2.0
     visible: bool = True
-    y_axis: str = "primary"  # "primary" or "secondary" - which Y axis this series plots against
+    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
+
+    def __post_init__(self):
+        if isinstance(self.y_axis, str):
+            try:
+                self.y_axis = YAxis(self.y_axis)
+            except ValueError:
+                self.y_axis = YAxis.PRIMARY
 
 
 @dataclass
