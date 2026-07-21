@@ -63,3 +63,11 @@ def test_design_tokens_without_current_context_returns_light_defaults(tmp_path):
 def test_default_accent_color_is_handoff_indigo():
     cfg = ApplicationConfig.default()
     assert cfg.appearance.accent_color == "#4A56C6"
+
+
+def test_build_stylesheet_includes_shared_widget_rules(tmp_path):
+    tm = _make_manager(tmp_path)
+    qss = tm.build_stylesheet(tm._current)
+    assert 'QFrame[card="true"]' in qss
+    assert 'QPushButton[segment="true"]' in qss
+    assert 'QPushButton[chip="true"]' in qss

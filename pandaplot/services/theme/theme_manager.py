@@ -104,6 +104,38 @@ class ThemeManager:
         except Exception:  # noqa: BLE001
             pass
 
+        tokens = self.get_design_tokens()
+        shared_widget_rules = f"""
+            QFrame[card="true"] {{
+                background-color: {tokens['surface_white']};
+                border: 1px solid {tokens['border_subtle']};
+                border-radius: {tokens['radius_card']}px;
+            }}
+            QPushButton[segment="true"] {{
+                border: none;
+                background-color: transparent;
+                color: {tokens['text_muted']};
+                padding: 4px 8px;
+            }}
+            QPushButton[segment="true"][selected="true"] {{
+                background-color: {tokens['accent_selected_bg']};
+                color: {tokens['accent_active_text']};
+                font-weight: 600;
+            }}
+            QPushButton[chip="true"] {{
+                border: 1px solid {tokens['border_control']};
+                border-radius: {tokens['radius_chip']}px;
+                padding: 4px 10px;
+                color: {tokens['text_secondary']};
+                background-color: transparent;
+            }}
+            QPushButton[chip="true"][selected="true"] {{
+                background-color: {accent};
+                color: #FFFFFF;
+                border-color: {accent};
+            }}
+        """
+
         return f"""
             QPushButton[primary="true"] {{
                 background-color: {accent};
@@ -121,7 +153,7 @@ class ThemeManager:
                 border-color: {pressed};
             }}
             QTabBar::tab:selected {{ color: {accent}; }}
-        """
+        """ + shared_widget_rules
 
     def _apply_to_qapp(self, ctx: ThemeContext) -> None:
         """Apply palette & global QSS to the QApplication."""
