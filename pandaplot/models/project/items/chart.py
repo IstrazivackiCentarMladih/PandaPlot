@@ -132,6 +132,13 @@ class Chart(Item):
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
             "hist_bins": 20,
+            "subtitle": "",
+            "title_font_size": 14,
+            "width_cm": None,
+            "height_cm": None,
+            "dpi": None,
+            "legend_columns": 1,
+            "legend_bg_alpha": 1.0,
         }
 
         self.style = {

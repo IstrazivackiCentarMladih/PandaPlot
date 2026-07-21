@@ -104,3 +104,54 @@ def test_hist_bins_round_trips_through_serialization():
     chart.config["hist_bins"] = 42
     restored = Chart.from_dict(chart.to_dict())
     assert restored.config["hist_bins"] == 42
+
+
+def test_default_config_has_chart_tab_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["subtitle"] == ""
+    assert chart.config["title_font_size"] == 14
+    assert chart.config["width_cm"] is None
+    assert chart.config["height_cm"] is None
+    assert chart.config["dpi"] is None
+
+
+def test_default_config_has_legend_columns_and_opacity_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["legend_columns"] == 1
+    assert chart.config["legend_bg_alpha"] == 1.0
+
+
+def test_new_chart_tab_and_legend_keys_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["subtitle"] = "n = 42"
+    chart.config["title_font_size"] = 18
+    chart.config["width_cm"] = 12.5
+    chart.config["height_cm"] = 9.0
+    chart.config["dpi"] = 300
+    chart.config["legend_columns"] = 2
+    chart.config["legend_bg_alpha"] = 0.8
+
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["subtitle"] == "n = 42"
+    assert restored.config["title_font_size"] == 18
+    assert restored.config["width_cm"] == 12.5
+    assert restored.config["height_cm"] == 9.0
+    assert restored.config["dpi"] == 300
+    assert restored.config["legend_columns"] == 2
+    assert restored.config["legend_bg_alpha"] == 0.8
+
+
+def test_new_keys_default_when_missing_from_saved_data():
+    # Simulates loading a project saved before these keys existed.
+    data = {
+        "id": "chart1", "name": "Test Chart", "chart_type": "line",
+        "data_series": [], "fit_data": [],
+        "config": {"title": "Test Chart"},  # non-empty, so _init_default_config is NOT re-run
+        "style": {},
+    }
+    restored = Chart.from_dict(data)
+    assert restored.config.get("subtitle", "") == ""
+    assert restored.config.get("title_font_size", 14) == 14
+    assert restored.config.get("width_cm") is None
+    assert restored.config.get("legend_columns", 1) == 1
+    assert restored.config.get("legend_bg_alpha", 1.0) == 1.0
