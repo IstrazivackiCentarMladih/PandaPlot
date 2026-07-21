@@ -38,10 +38,14 @@ class AutoSaveManager:
         self._current_save = None  # in-flight SaveProjectCommand, if any
 
         event_bus.subscribe(ConfigEvents.CONFIG_UPDATED, self._on_config_updated)
+        from pandaplot.models.events.event_types import AppEvents
+        event_bus.subscribe(AppEvents.APP_CLOSING, self._on_app_closing)
+
+    def _on_app_closing(self, _event_data: dict) -> None:
+        self.stop()
 
     def set_app_context(self, app_context) -> None:
         self._app_context = app_context
-
     def start(self) -> None:
         """Start the auto-save timer. Call once a QApplication exists."""
         if self._timer is None:
