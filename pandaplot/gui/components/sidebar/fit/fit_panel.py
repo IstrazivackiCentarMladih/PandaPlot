@@ -29,20 +29,13 @@ from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
 
-# Import scipy for curve fitting (will handle gracefully if not available)
-try:
-    from scipy.optimize import curve_fit
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
 
 class FitPanel(PWidget):
     """Side panel for performing curve fitting on chart data."""
-    
+
     fit_completed = Signal(dict)  # Emitted when fit is completed with results
     fit_applied = Signal(dict)   # Emitted when fit should be applied to chart
-    
+
     def __init__(self, app_context: AppContext, parent: Optional[QWidget]=None):
         super().__init__(app_context=app_context, parent=parent)
         self.fit_command=FitService(self)
@@ -54,11 +47,19 @@ class FitPanel(PWidget):
         self.fit_command.fit_results = None
         self.datasets = []
 
+        # Check scipy availability lazily (only when FitPanel is instantiated)
+        self.scipy_available = self._check_scipy_available()
+
         self._initialize()
         self._connect_signals()
 
-        if not SCIPY_AVAILABLE:
+        if not self.scipy_available:
             self._show_scipy_warning()
+
+    def _check_scipy_available(self) -> bool:
+        """Check if scipy is installed without importing it (import is deferred to fit time)."""
+        import importlib.util
+        return importlib.util.find_spec("scipy") is not None
     
     @override
     def _init_ui(self):
@@ -376,15 +377,15 @@ class FitPanel(PWidget):
         
         # Results text area
         self.results_text = QTextEdit()
-        self.results_text.setMaximumHeight(150)
         self.results_text.setReadOnly(True)
         self.results_text.setPlaceholderText("Fit results will appear here...")
-        results_layout.addWidget(self.results_text)
+        results_layout.addWidget(self.results_text, stretch=1)
         
         # Equation display
         equation_layout = QHBoxLayout()
         equation_layout.addWidget(QLabel("Equation:"))
         self.equation_label = QLabel("No fit performed")
+        self.equation_label.setMaximumHeight(60)
         self.equation_label.setStyleSheet("font-family: monospace; background-color: #f5f5f5; color: #333333; padding: 5px; border: 1px solid #ddd;")
         equation_layout.addWidget(self.equation_label)
         results_layout.addLayout(equation_layout)
@@ -394,9 +395,9 @@ class FitPanel(PWidget):
     def _create_action_buttons(self, layout):
         """Create action buttons."""
         button_layout = QHBoxLayout()
-        
+
         self.fit_button = QPushButton("Perform Fit")
-        self.fit_button.setEnabled(SCIPY_AVAILABLE)
+        self.fit_button.setEnabled(self.scipy_available)
         button_layout.addWidget(self.fit_button)
 
         self.apply_button = QPushButton("Apply to Chart")
@@ -640,5 +641,4 @@ class FitPanel(PWidget):
             # Update data points display
             self.update_data_points_display()
 
-#TODO: fix equation box
 #TODO: show confidence bands

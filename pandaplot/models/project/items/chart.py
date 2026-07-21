@@ -2,13 +2,21 @@
 Chart model for managing chart/visualization items in the project.
 """
 
-from dataclasses import dataclass
+import copy
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from pandaplot.models.project.items.item import Item
+
+
+class YAxis(StrEnum):
+    """Y-axis selection for a data series."""
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
 
 
 @dataclass
@@ -24,9 +32,17 @@ class DataSeries:
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
-    marker_size: float = 6.0
+    marker_size: float = 2.0
     visible: bool = True
+    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
+
+    def __post_init__(self):
+        if isinstance(self.y_axis, str):
+            try:
+                self.y_axis = YAxis(self.y_axis)
+            except ValueError:
+                self.y_axis = YAxis.PRIMARY
 
 
 @dataclass
@@ -45,7 +61,9 @@ class FitData:
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
-    
+    confidence_lower: np.ndarray | None = None
+    confidence_upper: np.ndarray | None = None
+
     def __post_init__(self):
         if self.fit_params is None:
             self.fit_params = {}
@@ -83,6 +101,7 @@ class Chart(Item):
             "title": self.name,
             "x_label": "",
             "y_label": "",
+            "y2_label": "",
             "show_legend": True,
             "legend_position": "upper right",
             "legend_show_frame": True,
@@ -112,6 +131,7 @@ class Chart(Item):
             "y_tick_format": "auto",
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
+            "hist_bins": 20,
         }
 
         self.style = {
@@ -305,6 +325,7 @@ class Chart(Item):
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
                     "visible": series.visible,
+                    "y_axis": series.y_axis,
                     "alpha": series.alpha
                 } for series in self.data_series
             ],
@@ -364,8 +385,9 @@ class Chart(Item):
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
-                marker_size=series_dict.get("marker_size", 6.0),
+                marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
+                y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0)
             )
             chart.data_series.append(series)
@@ -389,6 +411,42 @@ class Chart(Item):
                 fit_stats=fit_dict.get("fit_stats", {})
             )
             chart.fit_data.append(fit)
-        
+
+        # Ensure required config keys exist
+        if not chart.config:
+            chart._init_default_config()
+
         return chart
+
+
+def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
+    """Capture the mutable chart state that the properties panel can change.
+
+    Fit data x/y arrays are intentionally not snapshotted — only their
+    editable style fields — because the arrays are immutable in the panel
+    and can be large.
+    """
+    return {
+        "config": copy.deepcopy(chart.config),
+        "chart_type": chart.chart_type,
+        "name": chart.name,
+        "data_series": [asdict(s) for s in chart.data_series],
+        "fit_data_styles": [
+            {"color": f.color, "line_width": f.line_width}
+            for f in chart.fit_data
+        ],
+    }
+
+
+def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
+    """Restore chart state captured by snapshot_chart_state."""
+    chart.config = copy.deepcopy(snapshot["config"])
+    chart.chart_type = snapshot["chart_type"]
+    chart.name = snapshot["name"]
+    chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
+    for i, fit_style in enumerate(snapshot["fit_data_styles"]):
+        if i < len(chart.fit_data):
+            chart.fit_data[i].color = fit_style["color"]
+            chart.fit_data[i].line_width = fit_style["line_width"]
+    chart.update_modified_time()
 

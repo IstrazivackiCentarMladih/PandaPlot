@@ -13,6 +13,7 @@ dependencies = [
     "pyside6>=6.11.1",
     "scipy>=1.18.0",
     "statsmodels>=0.14.6",
+    "xlrd>=2.0.2",
 ]
 
 [dependency-groups]

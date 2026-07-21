@@ -714,6 +714,7 @@ dependencies = [
     { name = "pyside6" },
     { name = "scipy" },
     { name = "statsmodels" },
+    { name = "xlrd" },
 ]
 
 [package.dev-dependencies]
@@ -739,6 +740,7 @@ requires-dist = [
     { name = "pyside6", specifier = ">=6.11.1" },
     { name = "scipy", specifier = ">=1.18.0" },
     { name = "statsmodels", specifier = ">=0.14.6" },
+    { name = "xlrd", specifier = ">=2.0.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1494,4 +1496,13 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/66/3e/4d08c5903b2c0c70cad583c170cc4a663fc6a61e2ad00b711fcda61358cd/vulture-2.16.tar.gz", hash = "sha256:f8d9f6e2af03011664a3c6c240c9765b3f392917d3135fddca6d6a68d359f717", size = 52680, upload-time = "2026-03-25T14:41:27.141Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f5/be/f935130312330614811dae2ea9df3f395f6d63889eb6c2e68c14507152ee/vulture-2.16-py3-none-any.whl", hash = "sha256:6e0f1c312cef1c87856957e5c2ca9608834a7c794c2180477f30bf0e4cc58eee", size = 26993, upload-time = "2026-03-25T14:41:26.21Z" },
+]
+
+[[package]]
+name = "xlrd"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/5a/377161c2d3538d1990d7af382c79f3b2372e880b65de21b01b1a2b78691e/xlrd-2.0.2.tar.gz", hash = "sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9", size = 100167, upload-time = "2025-06-14T08:46:39.039Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/62/c8d562e7766786ba6587d09c5a8ba9f718ed3fa8af7f4553e8f91c36f302/xlrd-2.0.2-py2.py3-none-any.whl", hash = "sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9", size = 96555, upload-time = "2025-06-14T08:46:37.766Z" },
 ]

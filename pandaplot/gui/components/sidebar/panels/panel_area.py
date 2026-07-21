@@ -23,7 +23,6 @@ class PanelArea(QStackedWidget):
             self.logger.warning("Invalid panel name: %s", name)
             return
 
-        content_widget.setStyleSheet("background-color: #ffffff;")
         self.addWidget(content_widget)
         self.panels[name] = content_widget
 

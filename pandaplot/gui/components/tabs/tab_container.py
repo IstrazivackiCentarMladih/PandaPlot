@@ -4,7 +4,6 @@ from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from pandaplot.commands.project.chart import CreateChartCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
-from pandaplot.gui.components.tabs import ChartTab, DatasetTab, NoteTab
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
 from pandaplot.gui.core.widget_extension import PWidget
@@ -16,6 +15,7 @@ from pandaplot.models.events import (
 )
 from pandaplot.models.project.items import Chart, Dataset, Note
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.session import SessionPersistenceManager
 
 
 class TabContainer(PWidget):
@@ -100,6 +100,8 @@ class TabContainer(PWidget):
                 "tab_id": id(widget) if widget else None
             })
 
+            self._persist_tab_session()
+
     def close_tab_by_item_id(self, item_id: str):
         """Close a tab by its associated item ID, if open."""
         if item_id not in self.tabs:
@@ -163,19 +165,67 @@ class TabContainer(PWidget):
 
             # Switch to the new tab
             self.tab_widget.setCurrentIndex(tab_index)
+
+            self._persist_tab_session()
         except Exception as e:
             self.logger.error("Failed to open tab for item %s: %s", item_id, str(e))
+
+    def restore_tab_session(self, item_ids: list[str], active_item_id: str | None):
+        """Reopen tabs remembered from the previous session, in order.
+
+        Called once the project a session was saved against has finished
+        loading (see pandaplot/app.py's startup restore hook).
+        """
+        if not item_ids:
+            return
+
+        # Drop the placeholder Welcome tab created before the project finished loading
+        for index in range(self.tab_widget.count() - 1, -1, -1):
+            if isinstance(self.tab_widget.widget(index), WelcomeTab):
+                self.tab_widget.removeTab(index)
+
+        for item_id in item_ids:
+            self.open_tab(item_id)
+
+        if active_item_id and active_item_id in self.tabs:
+            tab_index = self.tab_widget.indexOf(self.tabs[active_item_id])
+            if tab_index >= 0:
+                self.tab_widget.setCurrentIndex(tab_index)
+
+    def _persist_tab_session(self):
+        """Remember which tabs are open (and which is active) for next launch.
+
+        No-op when no project is loaded: the placeholder Welcome tab created
+        before a project loads (or after one closes) is not a real session and
+        must not overwrite a previously remembered one.
+        """
+        if not self.app_context or not self.app_context.get_app_state().has_project:
+            return
+        try:
+            session_manager = self.app_context.get_manager(SessionPersistenceManager)
+            active_widget = self.tab_widget.currentWidget()
+            active_id = None
+            if active_widget is not None:
+                data = self.get_tab_data(active_widget)
+                if data.get("type") != "other":
+                    active_id = data.get("id")
+            session_manager.update_tabs(list(self.tabs.keys()), active_id)
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning("Failed to persist tab session: %s", e)
 
     def _create_tab(self, item):
         #TODO: move to a separate factory class
         if item is None:
             raise ValueError("Item cannot be None")
-        
+
         if isinstance(item, Note):
+            from pandaplot.gui.components.tabs.note.note_tab import NoteTab
             return NoteTab(app_context=self.app_context, note=item, parent=self)
         elif isinstance(item, Chart):
+            from pandaplot.gui.components.tabs.chart.chart_tab import ChartTab
             return ChartTab(app_context=self.app_context, chart=item, parent=self)
         elif isinstance(item, Dataset):
+            from pandaplot.gui.components.tabs.dataset.dataset_tab import DatasetTab
             return DatasetTab(app_context=self.app_context, dataset=item, parent=self)
         else:
             raise ValueError(f"Unsupported item type, item class {item.__class__.__name__}")
@@ -218,11 +268,11 @@ class TabContainer(PWidget):
                 # Create a new project first
                 self.handle_new_project()
 
-            # Show file dialog for CSV import
-            from pandaplot.commands.project.dataset.import_csv_command import (
-                ImportCsvCommand,
+            # Show file dialog for data import (CSV or single-sheet Excel)
+            from pandaplot.commands.project.dataset.import_data_command import (
+                ImportDataCommand,
             )
-            command = ImportCsvCommand(self.app_context)
+            command = ImportDataCommand(self.app_context)
             self.app_context.get_command_executor().execute_command(command)
 
     def create_welcome_tab(self):
@@ -335,6 +385,8 @@ class TabContainer(PWidget):
                 "chart_id": tab_data.get("chart_id"),
                 "note_id": tab_data.get("note_id")
             })
+
+            self._persist_tab_session()
 
     def get_tab_data(self, widget):
         """Get tab data for a widget."""

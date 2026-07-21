@@ -39,7 +39,8 @@ class ProjectViewPanel(PWidget):
                                                           lambda: self.tree.currentItem(),
                                                           lambda: self.project_tree_manager.get_selected_item_info(),
                                                           lambda item, position: self.tree.editItem(
-                                                              item, position)
+                                                              item, position),
+                                                          parent_widget=self
                                                           )
 
         self._initialize()
@@ -151,6 +152,7 @@ class ProjectViewPanel(PWidget):
         if self.app_state.has_project:
             project = self.app_state.current_project
             if project:
+                self.project_title_label.setText(project.name)
                 self.project_tree_manager.update_project_tree(project)
 
     def create_context_menu(self):

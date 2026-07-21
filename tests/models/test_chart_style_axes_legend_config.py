@@ -92,3 +92,15 @@ def test_get_config_summary_has_grid_false_when_both_axes_disabled():
     chart.config["show_grid_x"] = False
     chart.config["show_grid_y"] = False
     assert chart.get_config_summary()["has_grid"] is False
+
+
+def test_chart_config_has_hist_bins_default():
+    chart = Chart(name="c")
+    assert chart.config["hist_bins"] == 20
+
+
+def test_hist_bins_round_trips_through_serialization():
+    chart = Chart(name="c")
+    chart.config["hist_bins"] = 42
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["hist_bins"] == 42

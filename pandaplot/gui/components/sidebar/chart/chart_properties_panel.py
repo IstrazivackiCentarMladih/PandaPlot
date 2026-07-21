@@ -25,26 +25,32 @@ from PySide6.QtWidgets import (
 from pandaplot.commands.project.chart import (
     AddSeriesCommand,
     ApplyChartPropertiesCommand,
+    RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
+from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
-    AxisStyle,
-    ChartConfiguration,
     ChartType,
     LegendPosition,
-    LegendStyle,
-    LineStyle,
     LineStyleType,
-    MarkerStyle,
     MarkerType,
     ScaleType,
 )
-from pandaplot.models.chart.chart_style_manager import ChartStyleManager
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+# Only chart types that ChartEditorWidget.update_chart can actually render.
+# BOX and VIOLIN exist in the enum but have no rendering branch yet.
+IMPLEMENTED_CHART_TYPES = [
+    ChartType.LINE,
+    ChartType.SCATTER,
+    ChartType.BAR,
+    ChartType.HISTOGRAM,
+]
 
 
 class ColorButton(QPushButton):
@@ -114,22 +120,26 @@ class ColorButton(QPushButton):
 
 class ChartPropertiesPanel(PWidget):
     """Side panel for configuring chart properties."""
-    
-    chart_created = Signal(str)  # chart_id
-    chart_updated = Signal(str)  # chart_id
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
         super().__init__(app_context=app_context, parent=parent)
         self.command_executor = app_context.command_executor
-        self.style_manager = ChartStyleManager()
         self.current_project = None
-        self.current_chart_id: Optional[str] = None
         self.current_chart = None  # Current Chart object being edited
         self.datasets: List = []
         # Internal flags/state for safe UI updates
         self._updating_controls: bool = False  # Guard to prevent feedback loops
         self._pending_label: str = ""        # Buffer while user types label
         self._has_unsaved_changes: bool = False
+        # Baseline for Cancel and for Apply's undo: the chart state as of the
+        # last load into this panel or the last Apply.
+        self._loaded_snapshot: Optional[dict] = None
+        # Tracks whether the loaded chart's type is one the combo can
+        # represent, so an unsupported/hidden type (e.g. a saved "box" or
+        # "violin" chart) isn't silently overwritten with "line" just
+        # because that's what the combo defaults to for display.
+        self._loaded_chart_type_supported: bool = True
+        self._chart_type_touched_by_user: bool = False
 
         self._initialize()
         self._connect_signals()
@@ -422,10 +432,19 @@ class ChartPropertiesPanel(PWidget):
         
         info_layout.addWidget(QLabel("Chart Type:"), 1, 0)
         self.chart_type_combo = QComboBox()
-        for chart_type in ChartType:
+        for chart_type in IMPLEMENTED_CHART_TYPES:
             self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
         info_layout.addWidget(self.chart_type_combo, 1, 1)
-        
+
+        self.hist_bins_label = QLabel("Histogram Bins:")
+        info_layout.addWidget(self.hist_bins_label, 2, 0)
+        self.hist_bins_spin = QSpinBox()
+        self.hist_bins_spin.setRange(2, 200)
+        self.hist_bins_spin.setValue(20)
+        self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
+        info_layout.addWidget(self.hist_bins_spin, 2, 1)
+        self._update_hist_bins_visibility()
+
         layout.addWidget(info_group)
     
     def _create_series_management_section(self, layout):
@@ -474,9 +493,15 @@ class ChartPropertiesPanel(PWidget):
         self.y_column_combo = QComboBox()
         series_config_layout.addWidget(self.y_column_combo, 2, 1)
 
-        series_config_layout.addWidget(QLabel("Label:"), 3, 0)
+        series_config_layout.addWidget(QLabel("Y Axis:"), 3, 0)
+        self.series_y_axis_combo = QComboBox()
+        self.series_y_axis_combo.addItem("Primary", "primary")
+        self.series_y_axis_combo.addItem("Secondary", "secondary")
+        series_config_layout.addWidget(self.series_y_axis_combo, 3, 1)
+
+        series_config_layout.addWidget(QLabel("Label:"), 4, 0)
         self.series_label_edit = QLineEdit()
-        series_config_layout.addWidget(self.series_label_edit, 3, 1)
+        series_config_layout.addWidget(self.series_label_edit, 4, 1)
 
         # Disable series configuration initially
         series_config_group.setEnabled(False)
@@ -532,7 +557,7 @@ class ChartPropertiesPanel(PWidget):
         marker_layout.addWidget(QLabel("Size:"), 1, 0)
         self.marker_size_spin = QDoubleSpinBox()
         self.marker_size_spin.setRange(1.0, 20.0)
-        self.marker_size_spin.setValue(6.0)
+        self.marker_size_spin.setValue(2.0)
         marker_layout.addWidget(self.marker_size_spin, 1, 1)
         
         marker_layout.addWidget(QLabel("Color:"), 2, 0)
@@ -716,7 +741,18 @@ class ChartPropertiesPanel(PWidget):
         y_axis_layout.addWidget(self.y_grid_check, 11, 0, 1, 2)
 
         layout.addWidget(y_axis_group)
-        
+
+        # Secondary Y Axis group - only used by series set to "Secondary" in
+        # the Data Series section.
+        y2_axis_group = QGroupBox("Secondary Y Axis")
+        y2_axis_layout = QGridLayout(y2_axis_group)
+
+        y2_axis_layout.addWidget(QLabel("Label:"), 0, 0)
+        self.y2_label_edit = QLineEdit()
+        y2_axis_layout.addWidget(self.y2_label_edit, 0, 1)
+
+        layout.addWidget(y2_axis_group)
+
         layout.addStretch()
         return widget
     
@@ -765,10 +801,12 @@ class ChartPropertiesPanel(PWidget):
         self.reset_button.clicked.connect(self._on_reset)
         
         # Connect chart-level configuration changes
-        self.chart_type_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.chart_type_combo.currentIndexChanged.connect(self._on_chart_type_index_changed)
+        self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.y_label_edit.textChanged.connect(self._on_chart_config_changed)
+        self.y2_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.x_grid_check.toggled.connect(self._on_chart_config_changed)
         self.y_grid_check.toggled.connect(self._on_chart_config_changed)
         self.x_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -800,6 +838,7 @@ class ChartPropertiesPanel(PWidget):
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.y_column_combo.currentTextChanged.connect(self._on_series_config_changed)
+        self.series_y_axis_combo.currentIndexChanged.connect(self._on_series_config_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
@@ -868,14 +907,27 @@ class ChartPropertiesPanel(PWidget):
     def _on_chart_updated(self, event_data):
         """Handle chart updated events to refresh the panel."""
         chart_id = event_data.get("chart_id")
+        if not self.current_chart or chart_id != self.current_chart.id:
+            return
+
+        if "chart" in event_data:
+            # Command-originated update (Apply execute/undo/redo, add/remove
+            # series, fit added): the model changed outside this panel's live
+            # edits, so re-sync all controls and re-capture the Cancel/Apply
+            # baseline to match the new command boundary.
+            # TODO: this branch always fires first (add/remove series and
+            # fit-added events include both "chart" and "update_type"), so it
+            # resets series_list's selection to row 0 via load_chart_object,
+            # making the update_type branch below unreachable. Consider
+            # preserving the selected row here too.
+            self.load_chart_object(self.current_chart)
+            self.logger.debug("Chart properties panel reloaded for command-originated update")
+            return
+
         update_type = event_data.get("update_type", "")
-        
-        # If this is our current chart, refresh the display
-        if self.current_chart and chart_id == self.current_chart.id:
-            # Refresh the series list to show new series (like fit lines)
-            if update_type in ["fit_added", "series_added", "series_removed"]:
-                self._update_series_list()
-                self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
+        if update_type in ["fit_added", "series_added", "series_removed"]:
+            self._update_series_list()
+            self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
     
     def _add_series(self):
         """Add a new data series."""
@@ -907,28 +959,41 @@ class ChartPropertiesPanel(PWidget):
             self.series_list.setCurrentRow(len(self.current_chart.data_series) - 1)
     
     def _remove_series(self):
-        """Remove the selected data series."""
-        if not self.current_chart or not self.current_chart.data_series:
+        """Remove the selected data series or fit data."""
+        if not self.current_chart:
             return
-        
+
+        total_series = len(self.current_chart.data_series)
+        total_items = total_series + len(self.current_chart.fit_data)
+
         current_row = self.series_list.currentRow()
-        if current_row >= 0 and current_row < len(self.current_chart.data_series):
+        if current_row < 0 or current_row >= total_items:
+            return
+
+        if current_row < total_series:
             command = RemoveSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
                 series_index=current_row,
             )
-            self.command_executor.execute_command(command)
+        else:
+            command = RemoveFitDataCommand(
+                self.app_context,
+                chart_id=self.current_chart.id,
+                fit_index=current_row - total_series,
+            )
+        self.command_executor.execute_command(command)
 
-            # Update the series list
-            self._update_series_list()
+        # Update the series list
+        self._update_series_list()
 
-            # Select previous series or disable if no series left
-            if self.current_chart.data_series:
-                new_row = min(current_row, len(self.current_chart.data_series) - 1)
-                self.series_list.setCurrentRow(new_row)
-            else:
-                self.series_config_group.setEnabled(False)
+        # Select previous item or disable if nothing left
+        remaining_items = len(self.current_chart.data_series) + len(self.current_chart.fit_data)
+        if remaining_items:
+            new_row = min(current_row, remaining_items - 1)
+            self.series_list.setCurrentRow(new_row)
+        else:
+            self.series_config_group.setEnabled(False)
     
     def _on_series_selection_changed(self, current_row: int):
         """Handle series selection change."""
@@ -982,6 +1047,7 @@ class ChartPropertiesPanel(PWidget):
                 series.dataset_id = self.dataset_combo.currentData()
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
+            series.y_axis = self.series_y_axis_combo.currentData() or "primary"
         else:
             # Fit data: columns/dataset not editable, ignore
             return
@@ -1041,6 +1107,23 @@ class ChartPropertiesPanel(PWidget):
                 "update_type": "series_updated"
             })
 
+    def _on_chart_type_index_changed(self):
+        """Handle chart type combo changes, tracking explicit user intent.
+
+        Distinguishes a user picking a chart type from the combo being set
+        programmatically while loading a chart (see _loaded_chart_type_supported).
+        """
+        if not self._updating_controls:
+            self._chart_type_touched_by_user = True
+        self._update_hist_bins_visibility()
+        self._on_chart_config_changed()
+
+    def _update_hist_bins_visibility(self):
+        """Show the Histogram Bins control only when the chart type is Histogram."""
+        is_histogram = self.chart_type_combo.currentData() == ChartType.HISTOGRAM
+        self.hist_bins_label.setVisible(is_histogram)
+        self.hist_bins_spin.setVisible(is_histogram)
+
     def _on_x_auto_limits_toggled(self, checked):
         self.x_min_spin.setEnabled(not checked)
         self.x_max_spin.setEnabled(not checked)
@@ -1085,6 +1168,8 @@ class ChartPropertiesPanel(PWidget):
             config["x_label"] = self.x_label_edit.text()
         if hasattr(self, "y_label_edit"):
             config["y_label"] = self.y_label_edit.text()
+        if hasattr(self, "y2_label_edit"):
+            config["y2_label"] = self.y2_label_edit.text()
         if hasattr(self, "x_grid_check"):
             config["show_grid_x"] = self.x_grid_check.isChecked()
         if hasattr(self, "y_grid_check"):
@@ -1127,17 +1212,19 @@ class ChartPropertiesPanel(PWidget):
             config["legend_bg_color"] = self.legend_bg_color_button.get_color()
         if hasattr(self, "legend_show_frame_check"):
             config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        if hasattr(self, "hist_bins_spin"):
+            config["hist_bins"] = self.hist_bins_spin.value()
         if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
             chart_type_map = {
                 ChartType.LINE: "line",
                 ChartType.SCATTER: "scatter",
                 ChartType.BAR: "bar",
                 ChartType.HISTOGRAM: "hist",
-                ChartType.BOX: "box",
-                ChartType.VIOLIN: "violin"
             }
             chart_type = self.chart_type_combo.currentData()
-            if chart_type in chart_type_map:
+            if chart_type in chart_type_map and (
+                self._loaded_chart_type_supported or self._chart_type_touched_by_user
+            ):
                 self.current_chart.chart_type = chart_type_map[chart_type]
         
         # Emit update event so any open chart tab refreshes immediately
@@ -1186,6 +1273,7 @@ class ChartPropertiesPanel(PWidget):
     def _load_series_into_controls(self, series):
         """Load a data series into the configuration controls."""
         # Enable all controls for series editing
+        previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             self._reset_controls_for_series()
@@ -1196,6 +1284,12 @@ class ChartPropertiesPanel(PWidget):
                     self.dataset_combo.setCurrentIndex(i)
                     break
 
+            # Repopulate column combos from the (possibly changed) dataset before
+            # selecting the series' columns, so stale entries from a previous
+            # dataset/column state (e.g. after undo/redo of a column rename)
+            # don't linger.
+            self._populate_column_combos(series.dataset_id)
+
             # Set columns
             x_index = self.x_column_combo.findText(series.x_column)
             if x_index >= 0:
@@ -1204,6 +1298,12 @@ class ChartPropertiesPanel(PWidget):
             y_index = self.y_column_combo.findText(series.y_column)
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
+
+            # Set Y axis (primary/secondary)
+            self.series_y_axis_combo.blockSignals(True)
+            axis_index = self.series_y_axis_combo.findData(series.y_axis)
+            self.series_y_axis_combo.setCurrentIndex(axis_index if axis_index >= 0 else 0)
+            self.series_y_axis_combo.blockSignals(False)
 
             # Set label (block signals while populating)
             self.series_label_edit.blockSignals(True)
@@ -1255,16 +1355,18 @@ class ChartPropertiesPanel(PWidget):
                         break
                 self.marker_type_combo.blockSignals(False)
         finally:
-            self._updating_controls = False
-    
+            self._updating_controls = previous_guard
+
     def _load_fit_into_controls(self, fit):
         """Load fit data into the configuration controls."""
+        previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             # For fit data, disable dataset/column controls since they're not editable
             self.dataset_combo.setEnabled(False)
             self.x_column_combo.setEnabled(False)
             self.y_column_combo.setEnabled(False)
+            self.series_y_axis_combo.setEnabled(False)
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)
@@ -1285,7 +1387,7 @@ class ChartPropertiesPanel(PWidget):
             self.marker_size_spin.setValue(0.0)  # Fit lines typically don't have markers
             self.marker_size_spin.blockSignals(False)
         finally:
-            self._updating_controls = False
+            self._updating_controls = previous_guard
 
     def _on_label_typing(self, text: str):
         """Buffer label text while user is typing without mutating the model."""
@@ -1322,7 +1424,29 @@ class ChartPropertiesPanel(PWidget):
         self.dataset_combo.setEnabled(True)
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
-    
+        self.series_y_axis_combo.setEnabled(True)
+
+    def _clear_controls(self):
+        """Reset panel controls to neutral defaults without touching any chart."""
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.title_edit.clear()
+            self.chart_type_combo.setCurrentIndex(0)
+            self.hist_bins_spin.setValue(20)
+            self._update_hist_bins_visibility()
+            self.x_label_edit.clear()
+            self.y_label_edit.clear()
+            self.x_grid_check.setChecked(True)
+            self.y_grid_check.setChecked(True)
+            self.x_auto_limits_check.setChecked(True)
+            self.y_auto_limits_check.setChecked(True)
+            self.legend_show_check.setChecked(True)
+            self.legend_show_frame_check.setChecked(True)
+            self.series_label_edit.clear()
+        finally:
+            self._updating_controls = previous_guard
+
     def _get_next_series_color(self) -> str:
         """Get the next color for a new series."""
         colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", 
@@ -1350,249 +1474,224 @@ class ChartPropertiesPanel(PWidget):
                     self.dataset_combo.addItem(item.name, item.id)
                     self.datasets.append(item)
     
-    def _on_dataset_changed(self):
-        """Handle dataset selection change."""
-        dataset_id = self.dataset_combo.currentData()
-        if dataset_id and self.current_project:
-            dataset = self.current_project.find_item(dataset_id)
-            if isinstance(dataset, Dataset) and dataset.data is not None:
-                columns = list(dataset.data.columns)
-                
-                # Update column combos
+    def _populate_column_combos(self, dataset_id):
+        """Fill the x/y column combos with the columns of the given dataset.
+
+        Signals are blocked while clearing/populating so this can safely be
+        called from contexts that don't want side effects from
+        currentTextChanged (e.g. while loading a series into controls).
+
+        Returns the list of columns populated (empty list if none).
+        """
+        if not dataset_id or not self.current_project:
+            return []
+        dataset = self.current_project.find_item(dataset_id)
+        if isinstance(dataset, Dataset) and dataset.data is not None:
+            columns = list(dataset.data.columns)
+            self.x_column_combo.blockSignals(True)
+            self.y_column_combo.blockSignals(True)
+            try:
                 self.x_column_combo.clear()
                 self.y_column_combo.clear()
-                
                 for column in columns:
                     self.x_column_combo.addItem(column)
                     self.y_column_combo.addItem(column)
-                
-                # Set defaults if possible
-                if len(columns) >= 2:
-                    self.x_column_combo.setCurrentIndex(0)
-                    self.y_column_combo.setCurrentIndex(1)
-    
-    def _get_current_configuration(self) -> ChartConfiguration:
-        """Get the current configuration from UI."""
-        config = ChartConfiguration()
-        
-        # Basic info
-        config.title = self.title_edit.text()
-        config.chart_type = self.chart_type_combo.currentData() or ChartType.LINE
-        config.dataset_id = self.dataset_combo.currentData() or ""
-        config.x_column = self.x_column_combo.currentText()
-        config.y_column = self.y_column_combo.currentText()
-        
-        # Line style
-        config.line_style = LineStyle(
-            color=self.line_color_button.get_color(),
-            width=self.line_width_spin.value(),
-            style=self.line_style_combo.currentData() or LineStyleType.SOLID,
-            transparency=self.line_transparency_spin.value()
-        )
-        
-        # Marker style
-        config.marker_style = MarkerStyle(
-            type=self.marker_type_combo.currentData() or MarkerType.CIRCLE,
-            size=self.marker_size_spin.value(),
-            color=self.marker_color_button.get_color(),
-            edge_color=self.marker_edge_color_button.get_color()
-        )
-        
-        # Axes
-        config.x_axis = AxisStyle(
-            label=self.x_label_edit.text(),
-            font_size=self.x_font_size_spin.value(),
-            scale=self.x_scale_combo.currentData() or ScaleType.LINEAR,
-            show_grid=self.x_grid_check.isChecked()
-        )
-        
-        config.y_axis = AxisStyle(
-            label=self.y_label_edit.text(),
-            font_size=self.y_font_size_spin.value(),
-            scale=self.y_scale_combo.currentData() or ScaleType.LINEAR,
-            show_grid=self.y_grid_check.isChecked()
-        )
-        
-        # Legend
-        config.legend = LegendStyle(
-            show=self.legend_show_check.isChecked(),
-            position=self.legend_position_combo.currentData() or LegendPosition.UPPER_RIGHT,
-            font_size=self.legend_font_size_spin.value(),
-            background_color=self.legend_bg_color_button.get_color()
-        )
-        
-        return config
+            finally:
+                self.x_column_combo.blockSignals(False)
+                self.y_column_combo.blockSignals(False)
+            return columns
+        return []
+
+    def _on_dataset_changed(self):
+        """Handle dataset selection change."""
+        dataset_id = self.dataset_combo.currentData()
+        columns = self._populate_column_combos(dataset_id)
+
+        # Set defaults if possible
+        if columns:
+            self.x_column_combo.setCurrentIndex(0)
+            self.y_column_combo.setCurrentIndex(1 if len(columns) >= 2 else 0)
+
+        # setCurrentIndex() only emits currentTextChanged when the index
+        # actually changes, which it won't for indices auto-selected by
+        # _populate_column_combos while signals were blocked. Sync
+        # explicitly so the selected series' x_column/y_column never go
+        # stale relative to the combos.
+        self._on_series_config_changed()
     
     def _on_apply(self):
         """Handle apply button click."""
-        if self.current_chart:
-            command = ApplyChartPropertiesCommand(
-                self.app_context,
-                chart_id=self.current_chart.id,
-                apply_fn=self.apply_to_chart,
-            )
-            self.command_executor.execute_command(command)
+        if not self.current_chart:
+            return
+        command = ApplyChartPropertiesCommand(
+            self.app_context,
+            chart_id=self.current_chart.id,
+            apply_fn=self.apply_to_chart,
+            old_snapshot=self._loaded_snapshot,
+        )
+        self.command_executor.execute_command(command)
 
-            self._has_unsaved_changes = False
-            self._update_status_indicator()
+        # The applied state is the new baseline for Cancel / the next Apply.
+        self._loaded_snapshot = snapshot_chart_state(self.current_chart)
+        self._has_unsaved_changes = False
+        self._update_status_indicator()
     
     def _on_reset(self):
-        """Handle reset button click."""
-        self.load_chart(None)
-    
-    def load_chart(self, chart_id: Optional[str]):
-        """Load a chart configuration into the panel.
-        
-        Args:
-            chart_id: The chart ID to load, or None for new chart
-        """
-        self.current_chart_id = chart_id
-        
-        if chart_id and self.current_project:
-            # Load existing chart
-            if hasattr(self.current_project, "charts") and chart_id in self.current_project.charts:
-                chart_dict = self.current_project.charts[chart_id]
-                config = ChartConfiguration.from_dict(chart_dict)
-                self._load_configuration(config)
-            else:
-                self._load_default_configuration()
-        else:
-            # New chart
-            self._load_default_configuration()
+        """Revert live edits back to the last loaded/applied state."""
+        if not self.current_chart or self._loaded_snapshot is None:
+            return
+        restore_chart_state(self.current_chart, self._loaded_snapshot)
+        self.load_chart_object(self.current_chart)
+        self.publish_event(ChartEvents.CHART_UPDATED, {
+            "chart_id": self.current_chart.id,
+            "update_type": "config_updated",
+        })
     
     def load_chart_object(self, chart):
         """Load a Chart object into the panel for editing.
-        
+
         Args:
             chart: Chart object to load, or None to clear
         """
         self.current_chart = chart
+        self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
         self._has_unsaved_changes = False
+        self._chart_type_touched_by_user = False
         self._update_status_indicator()
 
         if chart:
             # Ensure datasets are available (important after opening a project file)
             self._ensure_datasets_loaded()
-            # Load basic info
-            self.title_edit.setText(chart.config.get("title", chart.name))
+            # Populate controls without letting their change signals write
+            # half-loaded values back into chart.config (that feedback loop
+            # corrupted chart settings on every tab switch).
+            previous_guard = self._updating_controls
+            self._updating_controls = True
+            try:
+                # Load basic info
+                self.title_edit.setText(chart.config.get("title", chart.name))
             
-            # Set chart type
-            chart_type_map = {
-                "line": ChartType.LINE,
-                "scatter": ChartType.SCATTER,
-                "bar": ChartType.BAR,
-                "hist": ChartType.HISTOGRAM,
-                "box": ChartType.BOX,
-                "violin": ChartType.VIOLIN
-            }
-            chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-            for i in range(self.chart_type_combo.count()):
-                if self.chart_type_combo.itemData(i) == chart_type:
-                    self.chart_type_combo.setCurrentIndex(i)
-                    break
+                # Set chart type
+                chart_type_map = {
+                    "line": ChartType.LINE,
+                    "scatter": ChartType.SCATTER,
+                    "bar": ChartType.BAR,
+                    "hist": ChartType.HISTOGRAM,
+                }
+                self._loaded_chart_type_supported = chart.chart_type in chart_type_map
+                chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
+                for i in range(self.chart_type_combo.count()):
+                    if self.chart_type_combo.itemData(i) == chart_type:
+                        self.chart_type_combo.setCurrentIndex(i)
+                        break
+                self._update_hist_bins_visibility()
+
+                # Update series list
+                self._update_series_list()
             
-            # Update series list
-            self._update_series_list()
-            
-            # If there are data series, select the first one
-            if chart.data_series:
-                self.series_list.setCurrentRow(0)
-                self._load_series_into_controls(chart.data_series[0])
-                self.series_config_group.setEnabled(True)
-                
-                # Set style from first series for the style tab
-                first_series = chart.data_series[0]
-                self.line_color_button.set_color(first_series.color)
-                self.line_width_spin.setValue(first_series.line_width)
-                self.marker_size_spin.setValue(first_series.marker_size)
-                self.add_series_button.show()
-                self.remove_series_button.show()
-            else:
-                self.series_config_group.setEnabled(False)
-                self.add_series_button.show()
-                self.remove_series_button.hide()
-            
-            # Load configuration
-            config = chart.config
-            self.x_label_edit.setText(config.get("x_label", ""))
-            self.y_label_edit.setText(config.get("y_label", ""))
-            self.x_grid_check.setChecked(config.get("show_grid_x", True))
-            self.y_grid_check.setChecked(config.get("show_grid_y", True))
-            self.x_font_size_spin.setValue(config.get("x_font_size", 12))
-            self.y_font_size_spin.setValue(config.get("y_font_size", 12))
-            x_scale_value = config.get("x_scale", "linear")
-            for i in range(self.x_scale_combo.count()):
-                if self.x_scale_combo.itemData(i) and self.x_scale_combo.itemData(i).value == x_scale_value:
-                    self.x_scale_combo.setCurrentIndex(i)
-                    break
-            y_scale_value = config.get("y_scale", "linear")
-            for i in range(self.y_scale_combo.count()):
-                if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
-                    self.y_scale_combo.setCurrentIndex(i)
-                    break
+                # If there are data series, select the first one
+                if chart.data_series:
+                    self.series_list.setCurrentRow(0)
+                    self._load_series_into_controls(chart.data_series[0])
+                    self.series_config_group.setEnabled(True)
 
-            self.x_auto_limits_check.setChecked(config.get("x_auto_limits", True))
-            self.x_min_spin.setValue(config.get("x_min", 0.0))
-            self.x_max_spin.setValue(config.get("x_max", 1.0))
-            self.x_min_spin.setEnabled(not self.x_auto_limits_check.isChecked())
-            self.x_max_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+                    # Set style from first series for the style tab
+                    first_series = chart.data_series[0]
+                    self.line_color_button.set_color(first_series.color)
+                    self.line_width_spin.setValue(first_series.line_width)
+                    self.marker_size_spin.setValue(first_series.marker_size)
+                    self.add_series_button.show()
+                    self.remove_series_button.show()
+                else:
+                    self.series_config_group.setEnabled(False)
+                    self.add_series_button.show()
+                    self.remove_series_button.hide()
 
-            self.y_auto_limits_check.setChecked(config.get("y_auto_limits", True))
-            self.y_min_spin.setValue(config.get("y_min", 0.0))
-            self.y_max_spin.setValue(config.get("y_max", 1.0))
-            self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
-            self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+                # Load configuration
+                config = chart.config
+                self.x_label_edit.setText(config.get("x_label", ""))
+                self.y_label_edit.setText(config.get("y_label", ""))
+                self.y2_label_edit.setText(config.get("y2_label", ""))
+                self.x_grid_check.setChecked(config.get("show_grid_x", True))
+                self.y_grid_check.setChecked(config.get("show_grid_y", True))
+                self.x_font_size_spin.setValue(config.get("x_font_size", 12))
+                self.y_font_size_spin.setValue(config.get("y_font_size", 12))
+                x_scale_value = config.get("x_scale", "linear")
+                for i in range(self.x_scale_combo.count()):
+                    if self.x_scale_combo.itemData(i) and self.x_scale_combo.itemData(i).value == x_scale_value:
+                        self.x_scale_combo.setCurrentIndex(i)
+                        break
+                y_scale_value = config.get("y_scale", "linear")
+                for i in range(self.y_scale_combo.count()):
+                    if self.y_scale_combo.itemData(i) and self.y_scale_combo.itemData(i).value == y_scale_value:
+                        self.y_scale_combo.setCurrentIndex(i)
+                        break
 
-            x_tick_mode = config.get("x_tick_mode", "auto")
-            for i in range(self.x_tick_mode_combo.count()):
-                if self.x_tick_mode_combo.itemData(i) == x_tick_mode:
-                    self.x_tick_mode_combo.setCurrentIndex(i)
-                    break
-            self.x_tick_count_spin.setValue(config.get("x_tick_count", 5))
-            self.x_tick_step_spin.setValue(config.get("x_tick_step", 1.0))
-            self.x_tick_count_spin.setEnabled(x_tick_mode == "count")
-            self.x_tick_step_spin.setEnabled(x_tick_mode == "step")
+                self.x_auto_limits_check.setChecked(config.get("x_auto_limits", True))
+                self.x_min_spin.setValue(config.get("x_min", 0.0))
+                self.x_max_spin.setValue(config.get("x_max", 1.0))
+                self.x_min_spin.setEnabled(not self.x_auto_limits_check.isChecked())
+                self.x_max_spin.setEnabled(not self.x_auto_limits_check.isChecked())
 
-            x_tick_format = config.get("x_tick_format", "auto")
-            for i in range(self.x_tick_format_combo.count()):
-                if self.x_tick_format_combo.itemData(i) == x_tick_format:
-                    self.x_tick_format_combo.setCurrentIndex(i)
-                    break
-            self.x_tick_format_custom_edit.setText(config.get("x_tick_format_custom", ""))
-            self.x_tick_format_custom_edit.setEnabled(x_tick_format == "custom")
+                self.y_auto_limits_check.setChecked(config.get("y_auto_limits", True))
+                self.y_min_spin.setValue(config.get("y_min", 0.0))
+                self.y_max_spin.setValue(config.get("y_max", 1.0))
+                self.y_min_spin.setEnabled(not self.y_auto_limits_check.isChecked())
+                self.y_max_spin.setEnabled(not self.y_auto_limits_check.isChecked())
 
-            y_tick_mode = config.get("y_tick_mode", "auto")
-            for i in range(self.y_tick_mode_combo.count()):
-                if self.y_tick_mode_combo.itemData(i) == y_tick_mode:
-                    self.y_tick_mode_combo.setCurrentIndex(i)
-                    break
-            self.y_tick_count_spin.setValue(config.get("y_tick_count", 5))
-            self.y_tick_step_spin.setValue(config.get("y_tick_step", 1.0))
-            self.y_tick_count_spin.setEnabled(y_tick_mode == "count")
-            self.y_tick_step_spin.setEnabled(y_tick_mode == "step")
+                x_tick_mode = config.get("x_tick_mode", "auto")
+                for i in range(self.x_tick_mode_combo.count()):
+                    if self.x_tick_mode_combo.itemData(i) == x_tick_mode:
+                        self.x_tick_mode_combo.setCurrentIndex(i)
+                        break
+                self.x_tick_count_spin.setValue(config.get("x_tick_count", 5))
+                self.x_tick_step_spin.setValue(config.get("x_tick_step", 1.0))
+                self.x_tick_count_spin.setEnabled(x_tick_mode == "count")
+                self.x_tick_step_spin.setEnabled(x_tick_mode == "step")
 
-            y_tick_format = config.get("y_tick_format", "auto")
-            for i in range(self.y_tick_format_combo.count()):
-                if self.y_tick_format_combo.itemData(i) == y_tick_format:
-                    self.y_tick_format_combo.setCurrentIndex(i)
-                    break
-            self.y_tick_format_custom_edit.setText(config.get("y_tick_format_custom", ""))
-            self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
+                x_tick_format = config.get("x_tick_format", "auto")
+                for i in range(self.x_tick_format_combo.count()):
+                    if self.x_tick_format_combo.itemData(i) == x_tick_format:
+                        self.x_tick_format_combo.setCurrentIndex(i)
+                        break
+                self.x_tick_format_custom_edit.setText(config.get("x_tick_format_custom", ""))
+                self.x_tick_format_custom_edit.setEnabled(x_tick_format == "custom")
 
-            self.legend_show_check.setChecked(config.get("show_legend", True))
-            legend_position_value = config.get("legend_position", "upper right")
-            for i in range(self.legend_position_combo.count()):
-                if (self.legend_position_combo.itemData(i)
-                        and self.legend_position_combo.itemData(i).value == legend_position_value):
-                    self.legend_position_combo.setCurrentIndex(i)
-                    break
-            self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
-            self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
-            self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+                y_tick_mode = config.get("y_tick_mode", "auto")
+                for i in range(self.y_tick_mode_combo.count()):
+                    if self.y_tick_mode_combo.itemData(i) == y_tick_mode:
+                        self.y_tick_mode_combo.setCurrentIndex(i)
+                        break
+                self.y_tick_count_spin.setValue(config.get("y_tick_count", 5))
+                self.y_tick_step_spin.setValue(config.get("y_tick_step", 1.0))
+                self.y_tick_count_spin.setEnabled(y_tick_mode == "count")
+                self.y_tick_step_spin.setEnabled(y_tick_mode == "step")
+
+                y_tick_format = config.get("y_tick_format", "auto")
+                for i in range(self.y_tick_format_combo.count()):
+                    if self.y_tick_format_combo.itemData(i) == y_tick_format:
+                        self.y_tick_format_combo.setCurrentIndex(i)
+                        break
+                self.y_tick_format_custom_edit.setText(config.get("y_tick_format_custom", ""))
+                self.y_tick_format_custom_edit.setEnabled(y_tick_format == "custom")
+
+                self.legend_show_check.setChecked(config.get("show_legend", True))
+                legend_position_value = config.get("legend_position", "upper right")
+                for i in range(self.legend_position_combo.count()):
+                    if (self.legend_position_combo.itemData(i)
+                            and self.legend_position_combo.itemData(i).value == legend_position_value):
+                        self.legend_position_combo.setCurrentIndex(i)
+                        break
+                self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
+                self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
+                self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+                self.hist_bins_spin.setValue(config.get("hist_bins", 20))
+            finally:
+                self._updating_controls = previous_guard
 
         else:
             # Clear/default values
-            self._load_default_configuration()
+            self._clear_controls()
             self.series_list.clear()
             self.series_config_group.setEnabled(False)
             if hasattr(self, "add_series_button"):
@@ -1613,6 +1712,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["title"] = self.title_edit.text()
         chart.config["x_label"] = self.x_label_edit.text()
         chart.config["y_label"] = self.y_label_edit.text()
+        chart.config["y2_label"] = self.y2_label_edit.text()
         chart.config["show_grid_x"] = self.x_grid_check.isChecked()
         chart.config["show_grid_y"] = self.y_grid_check.isChecked()
         chart.config["x_font_size"] = self.x_font_size_spin.value()
@@ -1643,6 +1743,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["legend_font_size"] = self.legend_font_size_spin.value()
         chart.config["legend_bg_color"] = self.legend_bg_color_button.get_color()
         chart.config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        chart.config["hist_bins"] = self.hist_bins_spin.value()
 
         # Update chart type
         chart_type_map = {
@@ -1650,8 +1751,6 @@ class ChartPropertiesPanel(PWidget):
             ChartType.SCATTER: "scatter",
             ChartType.BAR: "bar",
             ChartType.HISTOGRAM: "hist",
-            ChartType.BOX: "box",
-            ChartType.VIOLIN: "violin"
         }
         chart_type = self.chart_type_combo.currentData()
         if chart_type in chart_type_map:
@@ -1671,6 +1770,7 @@ class ChartPropertiesPanel(PWidget):
                 series.marker_edge_color = self.marker_edge_color_button.get_color()
                 series.line_width = self.line_width_spin.value()
                 series.marker_size = self.marker_size_spin.value()
+                series.y_axis = self.series_y_axis_combo.currentData() or "primary"
                 series.alpha = self.line_transparency_spin.value()
 
                 if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
@@ -1710,88 +1810,9 @@ class ChartPropertiesPanel(PWidget):
                     color=self.line_color_button.get_color(),
                     line_width=self.line_width_spin.value(),
                     marker_size=self.marker_size_spin.value(),
-                    label=f"{dataset_name}:{y_column}"
+                    label=f"{dataset_name}:{y_column}",
+                    y_axis=self.series_y_axis_combo.currentData() or "primary"
                 )
         
         chart.update_modified_time()
     
-    def _load_configuration(self, config: ChartConfiguration):
-        """Load a configuration into the UI widgets."""
-        # Basic info
-        self.title_edit.setText(config.title)
-        
-        # Find and set chart type
-        for i in range(self.chart_type_combo.count()):
-            if self.chart_type_combo.itemData(i) == config.chart_type:
-                self.chart_type_combo.setCurrentIndex(i)
-                break
-        
-        # Find and set dataset
-        for i in range(self.dataset_combo.count()):
-            if self.dataset_combo.itemData(i) == config.dataset_id:
-                self.dataset_combo.setCurrentIndex(i)
-                break
-        
-        # Set columns
-        x_index = self.x_column_combo.findText(config.x_column)
-        if x_index >= 0:
-            self.x_column_combo.setCurrentIndex(x_index)
-        
-        y_index = self.y_column_combo.findText(config.y_column)
-        if y_index >= 0:
-            self.y_column_combo.setCurrentIndex(y_index)
-        
-        # Line style
-        self.line_color_button.set_color(config.line_style.color)
-        self.line_width_spin.setValue(config.line_style.width)
-        
-        for i in range(self.line_style_combo.count()):
-            if self.line_style_combo.itemData(i) == config.line_style.style:
-                self.line_style_combo.setCurrentIndex(i)
-                break
-        
-        self.line_transparency_spin.setValue(config.line_style.transparency)
-        
-        # Marker style
-        for i in range(self.marker_type_combo.count()):
-            if self.marker_type_combo.itemData(i) == config.marker_style.type:
-                self.marker_type_combo.setCurrentIndex(i)
-                break
-        
-        self.marker_size_spin.setValue(config.marker_style.size)
-        self.marker_color_button.set_color(config.marker_style.color)
-        self.marker_edge_color_button.set_color(config.marker_style.edge_color)
-        
-        # Axes
-        self.x_label_edit.setText(config.x_axis.label)
-        self.x_font_size_spin.setValue(config.x_axis.font_size)
-        self.x_grid_check.setChecked(config.x_axis.show_grid)
-        
-        for i in range(self.x_scale_combo.count()):
-            if self.x_scale_combo.itemData(i) == config.x_axis.scale:
-                self.x_scale_combo.setCurrentIndex(i)
-                break
-        
-        self.y_label_edit.setText(config.y_axis.label)
-        self.y_font_size_spin.setValue(config.y_axis.font_size)
-        self.y_grid_check.setChecked(config.y_axis.show_grid)
-        
-        for i in range(self.y_scale_combo.count()):
-            if self.y_scale_combo.itemData(i) == config.y_axis.scale:
-                self.y_scale_combo.setCurrentIndex(i)
-                break
-        
-        # Legend
-        self.legend_show_check.setChecked(config.legend.show)
-        self.legend_font_size_spin.setValue(config.legend.font_size)
-        self.legend_bg_color_button.set_color(config.legend.background_color)
-        
-        for i in range(self.legend_position_combo.count()):
-            if self.legend_position_combo.itemData(i) == config.legend.position:
-                self.legend_position_combo.setCurrentIndex(i)
-                break
-    
-    def _load_default_configuration(self):
-        """Load default configuration."""
-        config = self.style_manager.get_default_configuration()
-        self._load_configuration(config)

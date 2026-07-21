@@ -1,12 +1,14 @@
 import json
 from typing import override
+from zipfile import ZipFile
 
+from pandaplot.models.project.items.folder import Folder
 from pandaplot.storage.item_data_manager import ItemDataManager
 
 
-class FolderDataManager(ItemDataManager):
+class FolderDataManager(ItemDataManager[Folder]):
     @override
-    def save(self, item, zip_file, path_in_zip: str) -> None:
+    def save(self, item: Folder, zip_file: ZipFile, path_in_zip: str) -> None:
         """
         Save folder metadata as JSON.
         path_in_zip should be without extension, e.g. 'items/<id>'
@@ -16,7 +18,7 @@ class FolderDataManager(ItemDataManager):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
 
     @override
-    def load(self, item_class, zip_file, path_in_zip: str):
+    def load(self, item_class: type[Folder], zip_file: ZipFile, path_in_zip: str) -> Folder:
         """Read and deserialize item data from given path in the zip."""
         # Read metadata
         metadata = json.loads(zip_file.read(
