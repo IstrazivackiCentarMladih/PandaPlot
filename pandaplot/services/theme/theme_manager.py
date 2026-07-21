@@ -176,6 +176,52 @@ class ThemeManager:
             "accent": ctx.accent,
         }
 
+    def get_design_tokens(self) -> dict:
+        """Full token set for the chart-properties redesign's shared widgets.
+
+        Superset of get_surface_palette(); both stay in sync with the
+        current ThemeContext (theme + accent) so callers always see the
+        user's live theme/accent choice.
+        """
+        accent = self._current.accent if self._current else "#4A56C6"
+        is_dark = self._current is not None and self._current.theme == Theme.DARK
+
+        c = QColor(accent)
+        accent_active_text = c.darker(115).name() if c.isValid() else accent
+        accent_disabled = c.lighter(140).name() if c.isValid() else "#AAB1E3"
+
+        if is_dark:
+            return {
+                "text_primary": "#E2E2E2", "text_secondary": "#C7CAD1",
+                "text_muted": "#9AA0AB", "text_hint": "#6B7280",
+                "border_panel": "#3A3D40", "border_control": "#4A4D52",
+                "border_subtle": "#33363A",
+                "surface_white": "#2A2C2E", "surface_chrome": "#232527",
+                "surface_inset": "#26282B",
+                "accent": accent, "accent_active_text": accent_active_text,
+                "accent_selected_bg": "#2E3350", "accent_disabled": accent_disabled,
+                "status_modified_dot": "#E09A1F", "status_modified_text": "#E0A94A",
+                "status_success": "#3FA46A",
+                "y2_accent": "#B27FD1", "y2_accent_bg": "#3A2E45",
+                "series_palette": ["#C24141", "#6B77E8", "#3F9BB0", "#3FA46A", "#E09A1F"],
+                "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,
+            }
+        return {
+            "text_primary": "#1C1E26", "text_secondary": "#3F4350",
+            "text_muted": "#6B7280", "text_hint": "#9AA0AB",
+            "border_panel": "#E5E6EA", "border_control": "#DCDEE4",
+            "border_subtle": "#ECEEF2",
+            "surface_white": "#FFFFFF", "surface_chrome": "#FBFBFC",
+            "surface_inset": "#F4F5F8",
+            "accent": accent, "accent_active_text": accent_active_text,
+            "accent_selected_bg": "#EEF0FB", "accent_disabled": accent_disabled,
+            "status_modified_dot": "#E09A1F", "status_modified_text": "#B06A00",
+            "status_success": "#3FA46A",
+            "y2_accent": "#8A4BB8", "y2_accent_bg": "#F5EEFB",
+            "series_palette": ["#A01818", "#4A56C6", "#2B7A8C", "#3FA46A", "#E09A1F"],
+            "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,
+        }
+
     def _on_config_event(self, data):  # signature per EventBus
         cfg = data.get("config")
         if cfg is None:

@@ -49,7 +49,7 @@ class AutoSaveConfig:
 @dataclass(slots=True)
 class AppearanceConfig:
 	theme: Theme = Theme.SYSTEM
-	accent_color: str = "#3B82F6"  # Tailwind blue-500 style default
+	accent_color: str = "#4A56C6"  # Handoff indigo default
 	interface_font_size: int = 12
 	editor_font_size: int = 12
 
