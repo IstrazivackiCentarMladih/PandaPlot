@@ -1,7 +1,5 @@
 import logging
 import re
-from dataclasses import dataclass
-
 import numpy as np
 
 from pandaplot.models.events import FitEvents
@@ -47,6 +45,8 @@ class FitResult:
     x_data: np.ndarray
     y_data: np.ndarray
     covariance: np.ndarray
+    confidence_lower: np.ndarray | None = None
+    confidence_upper: np.ndarray | None = None
     source_dataset_id: str | None = None
     source_x_column: str | None = None
     source_y_column: str | None = None
@@ -167,6 +167,11 @@ class FitService:
             x_fit = np.linspace(x_data.min(), x_data.max(), self.fit_panel.fit_points_spin.value())
             y_fit = fit_func(x_fit, *popt)
 
+            confidence_lower = None
+            confidence_upper = None
+            if self.fit_panel.confidence_check.isChecked():
+                confidence_lower, confidence_upper = self._calculate_confidence_band(fit_func, x_fit, popt, pcov, x_data)
+
             # param dictionary define
             fixed_params = dict(self.fixed_params)
             params = {}
@@ -192,6 +197,8 @@ class FitService:
                 x_data=x_data,
                 y_data=y_data,
                 covariance=pcov,
+                confidence_lower=confidence_lower,
+                confidence_upper=confidence_upper
             )
 
             # Display results
@@ -258,3 +265,33 @@ class FitService:
                 free_index += 1
 
         return "\n".join(lines)
+
+    def _calculate_confidence_band(self, fit_func, x_fit, popt, pcov, x_data, confidence=0.95,):
+        """Calculate confidence band for fitted curve."""
+        from scipy.stats import t
+
+        y_fit = fit_func(x_fit, *popt)
+        n = len(x_data)
+        p = len(popt)
+        dof = max(0, n - p)
+
+        if dof <= 0:
+            return None, None
+
+        tval = t.ppf((1 + confidence) / 2.0, dof)
+        eps = np.sqrt(np.finfo(float).eps)
+        jacobian = np.zeros((len(x_fit), len(popt)))
+
+        for i in range(len(popt)):
+            dp = np.zeros_like(popt)
+            dp[i] = eps * np.maximum(np.abs(popt[i]), 1.0)
+            y1 = fit_func(x_fit, *(popt + dp))
+            y2 = fit_func(x_fit, *(popt - dp))
+            jacobian[:, i] = (y1 - y2) / (2 * dp[i])
+
+        variance = np.einsum("ij,jk,ik->i", jacobian, pcov, jacobian)
+        sigma = np.sqrt(np.maximum(variance, 0))
+        lower = y_fit - tval * sigma
+        upper = y_fit + tval * sigma
+
+        return lower, upper

@@ -377,15 +377,15 @@ class FitPanel(PWidget):
         
         # Results text area
         self.results_text = QTextEdit()
-        self.results_text.setMaximumHeight(150)
         self.results_text.setReadOnly(True)
         self.results_text.setPlaceholderText("Fit results will appear here...")
-        results_layout.addWidget(self.results_text)
+        results_layout.addWidget(self.results_text, stretch=1)
         
         # Equation display
         equation_layout = QHBoxLayout()
         equation_layout.addWidget(QLabel("Equation:"))
         self.equation_label = QLabel("No fit performed")
+        self.equation_label.setMaximumHeight(60)
         self.equation_label.setStyleSheet("font-family: monospace; background-color: #f5f5f5; color: #333333; padding: 5px; border: 1px solid #ddd;")
         equation_layout.addWidget(self.equation_label)
         results_layout.addLayout(equation_layout)
@@ -641,5 +641,4 @@ class FitPanel(PWidget):
             # Update data points display
             self.update_data_points_display()
 
-#TODO: fix equation box
 #TODO: show confidence bands
