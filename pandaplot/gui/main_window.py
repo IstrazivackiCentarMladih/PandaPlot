@@ -4,7 +4,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
-from pandaplot.gui.components import CollapsibleSidebar, MainMenu, TabContainer
+from pandaplot.gui.components import CollapsibleSidebar, TabContainer
+from pandaplot.gui.components.main_menu.main_menu import MainMenu
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
 from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSetupManager
 from pandaplot.gui.core.widget_extension import PMainWindow
@@ -22,10 +23,12 @@ class PandaMainWindow(PMainWindow):
     def _init_ui(self):
         self.setWindowTitle("PandaPlot")
 
-        # Get screen dimensions and set window to maximized
+        # Set window geometry before showing, but defer showing the window
+        # until all widgets are built -- otherwise the OS displays a blank
+        # maximized window while the menu/sidebar/panels/tabs are still
+        # being constructed on the main thread.
         screen = QScreen.availableGeometry(self.screen())
         self.setGeometry(screen)
-        self.showMaximized()
 
         # Create central widget
         central_widget = QWidget()
@@ -37,6 +40,8 @@ class PandaMainWindow(PMainWindow):
         main_layout.setSpacing(0)  # Remove spacing between widgets
 
         self.create_widgets(main_layout)
+
+        self.showMaximized()
 
 
     @override

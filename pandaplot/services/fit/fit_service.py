@@ -1,8 +1,7 @@
 import logging
 import re
 import numpy as np
-from scipy.optimize import curve_fit
-from dataclasses import dataclass
+
 from pandaplot.models.events import FitEvents
 
 FIT_DEFINITIONS = {
@@ -128,6 +127,7 @@ class FitService:
 
     def perform_fit(self): #fit_services
         """Perform the curve fitting."""
+        from scipy.optimize import curve_fit
 
         # Get data
         data = self.fit_panel.get_current_data()

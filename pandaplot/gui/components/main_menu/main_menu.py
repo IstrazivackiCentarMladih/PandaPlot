@@ -17,8 +17,6 @@ from pandaplot.commands.project.project import (
     SaveProjectCommand,
 )
 from pandaplot.gui.core.widget_extension import PMenuBar
-from pandaplot.gui.dialogs.about_dialog import AboutDialog
-from pandaplot.gui.dialogs.settings_dialog import SettingsDialog
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -206,10 +204,12 @@ class MainMenu(PMenuBar):
 
     def show_settings_dialog(self):
         """Show the settings dialog."""
+        from pandaplot.gui.dialogs.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self.app_context, self.parent())
         dialog.exec()
 
     def show_about_dialog(self):
         """Show the about dialog."""
+        from pandaplot.gui.dialogs.about_dialog import AboutDialog
         dialog = AboutDialog(self.app_context, self.parent())
         dialog.exec()

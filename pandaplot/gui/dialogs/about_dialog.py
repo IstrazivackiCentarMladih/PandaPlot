@@ -3,9 +3,6 @@
 import platform
 from typing import override
 
-import matplotlib
-import pandas
-import PySide6
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
@@ -68,6 +65,10 @@ class AboutDialog(PDialog):
         info_layout.setContentsMargins(12, 12, 12, 12)
         info_layout.setHorizontalSpacing(16)
         info_layout.setVerticalSpacing(6)
+
+        import matplotlib
+        import pandas
+        import PySide6
 
         environment_rows = [
             ("Python", platform.python_version()),

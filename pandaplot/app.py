@@ -63,15 +63,53 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
         argv = sys.argv
     app = QApplication(argv)
 
-    main_window = PandaMainWindow(app_context)
+    # Kick off the background import warm-up right after QApplication exists
+    # (QObject-based signals -- which the worker uses to report completion --
+    # are not safe to use before an application instance exists) and before
+    # building the window, so it overlaps with theme application and widget
+    # construction instead of waiting for all of that to finish first.
+    _schedule_import_warmup(app_context)
+
+    # Apply the theme (QApplication-wide palette/stylesheet/font) before any
+    # widgets exist. Setting these on a QApplication forces Qt to re-polish
+    # every already-constructed widget -- doing it first means new widgets
+    # simply inherit the theme instead of paying that repolish cost after
+    # the whole window (menu/sidebar/panels/tabs) has already been built.
     theme_mgr = app_context.get_manager(ThemeManager)
     theme_mgr.set_qt_app(app)
     try:
         theme_mgr.apply_current()
     except Exception:
         logging.getLogger(__name__).exception("Failed applying initial theme")
+
+    main_window = PandaMainWindow(app_context)
     app_context.ui_controller.set_parent_widget(main_window)
     return app, main_window
+
+
+def _warm_up_heavy_imports(progress_callback=None) -> None:
+    """Pre-import dependencies that are otherwise lazily loaded on first use
+    (running a fit, opening a chart tab, opening a note tab). Each of those
+    imports costs 1+ seconds; without warm-up, that cost is paid synchronously
+    on the UI thread the first time the user triggers the feature, which
+    looks like a freeze. Runs on a background thread, so import errors here
+    must never propagate to the caller -- the feature will just import (and
+    freeze, or fail) normally on first real use instead.
+    """
+    try:
+        from markdown import markdown  # noqa: F401
+        from matplotlib.backends.backend_qt import NavigationToolbar2QT  # noqa: F401
+        from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: F401
+        from matplotlib.figure import Figure  # noqa: F401
+        from scipy.optimize import curve_fit  # noqa: F401
+    except Exception:
+        logging.getLogger(__name__).exception("Background import warm-up failed (non-fatal)")
+
+
+def _schedule_import_warmup(app_context: AppContext) -> None:
+    """Kick off _warm_up_heavy_imports on a background thread."""
+    task_scheduler = app_context.get_manager(TaskScheduler)
+    task_scheduler.run_task(_warm_up_heavy_imports)
 
 
 def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) -> None:
@@ -105,12 +143,26 @@ def launch(app_context: AppContext) -> int:
     app, main_window = create_qt_application(app_context)
     main_window.show()
     restore_last_session(app_context, main_window)
+
+    # If the app quits while the background import warm-up task is still
+    # running, interpreter teardown can race the worker thread's signal
+    # emission ("RuntimeError: Signal source has been deleted", printed by
+    # Qt but non-fatal). Give it a bounded window to finish before the app
+    # actually exits -- a no-op once warm-up has already completed, which is
+    # true for the vast majority of real sessions. This is a mitigation, not
+    # a guarantee: on a slow/cold-cache import, waitForDone(2000) can still
+    # time out and shutdown proceeds regardless, leaving the same race (and
+    # its harmless stderr noise) possible -- just less likely.
+    task_scheduler = app_context.get_manager(TaskScheduler)
+    app.aboutToQuit.connect(lambda: task_scheduler.threadpool.waitForDone(2000))
+
     return app.exec()
 
 
 def main() -> None:
     """CLI entry point for `python -m pandaplot.app`."""
-    logger = setup_logging(level=logging.DEBUG)
+    debug = os.environ.get("PANDAPLOT_DEBUG", "").lower() in ("1", "true", "yes")
+    logger = setup_logging(level=logging.DEBUG if debug else logging.INFO)
     logger.info("--------------Starting PandaPlot application--------------")
     app_context = build_app_context()
     sys.exit(launch(app_context))
