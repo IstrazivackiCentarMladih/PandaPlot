@@ -471,12 +471,30 @@ class ChartEditorWidget(PWidget):
             # Clear the current plot
             self.chart_canvas.axes.clear()
 
+            # Set up (or tear down) the secondary Y axis depending on whether
+            # any series is currently routed to it.
+            needs_secondary = any(series.y_axis == "secondary" for series in self.chart.data_series)
+            if needs_secondary:
+                if self.chart_canvas.axes2 is None:
+                    self.chart_canvas.axes2 = self.chart_canvas.axes.twinx()
+                else:
+                    self.chart_canvas.axes2.clear()
+            elif self.chart_canvas.axes2 is not None:
+                self.chart_canvas.axes2.remove()
+                self.chart_canvas.axes2 = None
+                self.chart_canvas.original_ylim2 = None
+
             series_errors = []
             if not self.chart.data_series:
                 self.dataset_label.setText("No Data Loaded")
             else:
                 project = self.app_context.get_app_state().current_project
                 for i, series in enumerate(self.chart.data_series):
+                    # Route this series to its configured Y axis
+                    target_axes = (self.chart_canvas.axes2
+                                   if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
+                                   else self.chart_canvas.axes)
+
                     x_data, y_data, error = resolve_series_data(
                         project, series, self.chart.chart_type)
                     if error:
@@ -488,41 +506,59 @@ class ChartEditorWidget(PWidget):
                     if self.chart.chart_type == "line":
                         mfc = series.marker_color or series.color
                         mec = series.marker_edge_color or series.color
-                        self.chart_canvas.axes.plot(x_data, y_data,
-                                                    color=series.color,
-                                                    linewidth=series.line_width,
-                                                    linestyle=_linestyle_map.get(series.line_style, "-"),
-                                                    marker=_marker_map.get(series.marker_style, "o"),
-                                                    markersize=series.marker_size,
-                                                    markerfacecolor=mfc,
-                                                    markeredgecolor=mec,
-                                                    label=series.label,
-                                                    alpha=alpha)
+                        target_axes.plot(x_data, y_data,
+                                         color=series.color,
+                                         linewidth=series.line_width,
+                                         linestyle=_linestyle_map.get(series.line_style, "-"),
+                                         marker=_marker_map.get(series.marker_style, "o"),
+                                         markersize=series.marker_size,
+                                         markerfacecolor=mfc,
+                                         markeredgecolor=mec,
+                                         label=series.label,
+                                         alpha=alpha)
                     elif self.chart.chart_type == "scatter":
                         mfc = series.marker_color or series.color
                         mec = series.marker_edge_color or series.color
-                        self.chart_canvas.axes.scatter(x_data, y_data,
-                                                       c=mfc,
-                                                       edgecolors=mec,
-                                                       marker=_marker_map.get(series.marker_style, "o"),
-                                                       s=series.marker_size ** 2,
-                                                       label=series.label,
-                                                       alpha=alpha)
+                        target_axes.scatter(x_data, y_data,
+                                            c=mfc,
+                                            edgecolors=mec,
+                                            marker=_marker_map.get(series.marker_style, "o"),
+                                            s=series.marker_size ** 2,
+                                            label=series.label,
+                                            alpha=alpha)
                     elif self.chart.chart_type == "bar":
-                        self.chart_canvas.axes.bar(x_data, y_data,
-                                                   color=series.color,
-                                                   label=series.label,
-                                                   alpha=alpha)
+                        target_axes.bar(x_data, y_data,
+                                        color=series.color,
+                                        label=series.label,
+                                        alpha=alpha)
                     elif self.chart.chart_type == "hist":
-                        self.chart_canvas.axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
-                                                    color=series.color,
-                                                    label=series.label,
-                                                    alpha=alpha)
+                        target_axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
+                                         color=series.color,
+                                         label=series.label,
+                                         alpha=alpha)
 
-                # Plot fit data from chart.fit_data
+                # Plot fit data from chart.fit_data, routed to the same axis as
+                # the data series it was fitted from (if that series uses the
+                # secondary Y axis).
                 for i, fit in enumerate(self.chart.fit_data):
                     if fit.visible:
+                        fit_axes = self.chart_canvas.axes
+                        if self.chart_canvas.axes2 is not None:
+                            for series in self.chart.data_series:
+                                if (series.y_axis == "secondary"
+                                        and series.dataset_id == fit.source_dataset_id
+                                        and series.x_column == fit.source_x_column
+                                        and series.y_column == fit.source_y_column):
+                                    fit_axes = self.chart_canvas.axes2
+                                    break
+
                         # Plot the fit line
+                        fit_axes.plot(fit.x_data, fit.y_data,
+                                     color=fit.color,
+                                     linewidth=fit.line_width,
+                                     linestyle=_linestyle_map.get(fit.line_style, "--"),
+                                     label=fit.label,
+                                     alpha=1.0)
                         self.chart_canvas.axes.plot(fit.x_data, fit.y_data,
                                                     color=fit.color,
                                                     linewidth=fit.line_width,
@@ -548,6 +584,9 @@ class ChartEditorWidget(PWidget):
             self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
+
+            if self.chart_canvas.axes2 is not None:
+                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
 
             if not config.get("x_auto_limits", True):
                 self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
@@ -576,11 +615,24 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.axes.grid(False, axis="y")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
+                # Combine handles/labels from both axes since twinx() legends
+                # are independent by default.
+                handles, labels = self.chart_canvas.axes.get_legend_handles_labels()
+                if self.chart_canvas.axes2 is not None:
+                    handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
+                    handles += handles2
+                    labels += labels2
                 self.chart_canvas.axes.legend(
+                    handles, labels,
                     loc=config.get("legend_position", "upper right"),
                     fontsize=config.get("legend_font_size", 10),
                     facecolor=config.get("legend_bg_color", "#ffffff"),
                     frameon=config.get("legend_show_frame", True))
+
+            if self.chart_canvas.axes2 is not None:
+                # Reserve room for the secondary axis label/ticks so they
+                # aren't clipped at the right edge of the figure.
+                self.chart_canvas.fig.tight_layout()
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()

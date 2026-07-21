@@ -5,11 +5,18 @@ Chart model for managing chart/visualization items in the project.
 import copy
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from pandaplot.models.project.items.item import Item
+
+
+class YAxis(StrEnum):
+    """Y-axis selection for a data series."""
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
 
 
 @dataclass
@@ -27,7 +34,15 @@ class DataSeries:
     line_width: float = 2.0
     marker_size: float = 2.0
     visible: bool = True
+    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
+
+    def __post_init__(self):
+        if isinstance(self.y_axis, str):
+            try:
+                self.y_axis = YAxis(self.y_axis)
+            except ValueError:
+                self.y_axis = YAxis.PRIMARY
 
 
 @dataclass
@@ -86,6 +101,7 @@ class Chart(Item):
             "title": self.name,
             "x_label": "",
             "y_label": "",
+            "y2_label": "",
             "show_legend": True,
             "legend_position": "upper right",
             "legend_show_frame": True,
@@ -309,6 +325,7 @@ class Chart(Item):
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
                     "visible": series.visible,
+                    "y_axis": series.y_axis,
                     "alpha": series.alpha
                 } for series in self.data_series
             ],
@@ -370,6 +387,7 @@ class Chart(Item):
                 line_width=series_dict.get("line_width", 2.0),
                 marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
+                y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0)
             )
             chart.data_series.append(series)
