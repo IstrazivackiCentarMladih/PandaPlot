@@ -129,21 +129,13 @@ class ChartTab(PWidget):
             source_x_column = fit_results.source_x_column if fit_results else ""
             source_y_column = fit_results.source_y_column if fit_results else ""
 
-            # Generate unique color for fit line based on fit type
-            fit_colors = {
-                "Linear": "#ff0000",      # Red
-                "Polynomial": "#00aa00",  # Green
-                "Exponential": "#0066cc",  # Blue
-                "Logarithmic": "#ff6600",  # Orange
-                "Power": "#cc00cc",       # Magenta
-                "Gaussian": "#00cccc",    # Cyan
-            }
-            fit_color = fit_colors.get(fit_type, "#ff0000")  # Default to red
+            # fit_type is a full descriptive string (e.g. "Linear (y = ax + b)"),
+            # so resolve both a short display name and its color together.
+            short_fit_name, fit_color = _resolve_fit_style(fit_type)
 
             # Add fit data directly to the chart
-            import numpy as np
-            x_fit = np.array(fit_results.x_fit)
-            y_fit = np.array(fit_results.y_fit)
+            x_fit = np.asarray(fit_results.x_fit)
+            y_fit = np.asarray(fit_results.y_fit)
 
             fit_params = fit_results.params
             fit_stats = {"r_squared": fit_results.r_squared}
