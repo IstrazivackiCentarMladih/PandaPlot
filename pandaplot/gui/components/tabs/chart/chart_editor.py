@@ -1,4 +1,6 @@
 from typing import override
+from dataclasses import dataclass
+from typing import Optional, Any
 
 import numpy as np
 from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
@@ -81,7 +83,18 @@ def _resolve_error_column(df, column_name):
     return df[column_name].to_numpy()
 
 
-def resolve_series_data(project, series, chart_type=None):
+@dataclass
+class SeriesData:
+    x_data: Any
+    y_data: Any
+    x_err: Optional[Any]
+    y_err: Optional[Any]
+    x_err_minus: Optional[Any]
+    y_err_minus: Optional[Any]
+    error: Optional[str]
+
+
+def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     """Resolve a DataSeries against the project's datasets.
 
     Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
@@ -96,15 +109,15 @@ def resolve_series_data(project, series, chart_type=None):
     from pandaplot.models.project.items.dataset import Dataset
 
     if project is None:
-        return None, None, None, None, None, None, "no project loaded"
+        return SeriesData(None, None, None, None, None, None, "no project loaded")
 
     dataset = project.find_item(series.dataset_id)
     if not isinstance(dataset, Dataset) or dataset.data is None:
-        return None, None, None, None, None, None, f"dataset '{series.dataset_id}' not found"
+        return SeriesData(None, None, None, None, None, None, f"dataset '{series.dataset_id}' not found")
 
     df = dataset.data
     if not series.y_column:
-        return None, None, None, None, None, None, "no Y column configured"
+        return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
     needs_x_column = chart_type != "hist"
     x_column = series.x_column if needs_x_column else None
@@ -113,14 +126,14 @@ def resolve_series_data(project, series, chart_type=None):
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
-        return None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'"
+        return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
     x_data = df[x_column] if x_column else df.index
     x_err = _resolve_error_column(df, series.x_error_column)
     y_err = _resolve_error_column(df, series.y_error_column)
     x_err_minus = _resolve_error_column(df, series.x_error_minus_column)
     y_err_minus = _resolve_error_column(df, series.y_error_minus_column)
-    return x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None
+    return SeriesData(x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None)
 
 
 def _symmetric_directional_error(magnitude, direction: ErrorDirection):
