@@ -529,8 +529,14 @@ class ChartEditorWidget(PWidget):
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, error = resolve_series_data(
-                        project, series, self.chart.chart_type)
+                    series_data = resolve_series_data(project, series, self.chart.chart_type)
+                    x_data = series_data.x_data
+                    y_data = series_data.y_data
+                    x_err = series_data.x_err
+                    y_err = series_data.y_err
+                    x_err_minus = series_data.x_err_minus
+                    y_err_minus = series_data.y_err_minus
+                    error = series_data.error
                     if error:
                         series_errors.append(
                             f"{series.label or f'Series {i + 1}'}: {error}")
@@ -576,7 +582,7 @@ class ChartEditorWidget(PWidget):
                         yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
                         if xerr is not None or yerr is not None:
                             err_color = series.error_color or series.color
-                            self.chart_canvas.axes.errorbar(
+                            target_axes.errorbar(
                                 x_data, y_data,
                                 xerr=xerr,
                                 yerr=yerr,
