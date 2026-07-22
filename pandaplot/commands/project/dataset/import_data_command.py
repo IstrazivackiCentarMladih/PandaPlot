@@ -9,23 +9,19 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.data_import import ImportOptions, data_importer
 from pandaplot.services.qtasks import TaskScheduler
-
-# Delimited-text extensions handled via pandas' CSV reader.
-CSV_EXTENSIONS = {".csv", ".txt", ".tsv"}
-# Excel workbook extensions. Only the first sheet is imported today; see
-# _read_excel_file() for how multi-sheet support can be added later.
-EXCEL_EXTENSIONS = {".xlsx", ".xls"}
-SUPPORTED_EXTENSIONS = CSV_EXTENSIONS | EXCEL_EXTENSIONS
 
 
 class ImportDataCommand(Command):
     """
-    Command to import a single data file (CSV/TSV or single-sheet Excel
-    workbook) as a dataset in the project, via one unified "Import Data" action.
+    Command to import a structured data file (CSV/TSV, Excel, or JSON) as a
+    dataset in the project.
 
-    Supporting a new file format only requires adding a `_read_*_file` method
-    and registering its extensions in the sets above.
+    The command drives the interactive import wizard
+    (:class:`ImportWizardDialog`), which handles format detection, parse
+    options, and preview. Once the user confirms, the full file is read on a
+    background thread using the chosen :class:`ImportOptions`.
     """
 
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
@@ -38,6 +34,8 @@ class ImportDataCommand(Command):
         self.folder_id = folder_id
         self.file_path = None  # Path to the data file, can be set later
         self.dataset_name = None
+        # Parse options chosen in the wizard; drives the background read.
+        self.import_options: Optional[ImportOptions] = None
 
         # Store state for undo
         self.dataset_id = None
@@ -68,33 +66,16 @@ class ImportDataCommand(Command):
             if not self.project:
                 return False
 
-            # Get file path
-            if not self.file_path:
-                self.file_path = self.ui_controller.show_import_data_dialog()
-            if not self.file_path:
+            # Collect the file, parse options, and dataset name via the wizard.
+            if not self._collect_import_settings():
                 return False  # User cancelled
 
-            # Preflight check: validate file exists before starting import
-            if not os.path.exists(self.file_path):
+            # Preflight check: validate file still exists before starting import
+            if not self.file_path or not os.path.exists(self.file_path):
                 error_msg = f"Selected file does not exist: {self.file_path}"
                 self.ui_controller.show_error_message("Import Data Error", error_msg)
                 self.logger.error(error_msg)
                 return False
-
-            # Preflight check: validate the file extension is supported
-            extension = os.path.splitext(self.file_path)[1].lower()
-            if extension not in SUPPORTED_EXTENSIONS:
-                supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
-                error_msg = f"Unsupported file type '{extension}'. Supported types: {supported}"
-                self.ui_controller.show_error_message("Import Data Error", error_msg)
-                self.logger.error(error_msg)
-                return False
-
-            # Get dataset name if not provided
-            self.dataset_name = os.path.splitext(os.path.basename(self.file_path))[0]
-
-            # Show starting message
-            self.ui_controller.show_info_message("Import Starting", f"Starting to import file:\n{self.file_path}")
 
             # Start background import operation
             self.is_importing = True
@@ -118,53 +99,37 @@ class ImportDataCommand(Command):
             self.is_importing = False  # Reset flag on error
             return False
 
-    def _read_csv_file(self, file_path: str) -> pd.DataFrame:
+    def _collect_import_settings(self) -> bool:
         """
-        Read a delimited-text file, falling back through common encodings if
-        the file isn't UTF-8 (e.g. files saved by Excel on Windows).
+        Show the import wizard and capture the chosen file, parse options, and
+        dataset name. Returns False if the user cancels.
+
+        When `self.file_path` is already set (e.g. programmatic import), it
+        seeds the wizard so tests and callers can pre-select a file.
         """
-        last_error: Optional[UnicodeDecodeError] = None
-        for encoding in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
-            try:
-                return pd.read_csv(file_path, encoding=encoding)
-            except UnicodeDecodeError as e:
-                last_error = e
-                continue
-        assert last_error is not None
-        raise last_error
+        # Imported lazily so the command layer stays free of Qt at import time.
+        from PySide6.QtWidgets import QDialog
 
-    def _read_excel_file(self, file_path: str) -> pd.DataFrame:
-        """
-        Read a single-sheet Excel workbook.
+        from pandaplot.gui.dialogs.import_wizard_dialog import ImportWizardDialog
 
-        Only the first sheet is imported for now. To add multi-sheet import
-        later: use `pd.ExcelFile(file_path).sheet_names` to list sheets and let
-        the caller choose which one(s) to import (e.g. one Dataset per sheet).
-        """
-        excel_file = pd.ExcelFile(file_path)
-        sheet_names = excel_file.sheet_names
-        if not sheet_names:
-            raise ValueError("The Excel workbook contains no sheets.")
+        dialog = ImportWizardDialog(
+            self.app_context,
+            parent=self.ui_controller.parent_widget,
+            initial_file_path=self.file_path,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.logger.info("Import wizard cancelled by user")
+            return False
 
-        if len(sheet_names) > 1:
-            self.logger.info(
-                "Excel file '%s' has %d sheets; importing only the first sheet '%s'.",
-                file_path,
-                len(sheet_names),
-                sheet_names[0],
-            )
-
-        return excel_file.parse(sheet_name=0)
+        self.file_path = dialog.get_file_path()
+        self.import_options = dialog.get_import_options()
+        self.dataset_name = dialog.get_dataset_name()
+        return True
 
     def _read_data_file(self, file_path: str) -> pd.DataFrame:
-        """Dispatch to the reader for the file's extension."""
-        extension = os.path.splitext(file_path)[1].lower()
-        if extension in CSV_EXTENSIONS:
-            return self._read_csv_file(file_path)
-        elif extension in EXCEL_EXTENSIONS:
-            return self._read_excel_file(file_path)
-        else:
-            raise ValueError(f"Unsupported file type '{extension}'")
+        """Read the file with the parse options chosen in the wizard."""
+        options = self.import_options or data_importer.default_options(file_path)
+        return data_importer.read_dataframe(file_path, options)
 
     def _import_data_task(self, progress_callback: Callable[[float], None], **kwargs) -> dict:
         """
@@ -381,19 +346,44 @@ class ImportDataCommand(Command):
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
     def redo(self):
-        """Redo the import data command."""
+        """
+        Redo the import by re-adding the cached dataset directly.
+
+        Unlike the first run, redo does not reopen the wizard: the file was
+        already parsed and the resulting data is cached, so we simply re-insert
+        the dataset and re-emit the creation event.
+        """
         try:
-            if not self.is_importing:
-                if self.dataset_id and self.imported_data is not None and self.app_state.has_project:
-                    # We have cached data, could re-add directly or re-execute
-                    # For now, re-execute to maintain consistency
-                    return self.execute()
-                else:
-                    self.logger.warning("Cannot redo: no cached import data available")
-                    return False
-            else:
+            if self.is_importing:
                 self.logger.warning("Cannot redo import command while import is in progress")
                 return False
+
+            if not (self.dataset_id and self.imported_data is not None and self.app_state.has_project):
+                self.logger.warning("Cannot redo: no cached import data available")
+                return False
+
+            project = self.app_state.current_project
+            if not project:
+                return False
+
+            dataset = Dataset(id=self.dataset_id, name=self.dataset_name, data=self.imported_data, source_file=self.file_path)
+            project.add_item(dataset, parent_id=self.folder_id)
+
+            self.app_state.event_bus.emit(
+                DatasetEvents.DATASET_CREATED,
+                {
+                    "project": project,
+                    "dataset_id": self.dataset_id,
+                    "dataset_name": self.dataset_name,
+                    "folder_id": self.folder_id,
+                    "dataset_data": dataset.data,
+                    "file_path": self.file_path,
+                    "dataframe": self.imported_data,
+                },
+            )
+
+            self.logger.info("Redone import of dataset '%s'", self.dataset_id)
+            return True
         except Exception as e:
             error_msg = f"Failed to redo data import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
