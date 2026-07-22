@@ -4,8 +4,6 @@ from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleL
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
-    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -36,6 +34,19 @@ def apply_chart_title(axes, title: str, subtitle: str, title_font_size: float) -
     """Set the chart title (with an optional subtitle on a second line)."""
     text = f"{title}\n{subtitle}" if subtitle else title
     axes.set_title(text, fontsize=title_font_size, fontweight="bold")
+
+
+def resolve_chart_size(
+    chart_width_cm, chart_height_cm, chart_dpi,
+    default_width_cm: float, default_height_cm: float, default_dpi: int,
+) -> tuple[float, float, int]:
+    """Resolve effective (width_cm, height_cm, dpi), preferring per-chart
+    overrides and falling back to the app-wide Settings defaults for any
+    value left as None."""
+    width = chart_width_cm if chart_width_cm is not None else default_width_cm
+    height = chart_height_cm if chart_height_cm is not None else default_height_cm
+    dpi = chart_dpi if chart_dpi is not None else default_dpi
+    return width, height, dpi
 
 
 def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
@@ -168,62 +179,9 @@ class ChartEditorWidget(PWidget):
         
         # Apply theme to toolbar if it exists
         self._apply_toolbar_theme()
-        
-        # Apply theme to spinboxes
-        self._apply_spinbox_style(self.width_spin)
-        self._apply_spinbox_style(self.height_spin)
-        
-        # Apply theme to size label
-        self._apply_label_style(self.size_label)
-        self._apply_label_style(self.multiply_label)
-        
+
         # Apply theme to chart canvas navigation if it exists
         self.chart_canvas.apply_navigation_theme(base_fg, card_bg, card_border)
-
-    def _apply_spinbox_style(self, spinbox):
-        """Apply theme-aware styling to a spin box (QSpinBox or QDoubleSpinBox)"""
-        try:
-            theme_manager = self.app_context.get_manager(ThemeManager)
-            palette = theme_manager.get_surface_palette()
-
-            base_fg = palette.get("base_fg", "#000000")
-            card_border = palette.get("card_border", "#dee2e6")
-            card_bg = palette.get("card_bg", "#f8f9fa")
-
-            spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-            spinbox.setStyleSheet(f"""
-                QAbstractSpinBox {{
-                    background-color: {card_bg};
-                    border: 1px solid {card_border};
-                    border-radius: 3px;
-                    padding: 2px 5px;
-                    color: {base_fg};
-                    font-size: 12px;
-                }}
-                QAbstractSpinBox:focus {{
-                    border-color: #007bff;
-                    background-color: {card_bg};
-                }}
-            """)
-        except Exception as e:
-            self.logger.debug(f"Could not apply spinbox style: {e}")
-
-    def _apply_label_style(self, label):
-        """Apply theme-aware styling to a QLabel"""
-        try:
-            theme_manager = self.app_context.get_manager(ThemeManager)
-            palette = theme_manager.get_surface_palette()
-            base_fg = palette.get("base_fg", "#000000")
-
-            label.setStyleSheet(f"""
-                QLabel {{
-                    color: {base_fg};
-                    font-weight: 500;
-                    margin: 0 5px;
-                }}
-            """)
-        except Exception as e:
-            self.logger.debug(f"Could not apply label style: {e}")
 
     def _apply_toolbar_theme(self):
         """Apply theme-aware styling to the preview toolbar."""
@@ -333,10 +291,6 @@ class ChartEditorWidget(PWidget):
         # Add separator
         self.preview_toolbar.addSeparator()
 
-        # Add size controls
-        self.size_label = QLabel("Size:")
-        self.preview_toolbar.addWidget(self.size_label)
-
         # Fetch preferred DPI and default chart size from config manager
         dpi = 100
         default_width_cm = 20
@@ -352,34 +306,16 @@ class ChartEditorWidget(PWidget):
         except Exception:
             pass
 
-        # Width control
-        self.width_spin = QDoubleSpinBox()
-        self.width_spin.setDecimals(1)
-        self.width_spin.setSingleStep(0.1)
-        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.width_spin.setValue(default_width_cm)
-        self.width_spin.setSuffix(" cm")
-        self.width_spin.setToolTip("Chart width in centimeters")
-        self.width_spin.valueChanged.connect(self._on_size_changed)
-        self.preview_toolbar.addWidget(self.width_spin)
-
-        self.multiply_label = QLabel("×")
-        self.preview_toolbar.addWidget(self.multiply_label)
-
-        # Height control
-        self.height_spin = QDoubleSpinBox()
-        self.height_spin.setDecimals(1)
-        self.height_spin.setSingleStep(0.1)
-        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.height_spin.setValue(default_height_cm)
-        self.height_spin.setSuffix(" cm")
-        self.height_spin.setToolTip("Chart height in centimeters")
-        self.height_spin.valueChanged.connect(self._on_size_changed)
-        self.preview_toolbar.addWidget(self.height_spin)
+        # Resolve the initial canvas size/DPI, preferring per-chart overrides
+        # (chart.config) over the app-wide Settings defaults fetched above.
+        width_cm, height_cm, dpi = resolve_chart_size(
+            self.chart.config.get("width_cm"), self.chart.config.get("height_cm"),
+            self.chart.config.get("dpi"), default_width_cm, default_height_cm, dpi,
+        )
 
         # Chart canvas
         self.chart_canvas = ChartCanvas(
-            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
+            width=cm_to_inches(width_cm), height=cm_to_inches(height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -588,6 +524,19 @@ class ChartEditorWidget(PWidget):
                 subtitle=config.get("subtitle", ""),
                 title_font_size=config.get("title_font_size", 14),
             )
+
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+            default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
+            default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
+            default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
+            width_cm, height_cm, dpi = resolve_chart_size(
+                config.get("width_cm"), config.get("height_cm"), config.get("dpi"),
+                default_width, default_height, default_dpi,
+            )
+            self.chart_canvas.set_size(cm_to_inches(width_cm), cm_to_inches(height_cm))
+            self.chart_canvas.set_dpi(dpi)
+
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
             self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
@@ -682,9 +631,15 @@ class ChartEditorWidget(PWidget):
 
         Runs once, shortly after construction, once the scroll area has a
         real viewport size to measure. Has no effect if the widget was
-        already closed or the panel hasn't been laid out yet.
+        already closed or the panel hasn't been laid out yet, or if this
+        chart already has a per-chart width/height saved in its config
+        (in which case that saved size takes precedence and must not be
+        overwritten by the fit-to-panel heuristic).
         """
         if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        if self.chart.config.get("width_cm") is not None or self.chart.config.get("height_cm") is not None:
             return
 
         viewport = self.canvas_scroll.viewport()
@@ -695,30 +650,12 @@ class ChartEditorWidget(PWidget):
 
         width_cm, height_cm = fit_size_cm(
             width_px, height_px, self.chart_canvas.fig.dpi,
-            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
-            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+            min_width_cm=MIN_CHART_WIDTH_CM, max_width_cm=MAX_CHART_WIDTH_CM,
+            min_height_cm=MIN_CHART_HEIGHT_CM, max_height_cm=MAX_CHART_HEIGHT_CM)
 
-        self.width_spin.blockSignals(True)
-        self.height_spin.blockSignals(True)
-        self.width_spin.setValue(width_cm)
-        self.height_spin.setValue(height_cm)
-        self.width_spin.blockSignals(False)
-        self.height_spin.blockSignals(False)
-        self._on_size_changed()
-
-    def _on_size_changed(self):
-        """Handle chart size changes."""
-        if hasattr(self, "chart_canvas"):
-            try:
-                width = cm_to_inches(self.width_spin.value())
-                height = cm_to_inches(self.height_spin.value())
-                self.chart_canvas.set_size(width, height)
-                self.update_status("Chart size updated")
-            except Exception as e:
-                self.update_status(f"Resize error: {str(e)}")
-
-            # Reset status after 2 seconds
-            QTimer.singleShot(2000, lambda: self.update_status("Ready"))
+        self.chart.config["width_cm"] = width_cm
+        self.chart.config["height_cm"] = height_cm
+        self.update_chart()
 
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
