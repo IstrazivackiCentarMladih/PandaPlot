@@ -6,11 +6,18 @@ import copy
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import StrEnum
+from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from pandaplot.models.project.items.item import Item
+
+
+class YAxis(StrEnum):
+    """Y-axis selection for a data series."""
+    PRIMARY = "primary"
+    SECONDARY = "secondary"
 
 
 class ErrorDirection(StrEnum):
@@ -35,6 +42,7 @@ class DataSeries:
     line_width: float = 2.0
     marker_size: float = 2.0
     visible: bool = True
+    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
     x_error_column: str = ""
     y_error_column: str = ""
@@ -44,6 +52,13 @@ class DataSeries:
     error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
     error_color: str = ""  # "" => inherit series.color
     error_cap_size: float = 3.0
+
+    def __post_init__(self):
+        if isinstance(self.y_axis, str):
+            try:
+                self.y_axis = YAxis(self.y_axis)
+            except ValueError:
+                self.y_axis = YAxis.PRIMARY
 
 
 @dataclass
@@ -102,6 +117,7 @@ class Chart(Item):
             "title": self.name,
             "x_label": "",
             "y_label": "",
+            "y2_label": "",
             "show_legend": True,
             "legend_position": "upper right",
             "legend_show_frame": True,
@@ -325,6 +341,7 @@ class Chart(Item):
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
                     "visible": series.visible,
+                    "y_axis": series.y_axis,
                     "alpha": series.alpha,
                     "x_error_column": series.x_error_column,
                     "y_error_column": series.y_error_column,
@@ -394,6 +411,7 @@ class Chart(Item):
                 line_width=series_dict.get("line_width", 2.0),
                 marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
+                y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0),
                 x_error_column=series_dict.get("x_error_column", ""),
                 y_error_column=series_dict.get("y_error_column", ""),
