@@ -28,6 +28,7 @@ from pandaplot.commands.project.chart import (
     RemoveSeriesCommand,
 )
 from pandaplot.gui.components.common.dirty_footer import DirtyFooter
+from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -276,6 +277,7 @@ class ChartPropertiesPanel(PWidget):
         # Footer (DirtyFooter) theme token propagation
         tokens = theme_manager.get_design_tokens()
         self.footer.set_tokens(tokens)
+        self.chart_type_control.set_tokens(tokens)
 
     def _update_color_buttons(self):
         """Update all ColorButton instances with current theme."""
@@ -346,25 +348,54 @@ class ChartPropertiesPanel(PWidget):
         # Chart info group
         info_group = QGroupBox("Chart Information")
         info_layout = QGridLayout(info_group)
-        
+        info_layout.setSpacing(8)
+
         info_layout.addWidget(QLabel("Title:"), 0, 0)
         self.title_edit = QLineEdit()
         info_layout.addWidget(self.title_edit, 0, 1)
-        
-        info_layout.addWidget(QLabel("Chart Type:"), 1, 0)
-        self.chart_type_combo = QComboBox()
-        for chart_type in IMPLEMENTED_CHART_TYPES:
-            self.chart_type_combo.addItem(chart_type.value.title(), chart_type)
-        info_layout.addWidget(self.chart_type_combo, 1, 1)
+        self.title_font_size_spin = QSpinBox()
+        self.title_font_size_spin.setRange(8, 32)
+        self.title_font_size_spin.setValue(14)
+        info_layout.addWidget(self.title_font_size_spin, 0, 2)
+
+        info_layout.addWidget(QLabel("Subtitle:"), 1, 0)
+        self.subtitle_edit = QLineEdit()
+        self.subtitle_edit.setPlaceholderText("Optional")
+        info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
+
+        info_layout.addWidget(QLabel("Type:"), 2, 0)
+        self.chart_type_control = SegmentedControl(
+            [("Scatter", ChartType.SCATTER), ("Line", ChartType.LINE), ("Bar", ChartType.BAR)]
+        )
+        info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
         self.hist_bins_label = QLabel("Histogram Bins:")
-        info_layout.addWidget(self.hist_bins_label, 2, 0)
+        info_layout.addWidget(self.hist_bins_label, 3, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
         self.hist_bins_spin.setValue(20)
         self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
-        info_layout.addWidget(self.hist_bins_spin, 2, 1)
+        info_layout.addWidget(self.hist_bins_spin, 3, 1)
         self._update_hist_bins_visibility()
+
+        info_layout.addWidget(QLabel("Size:"), 4, 0)
+        self.chart_size_combo = QComboBox()
+        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
+        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
+        self.chart_size_combo.addItem("Use app default", None)
+        info_layout.addWidget(self.chart_size_combo, 4, 1, 1, 2)
+
+        info_layout.addWidget(QLabel("DPI:"), 5, 0)
+        self.chart_dpi_combo = QComboBox()
+        self.chart_dpi_combo.addItem("100 dpi", 100)
+        self.chart_dpi_combo.addItem("150 dpi", 150)
+        self.chart_dpi_combo.addItem("300 dpi", 300)
+        self.chart_dpi_combo.addItem("Use app default", None)
+        info_layout.addWidget(self.chart_dpi_combo, 5, 1, 1, 2)
+
+        hint = QLabel("Size affects export & default fonts")
+        hint.setStyleSheet("font-size: 10.5px;")
+        info_layout.addWidget(hint, 6, 0, 1, 3)
 
         layout.addWidget(info_group)
     
@@ -720,9 +751,13 @@ class ChartPropertiesPanel(PWidget):
         self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
 
         # Connect chart-level configuration changes
-        self.chart_type_combo.currentIndexChanged.connect(self._on_chart_type_index_changed)
+        self.chart_type_control.currentValueChanged.connect(self._on_chart_type_index_changed)
         self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
+        self.title_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.subtitle_edit.textChanged.connect(self._on_chart_config_changed)
+        self.chart_size_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_config_changed)
         self.x_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.y_label_edit.textChanged.connect(self._on_chart_config_changed)
         self.y2_label_edit.textChanged.connect(self._on_chart_config_changed)
@@ -1039,7 +1074,7 @@ class ChartPropertiesPanel(PWidget):
 
     def _update_hist_bins_visibility(self):
         """Show the Histogram Bins control only when the chart type is Histogram."""
-        is_histogram = self.chart_type_combo.currentData() == ChartType.HISTOGRAM
+        is_histogram = self.chart_type_control.currentValue() == ChartType.HISTOGRAM
         self.hist_bins_label.setVisible(is_histogram)
         self.hist_bins_spin.setVisible(is_histogram)
 
@@ -1081,8 +1116,20 @@ class ChartPropertiesPanel(PWidget):
         # Update chart configuration from UI controls
         if hasattr(self, "title_edit"):
             self.current_chart.name = self.title_edit.text()
-        
+
         config = self.current_chart.config
+        if hasattr(self, "title_edit"):
+            config["title"] = self.title_edit.text()
+        if hasattr(self, "title_font_size_spin"):
+            config["title_font_size"] = self.title_font_size_spin.value()
+        if hasattr(self, "subtitle_edit"):
+            config["subtitle"] = self.subtitle_edit.text()
+        if hasattr(self, "chart_size_combo"):
+            size = self.chart_size_combo.currentData()
+            config["width_cm"] = size[0] if size else None
+            config["height_cm"] = size[1] if size else None
+        if hasattr(self, "chart_dpi_combo"):
+            config["dpi"] = self.chart_dpi_combo.currentData()
         if hasattr(self, "x_label_edit"):
             config["x_label"] = self.x_label_edit.text()
         if hasattr(self, "y_label_edit"):
@@ -1133,14 +1180,14 @@ class ChartPropertiesPanel(PWidget):
             config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
         if hasattr(self, "hist_bins_spin"):
             config["hist_bins"] = self.hist_bins_spin.value()
-        if hasattr(self, "chart_type_combo") and self.chart_type_combo.currentData():
+        if hasattr(self, "chart_type_control") and self.chart_type_control.currentValue():
             chart_type_map = {
                 ChartType.LINE: "line",
                 ChartType.SCATTER: "scatter",
                 ChartType.BAR: "bar",
                 ChartType.HISTOGRAM: "hist",
             }
-            chart_type = self.chart_type_combo.currentData()
+            chart_type = self.chart_type_control.currentValue()
             if chart_type in chart_type_map and (
                 self._loaded_chart_type_supported or self._chart_type_touched_by_user
             ):
@@ -1350,7 +1397,11 @@ class ChartPropertiesPanel(PWidget):
         self._updating_controls = True
         try:
             self.title_edit.clear()
-            self.chart_type_combo.setCurrentIndex(0)
+            self.title_font_size_spin.setValue(14)
+            self.subtitle_edit.clear()
+            self.chart_type_control.setCurrentValue(ChartType.SCATTER)
+            self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
+            self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.hist_bins_spin.setValue(20)
             self._update_hist_bins_visibility()
             self.x_label_edit.clear()
@@ -1488,7 +1539,25 @@ class ChartPropertiesPanel(PWidget):
             try:
                 # Load basic info
                 self.title_edit.setText(chart.config.get("title", chart.name))
-            
+                self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
+                self.subtitle_edit.setText(chart.config.get("subtitle", ""))
+                # QComboBox.findData() is unreliable for tuple-valued itemData
+                # (Qt's QVariant comparison doesn't match Python tuple equality
+                # here), so look up the matching index manually.
+                target_size = (chart.config.get("width_cm"), chart.config.get("height_cm"))
+                size_index = -1
+                for i in range(self.chart_size_combo.count()):
+                    if self.chart_size_combo.itemData(i) == target_size:
+                        size_index = i
+                        break
+                self.chart_size_combo.setCurrentIndex(
+                    size_index if size_index >= 0 else self.chart_size_combo.count() - 1
+                )
+                dpi_index = self.chart_dpi_combo.findData(chart.config.get("dpi"))
+                self.chart_dpi_combo.setCurrentIndex(
+                    dpi_index if dpi_index >= 0 else self.chart_dpi_combo.count() - 1
+                )
+
                 # Set chart type
                 chart_type_map = {
                     "line": ChartType.LINE,
@@ -1498,10 +1567,10 @@ class ChartPropertiesPanel(PWidget):
                 }
                 self._loaded_chart_type_supported = chart.chart_type in chart_type_map
                 chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-                for i in range(self.chart_type_combo.count()):
-                    if self.chart_type_combo.itemData(i) == chart_type:
-                        self.chart_type_combo.setCurrentIndex(i)
-                        break
+                if chart_type in (ChartType.SCATTER, ChartType.LINE, ChartType.BAR):
+                    self.chart_type_control.setCurrentValue(chart_type)
+                else:
+                    self.chart_type_control.setCurrentValue(ChartType.LINE)
                 self._update_hist_bins_visibility()
 
                 # Update series list
@@ -1628,6 +1697,12 @@ class ChartPropertiesPanel(PWidget):
         
         # Update basic chart properties
         chart.config["title"] = self.title_edit.text()
+        chart.config["title_font_size"] = self.title_font_size_spin.value()
+        chart.config["subtitle"] = self.subtitle_edit.text()
+        size = self.chart_size_combo.currentData()
+        chart.config["width_cm"] = size[0] if size else None
+        chart.config["height_cm"] = size[1] if size else None
+        chart.config["dpi"] = self.chart_dpi_combo.currentData()
         chart.config["x_label"] = self.x_label_edit.text()
         chart.config["y_label"] = self.y_label_edit.text()
         chart.config["y2_label"] = self.y2_label_edit.text()
@@ -1670,7 +1745,7 @@ class ChartPropertiesPanel(PWidget):
             ChartType.BAR: "bar",
             ChartType.HISTOGRAM: "hist",
         }
-        chart_type = self.chart_type_combo.currentData()
+        chart_type = self.chart_type_control.currentValue()
         if chart_type in chart_type_map:
             chart.chart_type = chart_type_map[chart_type]
         
