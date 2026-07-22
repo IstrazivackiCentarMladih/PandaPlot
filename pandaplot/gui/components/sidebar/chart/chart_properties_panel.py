@@ -365,7 +365,12 @@ class ChartPropertiesPanel(PWidget):
 
         info_layout.addWidget(QLabel("Type:"), 2, 0)
         self.chart_type_control = SegmentedControl(
-            [("Scatter", ChartType.SCATTER), ("Line", ChartType.LINE), ("Bar", ChartType.BAR)]
+            [
+                ("Scatter", ChartType.SCATTER),
+                ("Line", ChartType.LINE),
+                ("Bar", ChartType.BAR),
+                ("Histogram", ChartType.HISTOGRAM),
+            ]
         )
         info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
@@ -1567,10 +1572,7 @@ class ChartPropertiesPanel(PWidget):
                 }
                 self._loaded_chart_type_supported = chart.chart_type in chart_type_map
                 chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-                if chart_type in (ChartType.SCATTER, ChartType.LINE, ChartType.BAR):
-                    self.chart_type_control.setCurrentValue(chart_type)
-                else:
-                    self.chart_type_control.setCurrentValue(ChartType.LINE)
+                self.chart_type_control.setCurrentValue(chart_type)
                 self._update_hist_bins_visibility()
 
                 # Update series list
