@@ -8,12 +8,12 @@ from PySide6.QtWidgets import (
     QColorDialog,
     QComboBox,
     QDoubleSpinBox,
+    QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -27,7 +27,9 @@ from pandaplot.commands.project.chart import (
     RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
+from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.dirty_footer import DirtyFooter
+from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
@@ -39,7 +41,7 @@ from pandaplot.models.chart.chart_configuration import (
 )
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
+from pandaplot.models.project.items.chart import YAxis, restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -140,6 +142,9 @@ class ChartPropertiesPanel(PWidget):
         # because that's what the combo defaults to for display.
         self._loaded_chart_type_supported: bool = True
         self._chart_type_touched_by_user: bool = False
+        # Which entry (data series index, then fit-data index appended after
+        # all series) is currently shown expanded in the Data tab's card list.
+        self._expanded_series_index: int = 0
 
         self._initialize()
         self._connect_signals()
@@ -279,6 +284,13 @@ class ChartPropertiesPanel(PWidget):
         self.footer.set_tokens(tokens)
         self.chart_type_control.set_tokens(tokens)
 
+        # Data tab: cards/SegmentedControl are rebuilt with fresh tokens
+        # every time _rebuild_series_cards runs, so re-running it here is
+        # the simplest way to make a live theme change reach them.
+        self._series_section_header.set_tokens(tokens)
+        self.series_y_axis_control.set_tokens(tokens)
+        self._rebuild_series_cards()
+
     def _update_color_buttons(self):
         """Update all ColorButton instances with current theme."""
         color_buttons = [
@@ -405,38 +417,41 @@ class ChartPropertiesPanel(PWidget):
         layout.addWidget(info_group)
     
     def _create_series_management_section(self, layout):
-        """Create the data series management section."""
-        # Data Series group
-        series_group = QGroupBox("Data Series")
-        series_layout = QVBoxLayout(series_group)
-
-        # Series list and buttons row
-        list_row = QHBoxLayout()
-        self.series_list = QListWidget()
-        self.series_list.setMaximumHeight(140)
-        self.series_list.currentRowChanged.connect(self._on_series_selection_changed)
-        list_row.addWidget(self.series_list, 1)
-
-        buttons_col = QVBoxLayout()
-        self.add_series_button = QPushButton("Add Series")
-        self.add_series_button.setMinimumHeight(28)
+        """Create the data series management section: an expand/collapse card
+        per series (plus any fit-data entries), backed by a single persistent
+        configuration form that is reparented into whichever card is
+        currently expanded (tracked by `self._expanded_series_index`).
+        """
+        header_row = QHBoxLayout()
+        self._series_section_header = SectionHeader("Series")
+        header_row.addWidget(self._series_section_header)
+        header_row.addStretch(1)
+        self.add_series_button = QPushButton("+ Add series")
         self.add_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_series_button.clicked.connect(self._add_series)
-        buttons_col.addWidget(self.add_series_button)
+        header_row.addWidget(self.add_series_button)
+        layout.addLayout(header_row)
 
-        self.remove_series_button = QPushButton("Remove")
+        self._series_cards_container = QWidget()
+        self._series_cards_layout = QVBoxLayout(self._series_cards_container)
+        self._series_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._series_cards_layout.setSpacing(6)
+        layout.addWidget(self._series_cards_container)
+
+        self.remove_series_button = QPushButton("Remove selected series")
         self.remove_series_button.setMinimumHeight(28)
         self.remove_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.remove_series_button.clicked.connect(self._remove_series)
         self.remove_series_button.setEnabled(False)
-        buttons_col.addWidget(self.remove_series_button)
-        buttons_col.addStretch(1)
-        list_row.addLayout(buttons_col)
-        series_layout.addLayout(list_row)
+        layout.addWidget(self.remove_series_button)
 
-        # Series configuration group
-        series_config_group = QGroupBox("Series Configuration")
-        series_config_layout = QGridLayout(series_config_group)
+        # Persistent configuration form (dataset/X/Y/Y-axis/label). Created
+        # once so signal connections in _connect_signals stay valid for the
+        # panel's lifetime; it gets moved (reparented) into whichever card is
+        # currently expanded by _build_expanded_series_card.
+        self._series_form_widget = QWidget()
+        series_config_layout = QGridLayout(self._series_form_widget)
+        series_config_layout.setContentsMargins(0, 0, 0, 0)
 
         series_config_layout.addWidget(QLabel("Dataset:"), 0, 0)
         self.dataset_combo = QComboBox()
@@ -451,21 +466,186 @@ class ChartPropertiesPanel(PWidget):
         series_config_layout.addWidget(self.y_column_combo, 2, 1)
 
         series_config_layout.addWidget(QLabel("Y Axis:"), 3, 0)
-        self.series_y_axis_combo = QComboBox()
-        self.series_y_axis_combo.addItem("Primary", "primary")
-        self.series_y_axis_combo.addItem("Secondary", "secondary")
-        series_config_layout.addWidget(self.series_y_axis_combo, 3, 1)
+        self.series_y_axis_control = SegmentedControl(
+            [("Y₁ left", YAxis.PRIMARY), ("Y₂ right", YAxis.SECONDARY)]
+        )
+        series_config_layout.addWidget(self.series_y_axis_control, 3, 1)
 
         series_config_layout.addWidget(QLabel("Label:"), 4, 0)
         self.series_label_edit = QLineEdit()
         series_config_layout.addWidget(self.series_label_edit, 4, 1)
 
-        # Disable series configuration initially
-        series_config_group.setEnabled(False)
-        self.series_config_group = series_config_group
-        series_layout.addWidget(series_config_group)
-        layout.addWidget(series_group)
-    
+        self._rebuild_series_cards()
+
+    def _expand_series(self, index: int):
+        """Expand the card at `index` (collapsing whichever was expanded)."""
+        self._expanded_series_index = index
+        self._rebuild_series_cards()
+
+    def _rebuild_series_cards(self):
+        """Rebuild the Data tab's card list from `self.current_chart`.
+
+        Renders one collapsed row per data series / fit-data entry, except
+        the entry at `self._expanded_series_index`, which gets the full
+        configuration card (dataset/X/Y/Y-axis/label). Safe to call at any
+        point: fetches fresh theme tokens, so this doubles as the mechanism
+        by which cards pick up a live theme change (see `_apply_theme`).
+        """
+        # Detach the persistent form widget from whatever card currently
+        # hosts it *before* that card is torn down below, so it survives
+        # the rebuild instead of being deleted as a child of a discarded card.
+        if self._series_form_widget.parent() is not None:
+            self._series_form_widget.setParent(None)
+
+        while self._series_cards_layout.count():
+            item = self._series_cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        tokens = theme_manager.get_design_tokens()
+
+        if not self.current_chart:
+            self.remove_series_button.setEnabled(False)
+            return
+
+        total_series = len(self.current_chart.data_series)
+        total_fit = len(self.current_chart.fit_data)
+        total_items = total_series + total_fit
+
+        for index, series in enumerate(self.current_chart.data_series):
+            if index == self._expanded_series_index:
+                card = self._build_expanded_series_card(index, tokens)
+            else:
+                card = self._build_collapsed_series_row(series, index, tokens)
+            self._series_cards_layout.addWidget(card)
+
+        for fit_offset, fit in enumerate(self.current_chart.fit_data):
+            index = total_series + fit_offset
+            if index == self._expanded_series_index:
+                card = self._build_expanded_series_card(index, tokens)
+            else:
+                card = self._build_collapsed_fit_row(fit, tokens)
+            self._series_cards_layout.addWidget(card)
+
+        self.remove_series_button.setEnabled(total_items > 0)
+
+    def _build_collapsed_series_row(self, series, index: int, tokens: dict) -> QWidget:
+        """A chip-like collapsed row: color square, name, Y-axis badge, chevron."""
+        card = Card()
+        card.set_tokens(tokens)
+        row = QHBoxLayout(card)
+
+        swatch = QFrame()
+        swatch.setFixedSize(14, 14)
+        swatch.setStyleSheet(
+            f"background-color: {series.color}; "
+            f"border: 1px solid {tokens.get('border_control', '#999')}; "
+            f"border-radius: {tokens.get('radius_swatch', 4)}px;"
+        )
+        row.addWidget(swatch)
+
+        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
+        row.addWidget(name_label, 1)
+
+        row.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
+
+        chevron = QPushButton("▸")  # ▸
+        chevron.setFlat(True)
+        chevron.setFixedWidth(24)
+        chevron.setCursor(Qt.CursorShape.PointingHandCursor)
+        chevron.clicked.connect(lambda _checked=False, i=index: self._expand_series(i))
+        row.addWidget(chevron)
+
+        return card
+
+    def _build_collapsed_fit_row(self, fit, tokens: dict) -> QWidget:
+        """Collapsed row for a fit-data entry (no Y-axis picker for fits)."""
+        card = Card()
+        card.set_tokens(tokens)
+        row = QHBoxLayout(card)
+
+        swatch = QFrame()
+        swatch.setFixedSize(14, 14)
+        swatch.setStyleSheet(
+            f"background-color: {fit.color}; "
+            f"border: 1px solid {tokens.get('border_control', '#999')}; "
+            f"border-radius: {tokens.get('radius_swatch', 4)}px;"
+        )
+        row.addWidget(swatch)
+
+        name_label = QLabel(f"\U0001f527 {fit.label}")  # wrench emoji
+        name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
+        row.addWidget(name_label, 1)
+
+        total_series = len(self.current_chart.data_series)
+        fit_index = self.current_chart.fit_data.index(fit)
+        chevron = QPushButton("▸")
+        chevron.setFlat(True)
+        chevron.setFixedWidth(24)
+        chevron.setCursor(Qt.CursorShape.PointingHandCursor)
+        chevron.clicked.connect(
+            lambda _checked=False, i=total_series + fit_index: self._expand_series(i)
+        )
+        row.addWidget(chevron)
+
+        return card
+
+    def _build_y_axis_badge(self, y_axis, tokens: dict) -> QLabel:
+        """Small 'Y₁'/'Y₂' badge, accented for the secondary axis."""
+        is_secondary = y_axis == YAxis.SECONDARY
+        badge = QLabel("Y₂" if is_secondary else "Y₁")
+        bg = tokens.get("y2_accent_bg") if is_secondary else tokens.get("surface_inset", "#eee")
+        fg = tokens.get("y2_accent") if is_secondary else tokens.get("text_muted", "#666")
+        badge.setStyleSheet(
+            f"background-color: {bg}; color: {fg}; "
+            f"border-radius: {tokens.get('radius_chip', 12)}px; "
+            "padding: 1px 8px; font-size: 10px; font-weight: 600;"
+        )
+        return badge
+
+    def _build_expanded_series_card(self, index: int, tokens: dict) -> QWidget:
+        """The expanded card: title + the persistent config form, loaded with
+        `index`'s values (a data-series index, or a fit-data index appended
+        after all series, matching the combined indexing used throughout
+        this panel)."""
+        card = Card()
+        card.set_tokens(tokens)
+        outer = QVBoxLayout(card)
+
+        total_series = len(self.current_chart.data_series)
+        is_fit = index >= total_series
+        if is_fit:
+            fit = self.current_chart.fit_data[index - total_series]
+            title_text = f"\U0001f527 {fit.label}"
+        else:
+            series = self.current_chart.data_series[index]
+            title_text = series.label or f"{series.dataset_id}:{series.y_column}"
+
+        header = QHBoxLayout()
+        title_label = QLabel(title_text)
+        title_label.setStyleSheet(f"font-weight: 600; color: {tokens.get('text_primary', '#000')};")
+        header.addWidget(title_label, 1)
+        if not is_fit:
+            header.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
+        chevron = QPushButton("▾")  # ▾, indicates "currently expanded"
+        chevron.setFlat(True)
+        chevron.setFixedWidth(24)
+        chevron.setEnabled(False)
+        header.addWidget(chevron)
+        outer.addLayout(header)
+
+        outer.addWidget(self._series_form_widget)
+
+        if is_fit:
+            self._load_fit_into_controls(fit)
+        else:
+            self._reset_controls_for_series()
+            self._load_series_into_controls(series)
+
+        return card
+
     def _create_style_tab(self) -> QWidget:
         """Create the style configuration tab."""
         widget = QWidget()
@@ -797,7 +977,7 @@ class ChartPropertiesPanel(PWidget):
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.y_column_combo.currentTextChanged.connect(self._on_series_config_changed)
-        self.series_y_axis_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.series_y_axis_control.currentValueChanged.connect(self._on_series_config_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
@@ -876,7 +1056,7 @@ class ChartPropertiesPanel(PWidget):
             # baseline to match the new command boundary.
             # TODO: this branch always fires first (add/remove series and
             # fit-added events include both "chart" and "update_type"), so it
-            # resets series_list's selection to row 0 via load_chart_object,
+            # resets the expanded card back to index 0 via load_chart_object,
             # making the update_type branch below unreachable. Consider
             # preserving the selected row here too.
             self.load_chart_object(self.current_chart)
@@ -884,8 +1064,8 @@ class ChartPropertiesPanel(PWidget):
             return
 
         update_type = event_data.get("update_type", "")
-        if update_type in ["fit_added", "series_added", "series_removed"]:
-            self._update_series_list()
+        if update_type in ["fit_added", "series_added", "series_removed", "series_updated"]:
+            self._rebuild_series_cards()
             self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
     
     def _add_series(self):
@@ -911,12 +1091,10 @@ class ChartPropertiesPanel(PWidget):
             )
             self.command_executor.execute_command(command)
 
-            # Update the series list
-            self._update_series_list()
+            # Select and expand the newly added series
+            self._expanded_series_index = len(self.current_chart.data_series) - 1
+            self._rebuild_series_cards()
 
-            # Select the new series
-            self.series_list.setCurrentRow(len(self.current_chart.data_series) - 1)
-    
     def _remove_series(self):
         """Remove the selected data series or fit data."""
         if not self.current_chart:
@@ -925,7 +1103,7 @@ class ChartPropertiesPanel(PWidget):
         total_series = len(self.current_chart.data_series)
         total_items = total_series + len(self.current_chart.fit_data)
 
-        current_row = self.series_list.currentRow()
+        current_row = self._expanded_series_index
         if current_row < 0 or current_row >= total_items:
             return
 
@@ -943,46 +1121,11 @@ class ChartPropertiesPanel(PWidget):
             )
         self.command_executor.execute_command(command)
 
-        # Update the series list
-        self._update_series_list()
-
-        # Select previous item or disable if nothing left
+        # Expand the previous item (or stay at 0 if nothing's left) and rebuild.
         remaining_items = len(self.current_chart.data_series) + len(self.current_chart.fit_data)
-        if remaining_items:
-            new_row = min(current_row, remaining_items - 1)
-            self.series_list.setCurrentRow(new_row)
-        else:
-            self.series_config_group.setEnabled(False)
-    
-    def _on_series_selection_changed(self, current_row: int):
-        """Handle series selection change."""
-        if not self.current_chart or current_row < 0:
-            self.series_config_group.setEnabled(False)
-            return
-        
-        total_series = len(self.current_chart.data_series)
-        total_items = total_series + len(self.current_chart.fit_data)
-        
-        if current_row >= total_items:
-            self.series_config_group.setEnabled(False)
-            return
-        
-        # Enable configuration
-        self.series_config_group.setEnabled(True)
-        
-        if current_row < total_series:
-            # This is a data series
-            series = self.current_chart.data_series[current_row]
-            self._load_series_into_controls(series)
-        else:
-            # This is fit data
-            fit_index = current_row - total_series
-            fit = self.current_chart.fit_data[fit_index]
-            self._load_fit_into_controls(fit)
-        
-        # Enable/disable remove button
-        self.remove_series_button.setEnabled(total_items > 0)
-    
+        self._expanded_series_index = min(current_row, max(remaining_items - 1, 0))
+        self._rebuild_series_cards()
+
     def _on_series_config_changed(self):
         """Handle dataset / column configuration changes for the selected series.
 
@@ -992,7 +1135,7 @@ class ChartPropertiesPanel(PWidget):
         if self._updating_controls or not self.current_chart:
             return
 
-        current_row = self.series_list.currentRow()
+        current_row = self._expanded_series_index
         if current_row < 0:
             return
 
@@ -1006,20 +1149,20 @@ class ChartPropertiesPanel(PWidget):
                 series.dataset_id = self.dataset_combo.currentData()
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
-            series.y_axis = self.series_y_axis_combo.currentData() or "primary"
+            series.y_axis = self.series_y_axis_control.currentValue()
         else:
             # Fit data: columns/dataset not editable, ignore
             return
 
         self._has_unsaved_changes = True
         self._update_status_indicator()
-    
+
     def _on_style_changed(self):
         """Handle style changes."""
         if self._updating_controls or not self.current_chart:
             return
-        
-        current_row = self.series_list.currentRow()
+
+        current_row = self._expanded_series_index
         if current_row < 0:
             return
         
@@ -1214,32 +1357,6 @@ class ChartPropertiesPanel(PWidget):
             change_count=1 if self._has_unsaved_changes else 0,
         )
 
-    def _update_series_list(self):
-        """Update the series list widget."""
-        previous_row = self.series_list.currentRow()
-        self.series_list.clear()
-
-        if not self.current_chart:
-            return
-
-        # Add data series
-        for i, series in enumerate(self.current_chart.data_series):
-            label = series.label or f"Series {i+1}"
-            self.series_list.addItem(label)
-
-        # Add fit data as separate items
-        for i, fit in enumerate(self.current_chart.fit_data):
-            label = f"🔧 {fit.label}" # Wrench emoji to distinguish fit data
-            self.series_list.addItem(label)
-
-        # Enable/disable controls
-        has_items = len(self.current_chart.data_series) > 0 or len(self.current_chart.fit_data) > 0
-        self.remove_series_button.setEnabled(has_items)
-
-        # Restore previous selection if still valid
-        if previous_row >= 0 and previous_row < self.series_list.count():
-            self.series_list.setCurrentRow(previous_row)
-    
     def _load_series_into_controls(self, series):
         """Load a data series into the configuration controls."""
         # Enable all controls for series editing
@@ -1269,11 +1386,9 @@ class ChartPropertiesPanel(PWidget):
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
 
-            # Set Y axis (primary/secondary)
-            self.series_y_axis_combo.blockSignals(True)
-            axis_index = self.series_y_axis_combo.findData(series.y_axis)
-            self.series_y_axis_combo.setCurrentIndex(axis_index if axis_index >= 0 else 0)
-            self.series_y_axis_combo.blockSignals(False)
+            # Set Y axis (primary/secondary). SegmentedControl.setCurrentValue
+            # doesn't emit currentValueChanged, so no signal-blocking needed.
+            self.series_y_axis_control.setCurrentValue(series.y_axis)
 
             # Set label (block signals while populating)
             self.series_label_edit.blockSignals(True)
@@ -1336,7 +1451,7 @@ class ChartPropertiesPanel(PWidget):
             self.dataset_combo.setEnabled(False)
             self.x_column_combo.setEnabled(False)
             self.y_column_combo.setEnabled(False)
-            self.series_y_axis_combo.setEnabled(False)
+            self.series_y_axis_control.setEnabled(False)
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)
@@ -1364,10 +1479,16 @@ class ChartPropertiesPanel(PWidget):
         self._pending_label = text
 
     def _on_label_committed(self):
-        """Persist buffered label to model after editing finishes."""
+        """Persist buffered label to model after editing finishes.
+
+        Unlike the old QListWidget-backed list, the label text isn't shown
+        anywhere else while this entry is expanded (its card's title header
+        is only (re)built on the next _rebuild_series_cards call), so no
+        rebuild is needed here to avoid disruptive focus loss while typing.
+        """
         if self._updating_controls or not self.current_chart:
             return
-        current_row = self.series_list.currentRow()
+        current_row = self._expanded_series_index
         if current_row < 0:
             return
         total_series = len(self.current_chart.data_series)
@@ -1379,22 +1500,14 @@ class ChartPropertiesPanel(PWidget):
             fit_index = current_row - total_series
             if 0 <= fit_index < len(self.current_chart.fit_data):
                 self.current_chart.fit_data[fit_index].label = new_label
-
-        # Update just the current QListWidgetItem text to avoid focus loss
-        item = self.series_list.item(current_row)
-        if item:
-            if current_row < total_series:
-                item.setText(new_label or f"Series {current_row+1}")
-            else:
-                item.setText(f"🔧 {new_label}")
         self._pending_label = new_label
-    
+
     def _reset_controls_for_series(self):
         """Reset controls for editing regular data series."""
         self.dataset_combo.setEnabled(True)
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
-        self.series_y_axis_combo.setEnabled(True)
+        self.series_y_axis_control.setEnabled(True)
 
     def _clear_controls(self):
         """Reset panel controls to neutral defaults without touching any chart."""
@@ -1575,26 +1688,17 @@ class ChartPropertiesPanel(PWidget):
                 self.chart_type_control.setCurrentValue(chart_type)
                 self._update_hist_bins_visibility()
 
-                # Update series list
-                self._update_series_list()
-            
-                # If there are data series, select the first one
-                if chart.data_series:
-                    self.series_list.setCurrentRow(0)
-                    self._load_series_into_controls(chart.data_series[0])
-                    self.series_config_group.setEnabled(True)
+                # Expand the first series/fit entry and rebuild the card list
+                # (this also (re)loads it into the config form controls).
+                self._expanded_series_index = 0
+                self._rebuild_series_cards()
 
+                if chart.data_series:
                     # Set style from first series for the style tab
                     first_series = chart.data_series[0]
                     self.line_color_button.set_color(first_series.color)
                     self.line_width_spin.setValue(first_series.line_width)
                     self.marker_size_spin.setValue(first_series.marker_size)
-                    self.add_series_button.show()
-                    self.remove_series_button.show()
-                else:
-                    self.series_config_group.setEnabled(False)
-                    self.add_series_button.show()
-                    self.remove_series_button.hide()
 
                 # Load configuration
                 config = chart.config
@@ -1681,12 +1785,8 @@ class ChartPropertiesPanel(PWidget):
         else:
             # Clear/default values
             self._clear_controls()
-            self.series_list.clear()
-            self.series_config_group.setEnabled(False)
-            if hasattr(self, "add_series_button"):
-                self.add_series_button.show()
-            if hasattr(self, "remove_series_button"):
-                self.remove_series_button.hide()
+            self._expanded_series_index = 0
+            self._rebuild_series_cards()
     
     def apply_to_chart(self, chart):
         """Apply current panel settings to a Chart object.
@@ -1752,7 +1852,7 @@ class ChartPropertiesPanel(PWidget):
             chart.chart_type = chart_type_map[chart_type]
         
         # Apply style updates to the currently selected series or fit data
-        current_row = self.series_list.currentRow()
+        current_row = self._expanded_series_index
         if current_row >= 0:
             total_series = len(chart.data_series)
 
@@ -1765,7 +1865,7 @@ class ChartPropertiesPanel(PWidget):
                 series.marker_edge_color = self.marker_edge_color_button.get_color()
                 series.line_width = self.line_width_spin.value()
                 series.marker_size = self.marker_size_spin.value()
-                series.y_axis = self.series_y_axis_combo.currentData() or "primary"
+                series.y_axis = self.series_y_axis_control.currentValue()
                 series.alpha = self.line_transparency_spin.value()
 
                 if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
@@ -1806,7 +1906,7 @@ class ChartPropertiesPanel(PWidget):
                     line_width=self.line_width_spin.value(),
                     marker_size=self.marker_size_spin.value(),
                     label=f"{dataset_name}:{y_column}",
-                    y_axis=self.series_y_axis_combo.currentData() or "primary"
+                    y_axis=self.series_y_axis_control.currentValue()
                 )
         
         chart.update_modified_time()
