@@ -124,6 +124,35 @@ def _schedule_import_warmup(app_context: AppContext) -> None:
     task_scheduler.run_task(_warm_up_heavy_imports)
 
 
+def _flush_save_on_quit(app_context: AppContext) -> None:
+    """Synchronously save the current project (if it already has a file path)
+    right before the app exits.
+
+    Auto-save only fires on a timer, so an edit made seconds before the user
+    quits (via the window's close button, File > Exit, Cmd+Q, ...) can be
+    lost if it hasn't ticked yet. This runs the save directly on the main
+    thread instead of through SaveProjectCommand's background-task path, so
+    it's guaranteed to finish before the process actually exits rather than
+    racing shutdown.
+    """
+    app_state = app_context.get_app_state()
+    if not app_state.has_project:
+        return
+    project = app_state.current_project
+    if project is None:
+        return
+    file_path = app_state.project_file_path
+    if not file_path:
+        # Never-saved project: nothing to silently write to.
+        return
+    try:
+        project_data_manager = app_context.get_manager(ProjectDataManager)
+        project_data_manager.save(project, file_path)
+        logging.getLogger(__name__).info("Flushed project save on quit: %s", file_path)
+    except Exception:
+        logging.getLogger(__name__).exception("Failed to flush project save on quit")
+
+
 def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) -> None:
     """Reopen the project (and tabs) that were open at the end of the previous session.
 
@@ -167,6 +196,11 @@ def launch(app_context: AppContext) -> int:
     # its harmless stderr noise) possible -- just less likely.
     task_scheduler = app_context.get_manager(TaskScheduler)
     app.aboutToQuit.connect(lambda: task_scheduler.threadpool.waitForDone(2000))
+
+    # Flush any unsaved edits before the process actually exits, regardless
+    # of how the user is quitting (window close, File > Exit, Cmd+Q, ...) --
+    # auto-save alone can miss edits made just before quitting.
+    app.aboutToQuit.connect(lambda: _flush_save_on_quit(app_context))
 
     return app.exec()
 

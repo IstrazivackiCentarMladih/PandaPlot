@@ -86,22 +86,21 @@ class AutoSaveManager:
         if not self._app_state.project_file_path:
             return
 
-        # Avoid overlapping saves (both autosave and user-initiated).
-        if self._app_state.is_project_saving:
-            self._logger.debug("Skipping auto-save tick: project save already in progress")
+        # Avoid overlapping saves: SaveProjectCommand.is_saving is only cleared
+        # once its background task truly finishes (unlike execute(), which
+        # returns as soon as the task is dispatched).
+        if self._current_save is not None and self._current_save.is_saving:
+            self._logger.debug("Skipping auto-save tick: previous auto-save still in progress")
             return
 
         from pandaplot.commands.project.project.save_project_command import SaveProjectCommand
 
         self._logger.debug("Auto-saving project '%s'", project.name)
-        self._app_state.is_project_saving = True
         self._current_save = SaveProjectCommand(self._app_context)
         try:
             self._current_save.execute()
         except Exception:
             self._logger.exception("Auto-save failed")
-        finally:
-            self._app_state.is_project_saving = False
 
 
 __all__ = ["AutoSaveManager"]
