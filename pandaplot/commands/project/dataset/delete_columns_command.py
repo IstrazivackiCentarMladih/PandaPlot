@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List, Tuple, Union, override
 
 from pandaplot.commands.base_command import Command
@@ -8,6 +9,14 @@ from pandaplot.models.project.items import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
+
+
+@dataclass
+class ChartReferenceMatch:
+    chart: Chart
+    series_indices: List[int]
+    fit_indices: List[int]
+    error_only_indices: List[int]
 
 
 class DeleteColumnsCommand(Command):
@@ -141,12 +150,12 @@ class DeleteColumnsCommand(Command):
             references = self._find_chart_references(self.column_names)
             if references:
                 details = "\n".join(
-                    f"{chart.name}: " + ", ".join(
-                        ([f"{len(series_idx)} series"] if series_idx else [])
-                        + ([f"{len(fit_idx)} fit curve(s)"] if fit_idx else [])
-                        + ([f"{len(error_only_idx)} series losing error bars"] if error_only_idx else [])
+                    f"{match.chart.name}: " + ", ".join(
+                        ([f"{len(match.series_indices)} series"] if match.series_indices else [])
+                        + ([f"{len(match.fit_indices)} fit curve(s)"] if match.fit_indices else [])
+                        + ([f"{len(match.error_only_indices)} series losing error bars"] if match.error_only_indices else [])
                     )
-                    for chart, series_idx, fit_idx, error_only_idx in references
+                    for match in references
                 )
                 proceed = self.ui_controller.show_confirmation(
                     "Delete Columns",
@@ -180,7 +189,7 @@ class DeleteColumnsCommand(Command):
 
     def _find_chart_references(
         self, column_names: List[str]
-    ) -> List[Tuple[Chart, List[int], List[int], List[int]]]:
+    ) -> List[ChartReferenceMatch]:
         """Find charts whose series/fits reference this dataset's columns.
 
         Returns a list of (chart, data_series indices, fit_data indices,
@@ -193,7 +202,7 @@ class DeleteColumnsCommand(Command):
         if not self.project:
             return []
         column_set = set(column_names)
-        matches: List[Tuple[Chart, List[int], List[int], List[int]]] = []
+        matches: List[ChartReferenceMatch] = []
         for item in self.project.get_all_items():
             if not isinstance(item, Chart):
                 continue
@@ -214,11 +223,11 @@ class DeleteColumnsCommand(Command):
                 and (fit.source_x_column in column_set or fit.source_y_column in column_set)
             ]
             if series_idx or fit_idx or error_only_idx:
-                matches.append((item, series_idx, fit_idx, error_only_idx))
+                matches.append(ChartReferenceMatch(item, series_idx, fit_idx, error_only_idx))
         return matches
 
     def _perform_deletion(
-        self, references: List[Tuple[Chart, List[int], List[int], List[int]]]
+        self, references: List[ChartReferenceMatch]
     ) -> None:
         """Drop the columns from the dataset and remove dependent chart references."""
         # Create new DataFrame with the columns removed
@@ -235,7 +244,11 @@ class DeleteColumnsCommand(Command):
         column_set = set(self.column_names)
         self.removed_chart_refs = {}
         self.cleared_error_refs = {}
-        for chart, series_idx, fit_idx, error_only_idx in references:
+        for match in references:
+            chart = match.chart
+            series_idx = match.series_indices
+            fit_idx = match.fit_indices
+            error_only_idx = match.error_only_indices
             removed_series = [(i, chart.data_series[i]) for i in series_idx]
             removed_fits = [(i, chart.fit_data[i]) for i in fit_idx]
 
