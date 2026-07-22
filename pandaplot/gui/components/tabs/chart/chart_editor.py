@@ -2,7 +2,6 @@ from typing import override
 from dataclasses import dataclass
 from typing import Optional, Any
 
-import numpy as np
 from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
@@ -21,9 +20,10 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
+from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ConfigEvents
-from pandaplot.models.project.items.chart import Chart, ErrorDirection
+from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
@@ -134,41 +134,6 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     x_err_minus = _resolve_error_column(df, series.x_error_minus_column)
     y_err_minus = _resolve_error_column(df, series.y_error_minus_column)
     return SeriesData(x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None)
-
-
-def _symmetric_directional_error(magnitude, direction: ErrorDirection):
-    """Turn a symmetric error magnitude into the array matplotlib expects.
-
-    ErrorDirection.PLUS/MINUS produce an asymmetric (2, N) array with the
-    unused side zeroed out, since matplotlib's errorbar() only accepts a
-    single magnitude or an explicit lower/upper pair.
-    """
-    if magnitude is None:
-        return None
-    if direction == ErrorDirection.BOTH:
-        return magnitude
-    zeros = np.zeros_like(magnitude)
-    return np.vstack([zeros, magnitude]) if direction == ErrorDirection.PLUS else np.vstack([magnitude, zeros])
-
-
-def build_error_array(magnitude, minus_magnitude, direction, symmetric):
-    """Combine a series' resolved error column(s) into what errorbar() expects.
-
-    In symmetric mode only `magnitude` is used, expanded per `direction` via
-    _symmetric_directional_error. In asymmetric mode `magnitude` is the
-    upper (+) error and `minus_magnitude` the lower (-) error; either side
-    missing is treated as zero so a one-sided uncertainty column is still
-    usable on its own.
-    """
-    if symmetric:
-        return _symmetric_directional_error(magnitude, direction)
-    if magnitude is None and minus_magnitude is None:
-        return None
-    n = len(magnitude) if magnitude is not None else len(minus_magnitude)
-    zeros = np.zeros(n)
-    lower = minus_magnitude if minus_magnitude is not None else zeros
-    upper = magnitude if magnitude is not None else zeros
-    return np.vstack([lower, upper])
 
 
 class ChartEditorWidget(PWidget):
