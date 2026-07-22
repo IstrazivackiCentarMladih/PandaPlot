@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QTabWidget,
     QVBoxLayout,
@@ -28,7 +27,7 @@ from pandaplot.commands.project.chart import (
     RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
-from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
+from pandaplot.gui.components.common.dirty_footer import DirtyFooter
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -39,9 +38,9 @@ from pandaplot.models.chart.chart_configuration import (
 )
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
-
 
 # Only chart types that ChartEditorWidget.update_chart can actually render.
 # BOX and VIOLIN exist in the enum but have no rendering branch yet.
@@ -148,71 +147,51 @@ class ChartPropertiesPanel(PWidget):
     def _init_ui(self):
         """Set up the user interface."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Title
-        self.title_label = QLabel("📊 Chart Properties")
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Header
+        self.title_label = QLabel("📊 Chart Properties", self)
         layout.addWidget(self.title_label)
-        
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
-        
-        # Chart info section (basic chart settings)
-        self._create_chart_info_section(content_layout)
-        
-        # Data Series Management section (moved above tabs)
-        self._create_series_management_section(content_layout)
-        
-        # Tab widget for organizing other properties
-        self.tab_widget = QTabWidget()
-        
-        # Style tab (simplified, no data source controls)
+
+        # Tab widget for organizing chart properties
+        self.tab_widget = QTabWidget(self)
+
+        # Chart tab: chart identity (title, chart type, histogram bins)
+        chart_tab = QWidget()
+        chart_tab_layout = QVBoxLayout(chart_tab)
+        self._create_chart_info_section(chart_tab_layout)
+        chart_tab_layout.addStretch(1)
+        self.chart_tab = chart_tab
+        self.tab_widget.addTab(self.chart_tab, "Chart")
+
+        # Data tab: series list + per-series dataset/X/Y/label configuration
+        data_tab = QWidget()
+        data_tab_layout = QVBoxLayout(data_tab)
+        self._create_series_management_section(data_tab_layout)
+        data_tab_layout.addStretch(1)
+        self.data_tab = data_tab
+        self.tab_widget.addTab(self.data_tab, "Data")
+
+        # Style tab (line/marker style)
         self.style_tab = self._create_style_tab()
         self.tab_widget.addTab(self.style_tab, "Style")
-        
+
         # Axes tab
         self.axes_tab = self._create_axes_tab()
         self.tab_widget.addTab(self.axes_tab, "Axes")
-        
+
         # Legend tab
         self.legend_tab = self._create_legend_tab()
         self.tab_widget.addTab(self.legend_tab, "Legend")
 
-        content_layout.addWidget(self.tab_widget)
-        # Add stretch so tab area uses available space and buttons (outside scroll) stay fixed
-        content_layout.addStretch(1)
+        layout.addWidget(self.tab_widget, stretch=1)
 
-        scroll.setWidget(content_widget)
-        layout.addWidget(scroll)
-
-        # Buttons (outside scroll so they're always visible)
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 6, 0, 0)
-        button_layout.setSpacing(8)
-
-        self.status_label = QLabel("")
-        self.status_label.setMinimumHeight(30)
-        self.apply_button = QPushButton("Apply")
-        self.reset_button = QPushButton("Cancel")
-
-        self.apply_button.setObjectName("chartApplyButton")
-        self.reset_button.setObjectName("chartCancelButton")
-
-        for btn in (self.apply_button, self.reset_button):
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setMinimumHeight(30)
-
-        button_layout.addWidget(self.status_label)
-        button_layout.addStretch(1)
-        button_layout.addWidget(self.apply_button)
-        button_layout.addWidget(self.reset_button)
-        layout.addLayout(button_layout)
+        # Footer: dirty-state indicator + Revert/Apply
+        self.footer = DirtyFooter(self)
+        self.footer.applyClicked.connect(self._on_apply)
+        self.footer.revertClicked.connect(self._on_reset)
+        layout.addWidget(self.footer)
     
     @override
     def _apply_theme(self):
@@ -288,15 +267,16 @@ class ChartPropertiesPanel(PWidget):
             }}
         """)
         
-        # Main action buttons
-        self._apply_button_styling()
-        
         # Series management buttons
         self._apply_series_button_styling()
-        
+
         # Update all color buttons
         self._update_color_buttons()
-    
+
+        # Footer (DirtyFooter) theme token propagation
+        tokens = theme_manager.get_design_tokens()
+        self.footer.set_tokens(tokens)
+
     def _update_color_buttons(self):
         """Update all ColorButton instances with current theme."""
         color_buttons = [
@@ -309,65 +289,6 @@ class ChartPropertiesPanel(PWidget):
         for button in color_buttons:
             if button and isinstance(button, ColorButton):
                 button._update_appearance()
-    
-    def _apply_button_styling(self):
-        """Apply theme styling to main action buttons."""
-        theme_manager = self.app_context.get_manager(ThemeManager)
-        palette = theme_manager.get_surface_palette()
-        
-        # Get colors with fallbacks
-        accent = palette.get("accent", "#4CAF50")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        base_fg = palette.get("base_fg", "#333333")
-        card_border = palette.get("card_border", "#dee2e6")
-        card_bg = palette.get("card_bg", "#ffffff")
-        
-        # Primary button (Apply)
-        primary_style = f"""
-            QPushButton {{ 
-                background-color: {accent}; 
-                color: white; 
-                padding: 6px 14px; 
-                border: none; 
-                border-radius: 4px; 
-                font-weight: 600; 
-            }}
-            QPushButton:hover {{ 
-                background-color: {card_hover}; 
-                color: {base_fg}; 
-            }}
-            QPushButton:pressed {{ 
-                background-color: {card_border}; 
-            }}
-            QPushButton:disabled {{ 
-                background-color: {secondary_fg}; 
-                color: #999999; 
-            }}
-        """
-        self.apply_button.setStyleSheet(primary_style)
-        
-        # Secondary button (Cancel)
-        secondary_style = f"""
-            QPushButton {{
-                background-color: {card_hover};
-                color: {base_fg};
-                padding: 6px 14px;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {card_hover};
-                color: {secondary_fg};
-            }}
-        """
-        self.reset_button.setStyleSheet(secondary_style)
     
     def _apply_series_button_styling(self):
         """Apply theme styling to series management buttons."""
@@ -797,9 +718,7 @@ class ChartPropertiesPanel(PWidget):
     def _connect_signals(self):
         """Connect widget signals."""
         self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
-        self.apply_button.clicked.connect(self._on_apply)
-        self.reset_button.clicked.connect(self._on_reset)
-        
+
         # Connect chart-level configuration changes
         self.chart_type_combo.currentIndexChanged.connect(self._on_chart_type_index_changed)
         self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -1237,12 +1156,11 @@ class ChartPropertiesPanel(PWidget):
             })
 
     def _update_status_indicator(self):
-        """Update the status label to reflect unsaved changes."""
-        if self._has_unsaved_changes:
-            self.status_label.setText("Modified *")
-            self.status_label.setStyleSheet("color: #ffc107; font-size: 9pt; font-weight: bold;")
-        else:
-            self.status_label.setText("")
+        """Update the footer to reflect unsaved changes."""
+        self.footer.setModified(
+            self._has_unsaved_changes,
+            change_count=1 if self._has_unsaved_changes else 0,
+        )
 
     def _update_series_list(self):
         """Update the series list widget."""
