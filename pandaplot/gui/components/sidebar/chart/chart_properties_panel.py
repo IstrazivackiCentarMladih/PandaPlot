@@ -525,7 +525,7 @@ class ChartPropertiesPanel(PWidget):
             if index == self._expanded_series_index:
                 card = self._build_expanded_series_card(index, tokens)
             else:
-                card = self._build_collapsed_fit_row(fit, tokens)
+                card = self._build_collapsed_fit_row(fit, index, tokens)
             self._series_cards_layout.addWidget(card)
 
         self.remove_series_button.setEnabled(total_items > 0)
@@ -560,7 +560,7 @@ class ChartPropertiesPanel(PWidget):
 
         return card
 
-    def _build_collapsed_fit_row(self, fit, tokens: dict) -> QWidget:
+    def _build_collapsed_fit_row(self, fit, index: int, tokens: dict) -> QWidget:
         """Collapsed row for a fit-data entry (no Y-axis picker for fits)."""
         card = Card()
         card.set_tokens(tokens)
@@ -579,15 +579,11 @@ class ChartPropertiesPanel(PWidget):
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         row.addWidget(name_label, 1)
 
-        total_series = len(self.current_chart.data_series)
-        fit_index = self.current_chart.fit_data.index(fit)
         chevron = QPushButton("▸")
         chevron.setFlat(True)
         chevron.setFixedWidth(24)
         chevron.setCursor(Qt.CursorShape.PointingHandCursor)
-        chevron.clicked.connect(
-            lambda _checked=False, i=total_series + fit_index: self._expand_series(i)
-        )
+        chevron.clicked.connect(lambda _checked=False, i=index: self._expand_series(i))
         row.addWidget(chevron)
 
         return card
@@ -1064,7 +1060,7 @@ class ChartPropertiesPanel(PWidget):
             return
 
         update_type = event_data.get("update_type", "")
-        if update_type in ["fit_added", "series_added", "series_removed", "series_updated"]:
+        if update_type in ["fit_added", "series_added", "series_removed"]:
             self._rebuild_series_cards()
             self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
     
