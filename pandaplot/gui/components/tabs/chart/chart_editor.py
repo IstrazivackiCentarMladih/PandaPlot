@@ -482,7 +482,7 @@ class ChartEditorWidget(PWidget):
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
                 # secondary Y axis).
-                for i, fit in enumerate(self.chart.fit_data):
+                for fit in self.chart.fit_data:
                     if fit.visible:
                         fit_axes = self.chart_canvas.axes
                         if self.chart_canvas.axes2 is not None:
@@ -586,7 +586,9 @@ class ChartEditorWidget(PWidget):
                     loc=config.get("legend_position", "upper right"),
                     fontsize=config.get("legend_font_size", 10),
                     facecolor=config.get("legend_bg_color", "#ffffff"),
-                    frameon=config.get("legend_show_frame", True))
+                    frameon=config.get("legend_show_frame", True),
+                    ncol=config.get("legend_columns", 1),
+                    framealpha=config.get("legend_bg_alpha", 1.0))
 
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they
