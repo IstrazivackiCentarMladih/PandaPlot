@@ -28,7 +28,7 @@ from pandaplot.commands.project.chart import (
     RemoveFitDataCommand,
     RemoveSeriesCommand,
 )
-from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
+from pandaplot.models.project.items.chart import ErrorDirection, restore_chart_state, snapshot_chart_state
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -143,6 +143,7 @@ class ChartPropertiesPanel(PWidget):
 
         self._initialize()
         self._connect_signals()
+        self._update_error_bar_mode_controls()
     
     @override
     def _init_ui(self):
@@ -503,6 +504,39 @@ class ChartPropertiesPanel(PWidget):
         self.series_label_edit = QLineEdit()
         series_config_layout.addWidget(self.series_label_edit, 4, 1)
 
+        # Checked -> pick independent +/- error columns below; unchecked
+        # (default) -> a single column supplies a symmetric magnitude.
+        self.error_asymmetric_check = QCheckBox("Asymmetric Error Bars")
+        self.error_asymmetric_check.setToolTip(
+            "When checked, pick separate +/- error columns for independent "
+            "upper/lower magnitudes instead of one symmetric column.")
+        series_config_layout.addWidget(self.error_asymmetric_check, 4, 0, 1, 2)
+
+        # Label text switches between "X Error Column" (symmetric magnitude)
+        # and "X Error (+) Column" (asymmetric upper magnitude) depending on
+        # the checkbox above; see _update_error_bar_mode_controls.
+        self.x_error_column_label = QLabel("X Error Column:")
+        series_config_layout.addWidget(self.x_error_column_label, 5, 0)
+        self.x_error_column_combo = QComboBox()
+        series_config_layout.addWidget(self.x_error_column_combo, 5, 1)
+
+        self.y_error_column_label = QLabel("Y Error Column:")
+        series_config_layout.addWidget(self.y_error_column_label, 6, 0)
+        self.y_error_column_combo = QComboBox()
+        series_config_layout.addWidget(self.y_error_column_combo, 6, 1)
+
+        # Only shown when "Asymmetric Error Bars" is checked, to supply the
+        # lower-side (-) magnitude.
+        self.x_error_minus_label = QLabel("X Error (-) Column:")
+        series_config_layout.addWidget(self.x_error_minus_label, 7, 0)
+        self.x_error_minus_column_combo = QComboBox()
+        series_config_layout.addWidget(self.x_error_minus_column_combo, 7, 1)
+
+        self.y_error_minus_label = QLabel("Y Error (-) Column:")
+        series_config_layout.addWidget(self.y_error_minus_label, 8, 0)
+        self.y_error_minus_column_combo = QComboBox()
+        series_config_layout.addWidget(self.y_error_minus_column_combo, 8, 1)
+
         # Disable series configuration initially
         series_config_group.setEnabled(False)
         self.series_config_group = series_config_group
@@ -569,10 +603,36 @@ class ChartPropertiesPanel(PWidget):
         marker_layout.addWidget(self.marker_edge_color_button, 3, 1)
         
         layout.addWidget(marker_group)
-        
+
+        # Error bar style group (which columns feed the error bars is
+        # configured in Series Configuration, including the Asymmetric
+        # Error Bars checkbox; this group only controls how they render)
+        error_group = QGroupBox("Error Bars")
+        error_layout = QGridLayout(error_group)
+
+        error_layout.addWidget(QLabel("Direction:"), 0, 0)
+        self.error_direction_combo = QComboBox()
+        self.error_direction_combo.addItem("Both", ErrorDirection.BOTH)
+        self.error_direction_combo.addItem("Above (+)", ErrorDirection.PLUS)
+        self.error_direction_combo.addItem("Below (-)", ErrorDirection.MINUS)
+        error_layout.addWidget(self.error_direction_combo, 0, 1)
+
+        error_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.error_color_button = ColorButton(self.app_context)
+        error_layout.addWidget(self.error_color_button, 1, 1)
+
+        error_layout.addWidget(QLabel("Cap Size:"), 2, 0)
+        self.error_cap_size_spin = QDoubleSpinBox()
+        self.error_cap_size_spin.setRange(0.0, 20.0)
+        self.error_cap_size_spin.setSingleStep(0.5)
+        self.error_cap_size_spin.setValue(3.0)
+        error_layout.addWidget(self.error_cap_size_spin, 2, 1)
+
+        layout.addWidget(error_group)
+
         layout.addStretch()
         return widget
-    
+
     def _create_axes_tab(self) -> QWidget:
         """Create the axes configuration tab."""
         widget = QWidget()
@@ -838,21 +898,30 @@ class ChartPropertiesPanel(PWidget):
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.y_column_combo.currentTextChanged.connect(self._on_series_config_changed)
+        self.x_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.y_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.x_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.y_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.series_y_axis_combo.currentIndexChanged.connect(self._on_series_config_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
-        
+
         # Connect style change signals
         self.line_color_button.colorChanged.connect(self._on_style_changed)
         self.line_width_spin.valueChanged.connect(self._on_style_changed)
         self.line_transparency_spin.valueChanged.connect(self._on_style_changed)
         self.line_style_combo.currentIndexChanged.connect(self._on_style_changed)
-        
+
         self.marker_color_button.colorChanged.connect(self._on_style_changed)
         self.marker_edge_color_button.colorChanged.connect(self._on_style_changed)
         self.marker_size_spin.valueChanged.connect(self._on_style_changed)
         self.marker_type_combo.currentIndexChanged.connect(self._on_style_changed)
+
+        self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
+        self.error_direction_combo.currentIndexChanged.connect(self._on_style_changed)
+        self.error_color_button.colorChanged.connect(self._on_style_changed)
+        self.error_cap_size_spin.valueChanged.connect(self._on_style_changed)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -1047,6 +1116,10 @@ class ChartPropertiesPanel(PWidget):
                 series.dataset_id = self.dataset_combo.currentData()
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
+            series.x_error_column = self.x_error_column_combo.currentData() or ""
+            series.y_error_column = self.y_error_column_combo.currentData() or ""
+            series.x_error_minus_column = self.x_error_minus_column_combo.currentData() or ""
+            series.y_error_minus_column = self.y_error_minus_column_combo.currentData() or ""
             series.y_axis = self.series_y_axis_combo.currentData() or "primary"
         else:
             # Fit data: columns/dataset not editable, ignore
@@ -1086,7 +1159,17 @@ class ChartPropertiesPanel(PWidget):
                 series.line_style = self.line_style_combo.currentData().value
             if hasattr(self, "marker_type_combo") and self.marker_type_combo.currentData():
                 series.marker_style = self.marker_type_combo.currentData().value
-                
+
+            # Error bar style
+            if hasattr(self, "error_asymmetric_check"):
+                series.error_symmetric = not self.error_asymmetric_check.isChecked()
+            if hasattr(self, "error_direction_combo") and self.error_direction_combo.currentData():
+                series.error_direction = ErrorDirection(self.error_direction_combo.currentData())
+            if hasattr(self, "error_color_button"):
+                series.error_color = self.error_color_button.get_color()
+            if hasattr(self, "error_cap_size_spin"):
+                series.error_cap_size = self.error_cap_size_spin.value()
+
         else:
             # Updating fit data
             fit_index = current_row - total_series
@@ -1106,6 +1189,41 @@ class ChartPropertiesPanel(PWidget):
                 "chart_id": self.current_chart.id,
                 "update_type": "series_updated"
             })
+
+    def _on_error_symmetry_toggled(self):
+        """Handle the Asymmetric error-bars checkbox: persist and refresh control enablement."""
+        self._update_error_bar_mode_controls()
+        self._on_style_changed()
+
+    def _update_error_bar_mode_controls(self):
+        """Sync Series Configuration's error-column controls to the current
+        symmetric/asymmetric mode, and the Style tab's direction selector.
+
+        Unchecked (symmetric): X/Y Error Column supply a single magnitude
+        used with the Direction selector; the -side pickers are hidden.
+        Checked (asymmetric): X/Y Error Column become the + (upper)
+        magnitude and the -side pickers appear for the lower magnitude;
+        Direction no longer applies. Mirrors _update_hist_bins_visibility's
+        role of keeping mode-dependent controls in sync with their
+        governing choice.
+        """
+        asymmetric = self.error_asymmetric_check.isChecked()
+        self.error_direction_combo.setEnabled(not asymmetric)
+
+        self.x_error_column_label.setText("X Error (+) Column:" if asymmetric else "X Error Column:")
+        self.y_error_column_label.setText("Y Error (+) Column:" if asymmetric else "Y Error Column:")
+
+        # x_error_column_combo tracks whether a data series (vs. fit data,
+        # which has no error bars) is being edited; the -side pickers only
+        # show up when both a series is selected and asymmetric is checked.
+        show_minus = asymmetric and self.x_error_column_combo.isEnabled()
+        for widget in (
+            self.x_error_minus_label, self.x_error_minus_column_combo,
+            self.y_error_minus_label, self.y_error_minus_column_combo,
+        ):
+            widget.setVisible(show_minus)
+        self.x_error_minus_column_combo.setEnabled(show_minus)
+        self.y_error_minus_column_combo.setEnabled(show_minus)
 
     def _on_chart_type_index_changed(self):
         """Handle chart type combo changes, tracking explicit user intent.
@@ -1289,6 +1407,7 @@ class ChartPropertiesPanel(PWidget):
             # dataset/column state (e.g. after undo/redo of a column rename)
             # don't linger.
             self._populate_column_combos(series.dataset_id)
+            self._populate_error_column_combos(series.dataset_id)
 
             # Set columns
             x_index = self.x_column_combo.findText(series.x_column)
@@ -1304,6 +1423,18 @@ class ChartPropertiesPanel(PWidget):
             axis_index = self.series_y_axis_combo.findData(series.y_axis)
             self.series_y_axis_combo.setCurrentIndex(axis_index if axis_index >= 0 else 0)
             self.series_y_axis_combo.blockSignals(False)
+
+            # Set error columns (block signals while populating)
+            for combo, column in (
+                (self.x_error_column_combo, series.x_error_column),
+                (self.y_error_column_combo, series.y_error_column),
+                (self.x_error_minus_column_combo, series.x_error_minus_column),
+                (self.y_error_minus_column_combo, series.y_error_minus_column),
+            ):
+                combo.blockSignals(True)
+                index = combo.findData(column)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+                combo.blockSignals(False)
 
             # Set label (block signals while populating)
             self.series_label_edit.blockSignals(True)
@@ -1354,6 +1485,30 @@ class ChartPropertiesPanel(PWidget):
                         self.marker_type_combo.setCurrentIndex(i)
                         break
                 self.marker_type_combo.blockSignals(False)
+
+            if hasattr(self, "error_asymmetric_check"):
+                self.error_asymmetric_check.blockSignals(True)
+                self.error_asymmetric_check.setChecked(not series.error_symmetric)
+                self.error_asymmetric_check.blockSignals(False)
+
+            if hasattr(self, "error_direction_combo"):
+                self.error_direction_combo.blockSignals(True)
+                direction_index = self.error_direction_combo.findData(series.error_direction)
+                self.error_direction_combo.setCurrentIndex(direction_index if direction_index >= 0 else 0)
+                self.error_direction_combo.blockSignals(False)
+
+            if hasattr(self, "error_color_button"):
+                self.error_color_button.blockSignals(True)
+                self.error_color_button.set_color(series.error_color or series.color)
+                self.error_color_button.blockSignals(False)
+
+            if hasattr(self, "error_cap_size_spin"):
+                self.error_cap_size_spin.blockSignals(True)
+                self.error_cap_size_spin.setValue(series.error_cap_size)
+                self.error_cap_size_spin.blockSignals(False)
+
+            if hasattr(self, "error_asymmetric_check"):
+                self._update_error_bar_mode_controls()
         finally:
             self._updating_controls = previous_guard
 
@@ -1367,6 +1522,10 @@ class ChartPropertiesPanel(PWidget):
             self.x_column_combo.setEnabled(False)
             self.y_column_combo.setEnabled(False)
             self.series_y_axis_combo.setEnabled(False)
+            self.x_error_column_combo.setEnabled(False)
+            self.y_error_column_combo.setEnabled(False)
+            self.error_asymmetric_check.setEnabled(False)
+            self._update_error_bar_mode_controls()
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)
@@ -1424,6 +1583,11 @@ class ChartPropertiesPanel(PWidget):
         self.dataset_combo.setEnabled(True)
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
+        self.x_error_column_combo.setEnabled(True)
+        self.y_error_column_combo.setEnabled(True)
+        self.x_error_minus_column_combo.setEnabled(True)
+        self.y_error_minus_column_combo.setEnabled(True)
+        self.error_asymmetric_check.setEnabled(True)
         self.series_y_axis_combo.setEnabled(True)
 
     def _clear_controls(self):
@@ -1502,10 +1666,41 @@ class ChartPropertiesPanel(PWidget):
             return columns
         return []
 
+    def _populate_error_column_combos(self, dataset_id):
+        """Fill the x/y (+/-) error column combos with a leading "None" entry
+        followed by the columns of the given dataset.
+
+        Signals are blocked while clearing/populating, same as
+        _populate_column_combos. Item data is the column name (or "" for
+        "None"), since "None" is itself a valid display label and can't be
+        distinguished from a real column via currentText().
+        """
+        combos = (
+            self.x_error_column_combo, self.y_error_column_combo,
+            self.x_error_minus_column_combo, self.y_error_minus_column_combo,
+        )
+        for combo in combos:
+            combo.blockSignals(True)
+        try:
+            for combo in combos:
+                combo.clear()
+                combo.addItem("None", "")
+
+            if dataset_id and self.current_project:
+                dataset = self.current_project.find_item(dataset_id)
+                if isinstance(dataset, Dataset) and dataset.data is not None:
+                    for column in dataset.data.columns:
+                        for combo in combos:
+                            combo.addItem(column, column)
+        finally:
+            for combo in combos:
+                combo.blockSignals(False)
+
     def _on_dataset_changed(self):
         """Handle dataset selection change."""
         dataset_id = self.dataset_combo.currentData()
         columns = self._populate_column_combos(dataset_id)
+        self._populate_error_column_combos(dataset_id)
 
         # Set defaults if possible
         if columns:
@@ -1778,6 +1973,15 @@ class ChartPropertiesPanel(PWidget):
                 if hasattr(self, "marker_type_combo") and self.marker_type_combo.currentData():
                     series.marker_style = self.marker_type_combo.currentData().value
 
+                if hasattr(self, "error_asymmetric_check"):
+                    series.error_symmetric = not self.error_asymmetric_check.isChecked()
+                if hasattr(self, "error_direction_combo") and self.error_direction_combo.currentData():
+                    series.error_direction = ErrorDirection(self.error_direction_combo.currentData())
+                if hasattr(self, "error_color_button"):
+                    series.error_color = self.error_color_button.get_color()
+                if hasattr(self, "error_cap_size_spin"):
+                    series.error_cap_size = self.error_cap_size_spin.value()
+
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
                     current_row, series.label, series.color, series.marker_color
@@ -1811,7 +2015,12 @@ class ChartPropertiesPanel(PWidget):
                     line_width=self.line_width_spin.value(),
                     marker_size=self.marker_size_spin.value(),
                     label=f"{dataset_name}:{y_column}",
-                    y_axis=self.series_y_axis_combo.currentData() or "primary"
+                    y_axis=self.series_y_axis_combo.currentData() or "primary",
+                    x_error_column=self.x_error_column_combo.currentData() or "",
+                    y_error_column=self.y_error_column_combo.currentData() or "",
+                    x_error_minus_column=self.x_error_minus_column_combo.currentData() or "",
+                    y_error_minus_column=self.y_error_minus_column_combo.currentData() or "",
+                    error_symmetric=not self.error_asymmetric_check.isChecked(),
                 )
         
         chart.update_modified_time()
