@@ -13,9 +13,11 @@ import command uses to read the full file.
 """
 
 import os
+import tempfile
 from typing import Optional, override
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,8 +29,10 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QProxyStyle,
     QPushButton,
     QSpinBox,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -74,6 +78,45 @@ _FILE_FILTER = (
 )
 
 
+def _caret_icon_path(color_hex: str) -> str:
+    """
+    Return a filesystem path to a small downward-caret PNG in ``color_hex``,
+    generating and caching it on first use. Qt stylesheets can only point
+    ``::down-arrow`` at an image URL, so we render one on demand rather than
+    ship a per-theme asset. The path uses forward slashes for QSS on all
+    platforms.
+    """
+    key = color_hex.lstrip("#")
+    path = os.path.join(tempfile.gettempdir(), f"pandaplot_caret_{key}.png")
+    if not os.path.exists(path):
+        size = 12
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(color_hex))
+        painter.drawPolygon(QPolygonF([QPointF(2.5, 4.5), QPointF(9.5, 4.5), QPointF(6.0, 8.5)]))
+        painter.end()
+        pixmap.save(path)
+    return path.replace(os.sep, "/")
+
+
+class _DropDownComboStyle(QProxyStyle):
+    """
+    Forces combo boxes to open as a dropdown list attached below the field,
+    instead of macOS's native combo-box style, which pops the menu up
+    centered over the current item (like an NSPopUpButton). That default
+    reads as broken here since the wizard's combos are plain lists, not
+    "current selection" menus.
+    """
+
+    def styleHint(self, hint, option=None, widget=None, returnData=None):
+        if hint == QStyle.StyleHint.SH_ComboBox_Popup:
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
+
+
 class ImportWizardDialog(PDialog):
     """Interactive wizard for importing a structured data file as a dataset."""
 
@@ -86,6 +129,10 @@ class ImportWizardDialog(PDialog):
         # Reverse map (separator char -> wizard label) for reflecting a detected
         # delimiter back onto the combo box.
         self._delimiter_by_value = {value: label for label, value in NAMED_DELIMITERS.items()}
+        # Shared style forcing combos to drop down below the field rather than
+        # macOS's centered popup-menu behaviour; kept as an attribute since
+        # QWidget.setStyle() does not take ownership of the QStyle instance.
+        self._combo_style = _DropDownComboStyle()
 
         self._initialize()
 
@@ -140,6 +187,7 @@ class ImportWizardDialog(PDialog):
 
         # Format
         self.format_combo = QComboBox()
+        self.format_combo.setStyle(self._combo_style)
         for fmt, label in _FORMAT_LABELS.items():
             self.format_combo.addItem(label, fmt)
         self.format_combo.currentIndexChanged.connect(self._on_option_changed)
@@ -147,6 +195,7 @@ class ImportWizardDialog(PDialog):
 
         # Delimiter (CSV only)
         self.delimiter_combo = QComboBox()
+        self.delimiter_combo.setStyle(self._combo_style)
         self.delimiter_combo.addItem(_AUTO_DETECT)
         for label in NAMED_DELIMITERS:
             self.delimiter_combo.addItem(label)
@@ -174,6 +223,7 @@ class ImportWizardDialog(PDialog):
 
         # Encoding (CSV / JSON)
         self.encoding_combo = QComboBox()
+        self.encoding_combo.setStyle(self._combo_style)
         for encoding in ENCODING_FALLBACKS:
             self.encoding_combo.addItem(encoding)
         self.encoding_combo.currentIndexChanged.connect(self._on_option_changed)
@@ -181,6 +231,7 @@ class ImportWizardDialog(PDialog):
 
         # Worksheet (Excel only)
         self.sheet_combo = QComboBox()
+        self.sheet_combo.setStyle(self._combo_style)
         self.sheet_combo.currentIndexChanged.connect(self._on_option_changed)
         form.addRow("Worksheet:", self.sheet_combo)
 
@@ -442,7 +493,12 @@ class ImportWizardDialog(PDialog):
         base_fg = palette.get("base_fg", "#000000")
         secondary_fg = palette.get("secondary_fg", "#555555")
         accent = palette.get("accent", "#4A90E2")
+        # Inputs sit one shade off the card so fields read as distinct wells.
+        input_bg = palette.get("card_hover", "#e9ecef")
         self._secondary_fg = secondary_fg
+        # Styling ::drop-down suppresses Qt's native arrow, so supply our own
+        # caret drawn in the theme's foreground colour.
+        arrow = _caret_icon_path(base_fg)
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -468,14 +524,57 @@ class ImportWizardDialog(PDialog):
                 color: {base_fg};
             }}
             QLineEdit, QSpinBox, QComboBox {{
-                background-color: {card_bg};
+                background-color: {input_bg};
                 border: 1px solid {card_border};
-                border-radius: 3px;
-                padding: 3px 6px;
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-height: 22px;
                 color: {base_fg};
             }}
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
                 border-color: {accent};
+            }}
+            QLineEdit:hover, QSpinBox:hover, QComboBox:hover {{
+                border-color: {accent};
+            }}
+            QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {{
+                color: {secondary_fg};
+                background-color: {card_bg};
+                border-color: {card_border};
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: 22px;
+                border: none;
+                border-left: 1px solid {card_border};
+                border-top-right-radius: 4px;
+                border-bottom-right-radius: 4px;
+            }}
+            QComboBox::down-arrow {{
+                image: url({arrow});
+                width: 12px;
+                height: 12px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {input_bg};
+                color: {base_fg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                outline: none;
+                padding: 2px;
+                selection-background-color: {accent};
+                selection-color: white;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 22px;
+                padding: 2px 6px;
+                border-radius: 3px;
+            }}
+            QComboBox QAbstractItemView::item:hover,
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: {accent};
+                color: white;
             }}
             QPushButton {{
                 background-color: {accent};
