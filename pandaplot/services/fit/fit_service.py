@@ -52,6 +52,8 @@ class FitResult:
     source_dataset_id: str | None = None
     source_x_column: str | None = None
     source_y_column: str | None = None
+    sigma_y: np.ndarray | None = None
+    equation: str | None = None
 
 #performs fit, doesn't include combobox methods
 class FitService:
@@ -138,7 +140,7 @@ class FitService:
             self.logger.debug("No valid data columns selected, get_current_data() returned None")
             return
 
-        x_data, y_data = data
+        df, mask, x_data, y_data, series = data
 
         if len(x_data) < 2:
             self.fit_panel.results_text.setPlainText("At least 2 data points are required for fitting.")
@@ -150,8 +152,20 @@ class FitService:
             fit_type = self.fit_panel.fit_type_combo.currentText()
             fit_func, param_names = self._get_fit_func(fit_type)
 
+            # Extract y uncertainties (if available)
+            sigma_y = self._extract_sigma_y(df, mask, series)
+
+            fit_options = {"p0": [1] * len(param_names)}
+
+            self.logger.debug("Weighted fit: %s", sigma_y is not None)
+
+            if sigma_y is not None:
+                self.logger.info("sigma_y range: %.3f - %.3f, n=%d",sigma_y.min(),sigma_y.max(),len(sigma_y))
+                fit_options["sigma"] = sigma_y
+                fit_options["absolute_sigma"] = True
+
             # Perform fit
-            popt, pcov = curve_fit(fit_func, x_data, y_data, p0=[1] * len(param_names))
+            popt, pcov = curve_fit(fit_func, x_data, y_data, **fit_options)
 
             # Calculate errors
             perr = np.sqrt(np.diag(pcov))
@@ -160,10 +174,22 @@ class FitService:
             r_squared = None
             if self.fit_panel.r_squared_check.isChecked():
                 y_pred = fit_func(x_data, *popt)
-                ss_res = np.sum((y_data - y_pred) ** 2)
-                y_data_np = np.asarray(y_data)
-                ss_tot = np.sum((y_data_np - np.mean(y_data_np)) ** 2)
-                r_squared = 1 - (ss_res / ss_tot)
+
+                if sigma_y is not None:
+                    # Weighted R-squared
+                    weights = 1 / sigma_y ** 2
+                    y_mean = np.sum(weights * y_data) / np.sum(weights)
+                    ss_res = np.sum(weights * (y_data - y_pred) ** 2)
+                    ss_tot = np.sum(weights * (y_data - y_mean) ** 2)
+
+                else:
+                    # Standard R-squared
+                    ss_res = np.sum((y_data - y_pred) ** 2)
+                    y_mean = np.mean(y_data)
+                    ss_tot = np.sum((y_data - y_mean) ** 2)
+
+                if ss_tot != 0:
+                    r_squared = 1 - (ss_res / ss_tot)
 
             # Generate fit data for plotting
             x_fit = np.linspace(x_data.min(), x_data.max(), self.fit_panel.fit_points_spin.value())
@@ -200,7 +226,9 @@ class FitService:
                 y_data=y_data,
                 covariance=pcov,
                 confidence_lower=confidence_lower,
-                confidence_upper=confidence_upper
+                confidence_upper=confidence_upper,
+                sigma_y=sigma_y,
+                equation=self.format_equation(fit_type, params)
             )
 
             # Display results
@@ -297,3 +325,42 @@ class FitService:
         upper = y_fit + tval * sigma
 
         return lower, upper
+
+    def _extract_sigma_y(self, df, mask, series) -> np.ndarray | None:
+        """Extract y-axis uncertainties for weighted fitting.
+            Supports symmetric and asymmetric error bar configurations."""
+
+        if series is None:
+            return None
+
+        # Asymmetric error bars
+        if series.y_error_column and series.y_error_minus_column:
+            plus_column = series.y_error_column
+            minus_column = series.y_error_minus_column
+
+            if (
+                    plus_column not in df.columns
+                    or minus_column not in df.columns
+            ):
+                return None
+
+            sigma_plus = df.loc[mask, plus_column].to_numpy(dtype=float)
+            sigma_minus = df.loc[mask, minus_column].to_numpy(dtype=float)
+
+            # Approximate asymmetric uncertainties by their average
+            # TODO: see in future
+            sigma = 0.5 * (sigma_plus + sigma_minus)
+
+        # Symmetric error bars
+        else:
+            column = series.y_error_column
+
+            if not column or column not in df.columns:
+                return None
+
+            sigma = df.loc[mask, column].to_numpy(dtype=float)
+
+        if np.any(~np.isfinite(sigma)) or np.any(sigma <= 0):
+            return None
+
+        return sigma
