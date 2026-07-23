@@ -4,7 +4,6 @@ from typing import List, Optional, override
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QCheckBox,
     QColorDialog,
     QComboBox,
     QDoubleSpinBox,
@@ -283,9 +282,6 @@ class ChartPropertiesPanel(PWidget):
         # Series management buttons
         self._apply_series_button_styling()
 
-        # Update all color buttons
-        self._update_color_buttons()
-
         # Footer (DirtyFooter) theme token propagation
         tokens = theme_manager.get_design_tokens()
         self.footer.set_tokens(tokens)
@@ -325,16 +321,13 @@ class ChartPropertiesPanel(PWidget):
                 form["auto_toggle"].set_tokens(tokens)
                 form["grid_toggle"].set_tokens(tokens)
 
-    def _update_color_buttons(self):
-        """Update all ColorButton instances with current theme."""
-        color_buttons = [
-            getattr(self, "legend_bg_color_button", None)
-        ]
-        
-        for button in color_buttons:
-            if button and isinstance(button, ColorButton):
-                button._update_appearance()
-    
+        # Legend tab: shared widgets
+        self.show_legend_toggle.set_tokens(tokens)
+        self.legend_columns_control.set_tokens(tokens)
+        self.legend_show_frame_toggle.set_tokens(tokens)
+        self.legend_bg_color_row.set_tokens(tokens)
+        self.legend_bg_opacity_slider.set_tokens(tokens)
+
     def _apply_series_button_styling(self):
         """Apply theme styling to series management buttons."""
         theme_manager = self.app_context.get_manager(ThemeManager)
@@ -1086,39 +1079,68 @@ class ChartPropertiesPanel(PWidget):
         """Create the legend configuration tab."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
-        # Legend group
+
+        show_row = QHBoxLayout()
+        show_row.addWidget(QLabel("Show legend"))
+        self.show_legend_toggle = ToggleSwitch(checked=True)
+        show_row.addWidget(self.show_legend_toggle)
+        show_row.addStretch(1)
+        layout.addLayout(show_row)
+
         legend_group = QGroupBox("Legend")
         legend_layout = QGridLayout(legend_group)
-        
-        self.legend_show_check = QCheckBox("Show Legend")
-        self.legend_show_check.setChecked(True)
-        legend_layout.addWidget(self.legend_show_check, 0, 0, 1, 2)
-        
-        legend_layout.addWidget(QLabel("Position:"), 1, 0)
+
+        legend_layout.addWidget(QLabel("Position:"), 0, 0)
         self.legend_position_combo = QComboBox()
         for position in LegendPosition:
             self.legend_position_combo.addItem(position.value.title(), position)
-        legend_layout.addWidget(self.legend_position_combo, 1, 1)
-        
-        legend_layout.addWidget(QLabel("Font Size:"), 2, 0)
+        legend_layout.addWidget(self.legend_position_combo, 0, 1)
+
+        legend_layout.addWidget(QLabel("Font Size:"), 1, 0)
         self.legend_font_size_spin = QSpinBox()
         self.legend_font_size_spin.setRange(6, 18)
         self.legend_font_size_spin.setValue(10)
-        legend_layout.addWidget(self.legend_font_size_spin, 2, 1)
-        
-        legend_layout.addWidget(QLabel("Background:"), 3, 0)
-        self.legend_bg_color_button = ColorButton(self.app_context, None, "#ffffff")
-        legend_layout.addWidget(self.legend_bg_color_button, 3, 1)
+        legend_layout.addWidget(self.legend_font_size_spin, 1, 1)
 
-        self.legend_show_frame_check = QCheckBox("Show Frame")
-        self.legend_show_frame_check.setChecked(True)
-        legend_layout.addWidget(self.legend_show_frame_check, 4, 0, 1, 2)
+        legend_layout.addWidget(QLabel("Columns:"), 2, 0)
+        self.legend_columns_control = SegmentedControl([("1", 1), ("2", 2), ("3", 3)])
+        legend_layout.addWidget(self.legend_columns_control, 2, 1)
 
         layout.addWidget(legend_group)
-        
+
+        frame_card = Card()
+        frame_layout = QGridLayout(frame_card)
+        frame_layout.addWidget(SectionHeader("Frame"), 0, 0)
+        self.legend_show_frame_toggle = ToggleSwitch(checked=True)
+        frame_layout.addWidget(self.legend_show_frame_toggle, 0, 1)
+        frame_layout.addWidget(QLabel("Background:"), 1, 0)
+        self.legend_bg_color_row = ColorSwatchRow(["#FFFFFF", "#F4F5F8", "#1C1E26"])
+        frame_layout.addWidget(self.legend_bg_color_row, 1, 1)
+        frame_layout.addWidget(QLabel("Opacity:"), 2, 0)
+        self.legend_bg_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        frame_layout.addWidget(self.legend_bg_opacity_slider, 2, 1)
+        layout.addWidget(frame_card)
+
         layout.addStretch()
         return widget
+
+    def _on_show_legend_toggled(self, checked: bool):
+        """Handle the Legend tab's master Show-legend toggle."""
+        self._update_legend_controls_enabled()
+        self._on_chart_config_changed()
+
+    def _update_legend_controls_enabled(self):
+        """Enable/disable every other Legend-tab widget based on the master toggle."""
+        show_legend = self.show_legend_toggle.isChecked()
+        for control in (
+            self.legend_position_combo,
+            self.legend_font_size_spin,
+            self.legend_columns_control,
+            self.legend_show_frame_toggle,
+            self.legend_bg_color_row,
+            self.legend_bg_opacity_slider,
+        ):
+            control.setEnabled(show_legend)
     
     def _connect_signals(self):
         """Connect widget signals."""
@@ -1136,11 +1158,13 @@ class ChartPropertiesPanel(PWidget):
         # handlers in _build_axis_form_widgets, not here (the forms are
         # built dynamically per-prefix, so there are no static
         # self.x_*/self.y_*/self.y2_* attributes to hook up in one place).
-        self.legend_show_check.toggled.connect(self._on_chart_config_changed)
+        self.show_legend_toggle.toggled.connect(self._on_show_legend_toggled)
         self.legend_position_combo.currentIndexChanged.connect(self._on_chart_config_changed)
         self.legend_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.legend_bg_color_button.colorChanged.connect(self._on_chart_config_changed)
-        self.legend_show_frame_check.toggled.connect(self._on_chart_config_changed)
+        self.legend_columns_control.currentValueChanged.connect(self._on_chart_config_changed)
+        self.legend_show_frame_toggle.toggled.connect(self._on_chart_config_changed)
+        self.legend_bg_color_row.colorChanged.connect(self._on_chart_config_changed)
+        self.legend_bg_opacity_slider.valueChanged.connect(self._on_chart_config_changed)
         
         # Connect series configuration change signals
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
@@ -1449,16 +1473,20 @@ class ChartPropertiesPanel(PWidget):
         if hasattr(self, "axes_forms"):
             for prefix in ("x", "y", "y2"):
                 self._write_axis_config(prefix, config)
-        if hasattr(self, "legend_show_check"):
-            config["show_legend"] = self.legend_show_check.isChecked()
+        if hasattr(self, "show_legend_toggle"):
+            config["show_legend"] = self.show_legend_toggle.isChecked()
         if hasattr(self, "legend_position_combo") and self.legend_position_combo.currentData():
             config["legend_position"] = self.legend_position_combo.currentData().value
         if hasattr(self, "legend_font_size_spin"):
             config["legend_font_size"] = self.legend_font_size_spin.value()
-        if hasattr(self, "legend_bg_color_button"):
-            config["legend_bg_color"] = self.legend_bg_color_button.get_color()
-        if hasattr(self, "legend_show_frame_check"):
-            config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        if hasattr(self, "legend_columns_control"):
+            config["legend_columns"] = self.legend_columns_control.currentValue()
+        if hasattr(self, "legend_show_frame_toggle"):
+            config["legend_show_frame"] = self.legend_show_frame_toggle.isChecked()
+        if hasattr(self, "legend_bg_color_row"):
+            config["legend_bg_color"] = self.legend_bg_color_row.currentColor()
+        if hasattr(self, "legend_bg_opacity_slider"):
+            config["legend_bg_alpha"] = self.legend_bg_opacity_slider.value()
         if hasattr(self, "hist_bins_spin"):
             config["hist_bins"] = self.hist_bins_spin.value()
         if hasattr(self, "chart_type_control") and self.chart_type_control.currentValue():
@@ -1652,8 +1680,12 @@ class ChartPropertiesPanel(PWidget):
             for prefix in ("x", "y", "y2"):
                 self._read_axis_config(prefix, {})
             self._refresh_axis_chips()
-            self.legend_show_check.setChecked(True)
-            self.legend_show_frame_check.setChecked(True)
+            self.show_legend_toggle.setChecked(True)
+            self.legend_columns_control.setCurrentValue(1)
+            self.legend_show_frame_toggle.setChecked(True)
+            self.legend_bg_color_row.setCurrentColor("#ffffff")
+            self.legend_bg_opacity_slider.setValue(1.0)
+            self._update_legend_controls_enabled()
             self.series_label_edit.clear()
         finally:
             self._updating_controls = previous_guard
@@ -1827,7 +1859,7 @@ class ChartPropertiesPanel(PWidget):
                 self._show_axis_form("x")
                 self.axis_chips.setCurrentValue("x")
 
-                self.legend_show_check.setChecked(config.get("show_legend", True))
+                self.show_legend_toggle.setChecked(config.get("show_legend", True))
                 legend_position_value = config.get("legend_position", "upper right")
                 for i in range(self.legend_position_combo.count()):
                     if (self.legend_position_combo.itemData(i)
@@ -1835,8 +1867,11 @@ class ChartPropertiesPanel(PWidget):
                         self.legend_position_combo.setCurrentIndex(i)
                         break
                 self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
-                self.legend_bg_color_button.set_color(config.get("legend_bg_color", "#ffffff"))
-                self.legend_show_frame_check.setChecked(config.get("legend_show_frame", True))
+                self.legend_columns_control.setCurrentValue(config.get("legend_columns", 1))
+                self.legend_show_frame_toggle.setChecked(config.get("legend_show_frame", True))
+                self.legend_bg_color_row.setCurrentColor(config.get("legend_bg_color", "#ffffff"))
+                self.legend_bg_opacity_slider.setValue(config.get("legend_bg_alpha", 1.0))
+                self._update_legend_controls_enabled()
                 self.hist_bins_spin.setValue(config.get("hist_bins", 20))
             finally:
                 self._updating_controls = previous_guard
@@ -1866,12 +1901,14 @@ class ChartPropertiesPanel(PWidget):
         chart.config["dpi"] = self.chart_dpi_combo.currentData()
         for prefix in ("x", "y", "y2"):
             self._write_axis_config(prefix, chart.config)
-        chart.config["show_legend"] = self.legend_show_check.isChecked()
+        chart.config["show_legend"] = self.show_legend_toggle.isChecked()
         if self.legend_position_combo.currentData():
             chart.config["legend_position"] = self.legend_position_combo.currentData().value
         chart.config["legend_font_size"] = self.legend_font_size_spin.value()
-        chart.config["legend_bg_color"] = self.legend_bg_color_button.get_color()
-        chart.config["legend_show_frame"] = self.legend_show_frame_check.isChecked()
+        chart.config["legend_columns"] = self.legend_columns_control.currentValue()
+        chart.config["legend_show_frame"] = self.legend_show_frame_toggle.isChecked()
+        chart.config["legend_bg_color"] = self.legend_bg_color_row.currentColor()
+        chart.config["legend_bg_alpha"] = self.legend_bg_opacity_slider.value()
         chart.config["hist_bins"] = self.hist_bins_spin.value()
 
         # Update chart type
