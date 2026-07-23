@@ -1305,6 +1305,7 @@ class ChartPropertiesPanel(PWidget):
 
             fit = self.current_chart.fit_data[fit_index]
             fit.color = self.line_color_row.currentColor()
+            fit.line_style = self.line_style_control.currentValue().value
             fit.line_width = self.line_width_slider.value()
             # Note: fit data doesn't use marker_size or marker colors
 
@@ -1983,6 +1984,7 @@ class ChartPropertiesPanel(PWidget):
                 if 0 <= fit_index < len(chart.fit_data):
                     fit = chart.fit_data[fit_index]
                     fit.color = self.line_color_row.currentColor()
+                    fit.line_style = self.line_style_control.currentValue().value
                     fit.line_width = self.line_width_slider.value()
 
                     self.logger.debug(
