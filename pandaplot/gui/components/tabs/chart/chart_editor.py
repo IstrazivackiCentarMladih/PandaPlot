@@ -543,9 +543,38 @@ class ChartEditorWidget(PWidget):
             self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
+            if config.get("y_side", "left") == "right":
+                self.chart_canvas.axes.yaxis.tick_right()
+                self.chart_canvas.axes.yaxis.set_label_position("right")
+            else:
+                self.chart_canvas.axes.yaxis.tick_left()
+                self.chart_canvas.axes.yaxis.set_label_position("left")
 
             if self.chart_canvas.axes2 is not None:
                 self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
+                self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
+                self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
+                if config.get("y2_side", "right") == "left":
+                    self.chart_canvas.axes2.yaxis.tick_left()
+                    self.chart_canvas.axes2.yaxis.set_label_position("left")
+                else:
+                    self.chart_canvas.axes2.yaxis.tick_right()
+                    self.chart_canvas.axes2.yaxis.set_label_position("right")
+
+                if not config.get("y2_auto_limits", True):
+                    self.chart_canvas.axes2.set_ylim(
+                        config.get("y2_min", 0.0), config.get("y2_max", 1.0))
+
+                apply_axis_ticks(
+                    self.chart_canvas.axes2.yaxis,
+                    config.get("y2_tick_mode", "auto"), config.get("y2_tick_count", 5),
+                    config.get("y2_tick_step", 1.0), config.get("y2_tick_format", "auto"),
+                    config.get("y2_tick_format_custom", ""))
+
+                if config.get("show_grid_y2", True):
+                    self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
+                else:
+                    self.chart_canvas.axes2.grid(False, axis="y")
 
             if not config.get("x_auto_limits", True):
                 self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))

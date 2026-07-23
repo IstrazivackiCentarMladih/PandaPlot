@@ -155,3 +155,89 @@ def test_new_keys_default_when_missing_from_saved_data():
     assert restored.config.get("width_cm") is None
     assert restored.config.get("legend_columns", 1) == 1
     assert restored.config.get("legend_bg_alpha", 1.0) == 1.0
+
+
+def test_default_config_has_y_and_y2_side_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["y_side"] == "left"
+    assert chart.config["y2_side"] == "right"
+
+
+def test_default_config_has_y2_scale_font_and_limit_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["y2_scale"] == "linear"
+    assert chart.config["y2_font_size"] == 12
+    assert chart.config["y2_auto_limits"] is True
+    assert chart.config["y2_min"] == 0.0
+    assert chart.config["y2_max"] == 1.0
+
+
+def test_default_config_has_y2_tick_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["y2_tick_mode"] == "auto"
+    assert chart.config["y2_tick_count"] == 5
+    assert chart.config["y2_tick_step"] == 1.0
+    assert chart.config["y2_tick_format"] == "auto"
+    assert chart.config["y2_tick_format_custom"] == ""
+
+
+def test_default_config_has_y2_grid_key():
+    chart = Chart(name="Test Chart")
+    assert chart.config["show_grid_y2"] is True
+    assert "y2_show_grid" not in chart.config
+
+
+def test_y2_and_side_keys_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["y_side"] = "right"
+    chart.config["y2_side"] = "left"
+    chart.config["y2_scale"] = "log"
+    chart.config["y2_font_size"] = 16
+    chart.config["y2_auto_limits"] = False
+    chart.config["y2_min"] = -5.0
+    chart.config["y2_max"] = 5.0
+    chart.config["y2_tick_mode"] = "count"
+    chart.config["y2_tick_count"] = 8
+    chart.config["y2_tick_step"] = 0.5
+    chart.config["y2_tick_format"] = "2decimal"
+    chart.config["y2_tick_format_custom"] = "{:.3f}"
+    chart.config["show_grid_y2"] = False
+
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["y_side"] == "right"
+    assert restored.config["y2_side"] == "left"
+    assert restored.config["y2_scale"] == "log"
+    assert restored.config["y2_font_size"] == 16
+    assert restored.config["y2_auto_limits"] is False
+    assert restored.config["y2_min"] == -5.0
+    assert restored.config["y2_max"] == 5.0
+    assert restored.config["y2_tick_mode"] == "count"
+    assert restored.config["y2_tick_count"] == 8
+    assert restored.config["y2_tick_step"] == 0.5
+    assert restored.config["y2_tick_format"] == "2decimal"
+    assert restored.config["y2_tick_format_custom"] == "{:.3f}"
+    assert restored.config["show_grid_y2"] is False
+
+
+def test_y2_and_side_keys_default_when_missing_from_saved_data():
+    # Simulates loading a project saved before Y2 scale/limits/ticks/grid existed.
+    data = {
+        "id": "chart1", "name": "Test Chart", "chart_type": "line",
+        "data_series": [], "fit_data": [],
+        "config": {"title": "Test Chart"},  # non-empty, so _init_default_config is NOT re-run
+        "style": {},
+    }
+    restored = Chart.from_dict(data)
+    assert restored.config.get("y_side", "left") == "left"
+    assert restored.config.get("y2_side", "right") == "right"
+    assert restored.config.get("y2_scale", "linear") == "linear"
+    assert restored.config.get("y2_font_size", 12) == 12
+    assert restored.config.get("y2_auto_limits", True) is True
+    assert restored.config.get("y2_min", 0.0) == 0.0
+    assert restored.config.get("y2_max", 1.0) == 1.0
+    assert restored.config.get("y2_tick_mode", "auto") == "auto"
+    assert restored.config.get("y2_tick_count", 5) == 5
+    assert restored.config.get("y2_tick_step", 1.0) == 1.0
+    assert restored.config.get("y2_tick_format", "auto") == "auto"
+    assert restored.config.get("y2_tick_format_custom", "") == ""
+    assert restored.config.get("show_grid_y2", True) is True
