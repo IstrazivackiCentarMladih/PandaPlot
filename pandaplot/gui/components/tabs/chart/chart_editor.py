@@ -288,9 +288,6 @@ class ChartEditorWidget(PWidget):
         # Add chart actions
         self.create_chart_toolbar_actions(self.preview_toolbar)
 
-        # Add separator
-        self.preview_toolbar.addSeparator()
-
         # Fetch preferred DPI and default chart size from config manager
         dpi = 100
         default_width_cm = 20

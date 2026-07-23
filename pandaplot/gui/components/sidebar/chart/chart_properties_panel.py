@@ -81,6 +81,17 @@ class ChartPropertiesPanel(PWidget):
         # because that's what the combo defaults to for display.
         self._loaded_chart_type_supported: bool = True
         self._chart_type_touched_by_user: bool = False
+        # Index of the dynamically-inserted "Custom (W x H cm)" item in
+        # chart_size_combo, if the currently loaded chart's saved size
+        # doesn't match a fixed preset (e.g. an auto-fit size written by
+        # chart_editor's initial-fit-to-preview logic). None if no such
+        # item is currently present.
+        self._custom_size_combo_index: Optional[int] = None
+        # Reference to the expanded Data-tab card's Y1/Y2 badge QLabel (and
+        # the design tokens it was last styled with), so a live series
+        # Y-axis edit can restyle it in place. See _on_series_config_changed.
+        self._expanded_card_y_axis_badge: Optional[QLabel] = None
+        self._expanded_card_y_axis_badge_tokens: dict = {}
         # Which entry (data series index, then fit-data index appended after
         # all series) is currently shown expanded in the Data tab's card list.
         self._expanded_series_index: int = 0
@@ -584,8 +595,15 @@ class ChartPropertiesPanel(PWidget):
 
     def _build_y_axis_badge(self, y_axis, tokens: dict) -> QLabel:
         """Small 'Y₁'/'Y₂' badge, accented for the secondary axis."""
+        badge = QLabel()
+        self._apply_y_axis_badge_style(badge, y_axis, tokens)
+        return badge
+
+    def _apply_y_axis_badge_style(self, badge: QLabel, y_axis, tokens: dict):
+        """Set a Y-axis badge's text/style in place (shared by initial build
+        and live in-place refresh from `_on_series_config_changed`)."""
         is_secondary = y_axis == YAxis.SECONDARY
-        badge = QLabel("Y₂" if is_secondary else "Y₁")
+        badge.setText("Y₂" if is_secondary else "Y₁")
         bg = tokens.get("y2_accent_bg") if is_secondary else tokens.get("surface_inset", "#eee")
         fg = tokens.get("y2_accent") if is_secondary else tokens.get("text_muted", "#666")
         badge.setStyleSheet(
@@ -593,7 +611,6 @@ class ChartPropertiesPanel(PWidget):
             f"border-radius: {tokens.get('radius_chip', 12)}px; "
             "padding: 1px 8px; font-size: 10px; font-weight: 600;"
         )
-        return badge
 
     def _build_expanded_series_card(self, index: int, tokens: dict) -> QWidget:
         """The expanded card: title + the persistent config form, loaded with
@@ -617,8 +634,15 @@ class ChartPropertiesPanel(PWidget):
         title_label = QLabel(title_text)
         title_label.setStyleSheet(f"font-weight: 600; color: {tokens.get('text_primary', '#000')};")
         header.addWidget(title_label, 1)
+        # Keep a reference so _on_series_config_changed can refresh this
+        # badge in place on a live Y-axis edit, without a full card rebuild
+        # (see that method's docstring for why a rebuild is unsafe there).
+        self._expanded_card_y_axis_badge = None
         if not is_fit:
-            header.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
+            badge = self._build_y_axis_badge(series.y_axis, tokens)
+            self._expanded_card_y_axis_badge = badge
+            self._expanded_card_y_axis_badge_tokens = tokens
+            header.addWidget(badge)
         chevron = QPushButton("▾")  # ▾, indicates "currently expanded"
         chevron.setFlat(True)
         chevron.setFixedWidth(24)
@@ -1277,6 +1301,28 @@ class ChartPropertiesPanel(PWidget):
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
             series.y_axis = self.series_y_axis_control.currentValue()
+
+            # Refresh the Axes-tab Y2 chip immediately so switching a series
+            # to the secondary axis is reflected without waiting for Apply
+            # or a full chart reload. This only touches the axis_chips
+            # SegmentedControl (not the Data-tab card list), so it's safe to
+            # call from here.
+            self._refresh_axis_chips()
+
+            # Update the expanded card's own Y1/Y2 badge in place too.
+            # Deliberately NOT calling `_rebuild_series_cards()` from this
+            # handler: that tears down and rebuilds the Data-tab card list,
+            # including detaching/reattaching `_series_form_widget` (which
+            # hosts the very control that triggered this handler) - the same
+            # reentrancy hazard already fixed once for live-edit handlers
+            # touching the reparented series form widget. Updating the
+            # existing badge label in place avoids that entirely.
+            if getattr(self, "_expanded_card_y_axis_badge", None) is not None:
+                self._apply_y_axis_badge_style(
+                    self._expanded_card_y_axis_badge,
+                    series.y_axis,
+                    getattr(self, "_expanded_card_y_axis_badge_tokens", {}),
+                )
         else:
             # Fit data: columns/dataset not editable, ignore
             return
@@ -1606,6 +1652,9 @@ class ChartPropertiesPanel(PWidget):
             self.title_font_size_spin.setValue(14)
             self.subtitle_edit.clear()
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
+            if self._custom_size_combo_index is not None:
+                self.chart_size_combo.removeItem(self._custom_size_combo_index)
+                self._custom_size_combo_index = None
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.hist_bins_spin.setValue(20)
@@ -1752,11 +1801,33 @@ class ChartPropertiesPanel(PWidget):
                 # (Qt's QVariant comparison doesn't match Python tuple equality
                 # here), so look up the matching index manually.
                 target_size = (chart.config.get("width_cm"), chart.config.get("height_cm"))
+
+                # Drop any dynamically-added "Custom" entry from a
+                # previously loaded chart before evaluating this one, so the
+                # dropdown doesn't accumulate stale Custom items across
+                # chart switches (only ever one at a time, near the top).
+                if self._custom_size_combo_index is not None:
+                    self.chart_size_combo.removeItem(self._custom_size_combo_index)
+                    self._custom_size_combo_index = None
+
                 size_index = -1
                 for i in range(self.chart_size_combo.count()):
                     if self.chart_size_combo.itemData(i) == target_size:
                         size_index = i
                         break
+
+                if size_index < 0 and target_size[0] is not None and target_size[1] is not None:
+                    # A size that doesn't match any fixed preset (e.g. one
+                    # written by chart_editor's initial auto-fit) would
+                    # otherwise fall back to "Use app default", which
+                    # silently wipes it (writes None/None) the next time any
+                    # field is edited. Preserve it as a dynamic entry instead.
+                    width, height = target_size
+                    label = f"Custom ({width:g} × {height:g} cm)"
+                    self.chart_size_combo.insertItem(0, label, target_size)
+                    self._custom_size_combo_index = 0
+                    size_index = 0
+
                 self.chart_size_combo.setCurrentIndex(
                     size_index if size_index >= 0 else self.chart_size_combo.count() - 1
                 )
