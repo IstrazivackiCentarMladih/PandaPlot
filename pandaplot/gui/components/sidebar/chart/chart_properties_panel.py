@@ -28,9 +28,13 @@ from pandaplot.commands.project.chart import (
     RemoveSeriesCommand,
 )
 from pandaplot.gui.components.common.card import Card
+from pandaplot.gui.components.common.chip_row import ChipRow
+from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.dirty_footer import DirtyFooter
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
+from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
+from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -53,6 +57,9 @@ IMPLEMENTED_CHART_TYPES = [
     ChartType.BAR,
     ChartType.HISTOGRAM,
 ]
+
+# Preset swatch palette offered by the Style tab's line/marker color pickers.
+STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
 
 class ColorButton(QPushButton):
@@ -284,6 +291,18 @@ class ChartPropertiesPanel(PWidget):
         self.footer.set_tokens(tokens)
         self.chart_type_control.set_tokens(tokens)
 
+        # Style tab: shared widgets
+        self.style_series_chips.set_tokens(tokens)
+        self.line_color_row.set_tokens(tokens)
+        self.line_style_control.set_tokens(tokens)
+        self.line_width_slider.set_tokens(tokens)
+        self.line_opacity_slider.set_tokens(tokens)
+        self.markers_enabled_toggle.set_tokens(tokens)
+        self.marker_shape_control.set_tokens(tokens)
+        self.marker_size_slider.set_tokens(tokens)
+        self.marker_color_row.set_tokens(tokens)
+        self.marker_match_line_toggle.set_tokens(tokens)
+
         # Data tab: cards/SegmentedControl are rebuilt with fresh tokens
         # every time _rebuild_series_cards runs, so re-running it here is
         # the simplest way to make a live theme change reach them.
@@ -294,9 +313,6 @@ class ChartPropertiesPanel(PWidget):
     def _update_color_buttons(self):
         """Update all ColorButton instances with current theme."""
         color_buttons = [
-            getattr(self, "line_color_button", None),
-            getattr(self, "marker_color_button", None),
-            getattr(self, "marker_edge_color_button", None),
             getattr(self, "legend_bg_color_button", None)
         ]
         
@@ -507,6 +523,8 @@ class ChartPropertiesPanel(PWidget):
 
         if not self.current_chart:
             self.remove_series_button.setEnabled(False)
+            if hasattr(self, "style_series_chips"):
+                self.style_series_chips.setItems([])
             return
 
         total_series = len(self.current_chart.data_series)
@@ -529,6 +547,39 @@ class ChartPropertiesPanel(PWidget):
             self._series_cards_layout.addWidget(card)
 
         self.remove_series_button.setEnabled(total_items > 0)
+        self._refresh_style_chips()
+
+    def _refresh_style_chips(self):
+        """Sync the Style tab's chip row with the same series+fit list the
+        Data tab's cards are built from, keeping the chip row's selection in
+        lockstep with `self._expanded_series_index` (the single, panel-wide
+        "currently edited entry" state also driven by Data-tab card expand).
+
+        Chip values are the combined index (int), not the series/fit object
+        itself, so selecting a chip can drive `_expand_series` directly
+        without needing to search for the clicked object's index.
+        """
+        if not hasattr(self, "style_series_chips"):
+            # The Data tab (built first) triggers an initial
+            # _rebuild_series_cards() call before the Style tab (and its chip
+            # row) exists yet. There is no chart loaded yet at that point
+            # either, so there is nothing to reflect; the chip row is
+            # populated for real the next time a chart is loaded.
+            return
+        chip_items = []
+        for index, series in enumerate(self.current_chart.data_series):
+            label = series.label or f"{series.dataset_id}:{series.y_column}"
+            chip_items.append((label, index))
+        total_series = len(self.current_chart.data_series)
+        for fit_offset, fit in enumerate(self.current_chart.fit_data):
+            index = total_series + fit_offset
+            chip_items.append((f"\U0001f527 {fit.label}", index))
+
+        # Neither setItems nor setCurrentValue emits currentValueChanged (only
+        # a user click on a chip does), so no signal-blocking is needed here
+        # to avoid re-entering _expand_series.
+        self.style_series_chips.setItems(chip_items)
+        self.style_series_chips.setCurrentValue(self._expanded_series_index)
 
     def _build_collapsed_series_row(self, series, index: int, tokens: dict) -> QWidget:
         """A chip-like collapsed row: color square, name, Y-axis badge, chevron."""
@@ -643,66 +694,98 @@ class ChartPropertiesPanel(PWidget):
         return card
 
     def _create_style_tab(self) -> QWidget:
-        """Create the style configuration tab."""
+        """Create the style configuration tab.
+
+        There is deliberately no independent series selector here: the chip
+        row at the top drives the same `self._expanded_series_index` state
+        that the Data tab's expand/collapse cards drive (via `_expand_series`),
+        so the two tabs can never disagree about which series/fit is being
+        styled. All controls below always reflect whichever entry is
+        currently expanded.
+
+        A literal rendered line/marker preview (as sketched in the original
+        design brief) is intentionally omitted here: this panel has no chart
+        canvas of its own to paint into, and the live chart view already
+        re-renders immediately on every change (see `_on_style_changed`), so
+        a second, redundant mini-renderer wasn't worth the complexity.
+        """
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
-        # Line style group
-        line_group = QGroupBox("Line Style")
-        line_layout = QGridLayout(line_group)
-        
-        line_layout.addWidget(QLabel("Color:"), 0, 0)
-        self.line_color_button = ColorButton(self.app_context)
-        line_layout.addWidget(self.line_color_button, 0, 1)
-        
-        line_layout.addWidget(QLabel("Width:"), 1, 0)
-        self.line_width_spin = QDoubleSpinBox()
-        self.line_width_spin.setRange(0.1, 10.0)
-        self.line_width_spin.setSingleStep(0.1)
-        self.line_width_spin.setValue(2.0)
-        line_layout.addWidget(self.line_width_spin, 1, 1)
-        
+
+        self.style_series_chips = ChipRow()
+        self.style_series_chips.currentValueChanged.connect(self._expand_series)
+        layout.addWidget(self.style_series_chips)
+
+        # LINE group
+        line_card = Card()
+        line_layout = QGridLayout(line_card)
+        line_layout.addWidget(SectionHeader("Line"), 0, 0, 1, 2)
+
+        line_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.line_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        line_layout.addWidget(self.line_color_row, 1, 1)
+
         line_layout.addWidget(QLabel("Style:"), 2, 0)
-        self.line_style_combo = QComboBox()
-        for style in LineStyleType:
-            self.line_style_combo.addItem(style.value.title(), style)
-        line_layout.addWidget(self.line_style_combo, 2, 1)
-        
-        line_layout.addWidget(QLabel("Transparency:"), 3, 0)
-        self.line_transparency_spin = QDoubleSpinBox()
-        self.line_transparency_spin.setRange(0.0, 1.0)
-        self.line_transparency_spin.setSingleStep(0.1)
-        self.line_transparency_spin.setValue(1.0)
-        line_layout.addWidget(self.line_transparency_spin, 3, 1)
-        
-        layout.addWidget(line_group)
-        
-        # Marker style group
-        marker_group = QGroupBox("Marker Style")
-        marker_layout = QGridLayout(marker_group)
-        
-        marker_layout.addWidget(QLabel("Type:"), 0, 0)
-        self.marker_type_combo = QComboBox()
-        for marker in MarkerType:
-            self.marker_type_combo.addItem(marker.value.title(), marker)
-        marker_layout.addWidget(self.marker_type_combo, 0, 1)
-        
-        marker_layout.addWidget(QLabel("Size:"), 1, 0)
-        self.marker_size_spin = QDoubleSpinBox()
-        self.marker_size_spin.setRange(1.0, 20.0)
-        self.marker_size_spin.setValue(2.0)
-        marker_layout.addWidget(self.marker_size_spin, 1, 1)
-        
-        marker_layout.addWidget(QLabel("Color:"), 2, 0)
-        self.marker_color_button = ColorButton(self.app_context)
-        marker_layout.addWidget(self.marker_color_button, 2, 1)
-        
-        marker_layout.addWidget(QLabel("Edge Color:"), 3, 0)
-        self.marker_edge_color_button = ColorButton(self.app_context, None, "#000000")
-        marker_layout.addWidget(self.marker_edge_color_button, 3, 1)
-        
-        layout.addWidget(marker_group)
-        
+        self.line_style_control = SegmentedControl(
+            [
+                ("Solid", LineStyleType.SOLID),
+                ("Dashed", LineStyleType.DASHED),
+                ("Dotted", LineStyleType.DOTTED),
+                ("Dash-Dot", LineStyleType.DASHDOT),
+                ("None", LineStyleType.NONE),
+            ]
+        )
+        line_layout.addWidget(self.line_style_control, 2, 1)
+
+        line_layout.addWidget(QLabel("Width:"), 3, 0)
+        self.line_width_slider = SliderWithSpinbox(minimum=0.1, maximum=10.0, decimals=1)
+        line_layout.addWidget(self.line_width_slider, 3, 1)
+
+        line_layout.addWidget(QLabel("Opacity:"), 4, 0)
+        self.line_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        line_layout.addWidget(self.line_opacity_slider, 4, 1)
+
+        layout.addWidget(line_card)
+
+        # MARKERS group
+        marker_card = Card()
+        marker_layout = QGridLayout(marker_card)
+
+        marker_header_row = QHBoxLayout()
+        marker_header_row.addWidget(SectionHeader("Markers"))
+        marker_header_row.addStretch(1)
+        self.markers_enabled_toggle = ToggleSwitch()
+        marker_header_row.addWidget(self.markers_enabled_toggle)
+        marker_layout.addLayout(marker_header_row, 0, 0, 1, 2)
+
+        marker_layout.addWidget(QLabel("Shape:"), 1, 0)
+        self.marker_shape_control = SegmentedControl(
+            [
+                ("●", MarkerType.CIRCLE),
+                ("■", MarkerType.SQUARE),
+                ("▲", MarkerType.TRIANGLE),
+                ("◆", MarkerType.DIAMOND),
+                ("★", MarkerType.STAR),
+                ("+", MarkerType.PLUS),
+                ("✕", MarkerType.CROSS),
+            ]
+        )
+        marker_layout.addWidget(self.marker_shape_control, 1, 1)
+
+        marker_layout.addWidget(QLabel("Size:"), 2, 0)
+        self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
+        marker_layout.addWidget(self.marker_size_slider, 2, 1)
+
+        marker_layout.addWidget(QLabel("Color:"), 3, 0)
+        self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        marker_layout.addWidget(self.marker_color_row, 3, 1)
+
+        marker_layout.addWidget(QLabel("Match line:"), 4, 0)
+        self.marker_match_line_toggle = ToggleSwitch(checked=True)
+        marker_layout.addWidget(self.marker_match_line_toggle, 4, 1)
+
+        layout.addWidget(marker_card)
+
         layout.addStretch()
         return widget
     
@@ -978,16 +1061,18 @@ class ChartPropertiesPanel(PWidget):
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
         
-        # Connect style change signals
-        self.line_color_button.colorChanged.connect(self._on_style_changed)
-        self.line_width_spin.valueChanged.connect(self._on_style_changed)
-        self.line_transparency_spin.valueChanged.connect(self._on_style_changed)
-        self.line_style_combo.currentIndexChanged.connect(self._on_style_changed)
-        
-        self.marker_color_button.colorChanged.connect(self._on_style_changed)
-        self.marker_edge_color_button.colorChanged.connect(self._on_style_changed)
-        self.marker_size_spin.valueChanged.connect(self._on_style_changed)
-        self.marker_type_combo.currentIndexChanged.connect(self._on_style_changed)
+        # Connect style change signals (Style tab; chip row selection is
+        # wired directly to _expand_series in _create_style_tab, not here)
+        self.line_color_row.colorChanged.connect(self._on_style_changed)
+        self.line_style_control.currentValueChanged.connect(self._on_style_changed)
+        self.line_width_slider.valueChanged.connect(self._on_style_changed)
+        self.line_opacity_slider.valueChanged.connect(self._on_style_changed)
+
+        self.markers_enabled_toggle.toggled.connect(self._on_markers_enabled_toggled)
+        self.marker_shape_control.currentValueChanged.connect(self._on_style_changed)
+        self.marker_size_slider.valueChanged.connect(self._on_style_changed)
+        self.marker_color_row.colorChanged.connect(self._on_style_changed)
+        self.marker_match_line_toggle.toggled.connect(self._on_marker_match_line_toggled)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -1153,6 +1238,28 @@ class ChartPropertiesPanel(PWidget):
         self._has_unsaved_changes = True
         self._update_status_indicator()
 
+    def _on_markers_enabled_toggled(self, _checked: bool):
+        """Handle the Markers section's on/off toggle."""
+        self._update_marker_controls_enabled()
+        self._on_style_changed()
+
+    def _on_marker_match_line_toggled(self, _checked: bool):
+        """Handle the 'Match line' toggle for marker color."""
+        self._update_marker_controls_enabled()
+        self._on_style_changed()
+
+    def _update_marker_controls_enabled(self):
+        """Enable/disable marker sub-controls based on the enable and
+        match-line toggles (pure UI convenience; see _on_style_changed for
+        how this maps onto the persisted `marker_style`/`marker_color`)."""
+        markers_enabled = self.markers_enabled_toggle.isChecked()
+        self.marker_shape_control.setEnabled(markers_enabled)
+        self.marker_size_slider.setEnabled(markers_enabled)
+        self.marker_match_line_toggle.setEnabled(markers_enabled)
+        self.marker_color_row.setEnabled(
+            markers_enabled and not self.marker_match_line_toggle.isChecked()
+        )
+
     def _on_style_changed(self):
         """Handle style changes."""
         if self._updating_controls or not self.current_chart:
@@ -1161,39 +1268,44 @@ class ChartPropertiesPanel(PWidget):
         current_row = self._expanded_series_index
         if current_row < 0:
             return
-        
+
         total_series = len(self.current_chart.data_series)
-        
+
         if current_row < total_series:
             # Updating a data series
             if current_row >= len(self.current_chart.data_series):
                 return
             series = self.current_chart.data_series[current_row]
 
-            # Update colors independently
-            series.color = self.line_color_button.get_color()
-            series.marker_color = self.marker_color_button.get_color()
-            series.marker_edge_color = self.marker_edge_color_button.get_color()
+            series.color = self.line_color_row.currentColor()
+            series.line_style = self.line_style_control.currentValue().value
+            series.line_width = self.line_width_slider.value()
+            series.alpha = self.line_opacity_slider.value()
 
-            series.line_width = self.line_width_spin.value()
-            series.marker_size = self.marker_size_spin.value()
-            series.alpha = self.line_transparency_spin.value()
+            # "Markers enabled" isn't a separate persisted flag: it maps onto
+            # the existing MarkerType.NONE member (matching how the old combo
+            # already let a user pick "None" as a marker type). "Match line"
+            # reuses the existing marker_color == "" convention (already used
+            # by _load_series_into_controls before this task).
+            if self.markers_enabled_toggle.isChecked():
+                series.marker_style = self.marker_shape_control.currentValue().value
+                series.marker_size = self.marker_size_slider.value()
+                series.marker_color = (
+                    "" if self.marker_match_line_toggle.isChecked()
+                    else self.marker_color_row.currentColor()
+                )
+            else:
+                series.marker_style = MarkerType.NONE.value
 
-            # Line style & marker style (store enum values as strings)
-            if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
-                series.line_style = self.line_style_combo.currentData().value
-            if hasattr(self, "marker_type_combo") and self.marker_type_combo.currentData():
-                series.marker_style = self.marker_type_combo.currentData().value
-                
         else:
             # Updating fit data
             fit_index = current_row - total_series
             if fit_index >= len(self.current_chart.fit_data):
                 return
-            
+
             fit = self.current_chart.fit_data[fit_index]
-            fit.color = self.line_color_button.get_color()
-            fit.line_width = self.line_width_spin.value()
+            fit.color = self.line_color_row.currentColor()
+            fit.line_width = self.line_width_slider.value()
             # Note: fit data doesn't use marker_size or marker colors
 
         # Emit update event so any open chart tab refreshes immediately
@@ -1393,48 +1505,39 @@ class ChartPropertiesPanel(PWidget):
             self._pending_label = series.label
 
             # Update style controls to reflect this series
-            self.line_color_button.blockSignals(True)
-            self.line_color_button.set_color(series.color)
-            self.line_color_button.blockSignals(False)
-            
-            self.line_width_spin.blockSignals(True)
-            self.line_width_spin.setValue(series.line_width)
-            self.line_width_spin.blockSignals(False)
-            
-            self.marker_size_spin.blockSignals(True)
-            self.marker_size_spin.setValue(series.marker_size)
-            self.marker_size_spin.blockSignals(False)
+            self.line_color_row.setCurrentColor(series.color)
+            self.line_width_slider.setValue(series.line_width)
+            self.line_opacity_slider.setValue(series.alpha)
+            try:
+                self.line_style_control.setCurrentValue(LineStyleType(series.line_style))
+            except ValueError:
+                self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 
-            self.line_transparency_spin.blockSignals(True)
-            self.line_transparency_spin.setValue(series.alpha)
-            self.line_transparency_spin.blockSignals(False)
+            # "Markers enabled" isn't a separate persisted flag: it's implied
+            # by marker_style != MarkerType.NONE (see _on_style_changed). If
+            # markers are off, the shape control keeps showing the last
+            # remembered shape (defaulting to circle) rather than "none",
+            # since "none" isn't offered as a selectable shape here.
+            markers_enabled = series.marker_style != MarkerType.NONE.value
+            self.markers_enabled_toggle.blockSignals(True)
+            self.markers_enabled_toggle.setChecked(markers_enabled)
+            self.markers_enabled_toggle.blockSignals(False)
 
-            # Update marker color controls
-            if hasattr(self, "marker_color_button"):
-                self.marker_color_button.blockSignals(True)
-                self.marker_color_button.set_color(series.marker_color or series.color)
-                self.marker_color_button.blockSignals(False)
+            shape_value = series.marker_style if markers_enabled else MarkerType.CIRCLE.value
+            try:
+                self.marker_shape_control.setCurrentValue(MarkerType(shape_value))
+            except ValueError:
+                self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
 
-            if hasattr(self, "marker_edge_color_button"):
-                self.marker_edge_color_button.blockSignals(True)
-                self.marker_edge_color_button.set_color(series.marker_edge_color or "#000000")
-                self.marker_edge_color_button.blockSignals(False)
-                
-            if hasattr(self, "line_style_combo"):
-                self.line_style_combo.blockSignals(True)
-                for i in range(self.line_style_combo.count()):
-                    if self.line_style_combo.itemData(i) and self.line_style_combo.itemData(i).value == series.line_style:
-                        self.line_style_combo.setCurrentIndex(i)
-                        break
-                self.line_style_combo.blockSignals(False)
-                
-            if hasattr(self, "marker_type_combo"):
-                self.marker_type_combo.blockSignals(True)
-                for i in range(self.marker_type_combo.count()):
-                    if self.marker_type_combo.itemData(i) and self.marker_type_combo.itemData(i).value == series.marker_style:
-                        self.marker_type_combo.setCurrentIndex(i)
-                        break
-                self.marker_type_combo.blockSignals(False)
+            self.marker_size_slider.setValue(series.marker_size)
+
+            # marker_color == "" is the existing "match line color" convention.
+            self.marker_color_row.setCurrentColor(series.marker_color or series.color)
+            self.marker_match_line_toggle.blockSignals(True)
+            self.marker_match_line_toggle.setChecked(series.marker_color == "")
+            self.marker_match_line_toggle.blockSignals(False)
+
+            self._update_marker_controls_enabled()
         finally:
             self._updating_controls = previous_guard
 
@@ -1455,18 +1558,21 @@ class ChartPropertiesPanel(PWidget):
             self.series_label_edit.blockSignals(False)
             self._pending_label = fit.label
 
-            # Update style controls to reflect this fit
-            self.line_color_button.blockSignals(True)
-            self.line_color_button.set_color(fit.color)
-            self.line_color_button.blockSignals(False)
-            
-            self.line_width_spin.blockSignals(True)
-            self.line_width_spin.setValue(fit.line_width)
-            self.line_width_spin.blockSignals(False)
-            
-            self.marker_size_spin.blockSignals(True)
-            self.marker_size_spin.setValue(0.0)  # Fit lines typically don't have markers
-            self.marker_size_spin.blockSignals(False)
+            # Update style controls to reflect this fit. Fit data has no
+            # marker/opacity concept, so markers are forced off and locked.
+            self.line_color_row.setCurrentColor(fit.color)
+            self.line_width_slider.setValue(fit.line_width)
+            self.line_opacity_slider.setValue(1.0)
+            try:
+                self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
+            except ValueError:
+                self.line_style_control.setCurrentValue(LineStyleType.SOLID)
+
+            self.markers_enabled_toggle.blockSignals(True)
+            self.markers_enabled_toggle.setChecked(False)
+            self.markers_enabled_toggle.blockSignals(False)
+            self.marker_size_slider.setValue(0.0)  # Fit lines typically don't have markers
+            self._update_marker_controls_enabled()
         finally:
             self._updating_controls = previous_guard
 
@@ -1688,13 +1794,8 @@ class ChartPropertiesPanel(PWidget):
                 # (this also (re)loads it into the config form controls).
                 self._expanded_series_index = 0
                 self._rebuild_series_cards()
-
-                if chart.data_series:
-                    # Set style from first series for the style tab
-                    first_series = chart.data_series[0]
-                    self.line_color_button.set_color(first_series.color)
-                    self.line_width_spin.setValue(first_series.line_width)
-                    self.marker_size_spin.setValue(first_series.marker_size)
+                # (_rebuild_series_cards already loads series/fit 0's style
+                # into the Style tab controls via _build_expanded_series_card.)
 
                 # Load configuration
                 config = chart.config
@@ -1856,18 +1957,21 @@ class ChartPropertiesPanel(PWidget):
                 # Update data series
                 series = chart.data_series[current_row]
 
-                series.color = self.line_color_button.get_color()
-                series.marker_color = self.marker_color_button.get_color()
-                series.marker_edge_color = self.marker_edge_color_button.get_color()
-                series.line_width = self.line_width_spin.value()
-                series.marker_size = self.marker_size_spin.value()
+                series.color = self.line_color_row.currentColor()
+                series.line_style = self.line_style_control.currentValue().value
+                series.line_width = self.line_width_slider.value()
                 series.y_axis = self.series_y_axis_control.currentValue()
-                series.alpha = self.line_transparency_spin.value()
+                series.alpha = self.line_opacity_slider.value()
 
-                if hasattr(self, "line_style_combo") and self.line_style_combo.currentData():
-                    series.line_style = self.line_style_combo.currentData().value
-                if hasattr(self, "marker_type_combo") and self.marker_type_combo.currentData():
-                    series.marker_style = self.marker_type_combo.currentData().value
+                if self.markers_enabled_toggle.isChecked():
+                    series.marker_style = self.marker_shape_control.currentValue().value
+                    series.marker_size = self.marker_size_slider.value()
+                    series.marker_color = (
+                        "" if self.marker_match_line_toggle.isChecked()
+                        else self.marker_color_row.currentColor()
+                    )
+                else:
+                    series.marker_style = MarkerType.NONE.value
 
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
@@ -1878,8 +1982,8 @@ class ChartPropertiesPanel(PWidget):
                 fit_index = current_row - total_series
                 if 0 <= fit_index < len(chart.fit_data):
                     fit = chart.fit_data[fit_index]
-                    fit.color = self.line_color_button.get_color()
-                    fit.line_width = self.line_width_spin.value()
+                    fit.color = self.line_color_row.currentColor()
+                    fit.line_width = self.line_width_slider.value()
 
                     self.logger.debug(
                         "Applied style to fit data %d: %s (color=%s)",
@@ -1898,9 +2002,9 @@ class ChartPropertiesPanel(PWidget):
                     dataset_id=dataset_id,
                     x_column=x_column,
                     y_column=y_column,
-                    color=self.line_color_button.get_color(),
-                    line_width=self.line_width_spin.value(),
-                    marker_size=self.marker_size_spin.value(),
+                    color=self.line_color_row.currentColor(),
+                    line_width=self.line_width_slider.value(),
+                    marker_size=self.marker_size_slider.value(),
                     label=f"{dataset_name}:{y_column}",
                     y_axis=self.series_y_axis_control.currentValue()
                 )
