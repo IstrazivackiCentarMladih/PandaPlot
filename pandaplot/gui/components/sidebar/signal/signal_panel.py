@@ -1,5 +1,6 @@
-from typing import Optional, override
+from typing import Optional, override, List
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -7,11 +8,19 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QVBoxLayout,
     QWidget,
+    QDoubleSpinBox,
+    QSpinBox,
+    QPushButton,
+    QTextEdit,
+    QScrollArea,
 )
 
-from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisType
+from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
+from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.events import DatasetOperationEvents, UIEvents
 
 
 class SignalPanel(PWidget):
@@ -24,22 +33,46 @@ class SignalPanel(PWidget):
     ):
         super().__init__(app_context=app_context, parent=parent)
 
+        self.current_dataset: Optional[Dataset] = None
+        self.current_dataset_id: Optional[str] = None
+
+        self.last_result: Optional[SignalAnalysisResult] = None
+
         self._initialize()
 
     @override
     def _init_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
 
         title = QLabel("📡 Signal Analysis")
         layout.addWidget(title)
 
+        # Analysis selector
         group = QGroupBox("Analysis")
         form = QFormLayout()
 
         self.analysis_combo = QComboBox()
 
         for analysis_type, info in SIGNAL_ANALYSES.items():
-            self.analysis_combo.addItem(info.label, analysis_type)
+            self.analysis_combo.addItem(
+                info.label,
+                analysis_type,
+            )
 
         self.analysis_combo.currentIndexChanged.connect(
             self._on_analysis_changed
@@ -53,12 +86,61 @@ class SignalPanel(PWidget):
         form.addRow("", self.description_label)
 
         group.setLayout(form)
-
         layout.addWidget(group)
+
+        # Input
+        self.input_group = QGroupBox("Input")
+        self.input_layout = QFormLayout()
+        self.input_group.setLayout(self.input_layout)
+
+        layout.addWidget(self.input_group)
+
+        self.column_combo = QComboBox()
+        self.input_layout.addRow(
+            "Signal column:",
+            self.column_combo
+        )
+
+        # Parameters
+        self.parameters_group = QGroupBox("Parameters")
+        self.parameters_layout = QFormLayout()
+        self.parameters_group.setLayout(self.parameters_layout)
+
+        layout.addWidget(self.parameters_group)
+        self._on_analysis_changed()
+
+        # Results
+        results_group = QGroupBox("Results")
+        results_layout = QVBoxLayout()
+
+        self.run_btn = QPushButton("▶ Run Analysis")
+        self.run_btn.clicked.connect(self.run_analysis)
+
+        results_layout.addWidget(self.run_btn)
+
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlaceholderText("Run analysis to see results...")
+
+        results_layout.addWidget(self.results_text)
+        results_group.setLayout(results_layout)
+        layout.addWidget(results_group)
+
+        self.add_btn = QPushButton("➕ Add Results to Project")
+        self.add_btn.clicked.connect(self.add_results_to_project)
+        self.add_btn.setEnabled(False)
+
+        layout.addWidget(self.add_btn)
+
+        self.clear_btn = QPushButton("🔄 Clear")
+        self.clear_btn.clicked.connect(self.clear)
+
+        layout.addWidget(self.clear_btn)
 
         layout.addStretch()
 
-        self._on_analysis_changed()
+        scroll_area.setWidget(content_widget)
+        main_layout.addWidget(scroll_area)
 
     def _on_analysis_changed(self):
         analysis_type = self.analysis_combo.currentData()
@@ -68,7 +150,319 @@ class SignalPanel(PWidget):
 
         info = SIGNAL_ANALYSES[analysis_type]
 
-        self.description_label.setText(info.description)
+        self.description_label.setText(
+            info.description
+        )
+
+        self._build_parameter_widgets(info)
+        self.clear()
+
+    def _build_parameter_widgets(self, info):
+        while self.parameters_layout.count():
+            item = self.parameters_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # reset references
+        self.sampling_rate = None
+        self.nfft_spin = None
+        self.window_combo = None
+        self.nperseg_spin = None
+        self.overlap_spin = None
+
+        self.height_spin = None
+        self.distance_spin = None
+        self.prominence_spin = None
+        self.threshold_spin = None
+
+        # Sampling rate
+        if info.uses_sampling_rate:
+            self.sampling_rate = QDoubleSpinBox()
+            self.sampling_rate.setRange(0.001, 1e9)
+            self.sampling_rate.setValue(1000)
+
+            self.parameters_layout.addRow(
+                "Sampling rate:",
+                self.sampling_rate
+            )
+
+        # FFT size
+        if info.uses_nfft:
+            self.nfft_spin = QSpinBox()
+            self.nfft_spin.setRange(16, 1_000_000)
+            self.nfft_spin.setValue(1024)
+
+            self.parameters_layout.addRow(
+                "FFT size:",
+                self.nfft_spin
+            )
+
+        # Window
+        if info.uses_window:
+            self.window_combo = QComboBox()
+
+            self.window_combo.addItems(
+                info.windows
+            )
+
+            self.parameters_layout.addRow(
+                "Window:",
+                self.window_combo
+            )
+
+        # STFT / PSD
+        if info.uses_nperseg:
+            self.nperseg_spin = QSpinBox()
+            self.nperseg_spin.setRange(8, 1_000_000)
+            self.nperseg_spin.setValue(
+                info.default_nperseg
+            )
+
+            self.parameters_layout.addRow(
+                "Segment size:",
+                self.nperseg_spin
+            )
+
+        if info.uses_overlap:
+            self.overlap_spin = QDoubleSpinBox()
+            self.overlap_spin.setRange(0.0, 0.99)
+            self.overlap_spin.setSingleStep(0.05)
+            self.overlap_spin.setValue(
+                info.default_overlap
+            )
+
+            self.parameters_layout.addRow(
+                "Overlap:",
+                self.overlap_spin
+            )
+
+        # Peak detection
+        if info.uses_height:
+            self.height_spin = QDoubleSpinBox()
+            self.height_spin.setRange(
+                -1e12,
+                1e12
+            )
+
+            self.parameters_layout.addRow(
+                "Minimum height:",
+                self.height_spin
+            )
+
+        if info.uses_distance:
+            self.distance_spin = QSpinBox()
+            self.distance_spin.setRange(
+                1,
+                1_000_000
+            )
+            self.distance_spin.setValue(1)
+
+            self.parameters_layout.addRow(
+                "Minimum distance:",
+                self.distance_spin
+            )
+
+        if info.uses_prominence:
+            self.prominence_spin = QDoubleSpinBox()
+            self.prominence_spin.setRange(
+                0,
+                1e12
+            )
+
+            self.parameters_layout.addRow(
+                "Prominence:",
+                self.prominence_spin
+            )
+
+        if info.uses_threshold:
+            self.threshold_spin = QDoubleSpinBox()
+            self.threshold_spin.setRange(
+                -1e12,
+                1e12
+            )
+
+            self.parameters_layout.addRow(
+                "Threshold:",
+                self.threshold_spin
+            )
+
+    def _numeric_columns(self) -> List[str]:
+        if not self.current_dataset or self.current_dataset.data is None:
+            return []
+
+        import pandas as pd
+
+        df = self.current_dataset.data
+
+        return [
+            str(c)
+            for c in df.columns
+            if pd.api.types.is_numeric_dtype(df[c])
+        ]
+
+    def _refresh_columns(self):
+        self.column_combo.clear()
+
+        self.column_combo.addItems(
+            self._numeric_columns()
+        )
+
+    def on_tab_changed(self, event_data):
+        if event_data.get("tab_type") == "dataset":
+
+            dataset_id = event_data.get("dataset_id")
+
+            self.current_dataset_id = dataset_id
+            self.current_dataset = None
+
+            if dataset_id:
+                project = (
+                    self.app_context
+                    .get_app_state()
+                    .current_project
+                )
+
+                if project:
+                    item = project.find_item(dataset_id)
+
+                    if isinstance(item, Dataset):
+                        self.current_dataset = item
+
+            self._refresh_columns()
+
+        else:
+            self.current_dataset = None
+            self.current_dataset_id = None
+            self._refresh_columns()
+
+    def on_columns_changed(self, event_data):
+        if event_data.get("dataset_id") == self.current_dataset_id:
+            self._refresh_columns()
+
+    def _current_analysis_type(self):
+        return self.analysis_combo.currentData()
+
+    def _build_command(self):
+
+        if not self.current_dataset_id:
+            return None
+
+        parameters = {}
+
+        if self.window_combo:
+            parameters["window"] = self.window_combo.currentText()
+
+        if self.nfft_spin:
+            parameters["nfft"] = self.nfft_spin.value()
+
+        if self.nperseg_spin:
+            parameters["nperseg"] = self.nperseg_spin.value()
+
+        if self.overlap_spin:
+            parameters["overlap"] = self.overlap_spin.value()
+
+        if self.height_spin:
+            parameters["height"] = self.height_spin.value()
+
+        if self.distance_spin:
+            parameters["distance"] = self.distance_spin.value()
+
+        if self.prominence_spin:
+            parameters["prominence"] = self.prominence_spin.value()
+
+        if self.threshold_spin:
+            parameters["threshold"] = self.threshold_spin.value()
+
+        return SignalAnalysisCommand(
+            app_context=self.app_context,
+            source_dataset_id=self.current_dataset_id,
+            analysis_type=self._current_analysis_type(),
+            column_name=self.column_combo.currentText(),
+            sampling_rate=(
+                self.sampling_rate.value()
+                if self.sampling_rate
+                else None
+            ),
+            parameters=parameters,
+        )
+
+    def run_analysis(self):
+
+        command = self._build_command()
+
+        if command is None:
+            return
+
+        try:
+            result = command.run_analysis()
+
+            self.last_result = result
+
+            self.results_text.setText(
+                self._format_result(result)
+            )
+
+            self.add_btn.setEnabled(True)
+
+        except Exception as e:
+
+            self.last_result = None
+            self.add_btn.setEnabled(False)
+
+            self.results_text.setText(
+                f"❌ Analysis failed:\n{e}"
+            )
+
+
+    @staticmethod
+    def _format_result(result):
+
+        lines = [
+            result.analysis_name,
+            "=" * 30,
+            "",
+            f"Rows: {len(result.data)}",
+            "",
+            "Columns:"
+        ]
+
+        for col in result.data.columns:
+            lines.append(f"- {col}")
+
+        if result.metadata:
+            lines.append("")
+            lines.append("Parameters:")
+
+            for key, value in result.metadata.items():
+                lines.append(
+                    f"{key}: {value}"
+                )
+
+        return "\n".join(lines)
+
+    def add_results_to_project(self):
+
+        command = self._build_command()
+
+        if command is None:
+            return
+
+        executor = (
+            self.app_context
+            .get_command_executor()
+        )
+
+        if executor.execute_command(command):
+            self.last_result = command.result
+            self.results_text.append(
+                "\n\n✅ Results added to project"
+            )
+            self.add_btn.setEnabled(False)
+
+    def clear(self):
+        self.results_text.clear()
+        self.last_result = None
+        self.add_btn.setEnabled(False)
 
     @override
     def _apply_theme(self):
@@ -76,4 +470,14 @@ class SignalPanel(PWidget):
 
     @override
     def setup_event_subscriptions(self):
-        pass
+        self.subscribe_to_multiple_events([
+            (UIEvents.TAB_CHANGED, self.on_tab_changed),
+            (
+                DatasetOperationEvents.DATASET_COLUMN_ADDED,
+                self.on_columns_changed
+            ),
+            (
+                DatasetOperationEvents.DATASET_COLUMN_REMOVED,
+                self.on_columns_changed
+            ),
+        ])

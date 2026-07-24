@@ -56,14 +56,27 @@ class SignalAnalysisInfo:
     uses_prominence: bool = False
     uses_threshold: bool = False
 
+    # UI defaults
+    windows: List[str] = field(
+        default_factory=lambda: [
+            "hann",
+            "hamming",
+            "blackman",
+            "boxcar",
+        ]
+    )
+
+    default_nperseg: int = 256
+    default_overlap: float = 0.5
+
 SIGNAL_ANALYSES: Dict[SignalAnalysisType, SignalAnalysisInfo] = {
 
     SignalAnalysisType.FFT: SignalAnalysisInfo(
         analysis_type=SignalAnalysisType.FFT,
         label="Fast Fourier Transform (FFT)",
         input_mode=InputMode.ONE,
-        uses_window=True,
         uses_sampling_rate=True,
+        uses_window=True,
         uses_nfft=True,
         description=(
             "Transforms a signal from the time domain into the frequency "
