@@ -19,6 +19,13 @@ class YAxis(StrEnum):
     SECONDARY = "secondary"
 
 
+class ErrorDirection(StrEnum):
+    """Which side(s) of a data point a symmetric error bar's magnitude is drawn on."""
+    BOTH = "both"
+    PLUS = "plus"
+    MINUS = "minus"
+
+
 @dataclass
 class DataSeries:
     """Represents a single data series in a chart."""
@@ -36,6 +43,14 @@ class DataSeries:
     visible: bool = True
     y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
+    x_error_column: str = ""
+    y_error_column: str = ""
+    x_error_minus_column: str = ""  # only used when error_symmetric is False
+    y_error_minus_column: str = ""  # only used when error_symmetric is False
+    error_symmetric: bool = True
+    error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
+    error_color: str = ""  # "" => inherit series.color
+    error_cap_size: float = 3.0
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -326,7 +341,15 @@ class Chart(Item):
                     "marker_size": series.marker_size,
                     "visible": series.visible,
                     "y_axis": series.y_axis,
-                    "alpha": series.alpha
+                    "alpha": series.alpha,
+                    "x_error_column": series.x_error_column,
+                    "y_error_column": series.y_error_column,
+                    "x_error_minus_column": series.x_error_minus_column,
+                    "y_error_minus_column": series.y_error_minus_column,
+                    "error_symmetric": series.error_symmetric,
+                    "error_direction": series.error_direction,
+                    "error_color": series.error_color,
+                    "error_cap_size": series.error_cap_size
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -388,7 +411,15 @@ class Chart(Item):
                 marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 y_axis=series_dict.get("y_axis", "primary"),
-                alpha=series_dict.get("alpha", 1.0)
+                alpha=series_dict.get("alpha", 1.0),
+                x_error_column=series_dict.get("x_error_column", ""),
+                y_error_column=series_dict.get("y_error_column", ""),
+                x_error_minus_column=series_dict.get("x_error_minus_column", ""),
+                y_error_minus_column=series_dict.get("y_error_minus_column", ""),
+                error_symmetric=series_dict.get("error_symmetric", True),
+                error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
+                error_color=series_dict.get("error_color", ""),
+                error_cap_size=series_dict.get("error_cap_size", 3.0)
             )
             chart.data_series.append(series)
         
