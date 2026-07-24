@@ -52,12 +52,15 @@ class AppearanceConfig:
 	accent_color: str = "#3B82F6"  # Tailwind blue-500 style default
 	interface_font_size: int = 12
 	editor_font_size: int = 12
+	sidebar_position: str = "left"  # Which side the sidebar is docked on ("left"/"right")
 
 	def validate(self) -> None:
 		if self.interface_font_size < 8:
 			self.interface_font_size = 8
 		if self.editor_font_size < 8:
 			self.editor_font_size = 8
+		if self.sidebar_position not in ("left", "right"):
+			self.sidebar_position = "left"
 
 
 @dataclass(slots=True)
