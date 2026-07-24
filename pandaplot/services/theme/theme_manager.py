@@ -111,6 +111,9 @@ class ThemeManager:
                 border: 1px solid {tokens['border_subtle']};
                 border-radius: {tokens['radius_card']}px;
             }}
+            QFrame[card="true"][selected="true"] {{
+                border: 2px solid {accent};
+            }}
             QPushButton[segment="true"] {{
                 border: none;
                 background-color: transparent;
@@ -133,6 +136,12 @@ class ThemeManager:
                 background-color: {accent};
                 color: #FFFFFF;
                 border-color: {accent};
+            }}
+            QComboBox {{
+                padding: 4px 8px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding: 4px 8px;
             }}
         """
 

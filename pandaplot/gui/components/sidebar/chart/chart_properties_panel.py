@@ -103,8 +103,15 @@ class ChartPropertiesPanel(PWidget):
         self._expanded_card_y_axis_badge: Optional[QLabel] = None
         self._expanded_card_y_axis_badge_tokens: dict = {}
         # Which entry (data series index, then fit-data index appended after
-        # all series) is currently shown expanded in the Data tab's card list.
+        # all series) is currently *selected* -- drives the Style tab's
+        # editing target and the live configuration form shown on the Data
+        # tab. Independent of `_expanded_card_indices` below: a card can be
+        # expanded (accordion open) without being selected.
         self._expanded_series_index: int = 0
+        # Purely-visual accordion state: which cards show their expanded
+        # detail view. The selected card is always implicitly expanded (it
+        # hosts the live form) even if its index isn't in this set.
+        self._expanded_card_indices: set = {0}
 
         self._initialize()
         self._connect_signals()
@@ -119,9 +126,21 @@ class ChartPropertiesPanel(PWidget):
         # Header
         self.title_label = QLabel("📊 Chart Properties", self)
         layout.addWidget(self.title_label)
+        layout.addSpacing(6)
 
-        # Tab widget for organizing chart properties
+        # Tab widget for organizing chart properties. When the tab bar
+        # doesn't fit the panel's width, `resizeEvent` swaps it for
+        # `tab_selector_combo` (a dropdown driving the same pages) instead of
+        # letting Qt shrink/elide/scroll the tab labels.
+        self._tab_titles = ["Chart", "Data", "Style", "Axes", "Legend"]
+        self.tab_selector_combo = QComboBox(self)
+        self.tab_selector_combo.addItems(self._tab_titles)
+        self.tab_selector_combo.setVisible(False)
+        self.tab_selector_combo.currentIndexChanged.connect(self._on_tab_selector_combo_changed)
+        layout.addWidget(self.tab_selector_combo)
+
         self.tab_widget = QTabWidget(self)
+        self.tab_widget.currentChanged.connect(self._on_tab_widget_current_changed)
 
         # Chart tab: chart identity (title, chart type, histogram bins)
         chart_tab = QWidget()
@@ -158,7 +177,32 @@ class ChartPropertiesPanel(PWidget):
         self.footer.applyClicked.connect(self._on_apply)
         self.footer.revertClicked.connect(self._on_reset)
         layout.addWidget(self.footer)
-    
+
+    def _on_tab_selector_combo_changed(self, index):
+        if index >= 0:
+            self.tab_widget.setCurrentIndex(index)
+
+    def _on_tab_widget_current_changed(self, index):
+        if self.tab_selector_combo.currentIndex() != index:
+            self.tab_selector_combo.blockSignals(True)
+            self.tab_selector_combo.setCurrentIndex(index)
+            self.tab_selector_combo.blockSignals(False)
+
+    def _update_tab_bar_responsive_mode(self):
+        """Switch between the native tab bar and `tab_selector_combo` based on
+        available width, so tab labels never get elided/scrolled -- this only
+        affects this panel's own tabs, not tab widgets elsewhere in the app."""
+        tab_bar = self.tab_widget.tabBar()
+        available_width = self.tab_widget.width()
+        fits = tab_bar.sizeHint().width() <= available_width if available_width > 0 else True
+        tab_bar.setVisible(fits)
+        self.tab_selector_combo.setVisible(not fits)
+
+    @override
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_tab_bar_responsive_mode()
+
     @override
     def _apply_theme(self):
         """Apply theme styling to all components."""
@@ -255,6 +299,7 @@ class ChartPropertiesPanel(PWidget):
         self.marker_size_slider.set_tokens(tokens)
         self.marker_color_row.set_tokens(tokens)
         self.marker_match_line_toggle.set_tokens(tokens)
+        self.marker_edge_color_row.set_tokens(tokens)
 
         # Data tab: cards/SegmentedControl are rebuilt with fresh tokens
         # every time _rebuild_series_cards runs, so re-running it here is
@@ -295,9 +340,7 @@ class ChartPropertiesPanel(PWidget):
         secondary_fg = palette.get("secondary_fg", "#666666")
         card_hover = palette.get("card_hover", "#e5f3ff")
         base_fg = palette.get("base_fg", "#333333")
-        card_border = palette.get("card_border", "#dee2e6")
-        card_bg = palette.get("card_bg", "#ffffff")
-        
+
         # Add series button (primary style)
         add_style = f"""
             QPushButton {{ 
@@ -317,24 +360,6 @@ class ChartPropertiesPanel(PWidget):
         """
         self.add_series_button.setStyleSheet(add_style)
         
-        # Remove series button (secondary style)
-        remove_style = f"""
-            QPushButton {{ 
-                background: {card_hover}; 
-                color: {base_fg}; 
-                border: 1px solid {card_border}; 
-                border-radius: 4px; 
-                padding: 4px 10px;
-            }}
-            QPushButton:hover {{ 
-                background: {card_bg}; 
-            }}
-            QPushButton:disabled {{ 
-                background: {card_hover}; 
-                color: {secondary_fg}; 
-            }}
-        """
-        self.remove_series_button.setStyleSheet(remove_style)
 
     def _create_chart_info_section(self, layout):
         """Create the basic chart information section."""
@@ -396,13 +421,6 @@ class ChartPropertiesPanel(PWidget):
         self._series_cards_layout.setSpacing(6)
         layout.addWidget(self._series_cards_container)
 
-        self.remove_series_button = QPushButton("Remove selected series")
-        self.remove_series_button.setMinimumHeight(28)
-        self.remove_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.remove_series_button.clicked.connect(self._remove_series)
-        self.remove_series_button.setEnabled(False)
-        layout.addWidget(self.remove_series_button)
-
         # Persistent configuration form (dataset/X/Y/Y-axis/label). Created
         # once so signal connections in _connect_signals stay valid for the
         # panel's lifetime; it gets moved (reparented) into whichever card is
@@ -436,18 +454,39 @@ class ChartPropertiesPanel(PWidget):
         self._rebuild_series_cards()
 
     def _expand_series(self, index: int):
-        """Expand the card at `index` (collapsing whichever was expanded)."""
+        """Select `index` as the panel's live-edited entry: it drives the
+        Data tab's configuration form, the Style tab's target, and the
+        selected-card border highlight. Independent of any other card's
+        accordion open/closed state (`_expanded_card_indices`) -- see
+        `_toggle_card_expanded` for that purely-visual toggle."""
         self._expanded_series_index = index
+        self._expanded_card_indices.add(index)
+        self._rebuild_series_cards()
+
+    def _toggle_card_expanded(self, index: int):
+        """Purely-visual accordion toggle: show/hide a card's read-only
+        detail view, independent of which card is *selected*."""
+        if index in self._expanded_card_indices:
+            self._expanded_card_indices.discard(index)
+        else:
+            self._expanded_card_indices.add(index)
         self._rebuild_series_cards()
 
     def _rebuild_series_cards(self):
         """Rebuild the Data tab's card list from `self.current_chart`.
 
-        Renders one collapsed row per data series / fit-data entry, except
-        the entry at `self._expanded_series_index`, which gets the full
-        configuration card (dataset/X/Y/Y-axis/label). Safe to call at any
-        point: fetches fresh theme tokens, so this doubles as the mechanism
-        by which cards pick up a live theme change (see `_apply_theme`).
+        Each entry renders as one of three variants:
+        - the *selected* entry (`self._expanded_series_index`) always gets
+          the full configuration card (dataset/X/Y/Y-axis/label) -- it hosts
+          the one shared, live-wired form widget;
+        - other entries whose index is in `self._expanded_card_indices` get
+          a read-only detail row (purely visual "accordion open" state,
+          independent of selection);
+        - everything else gets the single-line collapsed chip row.
+
+        Safe to call at any point: fetches fresh theme tokens, so this
+        doubles as the mechanism by which cards pick up a live theme change
+        (see `_apply_theme`).
         """
         # Detach the persistent form widget from whatever card currently
         # hosts it *before* that card is torn down below, so it survives
@@ -464,19 +503,18 @@ class ChartPropertiesPanel(PWidget):
         tokens = theme_manager.get_design_tokens()
 
         if not self.current_chart:
-            self.remove_series_button.setEnabled(False)
             if hasattr(self, "style_series_chips"):
                 self.style_series_chips.clear()
             self._refresh_axis_chips()
             return
 
         total_series = len(self.current_chart.data_series)
-        total_fit = len(self.current_chart.fit_data)
-        total_items = total_series + total_fit
 
         for index, series in enumerate(self.current_chart.data_series):
             if index == self._expanded_series_index:
                 card = self._build_expanded_series_card(index, tokens)
+            elif index in self._expanded_card_indices:
+                card = self._build_series_detail_row(series, index, tokens)
             else:
                 card = self._build_collapsed_series_row(series, index, tokens)
             self._series_cards_layout.addWidget(card)
@@ -485,11 +523,12 @@ class ChartPropertiesPanel(PWidget):
             index = total_series + fit_offset
             if index == self._expanded_series_index:
                 card = self._build_expanded_series_card(index, tokens)
+            elif index in self._expanded_card_indices:
+                card = self._build_fit_detail_row(fit, index, tokens)
             else:
                 card = self._build_collapsed_fit_row(fit, index, tokens)
             self._series_cards_layout.addWidget(card)
 
-        self.remove_series_button.setEnabled(total_items > 0)
         self._refresh_style_chips()
         self._refresh_axis_chips()
 
@@ -546,39 +585,86 @@ class ChartPropertiesPanel(PWidget):
 
     def _update_style_target_cards_visibility(self):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
-        Style-tab chip is currently selected."""
+        Style-tab chip is currently selected.
+
+        The Line card is additionally hidden for Scatter charts: a scatter
+        plot draws independent markers with no connecting line (unlike
+        Line's ordered, connected points), so line color/style/width/opacity
+        have nothing to apply to there.
+        """
         is_chart = self.style_series_chips.currentValue() == "chart"
         self.chart_style_card.setVisible(is_chart)
-        self.line_card.setVisible(not is_chart)
+        is_scatter = (
+            hasattr(self, "chart_type_control")
+            and self.chart_type_control.currentValue() == ChartType.SCATTER
+        )
+        self.line_card.setVisible(not is_chart and not is_scatter)
         self.marker_card.setVisible(not is_chart)
 
-    def _build_collapsed_series_row(self, series, index: int, tokens: dict) -> QWidget:
-        """A chip-like collapsed row: color square, name, Y-axis badge, chevron."""
-        card = Card()
-        card.set_tokens(tokens)
-        row = QHBoxLayout(card)
-
+    def _make_swatch(self, color: str, tokens: dict) -> QFrame:
         swatch = QFrame()
         swatch.setFixedSize(14, 14)
         swatch.setStyleSheet(
-            f"background-color: {series.color}; "
+            f"background-color: {color}; "
             f"border: 1px solid {tokens.get('border_control', '#999')}; "
             f"border-radius: {tokens.get('radius_swatch', 4)}px;"
         )
-        row.addWidget(swatch)
+        return swatch
+
+    def _build_trash_button(self, index: int, tokens: dict) -> QPushButton:
+        """Per-row delete icon (replaces the old single bottom Remove button
+        so a specific series/fit can be removed regardless of which entry
+        is selected/expanded)."""
+        button = QPushButton("\U0001f5d1")  # wastebasket emoji
+        button.setFlat(True)
+        button.setFixedWidth(24)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip("Remove")
+        button.setStyleSheet(
+            "QPushButton { border: none; background: transparent; "
+            f"color: {tokens.get('text_muted', '#666')}; }} "
+            "QPushButton:hover { color: #dc3545; }"
+        )
+        button.clicked.connect(lambda _checked=False, i=index: self._remove_series_at(i))
+        return button
+
+    def _build_chevron_button(self, index: int, expanded: bool) -> QPushButton:
+        """Accordion toggle: purely visual expand/collapse, independent of
+        selection (see `_toggle_card_expanded`)."""
+        chevron = QPushButton("▾" if expanded else "▸")
+        chevron.setFlat(True)
+        chevron.setFixedWidth(24)
+        chevron.setCursor(Qt.CursorShape.PointingHandCursor)
+        chevron.clicked.connect(lambda _checked=False, i=index: self._toggle_card_expanded(i))
+        return chevron
+
+    def _install_select_on_click(self, card: QWidget, index: int):
+        """Clicking anywhere on a collapsed/detail card's background selects
+        it (moves the live-edited entry there), without affecting its own or
+        any other card's accordion open/closed state."""
+        def _handler(event, i=index):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._expand_series(i)
+            event.accept()
+        card.mousePressEvent = _handler
+        card.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def _build_collapsed_series_row(self, series, index: int, tokens: dict) -> QWidget:
+        """A chip-like collapsed row: color square, name, Y-axis badge, trash, chevron."""
+        card = Card()
+        card.set_tokens(tokens)
+        self._install_select_on_click(card, index)
+        row = QHBoxLayout(card)
+
+        row.addWidget(self._make_swatch(series.color, tokens))
 
         name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         row.addWidget(name_label, 1)
 
         row.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
-
-        chevron = QPushButton("▸")  # ▸
-        chevron.setFlat(True)
-        chevron.setFixedWidth(24)
-        chevron.setCursor(Qt.CursorShape.PointingHandCursor)
-        chevron.clicked.connect(lambda _checked=False, i=index: self._expand_series(i))
-        row.addWidget(chevron)
+        row.addWidget(self._build_trash_button(index, tokens))
+        row.addWidget(self._build_chevron_button(index, expanded=False))
 
         return card
 
@@ -586,27 +672,65 @@ class ChartPropertiesPanel(PWidget):
         """Collapsed row for a fit-data entry (no Y-axis picker for fits)."""
         card = Card()
         card.set_tokens(tokens)
+        self._install_select_on_click(card, index)
         row = QHBoxLayout(card)
 
-        swatch = QFrame()
-        swatch.setFixedSize(14, 14)
-        swatch.setStyleSheet(
-            f"background-color: {fit.color}; "
-            f"border: 1px solid {tokens.get('border_control', '#999')}; "
-            f"border-radius: {tokens.get('radius_swatch', 4)}px;"
-        )
-        row.addWidget(swatch)
+        row.addWidget(self._make_swatch(fit.color, tokens))
 
         name_label = QLabel(f"\U0001f527 {fit.label}")  # wrench emoji
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         row.addWidget(name_label, 1)
 
-        chevron = QPushButton("▸")
-        chevron.setFlat(True)
-        chevron.setFixedWidth(24)
-        chevron.setCursor(Qt.CursorShape.PointingHandCursor)
-        chevron.clicked.connect(lambda _checked=False, i=index: self._expand_series(i))
-        row.addWidget(chevron)
+        row.addWidget(self._build_trash_button(index, tokens))
+        row.addWidget(self._build_chevron_button(index, expanded=False))
+
+        return card
+
+    def _build_series_detail_row(self, series, index: int, tokens: dict) -> QWidget:
+        """Read-only detail view for a series card that's accordion-expanded
+        but not the currently *selected* entry -- purely visual, since the
+        one shared live-editable form can only live on the selected card."""
+        card = Card()
+        card.set_tokens(tokens)
+        self._install_select_on_click(card, index)
+        outer = QVBoxLayout(card)
+
+        header = QHBoxLayout()
+        header.addWidget(self._make_swatch(series.color, tokens))
+        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
+        header.addWidget(name_label, 1)
+        header.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
+        header.addWidget(self._build_trash_button(index, tokens))
+        header.addWidget(self._build_chevron_button(index, expanded=True))
+        outer.addLayout(header)
+
+        detail = QLabel(f"Dataset: {series.dataset_id}   X: {series.x_column}   Y: {series.y_column}")
+        detail.setStyleSheet(f"color: {tokens.get('text_muted', '#666')}; font-size: 10px;")
+        outer.addWidget(detail)
+
+        return card
+
+    def _build_fit_detail_row(self, fit, index: int, tokens: dict) -> QWidget:
+        """Read-only detail view for a fit card that's accordion-expanded but
+        not the currently selected entry (see `_build_series_detail_row`)."""
+        card = Card()
+        card.set_tokens(tokens)
+        self._install_select_on_click(card, index)
+        outer = QVBoxLayout(card)
+
+        header = QHBoxLayout()
+        header.addWidget(self._make_swatch(fit.color, tokens))
+        name_label = QLabel(f"\U0001f527 {fit.label}")
+        name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
+        header.addWidget(name_label, 1)
+        header.addWidget(self._build_trash_button(index, tokens))
+        header.addWidget(self._build_chevron_button(index, expanded=True))
+        outer.addLayout(header)
+
+        detail = QLabel(f"Fit: {fit.fit_type}   X: {fit.source_x_column}   Y: {fit.source_y_column}")
+        detail.setStyleSheet(f"color: {tokens.get('text_muted', '#666')}; font-size: 10px;")
+        outer.addWidget(detail)
 
         return card
 
@@ -630,12 +754,17 @@ class ChartPropertiesPanel(PWidget):
         )
 
     def _build_expanded_series_card(self, index: int, tokens: dict) -> QWidget:
-        """The expanded card: title + the persistent config form, loaded with
-        `index`'s values (a data-series index, or a fit-data index appended
-        after all series, matching the combined indexing used throughout
-        this panel)."""
+        """The expanded card for the currently *selected* entry: title + the
+        persistent config form, loaded with `index`'s values (a data-series
+        index, or a fit-data index appended after all series, matching the
+        combined indexing used throughout this panel). Rendered with an
+        accent border (via the "selected" dynamic property) to distinguish
+        it from unselected cards."""
         card = Card()
         card.set_tokens(tokens)
+        card.setProperty("selected", True)
+        card.style().unpolish(card)
+        card.style().polish(card)
         outer = QVBoxLayout(card)
 
         total_series = len(self.current_chart.data_series)
@@ -660,6 +789,7 @@ class ChartPropertiesPanel(PWidget):
             self._expanded_card_y_axis_badge = badge
             self._expanded_card_y_axis_badge_tokens = tokens
             header.addWidget(badge)
+        header.addWidget(self._build_trash_button(index, tokens))
         chevron = QPushButton("▾")  # ▾, indicates "currently expanded"
         chevron.setFlat(True)
         chevron.setFixedWidth(24)
@@ -710,16 +840,20 @@ class ChartPropertiesPanel(PWidget):
         chart_layout.addWidget(SectionHeader("Chart"), 0, 0, 1, 3)
 
         _INDENT_PX = 12
+        _LABEL_WIDTH_PX = 76
 
         def _indented_row(
             label_text: str, spin: QWidget, tooltip: str | None = None, extra_widgets=()
         ) -> QHBoxLayout:
-            """A sub-row indented a small fixed amount, independent of the
-            grid's own label-column width (which is sized by the wider
-            top-level labels like "Font size:"/"Padding:")."""
+            """A sub-row indented a small fixed amount, with a fixed label
+            width so inputs line up in a column regardless of label length
+            ("Figure" vs "Top margin") -- independent of the grid's own
+            label-column width (sized by the wider top-level labels like
+            "Font size:"/"Padding:")."""
             row = QHBoxLayout()
             row.addSpacing(_INDENT_PX)
             label = QLabel(label_text)
+            label.setMinimumWidth(_LABEL_WIDTH_PX)
             if tooltip:
                 label.setToolTip(tooltip)
             row.addWidget(label)
@@ -729,58 +863,66 @@ class ChartPropertiesPanel(PWidget):
             row.addStretch(1)
             return row
 
+        def _bold_italic_row(bold_check: QCheckBox, italic_check: QCheckBox) -> QHBoxLayout:
+            """A sub-row holding a Bold/Italic checkbox pair, aligned under
+            the sibling font-size row's input column."""
+            row = QHBoxLayout()
+            row.addSpacing(_INDENT_PX)
+            spacer = QLabel("")
+            spacer.setMinimumWidth(_LABEL_WIDTH_PX)
+            row.addWidget(spacer)
+            row.addWidget(bold_check)
+            row.addWidget(italic_check)
+            row.addStretch(1)
+            return row
+
+        def _make_bold_italic_checks() -> tuple[QCheckBox, QCheckBox]:
+            bold_check = QCheckBox("Bold")
+            bold_check.setStyleSheet("QCheckBox { font-weight: bold; }")
+            italic_check = QCheckBox("Italic")
+            italic_check.setStyleSheet("QCheckBox { font-style: italic; }")
+            return bold_check, italic_check
+
         chart_layout.addWidget(QLabel("Font size:"), 1, 0)
 
         self.title_font_size_spin = QSpinBox()
         self.title_font_size_spin.setRange(8, 32)
         self.title_font_size_spin.setValue(14)
-        self.title_bold_check = QCheckBox("B")
-        self.title_bold_check.setToolTip("Bold")
+        self.title_bold_check, self.title_italic_check = _make_bold_italic_checks()
         self.title_bold_check.setChecked(True)
-        self.title_italic_check = QCheckBox("I")
-        self.title_italic_check.setToolTip("Italic")
+        chart_layout.addLayout(_indented_row("Title", self.title_font_size_spin), 2, 0, 1, 3)
         chart_layout.addLayout(
-            _indented_row(
-                "Title", self.title_font_size_spin,
-                extra_widgets=(self.title_bold_check, self.title_italic_check),
-            ),
-            2, 0, 1, 3,
+            _bold_italic_row(self.title_bold_check, self.title_italic_check), 3, 0, 1, 3,
         )
 
         self.subtitle_font_size_spin = QSpinBox()
         self.subtitle_font_size_spin.setRange(8, 32)
         self.subtitle_font_size_spin.setValue(12)
-        self.subtitle_bold_check = QCheckBox("B")
-        self.subtitle_bold_check.setToolTip("Bold")
-        self.subtitle_italic_check = QCheckBox("I")
-        self.subtitle_italic_check.setToolTip("Italic")
+        self.subtitle_bold_check, self.subtitle_italic_check = _make_bold_italic_checks()
+        chart_layout.addLayout(_indented_row("Subtitle", self.subtitle_font_size_spin), 4, 0, 1, 3)
         chart_layout.addLayout(
-            _indented_row(
-                "Subtitle", self.subtitle_font_size_spin,
-                extra_widgets=(self.subtitle_bold_check, self.subtitle_italic_check),
-            ),
-            3, 0, 1, 3,
+            _bold_italic_row(self.subtitle_bold_check, self.subtitle_italic_check), 5, 0, 1, 3,
         )
 
-        chart_layout.addWidget(QLabel("Padding:"), 4, 0)
+        chart_layout.addWidget(QLabel("Padding:"), 6, 0)
 
         self.chart_padding_spin = QDoubleSpinBox()
         self.chart_padding_spin.setRange(0.0, 10.0)
         self.chart_padding_spin.setSingleStep(0.5)
         self.chart_padding_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Figure", self.chart_padding_spin), 5, 0, 1, 3)
+        chart_layout.addLayout(_indented_row("Figure", self.chart_padding_spin), 7, 0, 1, 3)
 
         self.chart_padding_w_spin = QDoubleSpinBox()
         self.chart_padding_w_spin.setRange(0.0, 10.0)
         self.chart_padding_w_spin.setSingleStep(0.5)
         self.chart_padding_w_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Width", self.chart_padding_w_spin), 6, 0, 1, 3)
+        chart_layout.addLayout(_indented_row("Width", self.chart_padding_w_spin), 8, 0, 1, 3)
 
         self.chart_padding_h_spin = QDoubleSpinBox()
         self.chart_padding_h_spin.setRange(0.0, 10.0)
         self.chart_padding_h_spin.setSingleStep(0.5)
         self.chart_padding_h_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Height", self.chart_padding_h_spin), 7, 0, 1, 3)
+        chart_layout.addLayout(_indented_row("Height", self.chart_padding_h_spin), 9, 0, 1, 3)
 
         self.main_title_padding_spin = QDoubleSpinBox()
         self.main_title_padding_spin.setRange(0.0, 100.0)
@@ -791,7 +933,7 @@ class ChartPropertiesPanel(PWidget):
                 "Title", self.main_title_padding_spin,
                 tooltip="Gap between the top edge of the figure and the main title",
             ),
-            8, 0, 1, 3,
+            10, 0, 1, 3,
         )
 
         self.title_padding_spin = QDoubleSpinBox()
@@ -803,7 +945,7 @@ class ChartPropertiesPanel(PWidget):
                 "Subtitle", self.title_padding_spin,
                 tooltip="Gap between the plot area and the subtitle text",
             ),
-            9, 0, 1, 3,
+            11, 0, 1, 3,
         )
 
         self.top_margin_spin = QDoubleSpinBox()
@@ -822,16 +964,16 @@ class ChartPropertiesPanel(PWidget):
                     "lower it manually to reclaim space when you remove one."
                 ),
             ),
-            10, 0, 1, 3,
+            12, 0, 1, 3,
         )
 
-        chart_layout.addWidget(QLabel("Size:"), 11, 0)
+        chart_layout.addWidget(QLabel("Size:"), 13, 0)
         self.chart_size_combo = QComboBox()
         self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
         self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_size_combo, 11, 1, 1, 2)
+        chart_layout.addWidget(self.chart_size_combo, 13, 1, 1, 2)
 
         self.custom_size_row = QWidget()
         custom_size_layout = QVBoxLayout(self.custom_size_row)
@@ -844,17 +986,17 @@ class ChartPropertiesPanel(PWidget):
         self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.chart_height_spin.setSuffix(" cm")
         custom_size_layout.addLayout(_indented_row("Height", self.chart_height_spin))
-        chart_layout.addWidget(self.custom_size_row, 12, 0, 1, 3)
+        chart_layout.addWidget(self.custom_size_row, 14, 0, 1, 3)
         self.custom_size_row.setVisible(False)
 
-        chart_layout.addWidget(QLabel("DPI:"), 13, 0)
+        chart_layout.addWidget(QLabel("DPI:"), 15, 0)
         self.chart_dpi_combo = QComboBox()
         self.chart_dpi_combo.addItem("100 dpi", 100)
         self.chart_dpi_combo.addItem("150 dpi", 150)
         self.chart_dpi_combo.addItem("300 dpi", 300)
         self.chart_dpi_combo.addItem("Custom", "custom")
         self.chart_dpi_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_dpi_combo, 13, 1, 1, 2)
+        chart_layout.addWidget(self.chart_dpi_combo, 15, 1, 1, 2)
 
         self.custom_dpi_row = QWidget()
         custom_dpi_layout = QVBoxLayout(self.custom_dpi_row)
@@ -862,12 +1004,12 @@ class ChartPropertiesPanel(PWidget):
         self.chart_dpi_spin = QSpinBox()
         self.chart_dpi_spin.setRange(50, 600)
         custom_dpi_layout.addLayout(_indented_row("DPI", self.chart_dpi_spin))
-        chart_layout.addWidget(self.custom_dpi_row, 14, 0, 1, 3)
+        chart_layout.addWidget(self.custom_dpi_row, 16, 0, 1, 3)
         self.custom_dpi_row.setVisible(False)
 
         hint = QLabel("Size affects export & default fonts")
         hint.setStyleSheet("font-size: 10.5px;")
-        chart_layout.addWidget(hint, 15, 0, 1, 3)
+        chart_layout.addWidget(hint, 17, 0, 1, 3)
 
         layout.addWidget(self.chart_style_card)
 
@@ -943,6 +1085,10 @@ class ChartPropertiesPanel(PWidget):
         marker_layout.addWidget(QLabel("Match line:"), 4, 0)
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
         marker_layout.addWidget(self.marker_match_line_toggle, 4, 1)
+
+        marker_layout.addWidget(QLabel("Edge color:"), 5, 0)
+        self.marker_edge_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        marker_layout.addWidget(self.marker_edge_color_row, 5, 1)
 
         layout.addWidget(marker_card)
 
@@ -1351,6 +1497,7 @@ class ChartPropertiesPanel(PWidget):
         self.marker_size_slider.valueChanged.connect(self._on_style_changed)
         self.marker_color_row.colorChanged.connect(self._on_style_changed)
         self.marker_match_line_toggle.toggled.connect(self._on_marker_match_line_toggled)
+        self.marker_edge_color_row.colorChanged.connect(self._on_style_changed)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -1450,39 +1597,56 @@ class ChartPropertiesPanel(PWidget):
             )
             self.command_executor.execute_command(command)
 
-            # Select and expand the newly added series
-            self._expanded_series_index = len(self.current_chart.data_series) - 1
+            # Select the newly added series
+            new_index = len(self.current_chart.data_series) - 1
+            self._expanded_series_index = new_index
+            self._expanded_card_indices.add(new_index)
             self._rebuild_series_cards()
 
-    def _remove_series(self):
-        """Remove the selected data series or fit data."""
+    def _remove_series_at(self, index: int):
+        """Remove the data series or fit-data entry at the combined `index`
+        (data-series indices first, then fit-data indices appended after),
+        adjusting selection and accordion state for the index shift."""
         if not self.current_chart:
             return
 
         total_series = len(self.current_chart.data_series)
         total_items = total_series + len(self.current_chart.fit_data)
-
-        current_row = self._expanded_series_index
-        if current_row < 0 or current_row >= total_items:
+        if index < 0 or index >= total_items:
             return
 
-        if current_row < total_series:
+        if index < total_series:
             command = RemoveSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
-                series_index=current_row,
+                series_index=index,
             )
         else:
             command = RemoveFitDataCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
-                fit_index=current_row - total_series,
+                fit_index=index - total_series,
             )
         self.command_executor.execute_command(command)
 
-        # Expand the previous item (or stay at 0 if nothing's left) and rebuild.
+        def _shift(i):
+            if i > index:
+                return i - 1
+            if i == index:
+                return None
+            return i
+
+        self._expanded_card_indices = {
+            shifted for shifted in (_shift(i) for i in self._expanded_card_indices)
+            if shifted is not None
+        }
+
         remaining_items = len(self.current_chart.data_series) + len(self.current_chart.fit_data)
-        self._expanded_series_index = min(current_row, max(remaining_items - 1, 0))
+        shifted_selected = _shift(self._expanded_series_index)
+        if shifted_selected is None:
+            shifted_selected = index
+        self._expanded_series_index = max(0, min(shifted_selected, max(remaining_items - 1, 0)))
+        self._expanded_card_indices.add(self._expanded_series_index)
         self._rebuild_series_cards()
 
     def _on_series_config_changed(self):
@@ -1559,6 +1723,7 @@ class ChartPropertiesPanel(PWidget):
         self.marker_color_row.setEnabled(
             markers_enabled and not self.marker_match_line_toggle.isChecked()
         )
+        self.marker_edge_color_row.setEnabled(markers_enabled)
 
     def _on_style_changed(self):
         """Handle style changes."""
@@ -1594,6 +1759,7 @@ class ChartPropertiesPanel(PWidget):
                     "" if self.marker_match_line_toggle.isChecked()
                     else self.marker_color_row.currentColor()
                 )
+                series.marker_edge_color = self.marker_edge_color_row.currentColor()
             else:
                 series.marker_style = MarkerType.NONE.value
 
@@ -1627,6 +1793,7 @@ class ChartPropertiesPanel(PWidget):
         if not self._updating_controls:
             self._chart_type_touched_by_user = True
         self._update_hist_bins_visibility()
+        self._update_style_target_cards_visibility()
         self._on_chart_config_changed()
 
     def _update_hist_bins_visibility(self):
@@ -1709,10 +1876,10 @@ class ChartPropertiesPanel(PWidget):
         if not self.current_chart or self._updating_controls:
             return
         
-        # Update chart configuration from UI controls
-        if hasattr(self, "title_edit"):
-            self.current_chart.name = self.title_edit.text()
-
+        # Update chart configuration from UI controls. Note: the Title field
+        # only affects config["title"] (what renders on the chart) -- it
+        # must NOT rename the chart item in the project tree, which is a
+        # separate concept controlled by its own rename action.
         config = self.current_chart.config
         if hasattr(self, "title_edit"):
             config["title"] = self.title_edit.text()
@@ -1865,6 +2032,7 @@ class ChartPropertiesPanel(PWidget):
             self.marker_match_line_toggle.blockSignals(True)
             self.marker_match_line_toggle.setChecked(series.marker_color == "")
             self.marker_match_line_toggle.blockSignals(False)
+            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or "#000000")
 
             self._update_marker_controls_enabled()
         finally:
@@ -2167,6 +2335,7 @@ class ChartPropertiesPanel(PWidget):
                 # Expand the first series/fit entry and rebuild the card list
                 # (this also (re)loads it into the config form controls).
                 self._expanded_series_index = 0
+                self._expanded_card_indices = {0}
                 self._rebuild_series_cards()
                 # (_rebuild_series_cards already loads series/fit 0's style
                 # into the Style tab controls via _build_expanded_series_card.)
@@ -2200,6 +2369,7 @@ class ChartPropertiesPanel(PWidget):
             # Clear/default values
             self._clear_controls()
             self._expanded_series_index = 0
+            self._expanded_card_indices = {0}
             self._rebuild_series_cards()
     
     def apply_to_chart(self, chart):
@@ -2273,6 +2443,7 @@ class ChartPropertiesPanel(PWidget):
                         "" if self.marker_match_line_toggle.isChecked()
                         else self.marker_color_row.currentColor()
                     )
+                    series.marker_edge_color = self.marker_edge_color_row.currentColor()
                 else:
                     series.marker_style = MarkerType.NONE.value
 

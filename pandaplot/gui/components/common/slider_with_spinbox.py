@@ -39,7 +39,7 @@ class SliderWithSpinbox(QWidget):
         self._spinbox = QDoubleSpinBox(self)
         self._spinbox.setDecimals(decimals)
         self._spinbox.setRange(minimum, maximum)
-        self._spinbox.setFixedWidth(60)
+        self._spinbox.setFixedWidth(72)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
