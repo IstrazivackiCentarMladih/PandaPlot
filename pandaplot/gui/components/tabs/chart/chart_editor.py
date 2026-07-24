@@ -68,6 +68,17 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         axis.set_major_formatter(ScalarFormatter())
 
 
+def _same_column(id_a, name_a, id_b, name_b):
+    """Whether two column references point at the same column.
+
+    Compares by stable id when both sides have one; otherwise falls back to
+    comparing names (for references that predate column ids).
+    """
+    if id_a and id_b:
+        return id_a == id_b
+    return name_a == name_b
+
+
 def resolve_series_data(project, series, chart_type=None):
     """Resolve a DataSeries against the project's datasets.
 
@@ -76,7 +87,8 @@ def resolve_series_data(project, series, chart_type=None):
     "plot against the DataFrame index". Histograms only ever plot
     y_column, so a stale/unused x_column is ignored when chart_type == "hist".
     """
-    from pandaplot.models.project.items.dataset import Dataset
+    from pandaplot.models.project.items.chart import sync_series_column_ids
+    from pandaplot.models.project.items.dataset import Dataset, resolve_column_name
 
     if project is None:
         return None, None, "no project loaded"
@@ -85,21 +97,28 @@ def resolve_series_data(project, series, chart_type=None):
     if not isinstance(dataset, Dataset) or dataset.data is None:
         return None, None, f"dataset '{series.dataset_id}' not found"
 
+    # Reference columns by stable id; renames are followed automatically.
+    # Lazily backfill ids for series that predate them (e.g. loaded projects).
+    if not (series.x_column_id and series.y_column_id):
+        sync_series_column_ids(series, dataset)
+
     df = dataset.data
-    if not series.y_column:
+    y_column = resolve_column_name(dataset, series.y_column_id, series.y_column)
+    if not y_column:
         return None, None, "no Y column configured"
 
     needs_x_column = chart_type != "hist"
-    x_column = series.x_column if needs_x_column else None
+    x_column = (resolve_column_name(dataset, series.x_column_id, series.x_column)
+                if needs_x_column else None)
 
-    missing = [c for c in (x_column, series.y_column)
+    missing = [c for c in (x_column, y_column)
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
         return None, None, f"column {cols} not found in '{dataset.name}'"
 
     x_data = df[x_column] if x_column else df.index
-    return x_data, df[series.y_column], None
+    return x_data, df[y_column], None
 
 
 class ChartEditorWidget(PWidget):
@@ -547,8 +566,10 @@ class ChartEditorWidget(PWidget):
                             for series in self.chart.data_series:
                                 if (series.y_axis == "secondary"
                                         and series.dataset_id == fit.source_dataset_id
-                                        and series.x_column == fit.source_x_column
-                                        and series.y_column == fit.source_y_column):
+                                        and _same_column(series.x_column_id, series.x_column,
+                                                         fit.source_x_column_id, fit.source_x_column)
+                                        and _same_column(series.y_column_id, series.y_column,
+                                                         fit.source_y_column_id, fit.source_y_column)):
                                     fit_axes = self.chart_canvas.axes2
                                     break
 

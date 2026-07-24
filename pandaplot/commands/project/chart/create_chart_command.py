@@ -90,6 +90,8 @@ class CreateChartCommand(Command):
                         dataset_id=self.dataset_id,
                         x_column=columns[0],
                         y_column=columns[1],
+                        x_column_id=dataset_obj.get_column_id(columns[0]) or "",
+                        y_column_id=dataset_obj.get_column_id(columns[1]) or "",
                         label=f"{dataset_obj.name}:{columns[1]}"
                     )
                 elif len(columns) == 1:
@@ -98,6 +100,7 @@ class CreateChartCommand(Command):
                         dataset_id=self.dataset_id,
                         x_column="",  # Empty means use index
                         y_column=columns[0],
+                        y_column_id=dataset_obj.get_column_id(columns[0]) or "",
                         label=f"{dataset_obj.name}:{columns[0]}"
                     )
 

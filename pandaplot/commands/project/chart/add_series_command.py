@@ -30,16 +30,30 @@ class AddSeriesCommand(Command):
             return None
         return app_state.current_project.find_item(self.chart_id)
 
+    def _resolve_column_ids(self) -> tuple[str, str]:
+        """Resolve stable column ids for this series' columns, if available."""
+        from pandaplot.models.project.items.dataset import Dataset
+        app_state = self.app_context.get_app_state()
+        project = app_state.current_project if app_state.has_project else None
+        dataset = project.find_item(self.dataset_id) if project else None
+        if not isinstance(dataset, Dataset):
+            return "", ""
+        return (dataset.get_column_id(self.x_column) or "",
+                dataset.get_column_id(self.y_column) or "")
+
     @override
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
             return False
 
+        x_column_id, y_column_id = self._resolve_column_ids()
         chart.add_data_series(
             dataset_id=self.dataset_id,
             x_column=self.x_column,
             y_column=self.y_column,
+            x_column_id=x_column_id,
+            y_column_id=y_column_id,
             label=self.label,
             color=self.color,
         )

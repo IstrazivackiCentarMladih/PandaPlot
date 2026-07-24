@@ -21,10 +21,18 @@ class YAxis(StrEnum):
 
 @dataclass
 class DataSeries:
-    """Represents a single data series in a chart."""
+    """Represents a single data series in a chart.
+
+    Columns are referenced by stable id (``x_column_id`` / ``y_column_id``) which
+    survives column renames. ``x_column`` / ``y_column`` hold the name at creation
+    time and are used only as a fallback for references that predate column ids;
+    the current name is always resolved from the owning dataset at use-time.
+    """
     dataset_id: str
     x_column: str
     y_column: str
+    x_column_id: str = ""
+    y_column_id: str = ""
     label: str = ""
     color: str = "#1f77b4"
     marker_color: str = ""
@@ -63,6 +71,9 @@ class FitData:
     fit_stats: Optional[Dict[str, Any]] = None
     confidence_lower: np.ndarray | None = None
     confidence_upper: np.ndarray | None = None
+    # Stable column ids (see DataSeries); source_x/y_column are the fallback name.
+    source_x_column_id: str = ""
+    source_y_column_id: str = ""
 
     def __post_init__(self):
         if self.fit_params is None:
@@ -154,13 +165,16 @@ class Chart(Item):
         self.chart_type = chart_type
         self.update_modified_time()
     
-    def add_data_series(self, dataset_id: str, x_column: str, y_column: str, 
-                       label: str = "", **kwargs) -> DataSeries:
+    def add_data_series(self, dataset_id: str, x_column: str, y_column: str,
+                       label: str = "", x_column_id: str = "", y_column_id: str = "",
+                       **kwargs) -> DataSeries:
         """Add a new data series to the chart."""
         series = DataSeries(
             dataset_id=dataset_id,
             x_column=x_column,
             y_column=y_column,
+            x_column_id=x_column_id,
+            y_column_id=y_column_id,
             label=label or f"{dataset_id}:{y_column}",
             **kwargs
         )
@@ -197,17 +211,20 @@ class Chart(Item):
         """Get all unique dataset IDs used in this chart."""
         return list(set(series.dataset_id for series in self.data_series))
     
-    def add_fit_data(self, source_dataset_id: str, source_x_column: str, 
-                    source_y_column: str, fit_type: str, x_data: np.ndarray, 
-                    y_data: np.ndarray, label: str = "", **kwargs) -> FitData:
+    def add_fit_data(self, source_dataset_id: str, source_x_column: str,
+                    source_y_column: str, fit_type: str, x_data: np.ndarray,
+                    y_data: np.ndarray, label: str = "", source_x_column_id: str = "",
+                    source_y_column_id: str = "", **kwargs) -> FitData:
         """Add fit data to the chart."""
         if not label:
             label = f"{fit_type.title()} Fit for {source_dataset_id}:{source_y_column}"
-        
+
         fit = FitData(
             source_dataset_id=source_dataset_id,
             source_x_column=source_x_column,
             source_y_column=source_y_column,
+            source_x_column_id=source_x_column_id,
+            source_y_column_id=source_y_column_id,
             fit_type=fit_type,
             x_data=x_data,
             y_data=y_data,
@@ -316,6 +333,8 @@ class Chart(Item):
                     "dataset_id": series.dataset_id,
                     "x_column": series.x_column,
                     "y_column": series.y_column,
+                    "x_column_id": series.x_column_id,
+                    "y_column_id": series.y_column_id,
                     "label": series.label,
                     "color": series.color,
                     "marker_color": series.marker_color,
@@ -334,6 +353,8 @@ class Chart(Item):
                     "source_dataset_id": fit.source_dataset_id,
                     "source_x_column": fit.source_x_column,
                     "source_y_column": fit.source_y_column,
+                    "source_x_column_id": fit.source_x_column_id,
+                    "source_y_column_id": fit.source_y_column_id,
                     "fit_type": fit.fit_type,
                     "x_data": fit.x_data.tolist(),
                     "y_data": fit.y_data.tolist(),
@@ -378,6 +399,8 @@ class Chart(Item):
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
                 y_column=series_dict["y_column"],
+                x_column_id=series_dict.get("x_column_id", ""),
+                y_column_id=series_dict.get("y_column_id", ""),
                 label=series_dict.get("label", ""),
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
@@ -399,6 +422,8 @@ class Chart(Item):
                 source_dataset_id=fit_dict["source_dataset_id"],
                 source_x_column=fit_dict["source_x_column"],
                 source_y_column=fit_dict["source_y_column"],
+                source_x_column_id=fit_dict.get("source_x_column_id", ""),
+                source_y_column_id=fit_dict.get("source_y_column_id", ""),
                 fit_type=fit_dict["fit_type"],
                 x_data=np.array(fit_dict["x_data"]),
                 y_data=np.array(fit_dict["y_data"]),
@@ -417,6 +442,49 @@ class Chart(Item):
             chart._init_default_config()
 
         return chart
+
+
+def sync_series_column_ids(series: DataSeries, dataset) -> None:
+    """Fill a series' column ids from its current column names.
+
+    Resolves ``x_column`` / ``y_column`` against ``dataset`` and stores the
+    stable ids. Only assigns ids that resolve, so a stale name (e.g. after a
+    rename that the series predates) never clobbers an already-valid id.
+    """
+    if dataset is None:
+        return
+    xid = dataset.get_column_id(series.x_column)
+    if xid:
+        series.x_column_id = xid
+    yid = dataset.get_column_id(series.y_column)
+    if yid:
+        series.y_column_id = yid
+
+
+def sync_fit_column_ids(fit: FitData, dataset) -> None:
+    """Fill fit data's source column ids from its current column names."""
+    if dataset is None:
+        return
+    xid = dataset.get_column_id(fit.source_x_column)
+    if xid:
+        fit.source_x_column_id = xid
+    yid = dataset.get_column_id(fit.source_y_column)
+    if yid:
+        fit.source_y_column_id = yid
+
+
+def backfill_chart_column_ids(chart: "Chart", resolve_dataset) -> None:
+    """Assign column ids to every series/fit of a chart that lacks them.
+
+    ``resolve_dataset`` maps a dataset id to its Dataset (or None). Used at
+    project load time to migrate charts saved before column ids existed.
+    """
+    for series in chart.data_series:
+        if not (series.x_column_id and series.y_column_id):
+            sync_series_column_ids(series, resolve_dataset(series.dataset_id))
+    for fit in chart.fit_data:
+        if not (fit.source_x_column_id and fit.source_y_column_id):
+            sync_fit_column_ids(fit, resolve_dataset(fit.source_dataset_id))
 
 
 def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:

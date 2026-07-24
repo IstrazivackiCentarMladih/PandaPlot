@@ -181,6 +181,18 @@ class DeleteColumnsCommand(Command):
         if not self.project:
             return []
         column_set = set(column_names)
+        # Resolve the ids of the columns being deleted so references anchored by
+        # id are matched even if their stored name is stale after a rename.
+        dataset = self.dataset if self.dataset is not None else self.project.find_item(self.dataset_id)
+        id_set = set()
+        if isinstance(dataset, Dataset):
+            id_set = {cid for name, cid in dataset.column_ids.items() if name in column_set}
+
+        def refs_deleted(column_id: str, name: str) -> bool:
+            if column_id and column_id in id_set:
+                return True
+            return name in column_set
+
         matches: List[Tuple[Chart, List[int], List[int]]] = []
         for item in self.project.get_all_items():
             if not isinstance(item, Chart):
@@ -188,12 +200,14 @@ class DeleteColumnsCommand(Command):
             series_idx = [
                 i for i, series in enumerate(item.data_series)
                 if series.dataset_id == self.dataset_id
-                and (series.x_column in column_set or series.y_column in column_set)
+                and (refs_deleted(series.x_column_id, series.x_column)
+                     or refs_deleted(series.y_column_id, series.y_column))
             ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
                 if fit.source_dataset_id == self.dataset_id
-                and (fit.source_x_column in column_set or fit.source_y_column in column_set)
+                and (refs_deleted(fit.source_x_column_id, fit.source_x_column)
+                     or refs_deleted(fit.source_y_column_id, fit.source_y_column))
             ]
             if series_idx or fit_idx:
                 matches.append((item, series_idx, fit_idx))

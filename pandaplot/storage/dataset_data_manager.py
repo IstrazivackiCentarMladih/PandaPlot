@@ -40,7 +40,8 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 "modified_at": item.modified_at,
                 "metadata": item.metadata,
                 "source_file": item.source_file,
-                "has_data": item.data is not None
+                "has_data": item.data is not None,
+                "column_ids": item.column_ids,
             }
             
             self.logger.debug("Saving dataset metadata for '%s'", item.name)
@@ -95,7 +96,8 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 id=dataset_id,
                 name=dataset_name,
                 data=data,
-                source_file=metadata.get("source_file")
+                source_file=metadata.get("source_file"),
+                column_ids=metadata.get("column_ids"),
             )
             
             self.logger.info("Successfully loaded dataset '%s' (ID: %s)", dataset_name, dataset_id)

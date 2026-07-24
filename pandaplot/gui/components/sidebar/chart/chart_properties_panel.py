@@ -1047,6 +1047,10 @@ class ChartPropertiesPanel(PWidget):
                 series.dataset_id = self.dataset_combo.currentData()
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
+            # Re-anchor the stable column ids to the freshly picked columns.
+            series.x_column_id = ""
+            series.y_column_id = ""
+            self._sync_series_column_ids(series)
             series.y_axis = self.series_y_axis_combo.currentData() or "primary"
         else:
             # Fit data: columns/dataset not editable, ignore
@@ -1290,12 +1294,21 @@ class ChartPropertiesPanel(PWidget):
             # don't linger.
             self._populate_column_combos(series.dataset_id)
 
-            # Set columns
-            x_index = self.x_column_combo.findText(series.x_column)
+            # Set columns, resolving the current names via stable column id
+            # (the stored x_column/y_column may be stale after a rename).
+            from pandaplot.models.project.items.dataset import resolve_column_name
+            dataset = self.current_project.find_item(series.dataset_id) if self.current_project else None
+            if isinstance(dataset, Dataset):
+                x_name = resolve_column_name(dataset, series.x_column_id, series.x_column)
+                y_name = resolve_column_name(dataset, series.y_column_id, series.y_column)
+            else:
+                x_name, y_name = series.x_column, series.y_column
+
+            x_index = self.x_column_combo.findText(x_name)
             if x_index >= 0:
                 self.x_column_combo.setCurrentIndex(x_index)
 
-            y_index = self.y_column_combo.findText(series.y_column)
+            y_index = self.y_column_combo.findText(y_name)
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
 
@@ -1474,6 +1487,15 @@ class ChartPropertiesPanel(PWidget):
                     self.dataset_combo.addItem(item.name, item.id)
                     self.datasets.append(item)
     
+    def _sync_series_column_ids(self, series):
+        """Anchor a series' stable column ids to its current column names."""
+        from pandaplot.models.project.items.chart import sync_series_column_ids
+        if not self.current_project:
+            return
+        dataset = self.current_project.find_item(series.dataset_id)
+        if isinstance(dataset, Dataset):
+            sync_series_column_ids(series, dataset)
+
     def _populate_column_combos(self, dataset_id):
         """Fill the x/y column combos with the columns of the given dataset.
 
@@ -1803,10 +1825,15 @@ class ChartPropertiesPanel(PWidget):
             y_column = self.y_column_combo.currentText()
             
             if dataset_id and x_column and y_column:
+                dataset = self.current_project.find_item(dataset_id) if self.current_project else None
+                x_column_id = dataset.get_column_id(x_column) or "" if isinstance(dataset, Dataset) else ""
+                y_column_id = dataset.get_column_id(y_column) or "" if isinstance(dataset, Dataset) else ""
                 chart.add_data_series(
                     dataset_id=dataset_id,
                     x_column=x_column,
                     y_column=y_column,
+                    x_column_id=x_column_id,
+                    y_column_id=y_column_id,
                     color=self.line_color_button.get_color(),
                     line_width=self.line_width_spin.value(),
                     marker_size=self.marker_size_spin.value(),

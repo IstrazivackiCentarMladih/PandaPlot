@@ -68,7 +68,26 @@ class ProjectDataManager:
         project_root = project_dict.get("root", {})
         project.root.id = project_root.get("id", project.root.id)
         self._add_items_to_project(project, items, project_root.get("items", []))
+        self._backfill_column_ids(project)
         return project
+
+    def _backfill_column_ids(self, project: Project) -> None:
+        """Anchor chart/fit column references to stable ids after load.
+
+        Projects saved before column ids existed reference columns only by name;
+        resolve those against the owning datasets so future renames don't need to
+        rewrite series. New/already-anchored references are left untouched.
+        """
+        from pandaplot.models.project.items.chart import Chart, backfill_chart_column_ids
+        from pandaplot.models.project.items.dataset import Dataset
+
+        def resolve_dataset(dataset_id):
+            found = project.find_item(dataset_id)
+            return found if isinstance(found, Dataset) else None
+
+        for item in project.get_all_items():
+            if isinstance(item, Chart):
+                backfill_chart_column_ids(item, resolve_dataset)
 
     def _load_item(self, item_id: str, info, zip_file) -> Item | None:
         try:

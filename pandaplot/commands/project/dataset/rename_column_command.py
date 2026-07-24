@@ -7,15 +7,19 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_data import DatasetColumnRenamedData
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items.chart import sync_fit_column_ids, sync_series_column_ids
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
 
 
 class RenameColumnCommand(Command):
-    """Rename a dataset column and update chart/fit references to it.
+    """Rename a dataset column, keeping chart/fit references valid via column id.
 
-    The DataFrame rename and the reference cascade are one undoable step;
-    series/fit labels are user-editable text and are never modified.
+    Charts/fits reference columns by stable id, so a rename only remaps the
+    column's name on the owning dataset — series are never rewritten. Any legacy
+    reference that still lacks an id is backfilled (id only, not name) before the
+    rename so it stays anchored. Charts using the column are re-emitted so their
+    displayed labels refresh. Series/fit labels are user-editable and untouched.
     """
 
     def __init__(self, app_context: AppContext, dataset_id: str,
@@ -78,13 +82,15 @@ class RenameColumnCommand(Command):
             return False
 
     def _apply_rename(self, from_name: str, to_name: str) -> None:
-        """Rename the DataFrame column, cascade references, emit events."""
+        """Remap the column's name (keeping its id), then emit events."""
         if self.dataset is None or self.dataset.data is None:
             return
-        self.dataset.data.rename(columns={from_name: to_name}, inplace=True)
-        self.dataset.update_modified_time()
 
-        affected_charts = self._update_chart_references(from_name, to_name)
+        # Anchor any legacy references (id-only, never the name) while the old
+        # name still resolves, then remap the column's name on the dataset.
+        affected_charts = self._anchor_and_find_affected(from_name)
+        self.dataset.rename_column(from_name, to_name)
+        self.dataset.update_modified_time()
 
         self.app_context.event_bus.emit(
             DatasetOperationEvents.DATASET_COLUMN_RENAMED,
@@ -95,41 +101,41 @@ class RenameColumnCommand(Command):
                 new_name=to_name,
             ).to_dict())
         for chart in affected_charts:
+            chart.update_modified_time()
             self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
                 "chart_id": chart.id,
                 "chart": chart,
             })
 
-    def _update_chart_references(self, from_name: str, to_name: str) -> List[Chart]:
-        """Point series/fits of this dataset at the new name; return affected charts."""
+    def _anchor_and_find_affected(self, from_name: str) -> List[Chart]:
+        """Backfill column ids for references to this column; return affected charts.
+
+        References are matched by stable id (following prior renames) or by the
+        current name for legacy references. Matching legacy references are anchored
+        to the column's id so future renames need no walk at all.
+        """
         project = self.app_state.current_project
-        if not project:
+        if self.dataset is None or not project:
             return []
+        column_id = self.dataset.get_column_id(from_name)
         affected: List[Chart] = []
         for item in project.get_all_items():
             if not isinstance(item, Chart):
                 continue
-            changed = False
+            uses = False
             for series in item.data_series:
                 if series.dataset_id != self.dataset_id:
                     continue
-                if series.x_column == from_name:
-                    series.x_column = to_name
-                    changed = True
-                if series.y_column == from_name:
-                    series.y_column = to_name
-                    changed = True
+                sync_series_column_ids(series, self.dataset)
+                if column_id in (series.x_column_id, series.y_column_id):
+                    uses = True
             for fit in item.fit_data:
                 if fit.source_dataset_id != self.dataset_id:
                     continue
-                if fit.source_x_column == from_name:
-                    fit.source_x_column = to_name
-                    changed = True
-                if fit.source_y_column == from_name:
-                    fit.source_y_column = to_name
-                    changed = True
-            if changed:
-                item.update_modified_time()
+                sync_fit_column_ids(fit, self.dataset)
+                if column_id in (fit.source_x_column_id, fit.source_y_column_id):
+                    uses = True
+            if uses:
                 affected.append(item)
         return affected
 

@@ -13,7 +13,7 @@ from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Chart
+from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state.app_context import AppContext
 
 # Maps a short fit-type name to its chart color. `fit_type` from the fit panel is a
@@ -140,10 +140,20 @@ class ChartTab(PWidget):
             fit_params = fit_results.params
             fit_stats = {"r_squared": fit_results.r_squared}
 
+            # Resolve stable column ids so the fit follows column renames.
+            source_x_column_id = source_y_column_id = ""
+            project = self.app_context.app_state.current_project
+            source_dataset = project.find_item(source_dataset_id) if project else None
+            if isinstance(source_dataset, Dataset):
+                source_x_column_id = source_dataset.get_column_id(source_x_column) or ""
+                source_y_column_id = source_dataset.get_column_id(source_y_column) or ""
+
             self.chart.add_fit_data(
                 source_dataset_id=source_dataset_id,
                 source_x_column=source_x_column,
                 source_y_column=source_y_column,
+                source_x_column_id=source_x_column_id,
+                source_y_column_id=source_y_column_id,
                 fit_type=fit_type,
                 x_data=x_fit,
                 y_data=y_fit,
