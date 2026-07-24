@@ -147,6 +147,7 @@ class Chart(Item):
             "hist_bins": 20,
             "subtitle": "",
             "title_font_size": 14,
+            "subtitle_font_size": 12,
             "width_cm": None,
             "height_cm": None,
             "dpi": None,
