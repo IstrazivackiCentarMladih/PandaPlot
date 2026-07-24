@@ -152,6 +152,7 @@ class Chart(Item):
             "chart_padding_w": 2.0,
             "chart_padding_h": 2.0,
             "title_padding": 6.0,
+            "main_title_padding": 10.0,
             "width_cm": None,
             "height_cm": None,
             "dpi": None,

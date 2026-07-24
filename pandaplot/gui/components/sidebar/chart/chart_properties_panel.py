@@ -744,22 +744,31 @@ class ChartPropertiesPanel(PWidget):
         self.chart_padding_h_spin.setValue(2.0)
         chart_layout.addWidget(self.chart_padding_h_spin, 7, 2)
 
-        title_padding_label = QLabel("Title")
-        title_padding_label.setToolTip("Gap between the plot area and the title/subtitle block")
-        chart_layout.addWidget(title_padding_label, 8, 1)
+        subtitle_padding_label = QLabel("Subtitle")
+        subtitle_padding_label.setToolTip("Gap between the plot area and the subtitle text")
+        chart_layout.addWidget(subtitle_padding_label, 8, 1)
         self.title_padding_spin = QDoubleSpinBox()
         self.title_padding_spin.setRange(0.0, 50.0)
         self.title_padding_spin.setSingleStep(1.0)
         self.title_padding_spin.setValue(6.0)
         chart_layout.addWidget(self.title_padding_spin, 8, 2)
 
-        chart_layout.addWidget(QLabel("Size:"), 9, 0)
+        main_title_padding_label = QLabel("Title")
+        main_title_padding_label.setToolTip("Gap between the top edge of the figure and the main title")
+        chart_layout.addWidget(main_title_padding_label, 9, 1)
+        self.main_title_padding_spin = QDoubleSpinBox()
+        self.main_title_padding_spin.setRange(0.0, 100.0)
+        self.main_title_padding_spin.setSingleStep(1.0)
+        self.main_title_padding_spin.setValue(10.0)
+        chart_layout.addWidget(self.main_title_padding_spin, 9, 2)
+
+        chart_layout.addWidget(QLabel("Size:"), 10, 0)
         self.chart_size_combo = QComboBox()
         self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
         self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_size_combo, 9, 1, 1, 2)
+        chart_layout.addWidget(self.chart_size_combo, 10, 1, 1, 2)
 
         self.custom_size_row = QWidget()
         custom_size_layout = QVBoxLayout(self.custom_size_row)
@@ -780,17 +789,17 @@ class ChartPropertiesPanel(PWidget):
         height_row.addWidget(self.chart_height_spin)
         height_row.addStretch(1)
         custom_size_layout.addLayout(height_row)
-        chart_layout.addWidget(self.custom_size_row, 10, 1, 1, 2)
+        chart_layout.addWidget(self.custom_size_row, 11, 1, 1, 2)
         self.custom_size_row.setVisible(False)
 
-        chart_layout.addWidget(QLabel("DPI:"), 11, 0)
+        chart_layout.addWidget(QLabel("DPI:"), 12, 0)
         self.chart_dpi_combo = QComboBox()
         self.chart_dpi_combo.addItem("100 dpi", 100)
         self.chart_dpi_combo.addItem("150 dpi", 150)
         self.chart_dpi_combo.addItem("300 dpi", 300)
         self.chart_dpi_combo.addItem("Custom", "custom")
         self.chart_dpi_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_dpi_combo, 11, 1, 1, 2)
+        chart_layout.addWidget(self.chart_dpi_combo, 12, 1, 1, 2)
 
         self.custom_dpi_row = QWidget()
         custom_dpi_layout = QHBoxLayout(self.custom_dpi_row)
@@ -800,12 +809,12 @@ class ChartPropertiesPanel(PWidget):
         self.chart_dpi_spin.setRange(50, 600)
         custom_dpi_layout.addWidget(self.chart_dpi_spin)
         custom_dpi_layout.addStretch(1)
-        chart_layout.addWidget(self.custom_dpi_row, 12, 1, 1, 2)
+        chart_layout.addWidget(self.custom_dpi_row, 13, 1, 1, 2)
         self.custom_dpi_row.setVisible(False)
 
         hint = QLabel("Size affects export & default fonts")
         hint.setStyleSheet("font-size: 10.5px;")
-        chart_layout.addWidget(hint, 13, 0, 1, 3)
+        chart_layout.addWidget(hint, 14, 0, 1, 3)
 
         layout.addWidget(self.chart_style_card)
 
@@ -1246,6 +1255,7 @@ class ChartPropertiesPanel(PWidget):
         self.chart_padding_w_spin.valueChanged.connect(self._on_chart_config_changed)
         self.chart_padding_h_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.main_title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -1662,6 +1672,8 @@ class ChartPropertiesPanel(PWidget):
             config["chart_padding_h"] = self.chart_padding_h_spin.value()
         if hasattr(self, "title_padding_spin"):
             config["title_padding"] = self.title_padding_spin.value()
+        if hasattr(self, "main_title_padding_spin"):
+            config["main_title_padding"] = self.main_title_padding_spin.value()
         if hasattr(self, "chart_size_combo"):
             config["width_cm"], config["height_cm"] = self._size_from_controls()
         if hasattr(self, "chart_dpi_combo"):
@@ -1873,6 +1885,7 @@ class ChartPropertiesPanel(PWidget):
             self.chart_padding_w_spin.setValue(2.0)
             self.chart_padding_h_spin.setValue(2.0)
             self.title_padding_spin.setValue(6.0)
+            self.main_title_padding_spin.setValue(10.0)
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
@@ -2026,6 +2039,7 @@ class ChartPropertiesPanel(PWidget):
                 self.chart_padding_w_spin.setValue(chart.config.get("chart_padding_w", 2.0))
                 self.chart_padding_h_spin.setValue(chart.config.get("chart_padding_h", 2.0))
                 self.title_padding_spin.setValue(chart.config.get("title_padding", 6.0))
+                self.main_title_padding_spin.setValue(chart.config.get("main_title_padding", 10.0))
 
                 # QComboBox.findData() is unreliable for tuple-valued itemData
                 # (Qt's QVariant comparison doesn't match Python tuple equality
@@ -2128,6 +2142,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["chart_padding_w"] = self.chart_padding_w_spin.value()
         chart.config["chart_padding_h"] = self.chart_padding_h_spin.value()
         chart.config["title_padding"] = self.title_padding_spin.value()
+        chart.config["main_title_padding"] = self.main_title_padding_spin.value()
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
         for prefix in ("x", "y", "y2"):

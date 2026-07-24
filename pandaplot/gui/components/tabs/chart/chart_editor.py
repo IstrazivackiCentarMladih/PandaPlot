@@ -37,14 +37,32 @@ def apply_chart_title(
     title_font_size: float,
     subtitle_font_size: float,
     title_padding: float = 6.0,
+    main_title_padding: float = 10.0,
+    fig_height_inches: float | None = None,
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
     -- a single set_title() call can't mix font sizes within one string.
+
     `title_padding` is the gap (in points) between the plot area and the
     subtitle/title block, matching Axes.set_title's own `pad` parameter
-    (rcParam `axes.titlepad` default: 6.0)."""
-    axes.figure.suptitle(title, fontsize=title_font_size, fontweight="bold")
+    (rcParam `axes.titlepad` default: 6.0).
+
+    `main_title_padding` is the gap (in points) between the top edge of the
+    figure and the main title. Figure.suptitle() has no `pad` parameter of
+    its own -- it's positioned via `y`, a 0-1 fraction of the figure height
+    (fixed default 0.98) -- so the points value is converted to that
+    fraction, keeping the same points-based unit the subtitle's padding
+    uses. `fig_height_inches` should be the figure's TARGET height (the one
+    about to be applied via ChartCanvas.set_size(), which callers must
+    resolve before calling this), not necessarily its current height -- the
+    conversion is wrong if the figure is resized afterward using a
+    different height than was used here. Defaults to the figure's current
+    height when not given (e.g. in tests using a bare Figure/Axes)."""
+    fig = axes.figure
+    height = fig_height_inches if fig_height_inches is not None else fig.get_figheight()
+    y = 1.0 - (main_title_padding / 72.0) / height if height else 0.98
+    fig.suptitle(title, fontsize=title_font_size, fontweight="bold", y=y)
     axes.set_title(subtitle, fontsize=subtitle_font_size, pad=title_padding)
 
 
@@ -526,15 +544,11 @@ class ChartEditorWidget(PWidget):
 
             # Apply chart configuration
             config = self.chart.config
-            apply_chart_title(
-                self.chart_canvas.axes,
-                title=config.get("title", self.chart.name),
-                subtitle=config.get("subtitle", ""),
-                title_font_size=config.get("title_font_size", 14),
-                subtitle_font_size=config.get("subtitle_font_size", 12),
-                title_padding=config.get("title_padding", 6.0),
-            )
 
+            # Resolve the target figure size *before* applying the title:
+            # main_title_padding's points-to-fraction conversion needs the
+            # height the figure is about to be set to, not whatever height
+            # it happened to have from the previous render.
             cfg_manager = self.app_context.get_manager(ConfigManager)
             display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
             default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
@@ -544,6 +558,18 @@ class ChartEditorWidget(PWidget):
                 config.get("width_cm"), config.get("height_cm"), config.get("dpi"),
                 default_width, default_height, default_dpi,
             )
+
+            apply_chart_title(
+                self.chart_canvas.axes,
+                title=config.get("title", self.chart.name),
+                subtitle=config.get("subtitle", ""),
+                title_font_size=config.get("title_font_size", 14),
+                subtitle_font_size=config.get("subtitle_font_size", 12),
+                title_padding=config.get("title_padding", 6.0),
+                main_title_padding=config.get("main_title_padding", 10.0),
+                fig_height_inches=cm_to_inches(height_cm),
+            )
+
             chart_padding = config.get("chart_padding", 2.0)
             chart_padding_w = config.get("chart_padding_w", 2.0)
             chart_padding_h = config.get("chart_padding_h", 2.0)
