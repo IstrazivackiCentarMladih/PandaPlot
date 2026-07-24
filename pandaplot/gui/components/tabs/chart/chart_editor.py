@@ -618,7 +618,7 @@ class ChartEditorWidget(PWidget):
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they
                 # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout()
+                self.chart_canvas.fig.tight_layout(pad=2.0)
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()

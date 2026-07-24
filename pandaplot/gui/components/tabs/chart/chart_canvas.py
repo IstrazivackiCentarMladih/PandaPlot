@@ -220,7 +220,7 @@ class ChartCanvas(FigureCanvas):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         try:
-            self.fig.tight_layout()
+            self.fig.tight_layout(pad=2.0)
         except Exception:
             logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
         self.resize(*self.get_width_height())
@@ -232,7 +232,7 @@ class ChartCanvas(FigureCanvas):
             return
         self.fig.set_dpi(dpi)
         try:
-            self.fig.tight_layout()
+            self.fig.tight_layout(pad=2.0)
         except Exception:
             logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())
