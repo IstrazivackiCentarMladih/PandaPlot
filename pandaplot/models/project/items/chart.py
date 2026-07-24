@@ -148,6 +148,7 @@ class Chart(Item):
             "subtitle": "",
             "title_font_size": 14,
             "subtitle_font_size": 12,
+            "chart_padding": 2.0,
             "width_cm": None,
             "height_cm": None,
             "dpi": None,

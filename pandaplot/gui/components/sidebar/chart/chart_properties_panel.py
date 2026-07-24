@@ -351,19 +351,7 @@ class ChartPropertiesPanel(PWidget):
         self.subtitle_edit.setPlaceholderText("Optional")
         info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
 
-        info_layout.addWidget(QLabel("Title font size:"), 2, 0)
-        self.title_font_size_spin = QSpinBox()
-        self.title_font_size_spin.setRange(8, 32)
-        self.title_font_size_spin.setValue(14)
-        info_layout.addWidget(self.title_font_size_spin, 2, 1, 1, 2)
-
-        info_layout.addWidget(QLabel("Subtitle font size:"), 3, 0)
-        self.subtitle_font_size_spin = QSpinBox()
-        self.subtitle_font_size_spin.setRange(8, 32)
-        self.subtitle_font_size_spin.setValue(12)
-        info_layout.addWidget(self.subtitle_font_size_spin, 3, 1, 1, 2)
-
-        info_layout.addWidget(QLabel("Type:"), 4, 0)
+        info_layout.addWidget(QLabel("Type:"), 2, 0)
         self.chart_type_control = ValueComboBox(
             [
                 ("Scatter", ChartType.SCATTER),
@@ -372,70 +360,16 @@ class ChartPropertiesPanel(PWidget):
                 ("Histogram", ChartType.HISTOGRAM),
             ]
         )
-        info_layout.addWidget(self.chart_type_control, 4, 1, 1, 2)
+        info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
         self.hist_bins_label = QLabel("Bins:")
-        info_layout.addWidget(self.hist_bins_label, 5, 0)
+        info_layout.addWidget(self.hist_bins_label, 3, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
         self.hist_bins_spin.setValue(20)
         self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
-        info_layout.addWidget(self.hist_bins_spin, 5, 1)
+        info_layout.addWidget(self.hist_bins_spin, 3, 1)
         self._update_hist_bins_visibility()
-
-        info_layout.addWidget(QLabel("Size:"), 6, 0)
-        self.chart_size_combo = QComboBox()
-        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
-        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
-        self.chart_size_combo.addItem("Custom", "custom")
-        self.chart_size_combo.addItem("Use app default", None)
-        info_layout.addWidget(self.chart_size_combo, 6, 1, 1, 2)
-
-        self.custom_size_row = QWidget()
-        custom_size_layout = QVBoxLayout(self.custom_size_row)
-        custom_size_layout.setContentsMargins(0, 0, 0, 0)
-        width_row = QHBoxLayout()
-        width_row.addWidget(QLabel("Width"))
-        self.chart_width_spin = QDoubleSpinBox()
-        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.chart_width_spin.setSuffix(" cm")
-        width_row.addWidget(self.chart_width_spin)
-        width_row.addStretch(1)
-        custom_size_layout.addLayout(width_row)
-        height_row = QHBoxLayout()
-        height_row.addWidget(QLabel("Height"))
-        self.chart_height_spin = QDoubleSpinBox()
-        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.chart_height_spin.setSuffix(" cm")
-        height_row.addWidget(self.chart_height_spin)
-        height_row.addStretch(1)
-        custom_size_layout.addLayout(height_row)
-        info_layout.addWidget(self.custom_size_row, 7, 0, 1, 3)
-        self.custom_size_row.setVisible(False)
-
-        info_layout.addWidget(QLabel("DPI:"), 8, 0)
-        self.chart_dpi_combo = QComboBox()
-        self.chart_dpi_combo.addItem("100 dpi", 100)
-        self.chart_dpi_combo.addItem("150 dpi", 150)
-        self.chart_dpi_combo.addItem("300 dpi", 300)
-        self.chart_dpi_combo.addItem("Custom", "custom")
-        self.chart_dpi_combo.addItem("Use app default", None)
-        info_layout.addWidget(self.chart_dpi_combo, 8, 1, 1, 2)
-
-        self.custom_dpi_row = QWidget()
-        custom_dpi_layout = QHBoxLayout(self.custom_dpi_row)
-        custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
-        custom_dpi_layout.addWidget(QLabel("DPI"))
-        self.chart_dpi_spin = QSpinBox()
-        self.chart_dpi_spin.setRange(50, 600)
-        custom_dpi_layout.addWidget(self.chart_dpi_spin)
-        custom_dpi_layout.addStretch(1)
-        info_layout.addWidget(self.custom_dpi_row, 9, 0, 1, 3)
-        self.custom_dpi_row.setVisible(False)
-
-        hint = QLabel("Size affects export & default fonts")
-        hint.setStyleSheet("font-size: 10.5px;")
-        info_layout.addWidget(hint, 10, 0, 1, 3)
 
         layout.addWidget(info_group)
     
@@ -562,11 +496,13 @@ class ChartPropertiesPanel(PWidget):
         """Sync the Style tab's chip row with the same series+fit list the
         Data tab's cards are built from, keeping the chip row's selection in
         lockstep with `self._expanded_series_index` (the single, panel-wide
-        "currently edited entry" state also driven by Data-tab card expand).
+        "currently edited entry" state also driven by Data-tab card expand)
+        -- unless "Chart" is the currently selected chip, which is its own
+        independent target and must survive a series/fit list refresh.
 
-        Chip values are the combined index (int), not the series/fit object
-        itself, so selecting a chip can drive `_expand_series` directly
-        without needing to search for the clicked object's index.
+        Chip values are the combined index (int) for series/fit, or the
+        "chart" sentinel, so selecting a chip can drive `_expand_series`
+        directly without needing to search for the clicked object's index.
         """
         if not hasattr(self, "style_series_chips"):
             # The Data tab (built first) triggers an initial
@@ -575,7 +511,8 @@ class ChartPropertiesPanel(PWidget):
             # either, so there is nothing to reflect; the chip row is
             # populated for real the next time a chart is loaded.
             return
-        chip_items = []
+        previous_value = self.style_series_chips.currentValue()
+        chip_items = [("Chart", "chart")]
         for index, series in enumerate(self.current_chart.data_series):
             label = series.label or f"{series.dataset_id}:{series.y_column}"
             chip_items.append((label, index))
@@ -586,9 +523,32 @@ class ChartPropertiesPanel(PWidget):
 
         # Neither setItems nor setCurrentValue emits currentValueChanged (only
         # a user click on a chip does), so no signal-blocking is needed here
-        # to avoid re-entering _expand_series.
+        # to avoid re-entering _expand_series. setItems() already preserves
+        # the previous selection if it's still present (true for "chart",
+        # always in the list) -- only force it back to the expanded series
+        # index when the user wasn't on "Chart".
         self.style_series_chips.setItems(chip_items)
-        self.style_series_chips.setCurrentValue(self._expanded_series_index)
+        if previous_value != "chart":
+            self.style_series_chips.setCurrentValue(self._expanded_series_index)
+        self._update_style_target_cards_visibility()
+
+    def _on_style_chip_selected(self, value):
+        """Route a Style-tab chip click: an int (combined series/fit index)
+        drives the same expanded-card state the Data tab uses; the "chart"
+        sentinel shows chart-level style settings instead, independent of
+        which series/fit is expanded on the Data tab."""
+        if value == "chart":
+            self._update_style_target_cards_visibility()
+        else:
+            self._expand_series(value)
+
+    def _update_style_target_cards_visibility(self):
+        """Show the Chart card XOR the Line/Marker cards, matching whichever
+        Style-tab chip is currently selected."""
+        is_chart = self.style_series_chips.currentValue() == "chart"
+        self.chart_style_card.setVisible(is_chart)
+        self.line_card.setVisible(not is_chart)
+        self.marker_card.setVisible(not is_chart)
 
     def _build_collapsed_series_row(self, series, index: int, tokens: dict) -> QWidget:
         """A chip-like collapsed row: color square, name, Y-axis badge, chevron."""
@@ -735,11 +695,97 @@ class ChartPropertiesPanel(PWidget):
         layout = QVBoxLayout(widget)
 
         self.style_series_chips = ChipRow()
-        self.style_series_chips.currentValueChanged.connect(self._expand_series)
+        self.style_series_chips.currentValueChanged.connect(self._on_style_chip_selected)
         layout.addWidget(self.style_series_chips)
 
+        # CHART group: chart-level rendering settings (title/subtitle font
+        # size, margin padding, size, dpi) -- shown instead of the Line/
+        # Marker cards when the "Chart" chip is selected. Independent of
+        # `self._expanded_series_index`: selecting "Chart" never touches
+        # which Data-tab series card is expanded.
+        self.chart_style_card = Card()
+        chart_layout = QGridLayout(self.chart_style_card)
+        chart_layout.addWidget(SectionHeader("Chart"), 0, 0, 1, 3)
+
+        chart_layout.addWidget(QLabel("Font size:"), 1, 0)
+        chart_layout.addWidget(QLabel("Title"), 1, 1)
+        self.title_font_size_spin = QSpinBox()
+        self.title_font_size_spin.setRange(8, 32)
+        self.title_font_size_spin.setValue(14)
+        chart_layout.addWidget(self.title_font_size_spin, 1, 2)
+
+        chart_layout.addWidget(QLabel("Subtitle"), 2, 1)
+        self.subtitle_font_size_spin = QSpinBox()
+        self.subtitle_font_size_spin.setRange(8, 32)
+        self.subtitle_font_size_spin.setValue(12)
+        chart_layout.addWidget(self.subtitle_font_size_spin, 2, 2)
+
+        chart_layout.addWidget(QLabel("Padding:"), 3, 0)
+        self.chart_padding_spin = QDoubleSpinBox()
+        self.chart_padding_spin.setRange(0.0, 10.0)
+        self.chart_padding_spin.setSingleStep(0.5)
+        self.chart_padding_spin.setValue(2.0)
+        chart_layout.addWidget(self.chart_padding_spin, 3, 1, 1, 2)
+
+        chart_layout.addWidget(QLabel("Size:"), 4, 0)
+        self.chart_size_combo = QComboBox()
+        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
+        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
+        self.chart_size_combo.addItem("Custom", "custom")
+        self.chart_size_combo.addItem("Use app default", None)
+        chart_layout.addWidget(self.chart_size_combo, 4, 1, 1, 2)
+
+        self.custom_size_row = QWidget()
+        custom_size_layout = QVBoxLayout(self.custom_size_row)
+        custom_size_layout.setContentsMargins(0, 0, 0, 0)
+        width_row = QHBoxLayout()
+        width_row.addWidget(QLabel("Width"))
+        self.chart_width_spin = QDoubleSpinBox()
+        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.chart_width_spin.setSuffix(" cm")
+        width_row.addWidget(self.chart_width_spin)
+        width_row.addStretch(1)
+        custom_size_layout.addLayout(width_row)
+        height_row = QHBoxLayout()
+        height_row.addWidget(QLabel("Height"))
+        self.chart_height_spin = QDoubleSpinBox()
+        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.chart_height_spin.setSuffix(" cm")
+        height_row.addWidget(self.chart_height_spin)
+        height_row.addStretch(1)
+        custom_size_layout.addLayout(height_row)
+        chart_layout.addWidget(self.custom_size_row, 5, 1, 1, 2)
+        self.custom_size_row.setVisible(False)
+
+        chart_layout.addWidget(QLabel("DPI:"), 6, 0)
+        self.chart_dpi_combo = QComboBox()
+        self.chart_dpi_combo.addItem("100 dpi", 100)
+        self.chart_dpi_combo.addItem("150 dpi", 150)
+        self.chart_dpi_combo.addItem("300 dpi", 300)
+        self.chart_dpi_combo.addItem("Custom", "custom")
+        self.chart_dpi_combo.addItem("Use app default", None)
+        chart_layout.addWidget(self.chart_dpi_combo, 6, 1, 1, 2)
+
+        self.custom_dpi_row = QWidget()
+        custom_dpi_layout = QHBoxLayout(self.custom_dpi_row)
+        custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
+        custom_dpi_layout.addWidget(QLabel("DPI"))
+        self.chart_dpi_spin = QSpinBox()
+        self.chart_dpi_spin.setRange(50, 600)
+        custom_dpi_layout.addWidget(self.chart_dpi_spin)
+        custom_dpi_layout.addStretch(1)
+        chart_layout.addWidget(self.custom_dpi_row, 7, 1, 1, 2)
+        self.custom_dpi_row.setVisible(False)
+
+        hint = QLabel("Size affects export & default fonts")
+        hint.setStyleSheet("font-size: 10.5px;")
+        chart_layout.addWidget(hint, 8, 0, 1, 3)
+
+        layout.addWidget(self.chart_style_card)
+
         # LINE group
-        line_card = Card()
+        self.line_card = Card()
+        line_card = self.line_card
         line_layout = QGridLayout(line_card)
         line_layout.addWidget(SectionHeader("Line"), 0, 0, 1, 2)
 
@@ -773,7 +819,8 @@ class ChartPropertiesPanel(PWidget):
         layout.addWidget(line_card)
 
         # MARKERS group
-        marker_card = Card()
+        self.marker_card = Card()
+        marker_card = self.marker_card
         marker_layout = QGridLayout(marker_card)
 
         marker_header_row = QHBoxLayout()
@@ -812,8 +859,9 @@ class ChartPropertiesPanel(PWidget):
         layout.addWidget(marker_card)
 
         layout.addStretch()
+        self.chart_style_card.setVisible(False)
         return widget
-    
+
     def _create_axes_tab(self) -> QWidget:
         """Create the axes configuration tab: an X/Y1/Y2 chip switcher above
         a single form area that shows only the selected axis's controls.
@@ -1168,6 +1216,7 @@ class ChartPropertiesPanel(PWidget):
         self.title_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
         self.subtitle_edit.textChanged.connect(self._on_chart_config_changed)
         self.subtitle_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.chart_padding_spin.valueChanged.connect(self._on_chart_config_changed)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -1576,6 +1625,8 @@ class ChartPropertiesPanel(PWidget):
             config["subtitle"] = self.subtitle_edit.text()
         if hasattr(self, "subtitle_font_size_spin"):
             config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        if hasattr(self, "chart_padding_spin"):
+            config["chart_padding"] = self.chart_padding_spin.value()
         if hasattr(self, "chart_size_combo"):
             config["width_cm"], config["height_cm"] = self._size_from_controls()
         if hasattr(self, "chart_dpi_combo"):
@@ -1783,6 +1834,7 @@ class ChartPropertiesPanel(PWidget):
             self.title_font_size_spin.setValue(14)
             self.subtitle_edit.clear()
             self.subtitle_font_size_spin.setValue(12)
+            self.chart_padding_spin.setValue(2.0)
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
@@ -1932,6 +1984,7 @@ class ChartPropertiesPanel(PWidget):
                 self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
                 self.subtitle_edit.setText(chart.config.get("subtitle", ""))
                 self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
+                self.chart_padding_spin.setValue(chart.config.get("chart_padding", 2.0))
 
                 # QComboBox.findData() is unreliable for tuple-valued itemData
                 # (Qt's QVariant comparison doesn't match Python tuple equality
@@ -2030,6 +2083,7 @@ class ChartPropertiesPanel(PWidget):
         chart.config["title_font_size"] = self.title_font_size_spin.value()
         chart.config["subtitle"] = self.subtitle_edit.text()
         chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        chart.config["chart_padding"] = self.chart_padding_spin.value()
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
         for prefix in ("x", "y", "y2"):

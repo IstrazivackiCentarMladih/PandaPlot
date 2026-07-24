@@ -266,7 +266,7 @@ class ChartEditorWidget(PWidget):
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
             if dpi and isValid(self.chart_canvas):
-                self.chart_canvas.set_dpi(dpi)
+                self.chart_canvas.set_dpi(dpi, pad=self.chart.config.get("chart_padding", 2.0))
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -530,8 +530,9 @@ class ChartEditorWidget(PWidget):
                 config.get("width_cm"), config.get("height_cm"), config.get("dpi"),
                 default_width, default_height, default_dpi,
             )
-            self.chart_canvas.set_size(cm_to_inches(width_cm), cm_to_inches(height_cm))
-            self.chart_canvas.set_dpi(dpi)
+            chart_padding = config.get("chart_padding", 2.0)
+            self.chart_canvas.set_size(cm_to_inches(width_cm), cm_to_inches(height_cm), pad=chart_padding)
+            self.chart_canvas.set_dpi(dpi, pad=chart_padding)
 
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
@@ -618,7 +619,7 @@ class ChartEditorWidget(PWidget):
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they
                 # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout(pad=2.0)
+                self.chart_canvas.fig.tight_layout(pad=config.get("chart_padding", 2.0))
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()

@@ -216,23 +216,23 @@ class ChartCanvas(FigureCanvas):
                 self.axes2.set_ylim(self.original_ylim2)
             self.draw()
 
-    def set_size(self, width, height):
+    def set_size(self, width, height, pad: float = 2.0):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         try:
-            self.fig.tight_layout(pad=2.0)
+            self.fig.tight_layout(pad=pad)
         except Exception:
             logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
         self.resize(*self.get_width_height())
         self.draw()
 
-    def set_dpi(self, dpi):
+    def set_dpi(self, dpi, pad: float = 2.0):
         """Change the figure DPI, keeping the widget's pixel size in sync."""
         if self.fig.dpi == dpi:
             return
         self.fig.set_dpi(dpi)
         try:
-            self.fig.tight_layout(pad=2.0)
+            self.fig.tight_layout(pad=pad)
         except Exception:
             logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())
