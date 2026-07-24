@@ -91,12 +91,12 @@ class ChartPropertiesPanel(PWidget):
         # because that's what the combo defaults to for display.
         self._loaded_chart_type_supported: bool = True
         self._chart_type_touched_by_user: bool = False
-        # Index of the dynamically-inserted "Custom (W x H cm)" item in
-        # chart_size_combo, if the currently loaded chart's saved size
-        # doesn't match a fixed preset (e.g. an auto-fit size written by
-        # chart_editor's initial-fit-to-preview logic). None if no such
-        # item is currently present.
-        self._custom_size_combo_index: Optional[int] = None
+        # Whether the Custom size/DPI fields have already been pre-filled
+        # for the currently loaded chart (reset on every load_chart_object/
+        # _clear_controls call). Prevents re-filling with defaults if the
+        # user toggles back and forth between Custom and a preset.
+        self._custom_size_prefilled: bool = False
+        self._custom_dpi_prefilled: bool = False
         # Reference to the expanded Data-tab card's Y1/Y2 badge QLabel (and
         # the design tokens it was last styled with), so a live series
         # Y-axis edit can restyle it in place. See _on_series_config_changed.
@@ -1168,8 +1168,12 @@ class ChartPropertiesPanel(PWidget):
         self.title_edit.textChanged.connect(self._on_chart_config_changed)
         self.title_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
         self.subtitle_edit.textChanged.connect(self._on_chart_config_changed)
-        self.chart_size_combo.currentIndexChanged.connect(self._on_chart_config_changed)
-        self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_config_changed)
+        self.subtitle_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
+        self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
+        self.chart_width_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.chart_height_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.chart_dpi_spin.valueChanged.connect(self._on_chart_config_changed)
         # Axes tab: each axis form's widgets are wired directly to shared
         # handlers in _build_axis_form_widgets, not here (the forms are
         # built dynamically per-prefix, so there are no static
@@ -1567,12 +1571,12 @@ class ChartPropertiesPanel(PWidget):
             config["title_font_size"] = self.title_font_size_spin.value()
         if hasattr(self, "subtitle_edit"):
             config["subtitle"] = self.subtitle_edit.text()
+        if hasattr(self, "subtitle_font_size_spin"):
+            config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
         if hasattr(self, "chart_size_combo"):
-            size = self.chart_size_combo.currentData()
-            config["width_cm"] = size[0] if size else None
-            config["height_cm"] = size[1] if size else None
+            config["width_cm"], config["height_cm"] = self._size_from_controls()
         if hasattr(self, "chart_dpi_combo"):
-            config["dpi"] = self.chart_dpi_combo.currentData()
+            config["dpi"] = self._dpi_from_controls()
         if hasattr(self, "axes_forms"):
             for prefix in ("x", "y", "y2"):
                 self._write_axis_config(prefix, config)
@@ -1775,12 +1779,15 @@ class ChartPropertiesPanel(PWidget):
             self.title_edit.clear()
             self.title_font_size_spin.setValue(14)
             self.subtitle_edit.clear()
+            self.subtitle_font_size_spin.setValue(12)
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
-            if self._custom_size_combo_index is not None:
-                self.chart_size_combo.removeItem(self._custom_size_combo_index)
-                self._custom_size_combo_index = None
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
+            self.chart_width_spin.setValue(20.0)
+            self.chart_height_spin.setValue(15.0)
+            self._custom_size_prefilled = False
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
+            self.chart_dpi_spin.setValue(100)
+            self._custom_dpi_prefilled = False
             self.hist_bins_spin.setValue(20)
             self._update_hist_bins_visibility()
             for prefix in ("x", "y", "y2"):
@@ -1921,44 +1928,40 @@ class ChartPropertiesPanel(PWidget):
                 self.title_edit.setText(chart.config.get("title", chart.name))
                 self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
                 self.subtitle_edit.setText(chart.config.get("subtitle", ""))
+                self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
+
                 # QComboBox.findData() is unreliable for tuple-valued itemData
                 # (Qt's QVariant comparison doesn't match Python tuple equality
                 # here), so look up the matching index manually.
                 target_size = (chart.config.get("width_cm"), chart.config.get("height_cm"))
-
-                # Drop any dynamically-added "Custom" entry from a
-                # previously loaded chart before evaluating this one, so the
-                # dropdown doesn't accumulate stale Custom items across
-                # chart switches (only ever one at a time, near the top).
-                if self._custom_size_combo_index is not None:
-                    self.chart_size_combo.removeItem(self._custom_size_combo_index)
-                    self._custom_size_combo_index = None
-
                 size_index = -1
                 for i in range(self.chart_size_combo.count()):
                     if self.chart_size_combo.itemData(i) == target_size:
                         size_index = i
                         break
 
-                if size_index < 0 and target_size[0] is not None and target_size[1] is not None:
-                    # A size that doesn't match any fixed preset (e.g. one
-                    # written by chart_editor's initial auto-fit) would
-                    # otherwise fall back to "Use app default", which
-                    # silently wipes it (writes None/None) the next time any
-                    # field is edited. Preserve it as a dynamic entry instead.
-                    width, height = target_size
-                    label = f"Custom ({width:g} × {height:g} cm)"
-                    self.chart_size_combo.insertItem(0, label, target_size)
-                    self._custom_size_combo_index = 0
-                    size_index = 0
+                self._custom_size_prefilled = False
+                if size_index >= 0:
+                    self.chart_size_combo.setCurrentIndex(size_index)
+                elif target_size[0] is not None and target_size[1] is not None:
+                    self.chart_size_combo.setCurrentIndex(self.chart_size_combo.findData("custom"))
+                    self.chart_width_spin.setValue(target_size[0])
+                    self.chart_height_spin.setValue(target_size[1])
+                    self._custom_size_prefilled = True
+                else:
+                    self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
 
-                self.chart_size_combo.setCurrentIndex(
-                    size_index if size_index >= 0 else self.chart_size_combo.count() - 1
-                )
-                dpi_index = self.chart_dpi_combo.findData(chart.config.get("dpi"))
-                self.chart_dpi_combo.setCurrentIndex(
-                    dpi_index if dpi_index >= 0 else self.chart_dpi_combo.count() - 1
-                )
+                self._custom_dpi_prefilled = False
+                dpi_value = chart.config.get("dpi")
+                dpi_index = self.chart_dpi_combo.findData(dpi_value)
+                if dpi_index >= 0:
+                    self.chart_dpi_combo.setCurrentIndex(dpi_index)
+                elif dpi_value is not None:
+                    self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.findData("custom"))
+                    self.chart_dpi_spin.setValue(dpi_value)
+                    self._custom_dpi_prefilled = True
+                else:
+                    self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
 
                 # Set chart type
                 chart_type_map = {
@@ -2023,10 +2026,9 @@ class ChartPropertiesPanel(PWidget):
         chart.config["title"] = self.title_edit.text()
         chart.config["title_font_size"] = self.title_font_size_spin.value()
         chart.config["subtitle"] = self.subtitle_edit.text()
-        size = self.chart_size_combo.currentData()
-        chart.config["width_cm"] = size[0] if size else None
-        chart.config["height_cm"] = size[1] if size else None
-        chart.config["dpi"] = self.chart_dpi_combo.currentData()
+        chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
+        chart.config["dpi"] = self._dpi_from_controls()
         for prefix in ("x", "y", "y2"):
             self._write_axis_config(prefix, chart.config)
         chart.config["show_legend"] = self.show_legend_toggle.isChecked()
