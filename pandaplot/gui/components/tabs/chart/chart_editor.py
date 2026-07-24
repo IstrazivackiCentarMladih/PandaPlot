@@ -31,13 +31,21 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 def apply_chart_title(
-    axes, title: str, subtitle: str, title_font_size: float, subtitle_font_size: float
+    axes,
+    title: str,
+    subtitle: str,
+    title_font_size: float,
+    subtitle_font_size: float,
+    title_padding: float = 6.0,
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
-    -- a single set_title() call can't mix font sizes within one string."""
+    -- a single set_title() call can't mix font sizes within one string.
+    `title_padding` is the gap (in points) between the plot area and the
+    subtitle/title block, matching Axes.set_title's own `pad` parameter
+    (rcParam `axes.titlepad` default: 6.0)."""
     axes.figure.suptitle(title, fontsize=title_font_size, fontweight="bold")
-    axes.set_title(subtitle, fontsize=subtitle_font_size)
+    axes.set_title(subtitle, fontsize=subtitle_font_size, pad=title_padding)
 
 
 def resolve_chart_size(
@@ -266,7 +274,12 @@ class ChartEditorWidget(PWidget):
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
             if dpi and isValid(self.chart_canvas):
-                self.chart_canvas.set_dpi(dpi, pad=self.chart.config.get("chart_padding", 2.0))
+                self.chart_canvas.set_dpi(
+                    dpi,
+                    pad=self.chart.config.get("chart_padding", 2.0),
+                    w_pad=self.chart.config.get("chart_padding_w", 2.0),
+                    h_pad=self.chart.config.get("chart_padding_h", 2.0),
+                )
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -519,6 +532,7 @@ class ChartEditorWidget(PWidget):
                 subtitle=config.get("subtitle", ""),
                 title_font_size=config.get("title_font_size", 14),
                 subtitle_font_size=config.get("subtitle_font_size", 12),
+                title_padding=config.get("title_padding", 6.0),
             )
 
             cfg_manager = self.app_context.get_manager(ConfigManager)
@@ -531,8 +545,13 @@ class ChartEditorWidget(PWidget):
                 default_width, default_height, default_dpi,
             )
             chart_padding = config.get("chart_padding", 2.0)
-            self.chart_canvas.set_size(cm_to_inches(width_cm), cm_to_inches(height_cm), pad=chart_padding)
-            self.chart_canvas.set_dpi(dpi, pad=chart_padding)
+            chart_padding_w = config.get("chart_padding_w", 2.0)
+            chart_padding_h = config.get("chart_padding_h", 2.0)
+            self.chart_canvas.set_size(
+                cm_to_inches(width_cm), cm_to_inches(height_cm),
+                pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h,
+            )
+            self.chart_canvas.set_dpi(dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h)
 
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
@@ -619,7 +638,11 @@ class ChartEditorWidget(PWidget):
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they
                 # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout(pad=config.get("chart_padding", 2.0))
+                self.chart_canvas.fig.tight_layout(
+                    pad=config.get("chart_padding", 2.0),
+                    w_pad=config.get("chart_padding_w", 2.0),
+                    h_pad=config.get("chart_padding_h", 2.0),
+                )
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
