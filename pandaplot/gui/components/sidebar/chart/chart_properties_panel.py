@@ -34,6 +34,7 @@ from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
+from pandaplot.gui.components.tabs.chart.chart_editor import resolve_chart_size
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -44,6 +45,13 @@ from pandaplot.models.chart.chart_configuration import (
 )
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.state.config import (
+    MAX_CHART_HEIGHT_CM,
+    MAX_CHART_WIDTH_CM,
+    MIN_CHART_HEIGHT_CM,
+    MIN_CHART_WIDTH_CM,
+)
+from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.models.project.items.chart import YAxis, restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -337,55 +345,98 @@ class ChartPropertiesPanel(PWidget):
 
         info_layout.addWidget(QLabel("Title:"), 0, 0)
         self.title_edit = QLineEdit()
-        info_layout.addWidget(self.title_edit, 0, 1)
-        self.title_font_size_spin = QSpinBox()
-        self.title_font_size_spin.setRange(8, 32)
-        self.title_font_size_spin.setValue(14)
-        info_layout.addWidget(self.title_font_size_spin, 0, 2)
+        info_layout.addWidget(self.title_edit, 0, 1, 1, 2)
 
         info_layout.addWidget(QLabel("Subtitle:"), 1, 0)
         self.subtitle_edit = QLineEdit()
         self.subtitle_edit.setPlaceholderText("Optional")
         info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
 
-        info_layout.addWidget(QLabel("Type:"), 2, 0)
+        info_layout.addWidget(QLabel("Font size:"), 2, 0)
+        font_size_row = QWidget()
+        font_size_layout = QHBoxLayout(font_size_row)
+        font_size_layout.setContentsMargins(0, 0, 0, 0)
+        font_size_layout.addWidget(QLabel("Title"))
+        self.title_font_size_spin = QSpinBox()
+        self.title_font_size_spin.setRange(8, 32)
+        self.title_font_size_spin.setValue(14)
+        font_size_layout.addWidget(self.title_font_size_spin)
+        font_size_layout.addWidget(QLabel("Subtitle"))
+        self.subtitle_font_size_spin = QSpinBox()
+        self.subtitle_font_size_spin.setRange(8, 32)
+        self.subtitle_font_size_spin.setValue(12)
+        font_size_layout.addWidget(self.subtitle_font_size_spin)
+        font_size_layout.addStretch(1)
+        info_layout.addWidget(font_size_row, 2, 1, 1, 2)
+
+        info_layout.addWidget(QLabel("Type:"), 3, 0)
         self.chart_type_control = ValueComboBox(
             [
-                ("⚬ Scatter", ChartType.SCATTER),
-                ("— Line", ChartType.LINE),
-                ("▮ Bar", ChartType.BAR),
-                ("▤ Histogram", ChartType.HISTOGRAM),
+                ("Scatter", ChartType.SCATTER),
+                ("Line", ChartType.LINE),
+                ("Bar", ChartType.BAR),
+                ("Histogram", ChartType.HISTOGRAM),
             ]
         )
-        info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
+        info_layout.addWidget(self.chart_type_control, 3, 1, 1, 2)
 
         self.hist_bins_label = QLabel("Bins:")
-        info_layout.addWidget(self.hist_bins_label, 3, 0)
+        info_layout.addWidget(self.hist_bins_label, 4, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
         self.hist_bins_spin.setValue(20)
         self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
-        info_layout.addWidget(self.hist_bins_spin, 3, 1)
+        info_layout.addWidget(self.hist_bins_spin, 4, 1)
         self._update_hist_bins_visibility()
 
-        info_layout.addWidget(QLabel("Size:"), 4, 0)
+        info_layout.addWidget(QLabel("Size:"), 5, 0)
         self.chart_size_combo = QComboBox()
         self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
         self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
+        self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
-        info_layout.addWidget(self.chart_size_combo, 4, 1, 1, 2)
+        info_layout.addWidget(self.chart_size_combo, 5, 1, 1, 2)
 
-        info_layout.addWidget(QLabel("DPI:"), 5, 0)
+        self.custom_size_row = QWidget()
+        custom_size_layout = QHBoxLayout(self.custom_size_row)
+        custom_size_layout.setContentsMargins(0, 0, 0, 0)
+        custom_size_layout.addWidget(QLabel("Width"))
+        self.chart_width_spin = QDoubleSpinBox()
+        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self.chart_width_spin.setSuffix(" cm")
+        custom_size_layout.addWidget(self.chart_width_spin)
+        custom_size_layout.addWidget(QLabel("Height"))
+        self.chart_height_spin = QDoubleSpinBox()
+        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.chart_height_spin.setSuffix(" cm")
+        custom_size_layout.addWidget(self.chart_height_spin)
+        custom_size_layout.addStretch(1)
+        info_layout.addWidget(self.custom_size_row, 6, 0, 1, 3)
+        self.custom_size_row.setVisible(False)
+
+        info_layout.addWidget(QLabel("DPI:"), 7, 0)
         self.chart_dpi_combo = QComboBox()
         self.chart_dpi_combo.addItem("100 dpi", 100)
         self.chart_dpi_combo.addItem("150 dpi", 150)
         self.chart_dpi_combo.addItem("300 dpi", 300)
+        self.chart_dpi_combo.addItem("Custom", "custom")
         self.chart_dpi_combo.addItem("Use app default", None)
-        info_layout.addWidget(self.chart_dpi_combo, 5, 1, 1, 2)
+        info_layout.addWidget(self.chart_dpi_combo, 7, 1, 1, 2)
+
+        self.custom_dpi_row = QWidget()
+        custom_dpi_layout = QHBoxLayout(self.custom_dpi_row)
+        custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
+        custom_dpi_layout.addWidget(QLabel("DPI"))
+        self.chart_dpi_spin = QSpinBox()
+        self.chart_dpi_spin.setRange(50, 600)
+        custom_dpi_layout.addWidget(self.chart_dpi_spin)
+        custom_dpi_layout.addStretch(1)
+        info_layout.addWidget(self.custom_dpi_row, 8, 0, 1, 3)
+        self.custom_dpi_row.setVisible(False)
 
         hint = QLabel("Size affects export & default fonts")
         hint.setStyleSheet("font-size: 10.5px;")
-        info_layout.addWidget(hint, 6, 0, 1, 3)
+        info_layout.addWidget(hint, 9, 0, 1, 3)
 
         layout.addWidget(info_group)
     
@@ -1434,6 +1485,71 @@ class ChartPropertiesPanel(PWidget):
         is_histogram = self.chart_type_control.currentValue() == ChartType.HISTOGRAM
         self.hist_bins_label.setVisible(is_histogram)
         self.hist_bins_spin.setVisible(is_histogram)
+
+    def _app_chart_display_defaults(self):
+        """Read the app-wide default chart width/height/dpi from Settings."""
+        cfg_manager = self.app_context.get_manager(ConfigManager)
+        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+        default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
+        default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
+        default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
+        return default_width, default_height, default_dpi
+
+    def _effective_chart_size_dpi(self):
+        """Resolve the chart's current effective (width_cm, height_cm, dpi),
+        preferring the chart's own saved values and falling back to the
+        app-wide Settings defaults. Used to pre-fill the Custom fields the
+        first time the user selects Custom for Size or DPI."""
+        default_width, default_height, default_dpi = self._app_chart_display_defaults()
+        if not self.current_chart:
+            return default_width, default_height, default_dpi
+        return resolve_chart_size(
+            self.current_chart.config.get("width_cm"),
+            self.current_chart.config.get("height_cm"),
+            self.current_chart.config.get("dpi"),
+            default_width, default_height, default_dpi,
+        )
+
+    def _size_from_controls(self):
+        """Resolve (width_cm, height_cm) from chart_size_combo, reading the
+        dedicated Custom spin boxes when that sentinel is selected."""
+        data = self.chart_size_combo.currentData()
+        if data == "custom":
+            return self.chart_width_spin.value(), self.chart_height_spin.value()
+        if data is None:
+            return None, None
+        return data
+
+    def _dpi_from_controls(self):
+        """Resolve dpi from chart_dpi_combo, reading the dedicated Custom
+        spin box when that sentinel is selected."""
+        data = self.chart_dpi_combo.currentData()
+        if data == "custom":
+            return self.chart_dpi_spin.value()
+        return data
+
+    def _on_chart_size_combo_changed(self):
+        """Show/hide the Custom width/height row and pre-fill it the first
+        time the user manually selects Custom for this loaded chart."""
+        is_custom = self.chart_size_combo.currentData() == "custom"
+        self.custom_size_row.setVisible(is_custom)
+        if is_custom and not self._updating_controls and not self._custom_size_prefilled:
+            width, height, _ = self._effective_chart_size_dpi()
+            self.chart_width_spin.setValue(width)
+            self.chart_height_spin.setValue(height)
+            self._custom_size_prefilled = True
+        self._on_chart_config_changed()
+
+    def _on_chart_dpi_combo_changed(self):
+        """Show/hide the Custom DPI row and pre-fill it the first time the
+        user manually selects Custom for this loaded chart."""
+        is_custom = self.chart_dpi_combo.currentData() == "custom"
+        self.custom_dpi_row.setVisible(is_custom)
+        if is_custom and not self._updating_controls and not self._custom_dpi_prefilled:
+            _, _, dpi = self._effective_chart_size_dpi()
+            self.chart_dpi_spin.setValue(dpi)
+            self._custom_dpi_prefilled = True
+        self._on_chart_config_changed()
 
     def _on_chart_config_changed(self):
         """Handle chart-level configuration changes."""
