@@ -30,10 +30,14 @@ from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-def apply_chart_title(axes, title: str, subtitle: str, title_font_size: float) -> None:
-    """Set the chart title (with an optional subtitle on a second line)."""
-    text = f"{title}\n{subtitle}" if subtitle else title
-    axes.set_title(text, fontsize=title_font_size, fontweight="bold")
+def apply_chart_title(
+    axes, title: str, subtitle: str, title_font_size: float, subtitle_font_size: float
+) -> None:
+    """Render the title (figure-level) and subtitle (axes-level) as two
+    independent Matplotlib Text artists so each can have its own font size
+    -- a single set_title() call can't mix font sizes within one string."""
+    axes.figure.suptitle(title, fontsize=title_font_size, fontweight="bold")
+    axes.set_title(subtitle, fontsize=subtitle_font_size)
 
 
 def resolve_chart_size(
@@ -514,6 +518,7 @@ class ChartEditorWidget(PWidget):
                 title=config.get("title", self.chart.name),
                 subtitle=config.get("subtitle", ""),
                 title_font_size=config.get("title_font_size", 14),
+                subtitle_font_size=config.get("subtitle_font_size", 12),
             )
 
             cfg_manager = self.app_context.get_manager(ConfigManager)
