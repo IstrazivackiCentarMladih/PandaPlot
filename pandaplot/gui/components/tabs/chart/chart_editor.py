@@ -614,15 +614,10 @@ class ChartEditorWidget(PWidget):
                                      linestyle=_linestyle_map.get(fit.line_style, "--"),
                                      label=fit.label,
                                      alpha=1.0)
-                        self.chart_canvas.axes.plot(fit.x_data, fit.y_data,
-                                                    color=fit.color,
-                                                    linewidth=fit.line_width,
-                                                    linestyle=_linestyle_map.get(fit.line_style, "--"),
-                                                    label=fit.label,
-                                                    alpha=1.0)
                         # Plot confidence band if available
                         if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            self.chart_canvas.axes.fill_between(
+                            # Plot confidence band on the same axis as the fitted curve.
+                            fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
