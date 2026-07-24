@@ -34,7 +34,6 @@ from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
-from pandaplot.gui.components.tabs.chart.chart_editor import resolve_chart_size
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -45,6 +44,8 @@ from pandaplot.models.chart.chart_configuration import (
 )
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import YAxis, restore_chart_state, snapshot_chart_state
+from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -52,8 +53,6 @@ from pandaplot.models.state.config import (
     MIN_CHART_WIDTH_CM,
 )
 from pandaplot.services.config.config_manager import ConfigManager
-from pandaplot.models.project.items.chart import YAxis, restore_chart_state, snapshot_chart_state
-from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 # Only chart types that ChartEditorWidget.update_chart can actually render.
@@ -1507,6 +1506,10 @@ class ChartPropertiesPanel(PWidget):
         default_width, default_height, default_dpi = self._app_chart_display_defaults()
         if not self.current_chart:
             return default_width, default_height, default_dpi
+        # Deferred import: chart_editor.py pulls in matplotlib, which must
+        # stay lazy at app startup (see tests/test_startup_imports.py).
+        from pandaplot.gui.components.tabs.chart.chart_editor import resolve_chart_size
+
         return resolve_chart_size(
             self.current_chart.config.get("width_cm"),
             self.current_chart.config.get("height_cm"),

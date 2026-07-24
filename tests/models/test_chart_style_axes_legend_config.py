@@ -241,3 +241,27 @@ def test_y2_and_side_keys_default_when_missing_from_saved_data():
     assert restored.config.get("y2_tick_format", "auto") == "auto"
     assert restored.config.get("y2_tick_format_custom", "") == ""
     assert restored.config.get("show_grid_y2", True) is True
+
+
+def test_default_config_has_subtitle_font_size_key():
+    chart = Chart(name="Test Chart")
+    assert chart.config["subtitle_font_size"] == 12
+
+
+def test_subtitle_font_size_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["subtitle_font_size"] = 16
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["subtitle_font_size"] == 16
+
+
+def test_subtitle_font_size_defaults_when_missing_from_saved_data():
+    # Simulates loading a project saved before this key existed.
+    data = {
+        "id": "chart1", "name": "Test Chart", "chart_type": "line",
+        "data_series": [], "fit_data": [],
+        "config": {"title": "Test Chart"},  # non-empty, so _init_default_config is NOT re-run
+        "style": {},
+    }
+    restored = Chart.from_dict(data)
+    assert restored.config.get("subtitle_font_size", 12) == 12
