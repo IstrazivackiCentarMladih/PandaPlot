@@ -500,7 +500,7 @@ class ChartEditorWidget(PWidget):
                                      alpha=1.0)
                         # Plot confidence band if available
                         if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            self.chart_canvas.axes.fill_between(
+                            fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
