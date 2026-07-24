@@ -28,10 +28,12 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.chip_row import ChipRow
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.dirty_footer import DirtyFooter
+from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
+from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
@@ -235,6 +237,9 @@ class ChartPropertiesPanel(PWidget):
         self.style_series_chips.set_tokens(tokens)
         self.line_color_row.set_tokens(tokens)
         self.line_style_control.set_tokens(tokens)
+        for _index in range(self.line_style_control.count()):
+            _style = self.line_style_control.itemData(_index)
+            self.line_style_control.setItemIcon(_index, build_line_style_icon(_style, tokens))
         self.line_width_slider.set_tokens(tokens)
         self.line_opacity_slider.set_tokens(tokens)
         self.markers_enabled_toggle.set_tokens(tokens)
@@ -344,17 +349,17 @@ class ChartPropertiesPanel(PWidget):
         info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
 
         info_layout.addWidget(QLabel("Type:"), 2, 0)
-        self.chart_type_control = SegmentedControl(
+        self.chart_type_control = ValueComboBox(
             [
-                ("Scatter", ChartType.SCATTER),
-                ("Line", ChartType.LINE),
-                ("Bar", ChartType.BAR),
-                ("Histogram", ChartType.HISTOGRAM),
+                ("⚬ Scatter", ChartType.SCATTER),
+                ("— Line", ChartType.LINE),
+                ("▮ Bar", ChartType.BAR),
+                ("▤ Histogram", ChartType.HISTOGRAM),
             ]
         )
         info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
-        self.hist_bins_label = QLabel("Histogram Bins:")
+        self.hist_bins_label = QLabel("Bins:")
         info_layout.addWidget(self.hist_bins_label, 3, 0)
         self.hist_bins_spin = QSpinBox()
         self.hist_bins_spin.setRange(2, 200)
@@ -693,14 +698,17 @@ class ChartPropertiesPanel(PWidget):
         line_layout.addWidget(self.line_color_row, 1, 1)
 
         line_layout.addWidget(QLabel("Style:"), 2, 0)
-        self.line_style_control = SegmentedControl(
-            [
-                ("Solid", LineStyleType.SOLID),
-                ("Dashed", LineStyleType.DASHED),
-                ("Dotted", LineStyleType.DOTTED),
-                ("Dash-Dot", LineStyleType.DASHDOT),
-                ("None", LineStyleType.NONE),
-            ]
+        _line_style_items = [
+            ("Solid", LineStyleType.SOLID),
+            ("Dashed", LineStyleType.DASHED),
+            ("Dotted", LineStyleType.DOTTED),
+            ("Dash-Dot", LineStyleType.DASHDOT),
+            ("None", LineStyleType.NONE),
+        ]
+        _default_tokens = {"text_primary": "#1C1E26"}
+        self.line_style_control = ValueComboBox(
+            _line_style_items,
+            icons=[build_line_style_icon(style, _default_tokens) for _, style in _line_style_items],
         )
         line_layout.addWidget(self.line_style_control, 2, 1)
 
@@ -726,15 +734,15 @@ class ChartPropertiesPanel(PWidget):
         marker_layout.addLayout(marker_header_row, 0, 0, 1, 2)
 
         marker_layout.addWidget(QLabel("Shape:"), 1, 0)
-        self.marker_shape_control = SegmentedControl(
+        self.marker_shape_control = ValueComboBox(
             [
-                ("●", MarkerType.CIRCLE),
-                ("■", MarkerType.SQUARE),
-                ("▲", MarkerType.TRIANGLE),
-                ("◆", MarkerType.DIAMOND),
-                ("★", MarkerType.STAR),
-                ("+", MarkerType.PLUS),
-                ("✕", MarkerType.CROSS),
+                ("● Circle", MarkerType.CIRCLE),
+                ("■ Square", MarkerType.SQUARE),
+                ("▲ Triangle", MarkerType.TRIANGLE),
+                ("◆ Diamond", MarkerType.DIAMOND),
+                ("★ Star", MarkerType.STAR),
+                ("+ Plus", MarkerType.PLUS),
+                ("✕ Cross", MarkerType.CROSS),
             ]
         )
         marker_layout.addWidget(self.marker_shape_control, 1, 1)
