@@ -3,6 +3,7 @@ from typing import List, Optional, override
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFrame,
@@ -465,7 +466,7 @@ class ChartPropertiesPanel(PWidget):
         if not self.current_chart:
             self.remove_series_button.setEnabled(False)
             if hasattr(self, "style_series_chips"):
-                self.style_series_chips.setItems([])
+                self.style_series_chips.clear()
             self._refresh_axis_chips()
             return
 
@@ -493,22 +494,22 @@ class ChartPropertiesPanel(PWidget):
         self._refresh_axis_chips()
 
     def _refresh_style_chips(self):
-        """Sync the Style tab's chip row with the same series+fit list the
-        Data tab's cards are built from, keeping the chip row's selection in
-        lockstep with `self._expanded_series_index` (the single, panel-wide
+        """Sync the Style tab's dropdown with the same series+fit list the
+        Data tab's cards are built from, keeping its selection in lockstep
+        with `self._expanded_series_index` (the single, panel-wide
         "currently edited entry" state also driven by Data-tab card expand)
-        -- unless "Chart" is the currently selected chip, which is its own
+        -- unless "Chart" is the currently selected entry, which is its own
         independent target and must survive a series/fit list refresh.
 
-        Chip values are the combined index (int) for series/fit, or the
-        "chart" sentinel, so selecting a chip can drive `_expand_series`
-        directly without needing to search for the clicked object's index.
+        Values are the combined index (int) for series/fit, or the "chart"
+        sentinel, so selecting an entry can drive `_expand_series` directly
+        without needing to search for the clicked object's index.
         """
         if not hasattr(self, "style_series_chips"):
             # The Data tab (built first) triggers an initial
-            # _rebuild_series_cards() call before the Style tab (and its chip
-            # row) exists yet. There is no chart loaded yet at that point
-            # either, so there is nothing to reflect; the chip row is
+            # _rebuild_series_cards() call before the Style tab (and its
+            # dropdown) exists yet. There is no chart loaded yet at that
+            # point either, so there is nothing to reflect; the dropdown is
             # populated for real the next time a chart is loaded.
             return
         previous_value = self.style_series_chips.currentValue()
@@ -521,14 +522,15 @@ class ChartPropertiesPanel(PWidget):
             index = total_series + fit_offset
             chip_items.append((f"\U0001f527 {fit.label}", index))
 
-        # Neither setItems nor setCurrentValue emits currentValueChanged (only
-        # a user click on a chip does), so no signal-blocking is needed here
-        # to avoid re-entering _expand_series. setItems() already preserves
-        # the previous selection if it's still present (true for "chart",
-        # always in the list) -- only force it back to the expanded series
-        # index when the user wasn't on "Chart".
-        self.style_series_chips.setItems(chip_items)
-        if previous_value != "chart":
+        self.style_series_chips.blockSignals(True)
+        self.style_series_chips.clear()
+        for label, value in chip_items:
+            self.style_series_chips.addItem(label, value)
+        self.style_series_chips.blockSignals(False)
+
+        if previous_value == "chart":
+            self.style_series_chips.setCurrentValue("chart")
+        else:
             self.style_series_chips.setCurrentValue(self._expanded_series_index)
         self._update_style_target_cards_visibility()
 
@@ -694,7 +696,7 @@ class ChartPropertiesPanel(PWidget):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        self.style_series_chips = ChipRow()
+        self.style_series_chips = ValueComboBox([("Chart", "chart")])
         self.style_series_chips.currentValueChanged.connect(self._on_style_chip_selected)
         layout.addWidget(self.style_series_chips)
 
@@ -707,114 +709,165 @@ class ChartPropertiesPanel(PWidget):
         chart_layout = QGridLayout(self.chart_style_card)
         chart_layout.addWidget(SectionHeader("Chart"), 0, 0, 1, 3)
 
+        _INDENT_PX = 12
+
+        def _indented_row(
+            label_text: str, spin: QWidget, tooltip: str | None = None, extra_widgets=()
+        ) -> QHBoxLayout:
+            """A sub-row indented a small fixed amount, independent of the
+            grid's own label-column width (which is sized by the wider
+            top-level labels like "Font size:"/"Padding:")."""
+            row = QHBoxLayout()
+            row.addSpacing(_INDENT_PX)
+            label = QLabel(label_text)
+            if tooltip:
+                label.setToolTip(tooltip)
+            row.addWidget(label)
+            row.addWidget(spin)
+            for widget in extra_widgets:
+                row.addWidget(widget)
+            row.addStretch(1)
+            return row
+
         chart_layout.addWidget(QLabel("Font size:"), 1, 0)
 
-        chart_layout.addWidget(QLabel("Title"), 2, 1)
         self.title_font_size_spin = QSpinBox()
         self.title_font_size_spin.setRange(8, 32)
         self.title_font_size_spin.setValue(14)
-        chart_layout.addWidget(self.title_font_size_spin, 2, 2)
+        self.title_bold_check = QCheckBox("B")
+        self.title_bold_check.setToolTip("Bold")
+        self.title_bold_check.setChecked(True)
+        self.title_italic_check = QCheckBox("I")
+        self.title_italic_check.setToolTip("Italic")
+        chart_layout.addLayout(
+            _indented_row(
+                "Title", self.title_font_size_spin,
+                extra_widgets=(self.title_bold_check, self.title_italic_check),
+            ),
+            2, 0, 1, 3,
+        )
 
-        chart_layout.addWidget(QLabel("Subtitle"), 3, 1)
         self.subtitle_font_size_spin = QSpinBox()
         self.subtitle_font_size_spin.setRange(8, 32)
         self.subtitle_font_size_spin.setValue(12)
-        chart_layout.addWidget(self.subtitle_font_size_spin, 3, 2)
+        self.subtitle_bold_check = QCheckBox("B")
+        self.subtitle_bold_check.setToolTip("Bold")
+        self.subtitle_italic_check = QCheckBox("I")
+        self.subtitle_italic_check.setToolTip("Italic")
+        chart_layout.addLayout(
+            _indented_row(
+                "Subtitle", self.subtitle_font_size_spin,
+                extra_widgets=(self.subtitle_bold_check, self.subtitle_italic_check),
+            ),
+            3, 0, 1, 3,
+        )
 
         chart_layout.addWidget(QLabel("Padding:"), 4, 0)
 
-        chart_layout.addWidget(QLabel("Figure"), 5, 1)
         self.chart_padding_spin = QDoubleSpinBox()
         self.chart_padding_spin.setRange(0.0, 10.0)
         self.chart_padding_spin.setSingleStep(0.5)
         self.chart_padding_spin.setValue(2.0)
-        chart_layout.addWidget(self.chart_padding_spin, 5, 2)
+        chart_layout.addLayout(_indented_row("Figure", self.chart_padding_spin), 5, 0, 1, 3)
 
-        chart_layout.addWidget(QLabel("Width"), 6, 1)
         self.chart_padding_w_spin = QDoubleSpinBox()
         self.chart_padding_w_spin.setRange(0.0, 10.0)
         self.chart_padding_w_spin.setSingleStep(0.5)
         self.chart_padding_w_spin.setValue(2.0)
-        chart_layout.addWidget(self.chart_padding_w_spin, 6, 2)
+        chart_layout.addLayout(_indented_row("Width", self.chart_padding_w_spin), 6, 0, 1, 3)
 
-        chart_layout.addWidget(QLabel("Height"), 7, 1)
         self.chart_padding_h_spin = QDoubleSpinBox()
         self.chart_padding_h_spin.setRange(0.0, 10.0)
         self.chart_padding_h_spin.setSingleStep(0.5)
         self.chart_padding_h_spin.setValue(2.0)
-        chart_layout.addWidget(self.chart_padding_h_spin, 7, 2)
+        chart_layout.addLayout(_indented_row("Height", self.chart_padding_h_spin), 7, 0, 1, 3)
 
-        subtitle_padding_label = QLabel("Subtitle")
-        subtitle_padding_label.setToolTip("Gap between the plot area and the subtitle text")
-        chart_layout.addWidget(subtitle_padding_label, 8, 1)
-        self.title_padding_spin = QDoubleSpinBox()
-        self.title_padding_spin.setRange(0.0, 50.0)
-        self.title_padding_spin.setSingleStep(1.0)
-        self.title_padding_spin.setValue(6.0)
-        chart_layout.addWidget(self.title_padding_spin, 8, 2)
-
-        main_title_padding_label = QLabel("Title")
-        main_title_padding_label.setToolTip("Gap between the top edge of the figure and the main title")
-        chart_layout.addWidget(main_title_padding_label, 9, 1)
         self.main_title_padding_spin = QDoubleSpinBox()
         self.main_title_padding_spin.setRange(0.0, 100.0)
         self.main_title_padding_spin.setSingleStep(1.0)
         self.main_title_padding_spin.setValue(10.0)
-        chart_layout.addWidget(self.main_title_padding_spin, 9, 2)
+        chart_layout.addLayout(
+            _indented_row(
+                "Title", self.main_title_padding_spin,
+                tooltip="Gap between the top edge of the figure and the main title",
+            ),
+            8, 0, 1, 3,
+        )
 
-        chart_layout.addWidget(QLabel("Size:"), 10, 0)
+        self.title_padding_spin = QDoubleSpinBox()
+        self.title_padding_spin.setRange(0.0, 50.0)
+        self.title_padding_spin.setSingleStep(1.0)
+        self.title_padding_spin.setValue(6.0)
+        chart_layout.addLayout(
+            _indented_row(
+                "Subtitle", self.title_padding_spin,
+                tooltip="Gap between the plot area and the subtitle text",
+            ),
+            9, 0, 1, 3,
+        )
+
+        self.top_margin_spin = QDoubleSpinBox()
+        self.top_margin_spin.setRange(0.5, 1.0)
+        self.top_margin_spin.setSingleStep(0.01)
+        self.top_margin_spin.setDecimals(2)
+        self.top_margin_spin.setValue(1.0)
+        chart_layout.addLayout(
+            _indented_row(
+                "Top margin", self.top_margin_spin,
+                tooltip=(
+                    "Fraction of the figure height reserved above the plot "
+                    "(1.0 = no reservation, let it auto-size). Unlike the "
+                    "Title/Subtitle padding above, this is a fixed reservation "
+                    "independent of whether a title/subtitle is present -- "
+                    "lower it manually to reclaim space when you remove one."
+                ),
+            ),
+            10, 0, 1, 3,
+        )
+
+        chart_layout.addWidget(QLabel("Size:"), 11, 0)
         self.chart_size_combo = QComboBox()
         self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
         self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_size_combo, 10, 1, 1, 2)
+        chart_layout.addWidget(self.chart_size_combo, 11, 1, 1, 2)
 
         self.custom_size_row = QWidget()
         custom_size_layout = QVBoxLayout(self.custom_size_row)
         custom_size_layout.setContentsMargins(0, 0, 0, 0)
-        width_row = QHBoxLayout()
-        width_row.addWidget(QLabel("Width"))
         self.chart_width_spin = QDoubleSpinBox()
         self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.chart_width_spin.setSuffix(" cm")
-        width_row.addWidget(self.chart_width_spin)
-        width_row.addStretch(1)
-        custom_size_layout.addLayout(width_row)
-        height_row = QHBoxLayout()
-        height_row.addWidget(QLabel("Height"))
+        custom_size_layout.addLayout(_indented_row("Width", self.chart_width_spin))
         self.chart_height_spin = QDoubleSpinBox()
         self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.chart_height_spin.setSuffix(" cm")
-        height_row.addWidget(self.chart_height_spin)
-        height_row.addStretch(1)
-        custom_size_layout.addLayout(height_row)
-        chart_layout.addWidget(self.custom_size_row, 11, 1, 1, 2)
+        custom_size_layout.addLayout(_indented_row("Height", self.chart_height_spin))
+        chart_layout.addWidget(self.custom_size_row, 12, 0, 1, 3)
         self.custom_size_row.setVisible(False)
 
-        chart_layout.addWidget(QLabel("DPI:"), 12, 0)
+        chart_layout.addWidget(QLabel("DPI:"), 13, 0)
         self.chart_dpi_combo = QComboBox()
         self.chart_dpi_combo.addItem("100 dpi", 100)
         self.chart_dpi_combo.addItem("150 dpi", 150)
         self.chart_dpi_combo.addItem("300 dpi", 300)
         self.chart_dpi_combo.addItem("Custom", "custom")
         self.chart_dpi_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_dpi_combo, 12, 1, 1, 2)
+        chart_layout.addWidget(self.chart_dpi_combo, 13, 1, 1, 2)
 
         self.custom_dpi_row = QWidget()
-        custom_dpi_layout = QHBoxLayout(self.custom_dpi_row)
+        custom_dpi_layout = QVBoxLayout(self.custom_dpi_row)
         custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
-        custom_dpi_layout.addWidget(QLabel("DPI"))
         self.chart_dpi_spin = QSpinBox()
         self.chart_dpi_spin.setRange(50, 600)
-        custom_dpi_layout.addWidget(self.chart_dpi_spin)
-        custom_dpi_layout.addStretch(1)
-        chart_layout.addWidget(self.custom_dpi_row, 13, 1, 1, 2)
+        custom_dpi_layout.addLayout(_indented_row("DPI", self.chart_dpi_spin))
+        chart_layout.addWidget(self.custom_dpi_row, 14, 0, 1, 3)
         self.custom_dpi_row.setVisible(False)
 
         hint = QLabel("Size affects export & default fonts")
         hint.setStyleSheet("font-size: 10.5px;")
-        chart_layout.addWidget(hint, 14, 0, 1, 3)
+        chart_layout.addWidget(hint, 15, 0, 1, 3)
 
         layout.addWidget(self.chart_style_card)
 
@@ -1256,6 +1309,11 @@ class ChartPropertiesPanel(PWidget):
         self.chart_padding_h_spin.valueChanged.connect(self._on_chart_config_changed)
         self.title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
         self.main_title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.top_margin_spin.valueChanged.connect(self._on_chart_config_changed)
+        self.title_bold_check.toggled.connect(self._on_chart_config_changed)
+        self.title_italic_check.toggled.connect(self._on_chart_config_changed)
+        self.subtitle_bold_check.toggled.connect(self._on_chart_config_changed)
+        self.subtitle_italic_check.toggled.connect(self._on_chart_config_changed)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -1674,6 +1732,16 @@ class ChartPropertiesPanel(PWidget):
             config["title_padding"] = self.title_padding_spin.value()
         if hasattr(self, "main_title_padding_spin"):
             config["main_title_padding"] = self.main_title_padding_spin.value()
+        if hasattr(self, "top_margin_spin"):
+            config["top_margin"] = self.top_margin_spin.value()
+        if hasattr(self, "title_bold_check"):
+            config["title_bold"] = self.title_bold_check.isChecked()
+        if hasattr(self, "title_italic_check"):
+            config["title_italic"] = self.title_italic_check.isChecked()
+        if hasattr(self, "subtitle_bold_check"):
+            config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
+        if hasattr(self, "subtitle_italic_check"):
+            config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
         if hasattr(self, "chart_size_combo"):
             config["width_cm"], config["height_cm"] = self._size_from_controls()
         if hasattr(self, "chart_dpi_combo"):
@@ -1886,6 +1954,11 @@ class ChartPropertiesPanel(PWidget):
             self.chart_padding_h_spin.setValue(2.0)
             self.title_padding_spin.setValue(6.0)
             self.main_title_padding_spin.setValue(10.0)
+            self.top_margin_spin.setValue(1.0)
+            self.title_bold_check.setChecked(True)
+            self.title_italic_check.setChecked(False)
+            self.subtitle_bold_check.setChecked(False)
+            self.subtitle_italic_check.setChecked(False)
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
@@ -2040,6 +2113,11 @@ class ChartPropertiesPanel(PWidget):
                 self.chart_padding_h_spin.setValue(chart.config.get("chart_padding_h", 2.0))
                 self.title_padding_spin.setValue(chart.config.get("title_padding", 6.0))
                 self.main_title_padding_spin.setValue(chart.config.get("main_title_padding", 10.0))
+                self.top_margin_spin.setValue(chart.config.get("top_margin", 1.0))
+                self.title_bold_check.setChecked(chart.config.get("title_bold", True))
+                self.title_italic_check.setChecked(chart.config.get("title_italic", False))
+                self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
+                self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
 
                 # QComboBox.findData() is unreliable for tuple-valued itemData
                 # (Qt's QVariant comparison doesn't match Python tuple equality
@@ -2143,6 +2221,11 @@ class ChartPropertiesPanel(PWidget):
         chart.config["chart_padding_h"] = self.chart_padding_h_spin.value()
         chart.config["title_padding"] = self.title_padding_spin.value()
         chart.config["main_title_padding"] = self.main_title_padding_spin.value()
+        chart.config["top_margin"] = self.top_margin_spin.value()
+        chart.config["title_bold"] = self.title_bold_check.isChecked()
+        chart.config["title_italic"] = self.title_italic_check.isChecked()
+        chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
+        chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
         for prefix in ("x", "y", "y2"):

@@ -216,23 +216,28 @@ class ChartCanvas(FigureCanvas):
                 self.axes2.set_ylim(self.original_ylim2)
             self.draw()
 
-    def set_size(self, width, height, pad: float = 2.0, w_pad: float = 2.0, h_pad: float = 2.0):
+    def set_size(
+        self, width, height, pad: float = 2.0, w_pad: float = 2.0, h_pad: float = 2.0,
+        top_margin: float = 1.0,
+    ):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad)
+            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
         except Exception:
             logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
         self.resize(*self.get_width_height())
         self.draw()
 
-    def set_dpi(self, dpi, pad: float = 2.0, w_pad: float = 2.0, h_pad: float = 2.0):
+    def set_dpi(
+        self, dpi, pad: float = 2.0, w_pad: float = 2.0, h_pad: float = 2.0, top_margin: float = 1.0,
+    ):
         """Change the figure DPI, keeping the widget's pixel size in sync."""
         if self.fig.dpi == dpi:
             return
         self.fig.set_dpi(dpi)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad)
+            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
         except Exception:
             logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())

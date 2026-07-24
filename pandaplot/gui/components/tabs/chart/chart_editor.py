@@ -39,6 +39,10 @@ def apply_chart_title(
     title_padding: float = 6.0,
     main_title_padding: float = 10.0,
     fig_height_inches: float | None = None,
+    title_bold: bool = True,
+    title_italic: bool = False,
+    subtitle_bold: bool = False,
+    subtitle_italic: bool = False,
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
@@ -58,12 +62,29 @@ def apply_chart_title(
     resolve before calling this), not necessarily its current height -- the
     conversion is wrong if the figure is resized afterward using a
     different height than was used here. Defaults to the figure's current
-    height when not given (e.g. in tests using a bare Figure/Axes)."""
+    height when not given (e.g. in tests using a bare Figure/Axes).
+
+    When `title`/`subtitle` is empty, that artist's text is cleared instead
+    of being (re)positioned, so an absent title/subtitle doesn't leave a
+    stale reserved-looking gap where it used to be."""
     fig = axes.figure
-    height = fig_height_inches if fig_height_inches is not None else fig.get_figheight()
-    y = 1.0 - (main_title_padding / 72.0) / height if height else 0.98
-    fig.suptitle(title, fontsize=title_font_size, fontweight="bold", y=y)
-    axes.set_title(subtitle, fontsize=subtitle_font_size, pad=title_padding)
+
+    if title:
+        height = fig_height_inches if fig_height_inches is not None else fig.get_figheight()
+        y = 1.0 - (main_title_padding / 72.0) / height if height else 0.98
+        fig.suptitle(
+            title, fontsize=title_font_size, y=y,
+            fontweight="bold" if title_bold else "normal",
+            fontstyle="italic" if title_italic else "normal",
+        )
+    elif fig._suptitle is not None:
+        fig._suptitle.set_text("")
+
+    axes.set_title(
+        subtitle, fontsize=subtitle_font_size, pad=title_padding,
+        fontweight="bold" if subtitle_bold else "normal",
+        fontstyle="italic" if subtitle_italic else "normal",
+    )
 
 
 def resolve_chart_size(
@@ -297,6 +318,7 @@ class ChartEditorWidget(PWidget):
                     pad=self.chart.config.get("chart_padding", 2.0),
                     w_pad=self.chart.config.get("chart_padding_w", 2.0),
                     h_pad=self.chart.config.get("chart_padding_h", 2.0),
+                    top_margin=self.chart.config.get("top_margin", 1.0),
                 )
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
@@ -568,16 +590,23 @@ class ChartEditorWidget(PWidget):
                 title_padding=config.get("title_padding", 6.0),
                 main_title_padding=config.get("main_title_padding", 10.0),
                 fig_height_inches=cm_to_inches(height_cm),
+                title_bold=config.get("title_bold", True),
+                title_italic=config.get("title_italic", False),
+                subtitle_bold=config.get("subtitle_bold", False),
+                subtitle_italic=config.get("subtitle_italic", False),
             )
 
             chart_padding = config.get("chart_padding", 2.0)
             chart_padding_w = config.get("chart_padding_w", 2.0)
             chart_padding_h = config.get("chart_padding_h", 2.0)
+            top_margin = config.get("top_margin", 1.0)
             self.chart_canvas.set_size(
                 cm_to_inches(width_cm), cm_to_inches(height_cm),
-                pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h,
+                pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
             )
-            self.chart_canvas.set_dpi(dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h)
+            self.chart_canvas.set_dpi(
+                dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
+            )
 
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
@@ -668,6 +697,7 @@ class ChartEditorWidget(PWidget):
                     pad=config.get("chart_padding", 2.0),
                     w_pad=config.get("chart_padding_w", 2.0),
                     h_pad=config.get("chart_padding_h", 2.0),
+                    rect=(0, 0, 1, config.get("top_margin", 1.0)),
                 )
 
             # Store original limits for zoom reset functionality
