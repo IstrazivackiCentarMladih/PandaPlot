@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -35,6 +34,7 @@ from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbo
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AxesTab
+from pandaplot.gui.components.sidebar.chart.tabs.chart_tab import ChartTab
 from pandaplot.gui.components.sidebar.chart.tabs.legend_tab import LegendTab
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.chart_configuration import (
@@ -84,12 +84,6 @@ class ChartPropertiesPanel(PWidget):
         # Baseline for Cancel and for Apply's undo: the chart state as of the
         # last load into this panel or the last Apply.
         self._loaded_snapshot: Optional[dict] = None
-        # Tracks whether the loaded chart's type is one the combo can
-        # represent, so an unsupported/hidden type (e.g. a saved "box" or
-        # "violin" chart) isn't silently overwritten with "line" just
-        # because that's what the combo defaults to for display.
-        self._loaded_chart_type_supported: bool = True
-        self._chart_type_touched_by_user: bool = False
         # Whether the Custom size/DPI fields have already been pre-filled
         # for the currently loaded chart (reset on every load_chart_object/
         # _clear_controls call). Prevents re-filling with defaults if the
@@ -142,11 +136,13 @@ class ChartPropertiesPanel(PWidget):
         self.tab_widget.currentChanged.connect(self._on_tab_widget_current_changed)
 
         # Chart tab: chart identity (title, chart type, histogram bins)
-        chart_tab = QWidget()
-        chart_tab_layout = QVBoxLayout(chart_tab)
-        self._create_chart_info_section(chart_tab_layout)
-        chart_tab_layout.addStretch(1)
-        self.chart_tab = chart_tab
+        self.chart_tab = ChartTab(self)
+        self.chart_tab.configChanged.connect(self._on_any_tab_config_changed)
+        # TEMPORARY shim until Task 4 introduces StyleTab.set_chart_type: the
+        # Style tab still lives on this panel (self.style_tab is a plain
+        # QWidget from _create_style_tab, not yet an object with its own
+        # chart-type handling), so react to a chart-type change here instead.
+        self.chart_tab.chartTypeChanged.connect(lambda _ct: self._update_style_target_cards_visibility())
         self.tab_widget.addTab(self.chart_tab, "Chart")
 
         # Axes tab: constructed before the Data tab (though added to the tab
@@ -288,7 +284,7 @@ class ChartPropertiesPanel(PWidget):
         # Footer (DirtyFooter) theme token propagation
         tokens = theme_manager.get_design_tokens()
         self.footer.set_tokens(tokens)
-        self.chart_type_control.set_tokens(tokens)
+        self.chart_tab.apply_theme(tokens)
 
         # Style tab: shared widgets
         self.style_series_chips.set_tokens(tokens)
@@ -351,44 +347,6 @@ class ChartPropertiesPanel(PWidget):
         self.add_series_button.setStyleSheet(add_style)
         
 
-    def _create_chart_info_section(self, layout):
-        """Create the basic chart information section."""
-        # Chart info group
-        info_group = QGroupBox("Chart Information")
-        info_layout = QGridLayout(info_group)
-        info_layout.setSpacing(8)
-
-        info_layout.addWidget(QLabel("Title:"), 0, 0)
-        self.title_edit = QLineEdit()
-        info_layout.addWidget(self.title_edit, 0, 1, 1, 2)
-
-        info_layout.addWidget(QLabel("Subtitle:"), 1, 0)
-        self.subtitle_edit = QLineEdit()
-        self.subtitle_edit.setPlaceholderText("Optional")
-        info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
-
-        info_layout.addWidget(QLabel("Type:"), 2, 0)
-        self.chart_type_control = ValueComboBox(
-            [
-                ("Scatter", ChartType.SCATTER),
-                ("Line", ChartType.LINE),
-                ("Bar", ChartType.BAR),
-                ("Histogram", ChartType.HISTOGRAM),
-            ]
-        )
-        info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
-
-        self.hist_bins_label = QLabel("Bins:")
-        info_layout.addWidget(self.hist_bins_label, 3, 0)
-        self.hist_bins_spin = QSpinBox()
-        self.hist_bins_spin.setRange(2, 200)
-        self.hist_bins_spin.setValue(20)
-        self.hist_bins_spin.setToolTip("Number of bins used when chart type is Histogram")
-        info_layout.addWidget(self.hist_bins_spin, 3, 1)
-        self._update_hist_bins_visibility()
-
-        layout.addWidget(info_group)
-    
     def _create_series_management_section(self, layout):
         """Create the data series management section: an expand/collapse card
         per series (plus any fit-data entries), backed by a single persistent
@@ -585,8 +543,8 @@ class ChartPropertiesPanel(PWidget):
         is_chart = self.style_series_chips.currentValue() == "chart"
         self.chart_style_card.setVisible(is_chart)
         is_scatter = (
-            hasattr(self, "chart_type_control")
-            and self.chart_type_control.currentValue() == ChartType.SCATTER
+            hasattr(self, "chart_tab")
+            and self.chart_tab.chart_type_control.currentValue() == ChartType.SCATTER
         )
         self.line_card.setVisible(not is_chart and not is_scatter)
         self.marker_card.setVisible(not is_chart)
@@ -1090,12 +1048,10 @@ class ChartPropertiesPanel(PWidget):
         """Connect widget signals."""
         self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
 
-        # Connect chart-level configuration changes
-        self.chart_type_control.currentValueChanged.connect(self._on_chart_type_index_changed)
-        self.hist_bins_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.title_edit.textChanged.connect(self._on_chart_config_changed)
+        # Connect chart-level configuration changes. Chart tab's own fields
+        # (title/subtitle/chart type/hist bins) are wired internally by
+        # ChartTab itself.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.subtitle_edit.textChanged.connect(self._on_chart_config_changed)
         self.subtitle_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
         self.chart_padding_spin.valueChanged.connect(self._on_chart_config_changed)
         self.chart_padding_w_spin.valueChanged.connect(self._on_chart_config_changed)
@@ -1423,24 +1379,6 @@ class ChartPropertiesPanel(PWidget):
                 "update_type": "series_updated"
             })
 
-    def _on_chart_type_index_changed(self):
-        """Handle chart type combo changes, tracking explicit user intent.
-
-        Distinguishes a user picking a chart type from the combo being set
-        programmatically while loading a chart (see _loaded_chart_type_supported).
-        """
-        if not self._updating_controls:
-            self._chart_type_touched_by_user = True
-        self._update_hist_bins_visibility()
-        self._update_style_target_cards_visibility()
-        self._on_chart_config_changed()
-
-    def _update_hist_bins_visibility(self):
-        """Show the Histogram Bins control only when the chart type is Histogram."""
-        is_histogram = self.chart_type_control.currentValue() == ChartType.HISTOGRAM
-        self.hist_bins_label.setVisible(is_histogram)
-        self.hist_bins_spin.setVisible(is_histogram)
-
     def _app_chart_display_defaults(self):
         """Read the app-wide default chart width/height/dpi from Settings."""
         cfg_manager = self.app_context.get_manager(ConfigManager)
@@ -1520,12 +1458,8 @@ class ChartPropertiesPanel(PWidget):
         # must NOT rename the chart item in the project tree, which is a
         # separate concept controlled by its own rename action.
         config = self.current_chart.config
-        if hasattr(self, "title_edit"):
-            config["title"] = self.title_edit.text()
         if hasattr(self, "title_font_size_spin"):
             config["title_font_size"] = self.title_font_size_spin.value()
-        if hasattr(self, "subtitle_edit"):
-            config["subtitle"] = self.subtitle_edit.text()
         if hasattr(self, "subtitle_font_size_spin"):
             config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
         if hasattr(self, "chart_padding_spin"):
@@ -1552,21 +1486,7 @@ class ChartPropertiesPanel(PWidget):
             config["width_cm"], config["height_cm"] = self._size_from_controls()
         if hasattr(self, "chart_dpi_combo"):
             config["dpi"] = self._dpi_from_controls()
-        if hasattr(self, "hist_bins_spin"):
-            config["hist_bins"] = self.hist_bins_spin.value()
-        if hasattr(self, "chart_type_control") and self.chart_type_control.currentValue():
-            chart_type_map = {
-                ChartType.LINE: "line",
-                ChartType.SCATTER: "scatter",
-                ChartType.BAR: "bar",
-                ChartType.HISTOGRAM: "hist",
-            }
-            chart_type = self.chart_type_control.currentValue()
-            if chart_type in chart_type_map and (
-                self._loaded_chart_type_supported or self._chart_type_touched_by_user
-            ):
-                self.current_chart.chart_type = chart_type_map[chart_type]
-        
+
         # Emit update event so any open chart tab refreshes immediately
         if self.current_chart:
             self._has_unsaved_changes = True
@@ -1745,9 +1665,7 @@ class ChartPropertiesPanel(PWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.title_edit.clear()
             self.title_font_size_spin.setValue(14)
-            self.subtitle_edit.clear()
             self.subtitle_font_size_spin.setValue(12)
             self.chart_padding_spin.setValue(2.0)
             self.chart_padding_w_spin.setValue(2.0)
@@ -1759,7 +1677,6 @@ class ChartPropertiesPanel(PWidget):
             self.title_italic_check.setChecked(False)
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
-            self.chart_type_control.setCurrentValue(ChartType.SCATTER)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
             self.chart_height_spin.setValue(15.0)
@@ -1767,8 +1684,7 @@ class ChartPropertiesPanel(PWidget):
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.chart_dpi_spin.setValue(100)
             self._custom_dpi_prefilled = False
-            self.hist_bins_spin.setValue(20)
-            self._update_hist_bins_visibility()
+            self.chart_tab.clear()
             self.axes_tab.clear()
             self.legend_tab.clear()
             self.series_label_edit.clear()
@@ -1884,7 +1800,6 @@ class ChartPropertiesPanel(PWidget):
         self.current_chart = chart
         self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
         self._has_unsaved_changes = False
-        self._chart_type_touched_by_user = False
         self._update_status_indicator()
 
         if chart:
@@ -1897,9 +1812,7 @@ class ChartPropertiesPanel(PWidget):
             self._updating_controls = True
             try:
                 # Load basic info
-                self.title_edit.setText(chart.config.get("title", chart.name))
                 self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
-                self.subtitle_edit.setText(chart.config.get("subtitle", ""))
                 self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
                 self.chart_padding_spin.setValue(chart.config.get("chart_padding", 2.0))
                 self.chart_padding_w_spin.setValue(chart.config.get("chart_padding_w", 2.0))
@@ -1945,18 +1858,6 @@ class ChartPropertiesPanel(PWidget):
                 else:
                     self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
 
-                # Set chart type
-                chart_type_map = {
-                    "line": ChartType.LINE,
-                    "scatter": ChartType.SCATTER,
-                    "bar": ChartType.BAR,
-                    "hist": ChartType.HISTOGRAM,
-                }
-                self._loaded_chart_type_supported = chart.chart_type in chart_type_map
-                chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-                self.chart_type_control.setCurrentValue(chart_type)
-                self._update_hist_bins_visibility()
-
                 # Expand the first series/fit entry and rebuild the card list
                 # (this also (re)loads it into the config form controls).
                 self._expanded_series_index = 0
@@ -1966,11 +1867,9 @@ class ChartPropertiesPanel(PWidget):
                 # into the Style tab controls via _build_expanded_series_card.)
 
                 # Load configuration
-                config = chart.config
+                self.chart_tab.load(chart)
                 self.axes_tab.load(chart)
-
                 self.legend_tab.load(chart)
-                self.hist_bins_spin.setValue(config.get("hist_bins", 20))
             finally:
                 self._updating_controls = previous_guard
 
@@ -1991,9 +1890,7 @@ class ChartPropertiesPanel(PWidget):
             return
         
         # Update basic chart properties
-        chart.config["title"] = self.title_edit.text()
         chart.config["title_font_size"] = self.title_font_size_spin.value()
-        chart.config["subtitle"] = self.subtitle_edit.text()
         chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
         chart.config["chart_padding"] = self.chart_padding_spin.value()
         chart.config["chart_padding_w"] = self.chart_padding_w_spin.value()
@@ -2007,21 +1904,10 @@ class ChartPropertiesPanel(PWidget):
         chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
+        self.chart_tab.apply_to(chart)
         self.axes_tab.apply_to(chart)
         self.legend_tab.apply_to(chart)
-        chart.config["hist_bins"] = self.hist_bins_spin.value()
 
-        # Update chart type
-        chart_type_map = {
-            ChartType.LINE: "line",
-            ChartType.SCATTER: "scatter",
-            ChartType.BAR: "bar",
-            ChartType.HISTOGRAM: "hist",
-        }
-        chart_type = self.chart_type_control.currentValue()
-        if chart_type in chart_type_map:
-            chart.chart_type = chart_type_map[chart_type]
-        
         # Apply style updates to the currently selected series or fit data
         current_row = self._expanded_series_index
         if current_row >= 0:
