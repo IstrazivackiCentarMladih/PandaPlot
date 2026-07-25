@@ -3,16 +3,13 @@ from typing import List, Optional, override
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
-    QDoubleSpinBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -25,34 +22,19 @@ from pandaplot.commands.project.chart import (
     RemoveSeriesCommand,
 )
 from pandaplot.gui.components.common.card import Card
-from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.dirty_footer import DirtyFooter
-from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
-from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
-from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
-from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AxesTab
 from pandaplot.gui.components.sidebar.chart.tabs.chart_tab import ChartTab
 from pandaplot.gui.components.sidebar.chart.tabs.legend_tab import LegendTab
+from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.chart.chart_configuration import (
-    ChartType,
-    LineStyleType,
-    MarkerType,
-)
+from pandaplot.models.chart.chart_configuration import ChartType
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import YAxis, restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
-from pandaplot.models.state.config import (
-    MAX_CHART_HEIGHT_CM,
-    MAX_CHART_WIDTH_CM,
-    MIN_CHART_HEIGHT_CM,
-    MIN_CHART_WIDTH_CM,
-)
-from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 # Only chart types that ChartEditorWidget.update_chart can actually render.
@@ -63,9 +45,6 @@ IMPLEMENTED_CHART_TYPES = [
     ChartType.BAR,
     ChartType.HISTOGRAM,
 ]
-
-# Preset swatch palette offered by the Style tab's line/marker color pickers.
-STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
 
 class ChartPropertiesPanel(PWidget):
@@ -84,12 +63,6 @@ class ChartPropertiesPanel(PWidget):
         # Baseline for Cancel and for Apply's undo: the chart state as of the
         # last load into this panel or the last Apply.
         self._loaded_snapshot: Optional[dict] = None
-        # Whether the Custom size/DPI fields have already been pre-filled
-        # for the currently loaded chart (reset on every load_chart_object/
-        # _clear_controls call). Prevents re-filling with defaults if the
-        # user toggles back and forth between Custom and a preset.
-        self._custom_size_prefilled: bool = False
-        self._custom_dpi_prefilled: bool = False
         # Reference to the expanded Data-tab card's Y1/Y2 badge QLabel (and
         # the design tokens it was last styled with), so a live series
         # Y-axis edit can restyle it in place. See _on_series_config_changed.
@@ -135,14 +108,17 @@ class ChartPropertiesPanel(PWidget):
         self.tab_widget = QTabWidget(self)
         self.tab_widget.currentChanged.connect(self._on_tab_widget_current_changed)
 
+        # Style tab is constructed before the Chart tab (though added to the
+        # tab widget after Data, below) because ChartTab.chartTypeChanged
+        # needs to connect directly to self.style_tab.set_chart_type here.
+        self.style_tab = StyleTab(self.app_context, self)
+        self.style_tab.configChanged.connect(self._on_any_tab_config_changed)
+        self.style_tab.seriesChipSelected.connect(self._expand_series)
+
         # Chart tab: chart identity (title, chart type, histogram bins)
         self.chart_tab = ChartTab(self)
         self.chart_tab.configChanged.connect(self._on_any_tab_config_changed)
-        # TEMPORARY shim until Task 4 introduces StyleTab.set_chart_type: the
-        # Style tab still lives on this panel (self.style_tab is a plain
-        # QWidget from _create_style_tab, not yet an object with its own
-        # chart-type handling), so react to a chart-type change here instead.
-        self.chart_tab.chartTypeChanged.connect(lambda _ct: self._update_style_target_cards_visibility())
+        self.chart_tab.chartTypeChanged.connect(self.style_tab.set_chart_type)
         self.tab_widget.addTab(self.chart_tab, "Chart")
 
         # Axes tab: constructed before the Data tab (though added to the tab
@@ -161,7 +137,6 @@ class ChartPropertiesPanel(PWidget):
         self.tab_widget.addTab(self.data_tab, "Data")
 
         # Style tab (line/marker style)
-        self.style_tab = self._create_style_tab()
         self.tab_widget.addTab(self.style_tab, "Style")
 
         self.tab_widget.addTab(self.axes_tab, "Axes")
@@ -287,20 +262,7 @@ class ChartPropertiesPanel(PWidget):
         self.chart_tab.apply_theme(tokens)
 
         # Style tab: shared widgets
-        self.style_series_chips.set_tokens(tokens)
-        self.line_color_row.set_tokens(tokens)
-        self.line_style_control.set_tokens(tokens)
-        for _index in range(self.line_style_control.count()):
-            _style = self.line_style_control.itemData(_index)
-            self.line_style_control.setItemIcon(_index, build_line_style_icon(_style, tokens))
-        self.line_width_slider.set_tokens(tokens)
-        self.line_opacity_slider.set_tokens(tokens)
-        self.markers_enabled_toggle.set_tokens(tokens)
-        self.marker_shape_control.set_tokens(tokens)
-        self.marker_size_slider.set_tokens(tokens)
-        self.marker_color_row.set_tokens(tokens)
-        self.marker_match_line_toggle.set_tokens(tokens)
-        self.marker_edge_color_row.set_tokens(tokens)
+        self.style_tab.apply_theme(tokens)
 
         # Data tab: cards/SegmentedControl are rebuilt with fresh tokens
         # every time _rebuild_series_cards runs, so re-running it here is
@@ -410,6 +372,14 @@ class ChartPropertiesPanel(PWidget):
         self._expanded_series_index = index
         self._expanded_card_indices.add(index)
         self._rebuild_series_cards()
+        if not self.current_chart:
+            return
+        if index < len(self.current_chart.data_series):
+            self.style_tab.set_selected("series", self.current_chart.data_series[index])
+        else:
+            self.style_tab.set_selected(
+                "fit", self.current_chart.fit_data[index - len(self.current_chart.data_series)]
+            )
 
     def _toggle_card_expanded(self, index: int):
         """Purely-visual accordion toggle: show/hide a card's read-only
@@ -451,8 +421,8 @@ class ChartPropertiesPanel(PWidget):
         tokens = theme_manager.get_design_tokens()
 
         if not self.current_chart:
-            if hasattr(self, "style_series_chips"):
-                self.style_series_chips.clear()
+            if hasattr(self, "style_tab"):
+                self.style_tab.style_series_chips.clear()
             self.axes_tab.refresh_axis_chips(self.current_chart)
             return
 
@@ -492,14 +462,15 @@ class ChartPropertiesPanel(PWidget):
         sentinel, so selecting an entry can drive `_expand_series` directly
         without needing to search for the clicked object's index.
         """
-        if not hasattr(self, "style_series_chips"):
+        if not hasattr(self, "style_tab"):
             # The Data tab (built first) triggers an initial
             # _rebuild_series_cards() call before the Style tab (and its
             # dropdown) exists yet. There is no chart loaded yet at that
             # point either, so there is nothing to reflect; the dropdown is
             # populated for real the next time a chart is loaded.
             return
-        previous_value = self.style_series_chips.currentValue()
+        style_chips = self.style_tab.style_series_chips
+        previous_value = style_chips.currentValue()
         chip_items = [("Chart", "chart")]
         for index, series in enumerate(self.current_chart.data_series):
             label = series.label or f"{series.dataset_id}:{series.y_column}"
@@ -509,45 +480,30 @@ class ChartPropertiesPanel(PWidget):
             index = total_series + fit_offset
             chip_items.append((f"\U0001f527 {fit.label}", index))
 
-        self.style_series_chips.blockSignals(True)
-        self.style_series_chips.clear()
+        style_chips.blockSignals(True)
+        style_chips.clear()
         for label, value in chip_items:
-            self.style_series_chips.addItem(label, value)
-        self.style_series_chips.blockSignals(False)
+            style_chips.addItem(label, value)
+        style_chips.blockSignals(False)
 
         if previous_value == "chart":
-            self.style_series_chips.setCurrentValue("chart")
+            style_chips.setCurrentValue("chart")
         else:
-            self.style_series_chips.setCurrentValue(self._expanded_series_index)
-        self._update_style_target_cards_visibility()
+            style_chips.setCurrentValue(self._expanded_series_index)
 
-    def _on_style_chip_selected(self, value):
-        """Route a Style-tab chip click: an int (combined series/fit index)
-        drives the same expanded-card state the Data tab uses; the "chart"
-        sentinel shows chart-level style settings instead, independent of
-        which series/fit is expanded on the Data tab."""
-        if value == "chart":
-            self._update_style_target_cards_visibility()
+        # Keep the Style tab's own selection tracking (`_current_target`) in
+        # lockstep with the chip value set above, since `setCurrentValue`
+        # doesn't emit `currentValueChanged` (see ValueComboBox).
+        final_value = style_chips.currentValue()
+        if final_value == "chart":
+            self.style_tab._current_target = ("chart", None)
+            self.style_tab._update_target_cards_visibility()
+        elif final_value < len(self.current_chart.data_series):
+            self.style_tab.set_selected("series", self.current_chart.data_series[final_value])
         else:
-            self._expand_series(value)
-
-    def _update_style_target_cards_visibility(self):
-        """Show the Chart card XOR the Line/Marker cards, matching whichever
-        Style-tab chip is currently selected.
-
-        The Line card is additionally hidden for Scatter charts: a scatter
-        plot draws independent markers with no connecting line (unlike
-        Line's ordered, connected points), so line color/style/width/opacity
-        have nothing to apply to there.
-        """
-        is_chart = self.style_series_chips.currentValue() == "chart"
-        self.chart_style_card.setVisible(is_chart)
-        is_scatter = (
-            hasattr(self, "chart_tab")
-            and self.chart_tab.chart_type_control.currentValue() == ChartType.SCATTER
-        )
-        self.line_card.setVisible(not is_chart and not is_scatter)
-        self.marker_card.setVisible(not is_chart)
+            self.style_tab.set_selected(
+                "fit", self.current_chart.fit_data[final_value - len(self.current_chart.data_series)]
+            )
 
     def _make_swatch(self, color: str, tokens: dict) -> QFrame:
         swatch = QFrame()
@@ -755,319 +711,13 @@ class ChartPropertiesPanel(PWidget):
 
         return card
 
-    def _create_style_tab(self) -> QWidget:
-        """Create the style configuration tab.
-
-        There is deliberately no independent series selector here: the chip
-        row at the top drives the same `self._expanded_series_index` state
-        that the Data tab's expand/collapse cards drive (via `_expand_series`),
-        so the two tabs can never disagree about which series/fit is being
-        styled. All controls below always reflect whichever entry is
-        currently expanded.
-
-        A literal rendered line/marker preview (as sketched in the original
-        design brief) is intentionally omitted here: this panel has no chart
-        canvas of its own to paint into, and the live chart view already
-        re-renders immediately on every change (see `_on_style_changed`), so
-        a second, redundant mini-renderer wasn't worth the complexity.
-        """
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-
-        self.style_series_chips = ValueComboBox([("Chart", "chart")])
-        self.style_series_chips.currentValueChanged.connect(self._on_style_chip_selected)
-        layout.addWidget(self.style_series_chips)
-
-        # CHART group: chart-level rendering settings (title/subtitle font
-        # size, margin padding, size, dpi) -- shown instead of the Line/
-        # Marker cards when the "Chart" chip is selected. Independent of
-        # `self._expanded_series_index`: selecting "Chart" never touches
-        # which Data-tab series card is expanded.
-        self.chart_style_card = Card()
-        chart_layout = QGridLayout(self.chart_style_card)
-        chart_layout.addWidget(SectionHeader("Chart"), 0, 0, 1, 3)
-
-        _INDENT_PX = 12
-        _LABEL_WIDTH_PX = 76
-
-        def _indented_row(
-            label_text: str, spin: QWidget, tooltip: str | None = None, extra_widgets=()
-        ) -> QHBoxLayout:
-            """A sub-row indented a small fixed amount, with a fixed label
-            width so inputs line up in a column regardless of label length
-            ("Figure" vs "Top margin") -- independent of the grid's own
-            label-column width (sized by the wider top-level labels like
-            "Font size:"/"Padding:")."""
-            row = QHBoxLayout()
-            row.addSpacing(_INDENT_PX)
-            label = QLabel(label_text)
-            label.setMinimumWidth(_LABEL_WIDTH_PX)
-            if tooltip:
-                label.setToolTip(tooltip)
-            row.addWidget(label)
-            row.addWidget(spin)
-            for widget in extra_widgets:
-                row.addWidget(widget)
-            row.addStretch(1)
-            return row
-
-        def _bold_italic_row(bold_check: QCheckBox, italic_check: QCheckBox) -> QHBoxLayout:
-            """A sub-row holding a Bold/Italic checkbox pair, aligned under
-            the sibling font-size row's input column."""
-            row = QHBoxLayout()
-            row.addSpacing(_INDENT_PX)
-            spacer = QLabel("")
-            spacer.setMinimumWidth(_LABEL_WIDTH_PX)
-            row.addWidget(spacer)
-            row.addWidget(bold_check)
-            row.addWidget(italic_check)
-            row.addStretch(1)
-            return row
-
-        def _make_bold_italic_checks() -> tuple[QCheckBox, QCheckBox]:
-            bold_check = QCheckBox("Bold")
-            bold_check.setStyleSheet("QCheckBox { font-weight: bold; }")
-            italic_check = QCheckBox("Italic")
-            italic_check.setStyleSheet("QCheckBox { font-style: italic; }")
-            return bold_check, italic_check
-
-        chart_layout.addWidget(QLabel("Font size:"), 1, 0)
-
-        self.title_font_size_spin = QSpinBox()
-        self.title_font_size_spin.setRange(8, 32)
-        self.title_font_size_spin.setValue(14)
-        self.title_bold_check, self.title_italic_check = _make_bold_italic_checks()
-        self.title_bold_check.setChecked(True)
-        chart_layout.addLayout(_indented_row("Title", self.title_font_size_spin), 2, 0, 1, 3)
-        chart_layout.addLayout(
-            _bold_italic_row(self.title_bold_check, self.title_italic_check), 3, 0, 1, 3,
-        )
-
-        self.subtitle_font_size_spin = QSpinBox()
-        self.subtitle_font_size_spin.setRange(8, 32)
-        self.subtitle_font_size_spin.setValue(12)
-        self.subtitle_bold_check, self.subtitle_italic_check = _make_bold_italic_checks()
-        chart_layout.addLayout(_indented_row("Subtitle", self.subtitle_font_size_spin), 4, 0, 1, 3)
-        chart_layout.addLayout(
-            _bold_italic_row(self.subtitle_bold_check, self.subtitle_italic_check), 5, 0, 1, 3,
-        )
-
-        chart_layout.addWidget(QLabel("Padding:"), 6, 0)
-
-        self.chart_padding_spin = QDoubleSpinBox()
-        self.chart_padding_spin.setRange(0.0, 10.0)
-        self.chart_padding_spin.setSingleStep(0.5)
-        self.chart_padding_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Figure", self.chart_padding_spin), 7, 0, 1, 3)
-
-        self.chart_padding_w_spin = QDoubleSpinBox()
-        self.chart_padding_w_spin.setRange(0.0, 10.0)
-        self.chart_padding_w_spin.setSingleStep(0.5)
-        self.chart_padding_w_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Width", self.chart_padding_w_spin), 8, 0, 1, 3)
-
-        self.chart_padding_h_spin = QDoubleSpinBox()
-        self.chart_padding_h_spin.setRange(0.0, 10.0)
-        self.chart_padding_h_spin.setSingleStep(0.5)
-        self.chart_padding_h_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Height", self.chart_padding_h_spin), 9, 0, 1, 3)
-
-        self.main_title_padding_spin = QDoubleSpinBox()
-        self.main_title_padding_spin.setRange(0.0, 100.0)
-        self.main_title_padding_spin.setSingleStep(1.0)
-        self.main_title_padding_spin.setValue(10.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Title", self.main_title_padding_spin,
-                tooltip="Gap between the top edge of the figure and the main title",
-            ),
-            10, 0, 1, 3,
-        )
-
-        self.title_padding_spin = QDoubleSpinBox()
-        self.title_padding_spin.setRange(0.0, 50.0)
-        self.title_padding_spin.setSingleStep(1.0)
-        self.title_padding_spin.setValue(6.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Subtitle", self.title_padding_spin,
-                tooltip="Gap between the plot area and the subtitle text",
-            ),
-            11, 0, 1, 3,
-        )
-
-        self.top_margin_spin = QDoubleSpinBox()
-        self.top_margin_spin.setRange(0.5, 1.0)
-        self.top_margin_spin.setSingleStep(0.01)
-        self.top_margin_spin.setDecimals(2)
-        self.top_margin_spin.setValue(1.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Top margin", self.top_margin_spin,
-                tooltip=(
-                    "Fraction of the figure height reserved above the plot "
-                    "(1.0 = no reservation, let it auto-size). Unlike the "
-                    "Title/Subtitle padding above, this is a fixed reservation "
-                    "independent of whether a title/subtitle is present -- "
-                    "lower it manually to reclaim space when you remove one."
-                ),
-            ),
-            12, 0, 1, 3,
-        )
-
-        chart_layout.addWidget(QLabel("Size:"), 13, 0)
-        self.chart_size_combo = QComboBox()
-        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
-        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
-        self.chart_size_combo.addItem("Custom", "custom")
-        self.chart_size_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_size_combo, 13, 1, 1, 2)
-
-        self.custom_size_row = QWidget()
-        custom_size_layout = QVBoxLayout(self.custom_size_row)
-        custom_size_layout.setContentsMargins(0, 0, 0, 0)
-        self.chart_width_spin = QDoubleSpinBox()
-        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.chart_width_spin.setSuffix(" cm")
-        custom_size_layout.addLayout(_indented_row("Width", self.chart_width_spin))
-        self.chart_height_spin = QDoubleSpinBox()
-        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.chart_height_spin.setSuffix(" cm")
-        custom_size_layout.addLayout(_indented_row("Height", self.chart_height_spin))
-        chart_layout.addWidget(self.custom_size_row, 14, 0, 1, 3)
-        self.custom_size_row.setVisible(False)
-
-        chart_layout.addWidget(QLabel("DPI:"), 15, 0)
-        self.chart_dpi_combo = QComboBox()
-        self.chart_dpi_combo.addItem("100 dpi", 100)
-        self.chart_dpi_combo.addItem("150 dpi", 150)
-        self.chart_dpi_combo.addItem("300 dpi", 300)
-        self.chart_dpi_combo.addItem("Custom", "custom")
-        self.chart_dpi_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_dpi_combo, 15, 1, 1, 2)
-
-        self.custom_dpi_row = QWidget()
-        custom_dpi_layout = QVBoxLayout(self.custom_dpi_row)
-        custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
-        self.chart_dpi_spin = QSpinBox()
-        self.chart_dpi_spin.setRange(50, 600)
-        custom_dpi_layout.addLayout(_indented_row("DPI", self.chart_dpi_spin))
-        chart_layout.addWidget(self.custom_dpi_row, 16, 0, 1, 3)
-        self.custom_dpi_row.setVisible(False)
-
-        hint = QLabel("Size affects export & default fonts")
-        hint.setStyleSheet("font-size: 10.5px;")
-        chart_layout.addWidget(hint, 17, 0, 1, 3)
-
-        layout.addWidget(self.chart_style_card)
-
-        # LINE group
-        self.line_card = Card()
-        line_card = self.line_card
-        line_layout = QGridLayout(line_card)
-        line_layout.addWidget(SectionHeader("Line"), 0, 0, 1, 2)
-
-        line_layout.addWidget(QLabel("Color:"), 1, 0)
-        self.line_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        line_layout.addWidget(self.line_color_row, 1, 1)
-
-        line_layout.addWidget(QLabel("Style:"), 2, 0)
-        _line_style_items = [
-            ("Solid", LineStyleType.SOLID),
-            ("Dashed", LineStyleType.DASHED),
-            ("Dotted", LineStyleType.DOTTED),
-            ("Dash-Dot", LineStyleType.DASHDOT),
-            ("None", LineStyleType.NONE),
-        ]
-        _default_tokens = {"text_primary": "#1C1E26"}
-        self.line_style_control = ValueComboBox(
-            _line_style_items,
-            icons=[build_line_style_icon(style, _default_tokens) for _, style in _line_style_items],
-        )
-        line_layout.addWidget(self.line_style_control, 2, 1)
-
-        line_layout.addWidget(QLabel("Width:"), 3, 0)
-        self.line_width_slider = SliderWithSpinbox(minimum=0.1, maximum=10.0, decimals=1)
-        line_layout.addWidget(self.line_width_slider, 3, 1)
-
-        line_layout.addWidget(QLabel("Opacity:"), 4, 0)
-        self.line_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
-        line_layout.addWidget(self.line_opacity_slider, 4, 1)
-
-        layout.addWidget(line_card)
-
-        # MARKERS group
-        self.marker_card = Card()
-        marker_card = self.marker_card
-        marker_layout = QGridLayout(marker_card)
-
-        marker_header_row = QHBoxLayout()
-        marker_header_row.addWidget(SectionHeader("Markers"))
-        marker_header_row.addStretch(1)
-        self.markers_enabled_toggle = ToggleSwitch()
-        marker_header_row.addWidget(self.markers_enabled_toggle)
-        marker_layout.addLayout(marker_header_row, 0, 0, 1, 2)
-
-        marker_layout.addWidget(QLabel("Shape:"), 1, 0)
-        self.marker_shape_control = ValueComboBox(
-            [
-                ("● Circle", MarkerType.CIRCLE),
-                ("■ Square", MarkerType.SQUARE),
-                ("▲ Triangle", MarkerType.TRIANGLE),
-                ("◆ Diamond", MarkerType.DIAMOND),
-                ("★ Star", MarkerType.STAR),
-                ("+ Plus", MarkerType.PLUS),
-                ("✕ Cross", MarkerType.CROSS),
-            ]
-        )
-        marker_layout.addWidget(self.marker_shape_control, 1, 1)
-
-        marker_layout.addWidget(QLabel("Size:"), 2, 0)
-        self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
-        marker_layout.addWidget(self.marker_size_slider, 2, 1)
-
-        marker_layout.addWidget(QLabel("Color:"), 3, 0)
-        self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        marker_layout.addWidget(self.marker_color_row, 3, 1)
-
-        marker_layout.addWidget(QLabel("Match line:"), 4, 0)
-        self.marker_match_line_toggle = ToggleSwitch(checked=True)
-        marker_layout.addWidget(self.marker_match_line_toggle, 4, 1)
-
-        marker_layout.addWidget(QLabel("Edge color:"), 5, 0)
-        self.marker_edge_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        marker_layout.addWidget(self.marker_edge_color_row, 5, 1)
-
-        layout.addWidget(marker_card)
-
-        layout.addStretch()
-        self.chart_style_card.setVisible(False)
-        return widget
-
     def _connect_signals(self):
         """Connect widget signals."""
         self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
 
-        # Connect chart-level configuration changes. Chart tab's own fields
-        # (title/subtitle/chart type/hist bins) are wired internally by
-        # ChartTab itself.
-        self.title_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.subtitle_font_size_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.chart_padding_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.chart_padding_w_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.chart_padding_h_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.main_title_padding_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.top_margin_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.title_bold_check.toggled.connect(self._on_chart_config_changed)
-        self.title_italic_check.toggled.connect(self._on_chart_config_changed)
-        self.subtitle_bold_check.toggled.connect(self._on_chart_config_changed)
-        self.subtitle_italic_check.toggled.connect(self._on_chart_config_changed)
-        self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
-        self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
-        self.chart_width_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.chart_height_spin.valueChanged.connect(self._on_chart_config_changed)
-        self.chart_dpi_spin.valueChanged.connect(self._on_chart_config_changed)
+        # Chart tab's own fields (title/subtitle/chart type/hist bins) are
+        # wired internally by ChartTab; Style tab's chart_style_card and
+        # Line/Marker card fields are wired internally by StyleTab.
         # Axes tab: each axis form's widgets are wired directly to shared
         # handlers in _build_axis_form_widgets, not here (the forms are
         # built dynamically per-prefix, so there are no static
@@ -1079,21 +729,7 @@ class ChartPropertiesPanel(PWidget):
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
-        
-        # Connect style change signals (Style tab; chip row selection is
-        # wired directly to _expand_series in _create_style_tab, not here)
-        self.line_color_row.colorChanged.connect(self._on_style_changed)
-        self.line_style_control.currentValueChanged.connect(self._on_style_changed)
-        self.line_width_slider.valueChanged.connect(self._on_style_changed)
-        self.line_opacity_slider.valueChanged.connect(self._on_style_changed)
 
-        self.markers_enabled_toggle.toggled.connect(self._on_markers_enabled_toggled)
-        self.marker_shape_control.currentValueChanged.connect(self._on_style_changed)
-        self.marker_size_slider.valueChanged.connect(self._on_style_changed)
-        self.marker_color_row.colorChanged.connect(self._on_style_changed)
-        self.marker_match_line_toggle.toggled.connect(self._on_marker_match_line_toggled)
-        self.marker_edge_color_row.colorChanged.connect(self._on_style_changed)
-    
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
         self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
@@ -1297,205 +933,6 @@ class ChartPropertiesPanel(PWidget):
         self._has_unsaved_changes = True
         self._update_status_indicator()
 
-    def _on_markers_enabled_toggled(self, _checked: bool):
-        """Handle the Markers section's on/off toggle."""
-        self._update_marker_controls_enabled()
-        self._on_style_changed()
-
-    def _on_marker_match_line_toggled(self, _checked: bool):
-        """Handle the 'Match line' toggle for marker color."""
-        self._update_marker_controls_enabled()
-        self._on_style_changed()
-
-    def _update_marker_controls_enabled(self):
-        """Enable/disable marker sub-controls based on the enable and
-        match-line toggles (pure UI convenience; see _on_style_changed for
-        how this maps onto the persisted `marker_style`/`marker_color`)."""
-        markers_enabled = self.markers_enabled_toggle.isChecked()
-        self.marker_shape_control.setEnabled(markers_enabled)
-        self.marker_size_slider.setEnabled(markers_enabled)
-        self.marker_match_line_toggle.setEnabled(markers_enabled)
-        self.marker_color_row.setEnabled(
-            markers_enabled and not self.marker_match_line_toggle.isChecked()
-        )
-        self.marker_edge_color_row.setEnabled(markers_enabled)
-
-    def _on_style_changed(self):
-        """Handle style changes."""
-        if self._updating_controls or not self.current_chart:
-            return
-
-        current_row = self._expanded_series_index
-        if current_row < 0:
-            return
-
-        total_series = len(self.current_chart.data_series)
-
-        if current_row < total_series:
-            # Updating a data series
-            if current_row >= len(self.current_chart.data_series):
-                return
-            series = self.current_chart.data_series[current_row]
-
-            series.color = self.line_color_row.currentColor()
-            series.line_style = self.line_style_control.currentValue().value
-            series.line_width = self.line_width_slider.value()
-            series.alpha = self.line_opacity_slider.value()
-
-            # "Markers enabled" isn't a separate persisted flag: it maps onto
-            # the existing MarkerType.NONE member (matching how the old combo
-            # already let a user pick "None" as a marker type). "Match line"
-            # reuses the existing marker_color == "" convention (already used
-            # by _load_series_into_controls before this task).
-            if self.markers_enabled_toggle.isChecked():
-                series.marker_style = self.marker_shape_control.currentValue().value
-                series.marker_size = self.marker_size_slider.value()
-                series.marker_color = (
-                    "" if self.marker_match_line_toggle.isChecked()
-                    else self.marker_color_row.currentColor()
-                )
-                series.marker_edge_color = self.marker_edge_color_row.currentColor()
-            else:
-                series.marker_style = MarkerType.NONE.value
-
-        else:
-            # Updating fit data
-            fit_index = current_row - total_series
-            if fit_index >= len(self.current_chart.fit_data):
-                return
-
-            fit = self.current_chart.fit_data[fit_index]
-            fit.color = self.line_color_row.currentColor()
-            fit.line_style = self.line_style_control.currentValue().value
-            fit.line_width = self.line_width_slider.value()
-            # Note: fit data doesn't use marker_size or marker colors
-
-        # Emit update event so any open chart tab refreshes immediately
-        if self.current_chart:
-            self._has_unsaved_changes = True
-            self._update_status_indicator()
-            self.publish_event(ChartEvents.CHART_UPDATED, {
-                "chart_id": self.current_chart.id,
-                "update_type": "series_updated"
-            })
-
-    def _app_chart_display_defaults(self):
-        """Read the app-wide default chart width/height/dpi from Settings."""
-        cfg_manager = self.app_context.get_manager(ConfigManager)
-        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
-        default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
-        default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
-        default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
-        return default_width, default_height, default_dpi
-
-    def _effective_chart_size_dpi(self):
-        """Resolve the chart's current effective (width_cm, height_cm, dpi),
-        preferring the chart's own saved values and falling back to the
-        app-wide Settings defaults. Used to pre-fill the Custom fields the
-        first time the user selects Custom for Size or DPI."""
-        default_width, default_height, default_dpi = self._app_chart_display_defaults()
-        if not self.current_chart:
-            return default_width, default_height, default_dpi
-        # Deferred import: chart_editor.py pulls in matplotlib, which must
-        # stay lazy at app startup (see tests/test_startup_imports.py).
-        from pandaplot.gui.components.tabs.chart.chart_editor import resolve_chart_size
-
-        return resolve_chart_size(
-            self.current_chart.config.get("width_cm"),
-            self.current_chart.config.get("height_cm"),
-            self.current_chart.config.get("dpi"),
-            default_width, default_height, default_dpi,
-        )
-
-    def _size_from_controls(self):
-        """Resolve (width_cm, height_cm) from chart_size_combo, reading the
-        dedicated Custom spin boxes when that sentinel is selected."""
-        data = self.chart_size_combo.currentData()
-        if data == "custom":
-            return self.chart_width_spin.value(), self.chart_height_spin.value()
-        if data is None:
-            return None, None
-        return data
-
-    def _dpi_from_controls(self):
-        """Resolve dpi from chart_dpi_combo, reading the dedicated Custom
-        spin box when that sentinel is selected."""
-        data = self.chart_dpi_combo.currentData()
-        if data == "custom":
-            return self.chart_dpi_spin.value()
-        return data
-
-    def _on_chart_size_combo_changed(self):
-        """Show/hide the Custom width/height row and pre-fill it the first
-        time the user manually selects Custom for this loaded chart."""
-        is_custom = self.chart_size_combo.currentData() == "custom"
-        self.custom_size_row.setVisible(is_custom)
-        if is_custom and not self._updating_controls and not self._custom_size_prefilled:
-            width, height, _ = self._effective_chart_size_dpi()
-            self.chart_width_spin.setValue(width)
-            self.chart_height_spin.setValue(height)
-            self._custom_size_prefilled = True
-        self._on_chart_config_changed()
-
-    def _on_chart_dpi_combo_changed(self):
-        """Show/hide the Custom DPI row and pre-fill it the first time the
-        user manually selects Custom for this loaded chart."""
-        is_custom = self.chart_dpi_combo.currentData() == "custom"
-        self.custom_dpi_row.setVisible(is_custom)
-        if is_custom and not self._updating_controls and not self._custom_dpi_prefilled:
-            _, _, dpi = self._effective_chart_size_dpi()
-            self.chart_dpi_spin.setValue(dpi)
-            self._custom_dpi_prefilled = True
-        self._on_chart_config_changed()
-
-    def _on_chart_config_changed(self):
-        """Handle chart-level configuration changes."""
-        if not self.current_chart or self._updating_controls:
-            return
-        
-        # Update chart configuration from UI controls. Note: the Title field
-        # only affects config["title"] (what renders on the chart) -- it
-        # must NOT rename the chart item in the project tree, which is a
-        # separate concept controlled by its own rename action.
-        config = self.current_chart.config
-        if hasattr(self, "title_font_size_spin"):
-            config["title_font_size"] = self.title_font_size_spin.value()
-        if hasattr(self, "subtitle_font_size_spin"):
-            config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
-        if hasattr(self, "chart_padding_spin"):
-            config["chart_padding"] = self.chart_padding_spin.value()
-        if hasattr(self, "chart_padding_w_spin"):
-            config["chart_padding_w"] = self.chart_padding_w_spin.value()
-        if hasattr(self, "chart_padding_h_spin"):
-            config["chart_padding_h"] = self.chart_padding_h_spin.value()
-        if hasattr(self, "title_padding_spin"):
-            config["title_padding"] = self.title_padding_spin.value()
-        if hasattr(self, "main_title_padding_spin"):
-            config["main_title_padding"] = self.main_title_padding_spin.value()
-        if hasattr(self, "top_margin_spin"):
-            config["top_margin"] = self.top_margin_spin.value()
-        if hasattr(self, "title_bold_check"):
-            config["title_bold"] = self.title_bold_check.isChecked()
-        if hasattr(self, "title_italic_check"):
-            config["title_italic"] = self.title_italic_check.isChecked()
-        if hasattr(self, "subtitle_bold_check"):
-            config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
-        if hasattr(self, "subtitle_italic_check"):
-            config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
-        if hasattr(self, "chart_size_combo"):
-            config["width_cm"], config["height_cm"] = self._size_from_controls()
-        if hasattr(self, "chart_dpi_combo"):
-            config["dpi"] = self._dpi_from_controls()
-
-        # Emit update event so any open chart tab refreshes immediately
-        if self.current_chart:
-            self._has_unsaved_changes = True
-            self._update_status_indicator()
-            self.publish_event(ChartEvents.CHART_UPDATED, {
-                "chart_id": self.current_chart.id,
-                "update_type": "config_updated"
-            })
-
     def _on_any_tab_config_changed(self):
         if not self.current_chart:
             return
@@ -1552,41 +989,7 @@ class ChartPropertiesPanel(PWidget):
             self.series_label_edit.blockSignals(False)
             self._pending_label = series.label
 
-            # Update style controls to reflect this series
-            self.line_color_row.setCurrentColor(series.color)
-            self.line_width_slider.setValue(series.line_width)
-            self.line_opacity_slider.setValue(series.alpha)
-            try:
-                self.line_style_control.setCurrentValue(LineStyleType(series.line_style))
-            except ValueError:
-                self.line_style_control.setCurrentValue(LineStyleType.SOLID)
-
-            # "Markers enabled" isn't a separate persisted flag: it's implied
-            # by marker_style != MarkerType.NONE (see _on_style_changed). If
-            # markers are off, the shape control keeps showing the last
-            # remembered shape (defaulting to circle) rather than "none",
-            # since "none" isn't offered as a selectable shape here.
-            markers_enabled = series.marker_style != MarkerType.NONE.value
-            self.markers_enabled_toggle.blockSignals(True)
-            self.markers_enabled_toggle.setChecked(markers_enabled)
-            self.markers_enabled_toggle.blockSignals(False)
-
-            shape_value = series.marker_style if markers_enabled else MarkerType.CIRCLE.value
-            try:
-                self.marker_shape_control.setCurrentValue(MarkerType(shape_value))
-            except ValueError:
-                self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
-
-            self.marker_size_slider.setValue(series.marker_size)
-
-            # marker_color == "" is the existing "match line color" convention.
-            self.marker_color_row.setCurrentColor(series.marker_color or series.color)
-            self.marker_match_line_toggle.blockSignals(True)
-            self.marker_match_line_toggle.setChecked(series.marker_color == "")
-            self.marker_match_line_toggle.blockSignals(False)
-            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or "#000000")
-
-            self._update_marker_controls_enabled()
+            self.style_tab.load_series_style(series)
         finally:
             self._updating_controls = previous_guard
 
@@ -1607,21 +1010,7 @@ class ChartPropertiesPanel(PWidget):
             self.series_label_edit.blockSignals(False)
             self._pending_label = fit.label
 
-            # Update style controls to reflect this fit. Fit data has no
-            # marker/opacity concept, so markers are forced off and locked.
-            self.line_color_row.setCurrentColor(fit.color)
-            self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(1.0)
-            try:
-                self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
-            except ValueError:
-                self.line_style_control.setCurrentValue(LineStyleType.SOLID)
-
-            self.markers_enabled_toggle.blockSignals(True)
-            self.markers_enabled_toggle.setChecked(False)
-            self.markers_enabled_toggle.blockSignals(False)
-            self.marker_size_slider.setValue(0.0)  # Fit lines typically don't have markers
-            self._update_marker_controls_enabled()
+            self.style_tab.load_fit_style(fit)
         finally:
             self._updating_controls = previous_guard
 
@@ -1665,25 +1054,7 @@ class ChartPropertiesPanel(PWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.title_font_size_spin.setValue(14)
-            self.subtitle_font_size_spin.setValue(12)
-            self.chart_padding_spin.setValue(2.0)
-            self.chart_padding_w_spin.setValue(2.0)
-            self.chart_padding_h_spin.setValue(2.0)
-            self.title_padding_spin.setValue(6.0)
-            self.main_title_padding_spin.setValue(10.0)
-            self.top_margin_spin.setValue(1.0)
-            self.title_bold_check.setChecked(True)
-            self.title_italic_check.setChecked(False)
-            self.subtitle_bold_check.setChecked(False)
-            self.subtitle_italic_check.setChecked(False)
-            self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
-            self.chart_width_spin.setValue(20.0)
-            self.chart_height_spin.setValue(15.0)
-            self._custom_size_prefilled = False
-            self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
-            self.chart_dpi_spin.setValue(100)
-            self._custom_dpi_prefilled = False
+            self.style_tab.clear_chart_style()
             self.chart_tab.clear()
             self.axes_tab.clear()
             self.legend_tab.clear()
@@ -1811,52 +1182,7 @@ class ChartPropertiesPanel(PWidget):
             previous_guard = self._updating_controls
             self._updating_controls = True
             try:
-                # Load basic info
-                self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
-                self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
-                self.chart_padding_spin.setValue(chart.config.get("chart_padding", 2.0))
-                self.chart_padding_w_spin.setValue(chart.config.get("chart_padding_w", 2.0))
-                self.chart_padding_h_spin.setValue(chart.config.get("chart_padding_h", 2.0))
-                self.title_padding_spin.setValue(chart.config.get("title_padding", 6.0))
-                self.main_title_padding_spin.setValue(chart.config.get("main_title_padding", 10.0))
-                self.top_margin_spin.setValue(chart.config.get("top_margin", 1.0))
-                self.title_bold_check.setChecked(chart.config.get("title_bold", True))
-                self.title_italic_check.setChecked(chart.config.get("title_italic", False))
-                self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
-                self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
-
-                # QComboBox.findData() is unreliable for tuple-valued itemData
-                # (Qt's QVariant comparison doesn't match Python tuple equality
-                # here), so look up the matching index manually.
-                target_size = (chart.config.get("width_cm"), chart.config.get("height_cm"))
-                size_index = -1
-                for i in range(self.chart_size_combo.count()):
-                    if self.chart_size_combo.itemData(i) == target_size:
-                        size_index = i
-                        break
-
-                self._custom_size_prefilled = False
-                if size_index >= 0:
-                    self.chart_size_combo.setCurrentIndex(size_index)
-                elif target_size[0] is not None and target_size[1] is not None:
-                    self.chart_size_combo.setCurrentIndex(self.chart_size_combo.findData("custom"))
-                    self.chart_width_spin.setValue(target_size[0])
-                    self.chart_height_spin.setValue(target_size[1])
-                    self._custom_size_prefilled = True
-                else:
-                    self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
-
-                self._custom_dpi_prefilled = False
-                dpi_value = chart.config.get("dpi")
-                dpi_index = self.chart_dpi_combo.findData(dpi_value)
-                if dpi_index >= 0:
-                    self.chart_dpi_combo.setCurrentIndex(dpi_index)
-                elif dpi_value is not None:
-                    self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.findData("custom"))
-                    self.chart_dpi_spin.setValue(dpi_value)
-                    self._custom_dpi_prefilled = True
-                else:
-                    self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
+                self.style_tab.load_chart_style(chart)
 
                 # Expand the first series/fit entry and rebuild the card list
                 # (this also (re)loads it into the config form controls).
@@ -1888,22 +1214,9 @@ class ChartPropertiesPanel(PWidget):
         """
         if not chart:
             return
-        
+
         # Update basic chart properties
-        chart.config["title_font_size"] = self.title_font_size_spin.value()
-        chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
-        chart.config["chart_padding"] = self.chart_padding_spin.value()
-        chart.config["chart_padding_w"] = self.chart_padding_w_spin.value()
-        chart.config["chart_padding_h"] = self.chart_padding_h_spin.value()
-        chart.config["title_padding"] = self.title_padding_spin.value()
-        chart.config["main_title_padding"] = self.main_title_padding_spin.value()
-        chart.config["top_margin"] = self.top_margin_spin.value()
-        chart.config["title_bold"] = self.title_bold_check.isChecked()
-        chart.config["title_italic"] = self.title_italic_check.isChecked()
-        chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
-        chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
-        chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
-        chart.config["dpi"] = self._dpi_from_controls()
+        self.style_tab.apply_chart_style_to(chart)
         self.chart_tab.apply_to(chart)
         self.axes_tab.apply_to(chart)
         self.legend_tab.apply_to(chart)
@@ -1917,22 +1230,8 @@ class ChartPropertiesPanel(PWidget):
                 # Update data series
                 series = chart.data_series[current_row]
 
-                series.color = self.line_color_row.currentColor()
-                series.line_style = self.line_style_control.currentValue().value
-                series.line_width = self.line_width_slider.value()
                 series.y_axis = self.series_y_axis_control.currentValue()
-                series.alpha = self.line_opacity_slider.value()
-
-                if self.markers_enabled_toggle.isChecked():
-                    series.marker_style = self.marker_shape_control.currentValue().value
-                    series.marker_size = self.marker_size_slider.value()
-                    series.marker_color = (
-                        "" if self.marker_match_line_toggle.isChecked()
-                        else self.marker_color_row.currentColor()
-                    )
-                    series.marker_edge_color = self.marker_edge_color_row.currentColor()
-                else:
-                    series.marker_style = MarkerType.NONE.value
+                self.style_tab.apply_series_style_to(series)
 
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
@@ -1943,33 +1242,31 @@ class ChartPropertiesPanel(PWidget):
                 fit_index = current_row - total_series
                 if 0 <= fit_index < len(chart.fit_data):
                     fit = chart.fit_data[fit_index]
-                    fit.color = self.line_color_row.currentColor()
-                    fit.line_style = self.line_style_control.currentValue().value
-                    fit.line_width = self.line_width_slider.value()
+                    self.style_tab.apply_fit_style_to(fit)
 
                     self.logger.debug(
                         "Applied style to fit data %d: %s (color=%s)",
                         fit_index, fit.label, fit.color
                     )
-        
+
         # If no series exist but we have configuration, create a default series
         if not chart.data_series:
             dataset_id = self.dataset_combo.currentData()
             dataset_name = self.dataset_combo.currentText()
             x_column = self.x_column_combo.currentText()
             y_column = self.y_column_combo.currentText()
-            
+
             if dataset_id and x_column and y_column:
                 chart.add_data_series(
                     dataset_id=dataset_id,
                     x_column=x_column,
                     y_column=y_column,
-                    color=self.line_color_row.currentColor(),
-                    line_width=self.line_width_slider.value(),
-                    marker_size=self.marker_size_slider.value(),
+                    color=self.style_tab.line_color_row.currentColor(),
+                    line_width=self.style_tab.line_width_slider.value(),
+                    marker_size=self.style_tab.marker_size_slider.value(),
                     label=f"{dataset_name}:{y_column}",
                     y_axis=self.series_y_axis_control.currentValue()
                 )
-        
+
         chart.update_modified_time()
     
