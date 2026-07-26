@@ -380,10 +380,38 @@ class DataTab(QWidget):
 
         return card
 
+    def _dataset_display_name(self, dataset_id: str) -> str:
+        """Resolve a dataset id to its display name, falling back to the raw
+        id if the dataset can't be found (e.g. it was deleted)."""
+        if self.current_project:
+            dataset = self.current_project.find_item(dataset_id)
+            if isinstance(dataset, Dataset):
+                return dataset.name
+        return dataset_id
+
+    def _build_detail_field_grid(self, tokens: dict, fields: tuple) -> QGridLayout:
+        """A read-only label/value grid matching the editable form's own
+        label-left/value-right layout (see `_create_series_management_section`),
+        used by the accordion-expanded-but-not-selected detail rows so they
+        read like a stripped-down version of the same form rather than a
+        single dense summary line."""
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 6, 0, 0)
+        for row, (label_text, value) in enumerate(fields):
+            label = QLabel(label_text)
+            label.setStyleSheet(f"color: {tokens.get('text_muted', '#666')};")
+            grid.addWidget(label, row, 0)
+            value_label = QLabel(value)
+            value_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
+            grid.addWidget(value_label, row, 1)
+        return grid
+
     def _build_series_detail_row(self, series, index: int, tokens: dict) -> QWidget:
         """Read-only detail view for a series card that's accordion-expanded
         but not the currently *selected* entry -- purely visual, since the
-        one shared live-editable form can only live on the selected card."""
+        one shared live-editable form can only live on the selected card.
+        Mirrors the editable form's own fields (dataset/X/Y), but shows the
+        dataset's display name rather than its id."""
         card = Card()
         card.set_tokens(tokens)
         self._install_select_on_click(card, index)
@@ -399,9 +427,11 @@ class DataTab(QWidget):
         header.addWidget(self._build_chevron_button(index, expanded=True))
         outer.addLayout(header)
 
-        detail = QLabel(f"Dataset: {series.dataset_id}   X: {series.x_column}   Y: {series.y_column}")
-        detail.setStyleSheet(f"color: {tokens.get('text_muted', '#666')}; font-size: 10px;")
-        outer.addWidget(detail)
+        outer.addLayout(self._build_detail_field_grid(tokens, (
+            ("Dataset:", self._dataset_display_name(series.dataset_id)),
+            ("X Column:", series.x_column),
+            ("Y Column:", series.y_column),
+        )))
 
         return card
 
@@ -422,9 +452,12 @@ class DataTab(QWidget):
         header.addWidget(self._build_chevron_button(index, expanded=True))
         outer.addLayout(header)
 
-        detail = QLabel(f"Fit: {fit.fit_type}   X: {fit.source_x_column}   Y: {fit.source_y_column}")
-        detail.setStyleSheet(f"color: {tokens.get('text_muted', '#666')}; font-size: 10px;")
-        outer.addWidget(detail)
+        outer.addLayout(self._build_detail_field_grid(tokens, (
+            ("Dataset:", self._dataset_display_name(fit.source_dataset_id)),
+            ("Fit Type:", fit.fit_type),
+            ("X Column:", fit.source_x_column),
+            ("Y Column:", fit.source_y_column),
+        )))
 
         return card
 

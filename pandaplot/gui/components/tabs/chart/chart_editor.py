@@ -1,7 +1,15 @@
 from dataclasses import dataclass
 from typing import Any, Optional, override
 
-from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
+from matplotlib.ticker import (
+    AutoLocator,
+    AutoMinorLocator,
+    FuncFormatter,
+    MaxNLocator,
+    MultipleLocator,
+    NullLocator,
+    ScalarFormatter,
+)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
@@ -102,8 +110,9 @@ def resolve_chart_size(
     return width, height, dpi
 
 
-def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
-    """Apply tick placement and label formatting to a matplotlib Axis.
+def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt, direction="out", minor_enabled=False):
+    """Apply tick placement, label formatting, direction, and minor ticks to
+    a matplotlib Axis.
 
     axis: a matplotlib Axis object (e.g. ax.xaxis or ax.yaxis)
     mode: "auto" | "count" | "step" - tick placement strategy
@@ -111,6 +120,8 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
     step: fixed spacing between ticks when mode == "step"
     fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
     custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
+    direction: "out" | "in" | "inout" - which way major/minor ticks point
+    minor_enabled: whether minor ticks are shown between the major ones
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -136,6 +147,10 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
         axis.set_major_formatter(FuncFormatter(_safe_custom))
     else:
         axis.set_major_formatter(ScalarFormatter())
+
+    axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
+    axis.set_tick_params(which="major", direction=direction)
+    axis.set_tick_params(which="minor", direction=direction)
 
 
 def _resolve_error_column(df, column_name):
@@ -695,7 +710,9 @@ class ChartEditorWidget(PWidget):
                     self.chart_canvas.axes2.yaxis,
                     config.get("y2_tick_mode", "auto"), config.get("y2_tick_count", 5),
                     config.get("y2_tick_step", 1.0), config.get("y2_tick_format", "auto"),
-                    config.get("y2_tick_format_custom", ""))
+                    config.get("y2_tick_format_custom", ""),
+                    direction=config.get("y2_tick_direction", "out"),
+                    minor_enabled=config.get("y2_minor_ticks", False))
 
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
@@ -714,12 +731,16 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.axes.xaxis,
                 config.get("x_tick_mode", "auto"), config.get("x_tick_count", 5),
                 config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
-                config.get("x_tick_format_custom", ""))
+                config.get("x_tick_format_custom", ""),
+                direction=config.get("x_tick_direction", "out"),
+                minor_enabled=config.get("x_minor_ticks", False))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
                 config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
-                config.get("y_tick_format_custom", ""))
+                config.get("y_tick_format_custom", ""),
+                direction=config.get("y_tick_direction", "out"),
+                minor_enabled=config.get("y_minor_ticks", False))
 
             grid_alpha = config.get("grid_alpha", 0.3)
             if config.get("show_grid_x", True):

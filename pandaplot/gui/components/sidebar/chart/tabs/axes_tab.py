@@ -133,6 +133,17 @@ class AxesTab(QWidget):
         grid_toggle = ToggleSwitch(checked=True)
         ticks_layout.addWidget(QLabel("Show grid"), 6, 0)
         ticks_layout.addWidget(grid_toggle, 6, 1)
+
+        tick_direction_control = SegmentedControl(
+            [("Out", "out"), ("In", "in"), ("In & Out", "inout")]
+        )
+        ticks_layout.addWidget(QLabel("Direction:"), 7, 0)
+        ticks_layout.addWidget(tick_direction_control, 7, 1)
+
+        minor_ticks_toggle = ToggleSwitch()
+        ticks_layout.addWidget(QLabel("Minor ticks"), 8, 0)
+        ticks_layout.addWidget(minor_ticks_toggle, 8, 1)
+
         form_layout.addWidget(ticks_card)
 
         copy_button = None
@@ -150,6 +161,7 @@ class AxesTab(QWidget):
             "mode_control": mode_control, "count_spin": count_spin, "step_spin": step_spin,
             "format_combo": format_combo, "format_custom_edit": format_custom_edit,
             "grid_toggle": grid_toggle, "copy_button": copy_button,
+            "tick_direction_control": tick_direction_control, "minor_ticks_toggle": minor_ticks_toggle,
         }
 
         # Wire this form's widgets directly to shared handlers - the forms
@@ -169,6 +181,8 @@ class AxesTab(QWidget):
         format_combo.currentIndexChanged.connect(lambda _i, p=prefix: self._on_axis_tick_format_changed(p))
         format_custom_edit.textChanged.connect(self._on_field_changed)
         grid_toggle.toggled.connect(self._on_field_changed)
+        tick_direction_control.currentValueChanged.connect(self._on_field_changed)
+        minor_ticks_toggle.toggled.connect(self._on_field_changed)
 
         form_widget.setVisible(False)
         self._axis_form_container_layout.addWidget(form_widget)
@@ -225,6 +239,8 @@ class AxesTab(QWidget):
         target["format_custom_edit"].setText(source["format_custom_edit"].text())
         target["format_custom_edit"].setEnabled(target["format_combo"].currentData() == "custom")
         target["grid_toggle"].setChecked(source["grid_toggle"].isChecked())
+        target["tick_direction_control"].setCurrentValue(source["tick_direction_control"].currentValue())
+        target["minor_ticks_toggle"].setChecked(source["minor_ticks_toggle"].isChecked())
 
         self._on_field_changed()
 
@@ -265,6 +281,8 @@ class AxesTab(QWidget):
         config[f"{prefix}_tick_format"] = form["format_combo"].currentData()
         config[f"{prefix}_tick_format_custom"] = form["format_custom_edit"].text()
         config[f"show_grid_{prefix}"] = form["grid_toggle"].isChecked()
+        config[f"{prefix}_tick_direction"] = form["tick_direction_control"].currentValue()
+        config[f"{prefix}_minor_ticks"] = form["minor_ticks_toggle"].isChecked()
 
     def _read_axis_config(self, prefix: str, config: dict):
         """Populate one axis form's widgets from `config`. Assumes the caller
@@ -305,6 +323,9 @@ class AxesTab(QWidget):
         form["format_custom_edit"].setEnabled(tick_format == "custom")
 
         form["grid_toggle"].setChecked(config.get(f"show_grid_{prefix}", True))
+
+        form["tick_direction_control"].setCurrentValue(config.get(f"{prefix}_tick_direction", "out"))
+        form["minor_ticks_toggle"].setChecked(config.get(f"{prefix}_minor_ticks", False))
 
     def _on_field_changed(self):
         if self._chart is None or self._updating_controls:
@@ -353,3 +374,5 @@ class AxesTab(QWidget):
             form["mode_control"].set_tokens(tokens)
             form["auto_toggle"].set_tokens(tokens)
             form["grid_toggle"].set_tokens(tokens)
+            form["tick_direction_control"].set_tokens(tokens)
+            form["minor_ticks_toggle"].set_tokens(tokens)

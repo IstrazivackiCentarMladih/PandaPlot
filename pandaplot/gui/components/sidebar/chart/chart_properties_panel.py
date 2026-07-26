@@ -1,9 +1,11 @@
 """Chart properties side panel for configuring chart appearance and data."""
 from typing import Optional, override
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
+    QScrollArea,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -76,7 +78,7 @@ class ChartPropertiesPanel(PWidget):
         self.chart_tab = ChartTab(self)
         self.chart_tab.configChanged.connect(self._on_any_tab_config_changed)
         self.chart_tab.chartTypeChanged.connect(self.style_tab.set_chart_type)
-        self.tab_widget.addTab(self.chart_tab, "Chart")
+        self.tab_widget.addTab(self._wrap_in_scroll_area(self.chart_tab), "Chart")
 
         # Axes tab: constructed before the Data tab (though added to the tab
         # widget after Style, below) because building the Data tab's series
@@ -95,17 +97,17 @@ class ChartPropertiesPanel(PWidget):
         )
         self.data_tab.axesRefreshRequested.connect(lambda: self.axes_tab.refresh_axis_chips(self.current_chart))
         self.style_tab.seriesChipSelected.connect(self.data_tab._expand_series)
-        self.tab_widget.addTab(self.data_tab, "Data")
+        self.tab_widget.addTab(self._wrap_in_scroll_area(self.data_tab), "Data")
 
         # Style tab (line/marker style)
-        self.tab_widget.addTab(self.style_tab, "Style")
+        self.tab_widget.addTab(self._wrap_in_scroll_area(self.style_tab), "Style")
 
-        self.tab_widget.addTab(self.axes_tab, "Axes")
+        self.tab_widget.addTab(self._wrap_in_scroll_area(self.axes_tab), "Axes")
 
         # Legend tab
         self.legend_tab = LegendTab(self)
         self.legend_tab.configChanged.connect(self._on_any_tab_config_changed)
-        self.tab_widget.addTab(self.legend_tab, "Legend")
+        self.tab_widget.addTab(self._wrap_in_scroll_area(self.legend_tab), "Legend")
 
         layout.addWidget(self.tab_widget, stretch=1)
 
@@ -114,6 +116,25 @@ class ChartPropertiesPanel(PWidget):
         self.footer.applyClicked.connect(self._on_apply)
         self.footer.revertClicked.connect(self._on_reset)
         layout.addWidget(self.footer)
+
+    def _wrap_in_scroll_area(self, widget: QWidget) -> QScrollArea:
+        """Wrap a tab's content in a vertically-scrolling QScrollArea.
+
+        Without this, a tab whose content grows taller than the available
+        space (e.g. Style's Chart/Line/Marker/Error Bars cards, or Axes'
+        per-axis Range/Ticks cards) has nowhere to go: Qt propagates that
+        minimum height all the way up to the main window, which can then
+        fail to fit the screen (a `QWindowsWindow::setGeometry` warning,
+        clamped to whatever height *does* fit, cutting off part of the
+        window instead of just scrolling this one tab).
+        """
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setWidget(widget)
+        return scroll
 
     def _on_tab_selector_combo_changed(self, index):
         if index >= 0:

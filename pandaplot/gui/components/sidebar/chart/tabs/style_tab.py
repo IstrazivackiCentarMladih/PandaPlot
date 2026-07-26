@@ -93,49 +93,20 @@ class StyleTab(QWidget):
         self.style_series_chips.currentValueChanged.connect(self._on_chip_selected)
         layout.addWidget(self.style_series_chips)
 
-        # CHART group: chart-level rendering settings (title/subtitle font
-        # size, margin padding, size, dpi) -- shown instead of the Line/
-        # Marker cards when the "Chart" chip is selected.
-        self.chart_style_card = Card()
-        chart_layout = QGridLayout(self.chart_style_card)
-        chart_layout.addWidget(SectionHeader("Chart"), 0, 0, 1, 3)
+        # CHART-level rendering settings -- shown instead of the Line/Marker/
+        # Error Bars cards when the "Chart" chip is selected. Split into
+        # bordered sections (Font Size/Padding/Size/DPI), matching the
+        # Line/Marker/Error Bars pattern below, rather than one big indented
+        # card -- each section's own border does the visual grouping that
+        # indentation used to, freeing up width for the input fields.
+        self.chart_style_cards: list[Card] = []
 
-        _INDENT_PX = 12
-        _LABEL_WIDTH_PX = 76
-
-        def _indented_row(
-            label_text: str, spin: QWidget, tooltip: str | None = None, extra_widgets=()
-        ) -> QHBoxLayout:
-            """A sub-row indented a small fixed amount, with a fixed label
-            width so inputs line up in a column regardless of label length
-            ("Figure" vs "Top margin") -- independent of the grid's own
-            label-column width (sized by the wider top-level labels like
-            "Font size:"/"Padding:")."""
-            row = QHBoxLayout()
-            row.addSpacing(_INDENT_PX)
+        def _field_row(grid: QGridLayout, row: int, label_text: str, field: QWidget, tooltip: str | None = None):
             label = QLabel(label_text)
-            label.setMinimumWidth(_LABEL_WIDTH_PX)
             if tooltip:
                 label.setToolTip(tooltip)
-            row.addWidget(label)
-            row.addWidget(spin)
-            for widget in extra_widgets:
-                row.addWidget(widget)
-            row.addStretch(1)
-            return row
-
-        def _bold_italic_row(bold_check: QCheckBox, italic_check: QCheckBox) -> QHBoxLayout:
-            """A sub-row holding a Bold/Italic checkbox pair, aligned under
-            the sibling font-size row's input column."""
-            row = QHBoxLayout()
-            row.addSpacing(_INDENT_PX)
-            spacer = QLabel("")
-            spacer.setMinimumWidth(_LABEL_WIDTH_PX)
-            row.addWidget(spacer)
-            row.addWidget(bold_check)
-            row.addWidget(italic_check)
-            row.addStretch(1)
-            return row
+            grid.addWidget(label, row, 0)
+            grid.addWidget(field, row, 1)
 
         def _make_bold_italic_checks() -> tuple[QCheckBox, QCheckBox]:
             bold_check = QCheckBox("Bold")
@@ -144,69 +115,83 @@ class StyleTab(QWidget):
             italic_check.setStyleSheet("QCheckBox { font-style: italic; }")
             return bold_check, italic_check
 
-        chart_layout.addWidget(QLabel("Font size:"), 1, 0)
+        def _bold_italic_widget(bold_check: QCheckBox, italic_check: QCheckBox) -> QWidget:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.addWidget(bold_check)
+            row.addWidget(italic_check)
+            row.addStretch(1)
+            widget = QWidget()
+            widget.setLayout(row)
+            return widget
+
+        # -- Font Size card --
+        self.font_size_card = Card()
+        self.chart_style_cards.append(self.font_size_card)
+        font_size_layout = QGridLayout(self.font_size_card)
+        font_size_layout.addWidget(SectionHeader("Font Size"), 0, 0, 1, 2)
 
         self.title_font_size_spin = QSpinBox()
         self.title_font_size_spin.setRange(8, 32)
         self.title_font_size_spin.setValue(14)
+        _field_row(font_size_layout, 1, "Title", self.title_font_size_spin)
         self.title_bold_check, self.title_italic_check = _make_bold_italic_checks()
         self.title_bold_check.setChecked(True)
-        chart_layout.addLayout(_indented_row("Title", self.title_font_size_spin), 2, 0, 1, 3)
-        chart_layout.addLayout(
-            _bold_italic_row(self.title_bold_check, self.title_italic_check), 3, 0, 1, 3,
+        font_size_layout.addWidget(
+            _bold_italic_widget(self.title_bold_check, self.title_italic_check), 2, 1,
         )
 
         self.subtitle_font_size_spin = QSpinBox()
         self.subtitle_font_size_spin.setRange(8, 32)
         self.subtitle_font_size_spin.setValue(12)
+        _field_row(font_size_layout, 3, "Subtitle", self.subtitle_font_size_spin)
         self.subtitle_bold_check, self.subtitle_italic_check = _make_bold_italic_checks()
-        chart_layout.addLayout(_indented_row("Subtitle", self.subtitle_font_size_spin), 4, 0, 1, 3)
-        chart_layout.addLayout(
-            _bold_italic_row(self.subtitle_bold_check, self.subtitle_italic_check), 5, 0, 1, 3,
+        font_size_layout.addWidget(
+            _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
         )
 
-        chart_layout.addWidget(QLabel("Padding:"), 6, 0)
+        layout.addWidget(self.font_size_card)
+
+        # -- Padding card --
+        self.padding_card = Card()
+        self.chart_style_cards.append(self.padding_card)
+        padding_layout = QGridLayout(self.padding_card)
+        padding_layout.addWidget(SectionHeader("Padding"), 0, 0, 1, 2)
 
         self.chart_padding_spin = QDoubleSpinBox()
         self.chart_padding_spin.setRange(0.0, 10.0)
         self.chart_padding_spin.setSingleStep(0.5)
         self.chart_padding_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Figure", self.chart_padding_spin), 7, 0, 1, 3)
+        _field_row(padding_layout, 1, "Figure", self.chart_padding_spin)
 
         self.chart_padding_w_spin = QDoubleSpinBox()
         self.chart_padding_w_spin.setRange(0.0, 10.0)
         self.chart_padding_w_spin.setSingleStep(0.5)
         self.chart_padding_w_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Width", self.chart_padding_w_spin), 8, 0, 1, 3)
+        _field_row(padding_layout, 2, "Width", self.chart_padding_w_spin)
 
         self.chart_padding_h_spin = QDoubleSpinBox()
         self.chart_padding_h_spin.setRange(0.0, 10.0)
         self.chart_padding_h_spin.setSingleStep(0.5)
         self.chart_padding_h_spin.setValue(2.0)
-        chart_layout.addLayout(_indented_row("Height", self.chart_padding_h_spin), 9, 0, 1, 3)
+        _field_row(padding_layout, 3, "Height", self.chart_padding_h_spin)
 
         self.main_title_padding_spin = QDoubleSpinBox()
         self.main_title_padding_spin.setRange(0.0, 100.0)
         self.main_title_padding_spin.setSingleStep(1.0)
         self.main_title_padding_spin.setValue(10.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Title", self.main_title_padding_spin,
-                tooltip="Gap between the top edge of the figure and the main title",
-            ),
-            10, 0, 1, 3,
+        _field_row(
+            padding_layout, 4, "Title", self.main_title_padding_spin,
+            tooltip="Gap between the top edge of the figure and the main title",
         )
 
         self.title_padding_spin = QDoubleSpinBox()
         self.title_padding_spin.setRange(0.0, 50.0)
         self.title_padding_spin.setSingleStep(1.0)
         self.title_padding_spin.setValue(6.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Subtitle", self.title_padding_spin,
-                tooltip="Gap between the plot area and the subtitle text",
-            ),
-            11, 0, 1, 3,
+        _field_row(
+            padding_layout, 5, "Subtitle", self.title_padding_spin,
+            tooltip="Gap between the plot area and the subtitle text",
         )
 
         self.top_margin_spin = QDoubleSpinBox()
@@ -214,65 +199,76 @@ class StyleTab(QWidget):
         self.top_margin_spin.setSingleStep(0.01)
         self.top_margin_spin.setDecimals(2)
         self.top_margin_spin.setValue(1.0)
-        chart_layout.addLayout(
-            _indented_row(
-                "Top margin", self.top_margin_spin,
-                tooltip=(
-                    "Fraction of the figure height reserved above the plot "
-                    "(1.0 = no reservation, let it auto-size). Unlike the "
-                    "Title/Subtitle padding above, this is a fixed reservation "
-                    "independent of whether a title/subtitle is present -- "
-                    "lower it manually to reclaim space when you remove one."
-                ),
+        _field_row(
+            padding_layout, 6, "Top margin", self.top_margin_spin,
+            tooltip=(
+                "Fraction of the figure height reserved above the plot "
+                "(1.0 = no reservation, let it auto-size). Unlike the "
+                "Title/Subtitle padding above, this is a fixed reservation "
+                "independent of whether a title/subtitle is present -- "
+                "lower it manually to reclaim space when you remove one."
             ),
-            12, 0, 1, 3,
         )
 
-        chart_layout.addWidget(QLabel("Size:"), 13, 0)
+        layout.addWidget(self.padding_card)
+
+        # -- Size card --
+        self.size_card = Card()
+        self.chart_style_cards.append(self.size_card)
+        size_layout = QGridLayout(self.size_card)
+        size_layout.addWidget(SectionHeader("Size"), 0, 0, 1, 2)
+
         self.chart_size_combo = QComboBox()
         self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
         self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_size_combo, 13, 1, 1, 2)
+        _field_row(size_layout, 1, "Size", self.chart_size_combo)
 
         self.custom_size_row = QWidget()
-        custom_size_layout = QVBoxLayout(self.custom_size_row)
+        custom_size_layout = QGridLayout(self.custom_size_row)
         custom_size_layout.setContentsMargins(0, 0, 0, 0)
         self.chart_width_spin = QDoubleSpinBox()
         self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self.chart_width_spin.setSuffix(" cm")
-        custom_size_layout.addLayout(_indented_row("Width", self.chart_width_spin))
+        _field_row(custom_size_layout, 0, "Width", self.chart_width_spin)
         self.chart_height_spin = QDoubleSpinBox()
         self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         self.chart_height_spin.setSuffix(" cm")
-        custom_size_layout.addLayout(_indented_row("Height", self.chart_height_spin))
-        chart_layout.addWidget(self.custom_size_row, 14, 0, 1, 3)
+        _field_row(custom_size_layout, 1, "Height", self.chart_height_spin)
+        size_layout.addWidget(self.custom_size_row, 2, 0, 1, 2)
         self.custom_size_row.setVisible(False)
 
-        chart_layout.addWidget(QLabel("DPI:"), 15, 0)
+        hint = QLabel("Size affects export & default fonts")
+        hint.setStyleSheet("font-size: 10.5px;")
+        size_layout.addWidget(hint, 3, 0, 1, 2)
+
+        layout.addWidget(self.size_card)
+
+        # -- DPI card --
+        self.dpi_card = Card()
+        self.chart_style_cards.append(self.dpi_card)
+        dpi_layout = QGridLayout(self.dpi_card)
+        dpi_layout.addWidget(SectionHeader("DPI"), 0, 0, 1, 2)
+
         self.chart_dpi_combo = QComboBox()
         self.chart_dpi_combo.addItem("100 dpi", 100)
         self.chart_dpi_combo.addItem("150 dpi", 150)
         self.chart_dpi_combo.addItem("300 dpi", 300)
         self.chart_dpi_combo.addItem("Custom", "custom")
         self.chart_dpi_combo.addItem("Use app default", None)
-        chart_layout.addWidget(self.chart_dpi_combo, 15, 1, 1, 2)
+        _field_row(dpi_layout, 1, "DPI", self.chart_dpi_combo)
 
         self.custom_dpi_row = QWidget()
-        custom_dpi_layout = QVBoxLayout(self.custom_dpi_row)
+        custom_dpi_layout = QGridLayout(self.custom_dpi_row)
         custom_dpi_layout.setContentsMargins(0, 0, 0, 0)
         self.chart_dpi_spin = QSpinBox()
         self.chart_dpi_spin.setRange(50, 600)
-        custom_dpi_layout.addLayout(_indented_row("DPI", self.chart_dpi_spin))
-        chart_layout.addWidget(self.custom_dpi_row, 16, 0, 1, 3)
+        _field_row(custom_dpi_layout, 0, "DPI", self.chart_dpi_spin)
+        dpi_layout.addWidget(self.custom_dpi_row, 2, 0, 1, 2)
         self.custom_dpi_row.setVisible(False)
 
-        hint = QLabel("Size affects export & default fonts")
-        hint.setStyleSheet("font-size: 10.5px;")
-        chart_layout.addWidget(hint, 17, 0, 1, 3)
-
-        layout.addWidget(self.chart_style_card)
+        layout.addWidget(self.dpi_card)
 
         # LINE group
         self.line_card = Card()
@@ -389,7 +385,8 @@ class StyleTab(QWidget):
         layout.addWidget(error_bars_card)
 
         layout.addStretch()
-        self.chart_style_card.setVisible(False)
+        for card in self.chart_style_cards:
+            card.setVisible(False)
 
         # Series/fit style field connections.
         self.line_color_row.colorChanged.connect(self._on_field_changed)
@@ -451,7 +448,8 @@ class StyleTab(QWidget):
         """
         kind, _obj = self._current_target
         is_chart = kind == "chart"
-        self.chart_style_card.setVisible(is_chart)
+        for card in self.chart_style_cards:
+            card.setVisible(is_chart)
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(not is_chart and not is_scatter)
         self.marker_card.setVisible(not is_chart)
