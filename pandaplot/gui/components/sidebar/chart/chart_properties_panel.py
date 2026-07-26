@@ -448,19 +448,11 @@ class ChartPropertiesPanel(PWidget):
         self.axes_tab.apply_to(chart)
         self.legend_tab.apply_to(chart)
 
-        # Data-tab-owned fields: re-asserts the selected series' y_axis, and
-        # creates a default series (dataset/x/y/label/y_axis) if none exist
-        # yet. Deliberately runs *before* the style application below (unlike
-        # the pre-Task-5 order) so that if this creates a new series, it
-        # still picks up the Style tab's currently-shown style via
-        # `apply_series_style_to` next -- previously that combined creation
-        # call baked color/line_width/marker_size in directly; routing it
-        # through the same style-apply path as any other series is more
-        # complete (also covers line_style/alpha/marker_shape/etc.) and
-        # avoids DataTab needing a reference to StyleTab.
-        self.data_tab.apply_to(chart)
-
         # Apply style updates to the currently selected series or fit data.
+        # Runs *before* DataTab may bootstrap a default series below (matching
+        # the pre-Task-5 order), so this only ever touches a series/fit that
+        # already existed prior to this apply -- a freshly-bootstrapped
+        # series is never touched by `apply_series_style_to` here.
         current_row = self.data_tab.selected_index
         if current_row >= 0:
             total_series = len(chart.data_series)
@@ -485,6 +477,27 @@ class ChartPropertiesPanel(PWidget):
                         "Applied style to fit data %d: %s (color=%s)",
                         fit_index, fit.label, fit.color
                     )
+
+        # Data-tab-owned fields: re-asserts the selected series' y_axis, and
+        # creates a default series (dataset/x/y/label/y_axis) if none exist
+        # yet.
+        had_series_before_apply = bool(chart.data_series)
+        self.data_tab.apply_to(chart)
+
+        if not had_series_before_apply and chart.data_series:
+            # DataTab just bootstrapped a default series from zero. Match
+            # the pre-Task-5 behavior of seeding color/line_width/
+            # marker_size directly from the Style tab's currently-shown
+            # values at creation time -- *not* the full
+            # `apply_series_style_to` above (which already ran, before this
+            # series existed, so never touched it), so line_style/alpha/
+            # marker_style/marker_color/marker_edge_color stay at the
+            # DataSeries dataclass defaults rather than being overwritten
+            # from whatever the Style tab happens to be showing.
+            new_series = chart.data_series[-1]
+            new_series.color = self.style_tab.line_color_row.currentColor()
+            new_series.line_width = self.style_tab.line_width_slider.value()
+            new_series.marker_size = self.style_tab.marker_size_slider.value()
 
         chart.update_modified_time()
     
