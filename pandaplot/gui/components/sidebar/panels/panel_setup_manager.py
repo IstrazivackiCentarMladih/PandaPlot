@@ -16,6 +16,7 @@ from pandaplot.gui.components.sidebar.panels.panel_conditions import (
     is_dataset_tab_active,
 )
 from pandaplot.gui.components.sidebar.project.project_view_panel import ProjectViewPanel
+from pandaplot.gui.components.sidebar.statistics.statistics_panel import StatisticsPanel
 from pandaplot.gui.components.sidebar.transform.transform_panel import TransformPanel
 from pandaplot.models.state.app_context import AppContext
 
@@ -34,6 +35,7 @@ class PanelSetupManager:
         self.register_panel(TransformPanel(self.app_context), "transform", "🔧", is_dataset_tab_active)
 
         self.register_panel(AnalysisPanel(self.app_context), "analysis", "📊", is_dataset_tab_active)
+        self.register_panel(StatisticsPanel(self.app_context), "statistics", "🧪", is_dataset_tab_active)
         self.register_panel(ChartPropertiesPanel(self.app_context), "chart_properties", "📈", is_chart_tab_active)
         self.register_panel(FitPanel(self.app_context), "fit", "📐", is_chart_tab_active)
 

@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
@@ -152,6 +153,41 @@ class DataTab(QWidget):
         self.series_label_edit = QLineEdit()
         series_config_layout.addWidget(self.series_label_edit, 4, 1)
 
+        # Checked -> pick independent +/- error columns below; unchecked
+        # (default) -> a single column supplies a symmetric magnitude (the
+        # rendered direction is then controlled by the Style tab's Error
+        # Bars > Direction control).
+        self.error_asymmetric_check = QCheckBox("Asymmetric Error Bars")
+        self.error_asymmetric_check.setToolTip(
+            "When checked, pick separate +/- error columns for independent "
+            "upper/lower magnitudes instead of one symmetric column.")
+        series_config_layout.addWidget(self.error_asymmetric_check, 5, 0, 1, 2)
+
+        # Label text switches between "X Error Column" (symmetric magnitude)
+        # and "X Error (+) Column" (asymmetric upper magnitude) depending on
+        # the checkbox above; see _update_error_bar_mode_controls.
+        self.x_error_column_label = QLabel("X Error Column:")
+        series_config_layout.addWidget(self.x_error_column_label, 6, 0)
+        self.x_error_column_combo = QComboBox()
+        series_config_layout.addWidget(self.x_error_column_combo, 6, 1)
+
+        self.y_error_column_label = QLabel("Y Error Column:")
+        series_config_layout.addWidget(self.y_error_column_label, 7, 0)
+        self.y_error_column_combo = QComboBox()
+        series_config_layout.addWidget(self.y_error_column_combo, 7, 1)
+
+        # Only shown when "Asymmetric Error Bars" is checked, to supply the
+        # lower-side (-) magnitude.
+        self.x_error_minus_label = QLabel("X Error (-) Column:")
+        series_config_layout.addWidget(self.x_error_minus_label, 8, 0)
+        self.x_error_minus_column_combo = QComboBox()
+        series_config_layout.addWidget(self.x_error_minus_column_combo, 8, 1)
+
+        self.y_error_minus_label = QLabel("Y Error (-) Column:")
+        series_config_layout.addWidget(self.y_error_minus_label, 9, 0)
+        self.y_error_minus_column_combo = QComboBox()
+        series_config_layout.addWidget(self.y_error_minus_column_combo, 9, 1)
+
         self._rebuild_series_cards()
 
     def _connect_signals(self):
@@ -160,6 +196,11 @@ class DataTab(QWidget):
         self.x_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.y_column_combo.currentTextChanged.connect(self._on_series_config_changed)
         self.series_y_axis_control.currentValueChanged.connect(self._on_series_config_changed)
+        self.x_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.y_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.x_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.y_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
@@ -565,6 +606,11 @@ class DataTab(QWidget):
             series.x_column = self.x_column_combo.currentText()
             series.y_column = self.y_column_combo.currentText()
             series.y_axis = self.series_y_axis_control.currentValue()
+            series.x_error_column = self.x_error_column_combo.currentData() or ""
+            series.y_error_column = self.y_error_column_combo.currentData() or ""
+            series.x_error_minus_column = self.x_error_minus_column_combo.currentData() or ""
+            series.y_error_minus_column = self.y_error_minus_column_combo.currentData() or ""
+            series.error_symmetric = not self.error_asymmetric_check.isChecked()
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
             # to the secondary axis is reflected without waiting for Apply
@@ -600,6 +646,39 @@ class DataTab(QWidget):
         # which is a behavior change the refactor isn't meant to introduce.
         self.dirtyOnly.emit()
 
+    def _on_error_symmetry_toggled(self):
+        """Handle the Asymmetric error-bars checkbox: persist and refresh
+        control enablement."""
+        self._update_error_bar_mode_controls()
+        self._on_series_config_changed()
+
+    def _update_error_bar_mode_controls(self):
+        """Sync the error-column controls to the current symmetric/
+        asymmetric mode.
+
+        Unchecked (symmetric): X/Y Error Column supply a single magnitude
+        (the Style tab's Direction control decides which side it's drawn on);
+        the -side pickers are hidden. Checked (asymmetric): X/Y Error Column
+        become the + (upper) magnitude and the -side pickers appear for the
+        lower magnitude.
+        """
+        asymmetric = self.error_asymmetric_check.isChecked()
+
+        self.x_error_column_label.setText("X Error (+) Column:" if asymmetric else "X Error Column:")
+        self.y_error_column_label.setText("Y Error (+) Column:" if asymmetric else "Y Error Column:")
+
+        # x_error_column_combo tracks whether a data series (vs. fit data,
+        # which has no error bars) is being edited; the -side pickers only
+        # show up when both a series is selected and asymmetric is checked.
+        show_minus = asymmetric and self.x_error_column_combo.isEnabled()
+        for widget in (
+            self.x_error_minus_label, self.x_error_minus_column_combo,
+            self.y_error_minus_label, self.y_error_minus_column_combo,
+        ):
+            widget.setVisible(show_minus)
+        self.x_error_minus_column_combo.setEnabled(show_minus)
+        self.y_error_minus_column_combo.setEnabled(show_minus)
+
     def _load_series_into_controls(self, series):
         """Load a data series into the configuration controls."""
         # Enable all controls for series editing
@@ -619,6 +698,7 @@ class DataTab(QWidget):
             # dataset/column state (e.g. after undo/redo of a column rename)
             # don't linger.
             self._populate_column_combos(series.dataset_id)
+            self._populate_error_column_combos(series.dataset_id)
 
             # Set columns
             x_index = self.x_column_combo.findText(series.x_column)
@@ -632,6 +712,23 @@ class DataTab(QWidget):
             # Set Y axis (primary/secondary). SegmentedControl.setCurrentValue
             # doesn't emit currentValueChanged, so no signal-blocking needed.
             self.series_y_axis_control.setCurrentValue(series.y_axis)
+
+            # Set error columns (block signals while populating)
+            for combo, column in (
+                (self.x_error_column_combo, series.x_error_column),
+                (self.y_error_column_combo, series.y_error_column),
+                (self.x_error_minus_column_combo, series.x_error_minus_column),
+                (self.y_error_minus_column_combo, series.y_error_minus_column),
+            ):
+                combo.blockSignals(True)
+                index = combo.findData(column)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+                combo.blockSignals(False)
+
+            self.error_asymmetric_check.blockSignals(True)
+            self.error_asymmetric_check.setChecked(not series.error_symmetric)
+            self.error_asymmetric_check.blockSignals(False)
+            self._update_error_bar_mode_controls()
 
             # Set label (block signals while populating)
             self.series_label_edit.blockSignals(True)
@@ -651,6 +748,10 @@ class DataTab(QWidget):
             self.x_column_combo.setEnabled(False)
             self.y_column_combo.setEnabled(False)
             self.series_y_axis_control.setEnabled(False)
+            self.x_error_column_combo.setEnabled(False)
+            self.y_error_column_combo.setEnabled(False)
+            self.error_asymmetric_check.setEnabled(False)
+            self._update_error_bar_mode_controls()
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)
@@ -694,6 +795,9 @@ class DataTab(QWidget):
         self.x_column_combo.setEnabled(True)
         self.y_column_combo.setEnabled(True)
         self.series_y_axis_control.setEnabled(True)
+        self.x_error_column_combo.setEnabled(True)
+        self.y_error_column_combo.setEnabled(True)
+        self.error_asymmetric_check.setEnabled(True)
 
     def _get_next_series_color(self) -> str:
         """Get the next color for a new series."""
@@ -752,10 +856,41 @@ class DataTab(QWidget):
             return columns
         return []
 
+    def _populate_error_column_combos(self, dataset_id):
+        """Fill the x/y (+/-) error column combos with a leading "None" entry
+        followed by the columns of the given dataset.
+
+        Signals are blocked while clearing/populating, same as
+        _populate_column_combos. Item data is the column name (or "" for
+        "None"), since "None" is itself a valid display label and can't be
+        distinguished from a real column via currentText().
+        """
+        combos = (
+            self.x_error_column_combo, self.y_error_column_combo,
+            self.x_error_minus_column_combo, self.y_error_minus_column_combo,
+        )
+        for combo in combos:
+            combo.blockSignals(True)
+        try:
+            for combo in combos:
+                combo.clear()
+                combo.addItem("None", "")
+
+            if dataset_id and self.current_project:
+                dataset = self.current_project.find_item(dataset_id)
+                if isinstance(dataset, Dataset) and dataset.data is not None:
+                    for column in dataset.data.columns:
+                        for combo in combos:
+                            combo.addItem(column, column)
+        finally:
+            for combo in combos:
+                combo.blockSignals(False)
+
     def _on_dataset_changed(self):
         """Handle dataset selection change."""
         dataset_id = self.dataset_combo.currentData()
         columns = self._populate_column_combos(dataset_id)
+        self._populate_error_column_combos(dataset_id)
 
         # Set defaults if possible
         if columns:
@@ -817,6 +952,11 @@ class DataTab(QWidget):
                     y_column=y_column,
                     label=f"{dataset_name}:{y_column}",
                     y_axis=self.series_y_axis_control.currentValue(),
+                    x_error_column=self.x_error_column_combo.currentData() or "",
+                    y_error_column=self.y_error_column_combo.currentData() or "",
+                    x_error_minus_column=self.x_error_minus_column_combo.currentData() or "",
+                    y_error_minus_column=self.y_error_minus_column_combo.currentData() or "",
+                    error_symmetric=not self.error_asymmetric_check.isChecked(),
                 )
 
     def clear(self):

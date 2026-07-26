@@ -26,6 +26,7 @@ from pandaplot.models.chart.chart_configuration import (
     LineStyleType,
     MarkerType,
 )
+from pandaplot.models.project.items.chart import ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -352,6 +353,34 @@ class StyleTab(QWidget):
 
         layout.addWidget(marker_card)
 
+        # ERROR BARS group -- which columns feed the error bars is configured
+        # on the Data tab (including the Asymmetric Error Bars checkbox);
+        # this group only controls how they render.
+        self.error_bars_card = Card()
+        error_bars_card = self.error_bars_card
+        error_layout = QGridLayout(error_bars_card)
+        error_layout.addWidget(SectionHeader("Error Bars"), 0, 0, 1, 2)
+
+        error_layout.addWidget(QLabel("Direction:"), 1, 0)
+        self.error_direction_control = ValueComboBox(
+            [
+                ("Both", ErrorDirection.BOTH),
+                ("Above (+)", ErrorDirection.PLUS),
+                ("Below (-)", ErrorDirection.MINUS),
+            ]
+        )
+        error_layout.addWidget(self.error_direction_control, 1, 1)
+
+        error_layout.addWidget(QLabel("Color:"), 2, 0)
+        self.error_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        error_layout.addWidget(self.error_color_row, 2, 1)
+
+        error_layout.addWidget(QLabel("Cap Size:"), 3, 0)
+        self.error_cap_size_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        error_layout.addWidget(self.error_cap_size_slider, 3, 1)
+
+        layout.addWidget(error_bars_card)
+
         layout.addStretch()
         self.chart_style_card.setVisible(False)
 
@@ -366,6 +395,9 @@ class StyleTab(QWidget):
         self.marker_color_row.colorChanged.connect(self._on_field_changed)
         self.marker_match_line_toggle.toggled.connect(self._on_marker_match_line_toggled)
         self.marker_edge_color_row.colorChanged.connect(self._on_field_changed)
+        self.error_direction_control.currentValueChanged.connect(self._on_field_changed)
+        self.error_color_row.colorChanged.connect(self._on_field_changed)
+        self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -415,6 +447,9 @@ class StyleTab(QWidget):
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(not is_chart and not is_scatter)
         self.marker_card.setVisible(not is_chart)
+        # Fit data has no error-bar fields (DataSeries-only), so the Error
+        # Bars card only applies to a selected series.
+        self.error_bars_card.setVisible(kind == "series")
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
@@ -565,6 +600,10 @@ class StyleTab(QWidget):
         else:
             series.marker_style = MarkerType.NONE.value
 
+        series.error_direction = self.error_direction_control.currentValue()
+        series.error_color = self.error_color_row.currentColor()
+        series.error_cap_size = self.error_cap_size_slider.value()
+
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
         fit.line_style = self.line_style_control.currentValue().value
@@ -610,6 +649,13 @@ class StyleTab(QWidget):
             self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or "#000000")
 
             self._update_marker_controls_enabled()
+
+            try:
+                self.error_direction_control.setCurrentValue(ErrorDirection(series.error_direction))
+            except ValueError:
+                self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
+            self.error_color_row.setCurrentColor(series.error_color or series.color)
+            self.error_cap_size_slider.setValue(series.error_cap_size)
         finally:
             self._updating_controls = previous_guard
 
@@ -842,3 +888,6 @@ class StyleTab(QWidget):
         self.marker_color_row.set_tokens(tokens)
         self.marker_match_line_toggle.set_tokens(tokens)
         self.marker_edge_color_row.set_tokens(tokens)
+        self.error_direction_control.set_tokens(tokens)
+        self.error_color_row.set_tokens(tokens)
+        self.error_cap_size_slider.set_tokens(tokens)

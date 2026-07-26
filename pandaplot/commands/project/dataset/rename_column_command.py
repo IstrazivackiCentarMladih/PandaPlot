@@ -119,6 +119,18 @@ class RenameColumnCommand(Command):
                 if series.y_column == from_name:
                     series.y_column = to_name
                     changed = True
+                if series.x_error_column == from_name:
+                    series.x_error_column = to_name
+                    changed = True
+                if series.y_error_column == from_name:
+                    series.y_error_column = to_name
+                    changed = True
+                if series.x_error_minus_column == from_name:
+                    series.x_error_minus_column = to_name
+                    changed = True
+                if series.y_error_minus_column == from_name:
+                    series.y_error_minus_column = to_name
+                    changed = True
             for fit in item.fit_data:
                 if fit.source_dataset_id != self.dataset_id:
                     continue
