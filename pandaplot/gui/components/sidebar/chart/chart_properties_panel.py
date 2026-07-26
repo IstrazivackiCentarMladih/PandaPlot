@@ -88,6 +88,7 @@ class ChartPropertiesPanel(PWidget):
         # Data tab: series list + per-series dataset/X/Y/label configuration
         self.data_tab = DataTab(self.app_context, self)
         self.data_tab.configChanged.connect(self._on_any_tab_config_changed)
+        self.data_tab.dirtyOnly.connect(self._on_dirty_only)
         self.data_tab.seriesSelected.connect(lambda kind, obj: self.style_tab.set_selected(kind, obj))
         self.data_tab.seriesListChanged.connect(
             lambda ds, fd: self.style_tab.set_series_list(ds, fd, self.data_tab.selected_index)
@@ -317,6 +318,15 @@ class ChartPropertiesPanel(PWidget):
             "update_type": "config_updated",
         })
 
+    def _on_dirty_only(self):
+        """Mark dirty and refresh the footer without publishing
+        CHART_UPDATED -- used for edits that pre-refactor never published
+        for (see `DataTab.dirtyOnly`)."""
+        if not self.current_chart:
+            return
+        self._has_unsaved_changes = True
+        self._update_status_indicator()
+
     def _update_status_indicator(self):
         """Update the footer to reflect unsaved changes."""
         self.footer.setModified(
@@ -400,6 +410,15 @@ class ChartPropertiesPanel(PWidget):
 
                 # Load configuration
                 self.chart_tab.load(chart)
+                # ChartTab.load sets the chart-type combo via setCurrentValue,
+                # which blocks signals during a load (by design, so a load
+                # never triggers live-write handlers). That means
+                # chartTypeChanged never fires here, so StyleTab's cached
+                # `_chart_type` (used to hide the Line card for Scatter
+                # charts) must be synced explicitly, or it would keep
+                # whatever chart type was cached from before this load (or
+                # None, before the user ever touches the combo by hand).
+                self.style_tab.set_chart_type(self.chart_tab.chart_type_control.currentValue())
                 self.axes_tab.load(chart)
                 self.legend_tab.load(chart)
             finally:

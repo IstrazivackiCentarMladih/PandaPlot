@@ -44,6 +44,11 @@ class DataTab(QWidget):
     """
 
     configChanged = Signal()
+    # Emitted for a dataset/X/Y/Y-axis edit on the selected series: this
+    # marks the chart dirty but, matching pre-refactor behavior, must NOT
+    # trigger a CHART_UPDATED publish the way `configChanged` does via the
+    # panel's `_on_any_tab_config_changed` (see `_on_series_config_changed`).
+    dirtyOnly = Signal()
     # Emitted whenever a series/fit becomes the selected entry -- consumed by
     # the panel to drive `StyleTab.set_selected(kind, obj)`.
     seriesSelected = Signal(str, object)
@@ -586,7 +591,14 @@ class DataTab(QWidget):
             # Fit data: columns/dataset not editable, ignore
             return
 
-        self.configChanged.emit()
+        # Deliberately `dirtyOnly`, not `configChanged`: pre-refactor, this
+        # exact edit path (dataset/X/Y/Y-axis on the selected series) set the
+        # dirty flag and updated the status indicator but never published
+        # ChartEvents.CHART_UPDATED. Routing it through `configChanged`
+        # instead would make the panel's shared `_on_any_tab_config_changed`
+        # publish CHART_UPDATED for every keystroke-driven combo change here,
+        # which is a behavior change the refactor isn't meant to introduce.
+        self.dirtyOnly.emit()
 
     def _load_series_into_controls(self, series):
         """Load a data series into the configuration controls."""
