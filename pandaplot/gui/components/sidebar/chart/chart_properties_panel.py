@@ -17,20 +17,10 @@ from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
 from pandaplot.gui.components.sidebar.chart.tabs.legend_tab import LegendTab
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.chart.chart_configuration import ChartType
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
-
-# Only chart types that ChartEditorWidget.update_chart can actually render.
-# BOX and VIOLIN exist in the enum but have no rendering branch yet.
-IMPLEMENTED_CHART_TYPES = [
-    ChartType.LINE,
-    ChartType.SCATTER,
-    ChartType.BAR,
-    ChartType.HISTOGRAM,
-]
 
 
 class ChartPropertiesPanel(PWidget):
@@ -49,8 +39,7 @@ class ChartPropertiesPanel(PWidget):
         self._loaded_snapshot: Optional[dict] = None
 
         self._initialize()
-        self._connect_signals()
-    
+
     @override
     def _init_ui(self):
         """Set up the user interface."""
@@ -242,19 +231,6 @@ class ChartPropertiesPanel(PWidget):
         # Legend tab: shared widgets
         self.legend_tab.apply_theme(tokens)
 
-
-    def _connect_signals(self):
-        """Connect widget signals.
-
-        Chart tab's own fields (title/subtitle/chart type/hist bins) are
-        wired internally by ChartTab; Style tab's chart_style_card and
-        Line/Marker card fields are wired internally by StyleTab; Data tab's
-        dataset/X/Y/Y-axis/label fields are wired internally by DataTab.
-        Axes tab: each axis form's widgets are wired directly to shared
-        handlers in _build_axis_form_widgets, not here (the forms are built
-        dynamically per-prefix, so there are no static self.x_*/self.y_*/
-        self.y2_* attributes to hook up in one place).
-        """
 
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
