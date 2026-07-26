@@ -44,6 +44,7 @@ class SignalAnalysisInfo:
 
     # FFT
     uses_nfft: bool = False
+    default_nfft: int = 1024
 
     # STFT / PSD
     uses_window: bool = False
@@ -78,6 +79,7 @@ SIGNAL_ANALYSES: Dict[SignalAnalysisType, SignalAnalysisInfo] = {
         uses_sampling_rate=True,
         uses_window=True,
         uses_nfft=True,
+        default_nfft=1024,
         description=(
             "Transforms a signal from the time domain into the frequency "
             "domain and returns its frequency spectrum."

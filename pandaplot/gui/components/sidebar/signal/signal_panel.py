@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QTextEdit,
     QScrollArea,
+    QHBoxLayout,
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
@@ -21,6 +22,7 @@ from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 class SignalPanel(PWidget):
@@ -59,8 +61,8 @@ class SignalPanel(PWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
 
-        title = QLabel("📡 Signal Analysis")
-        layout.addWidget(title)
+        self.title_label = QLabel("📡 Signal Analysis")
+        layout.addWidget(self.title_label)
 
         # Analysis selector
         group = QGroupBox("Analysis")
@@ -107,7 +109,6 @@ class SignalPanel(PWidget):
         self.parameters_group.setLayout(self.parameters_layout)
 
         layout.addWidget(self.parameters_group)
-        self._on_analysis_changed()
 
         # Results
         results_group = QGroupBox("Results")
@@ -126,21 +127,25 @@ class SignalPanel(PWidget):
         results_group.setLayout(results_layout)
         layout.addWidget(results_group)
 
+        button_layout = QHBoxLayout()
+
         self.add_btn = QPushButton("➕ Add Results to Project")
         self.add_btn.clicked.connect(self.add_results_to_project)
         self.add_btn.setEnabled(False)
 
-        layout.addWidget(self.add_btn)
-
         self.clear_btn = QPushButton("🔄 Clear")
         self.clear_btn.clicked.connect(self.clear)
 
-        layout.addWidget(self.clear_btn)
+        button_layout.addWidget(self.add_btn)
+        button_layout.addWidget(self.clear_btn)
+
+        layout.addLayout(button_layout)
 
         layout.addStretch()
 
         scroll_area.setWidget(content_widget)
         main_layout.addWidget(scroll_area)
+        self._on_analysis_changed()
 
     def _on_analysis_changed(self):
         analysis_type = self.analysis_combo.currentData()
@@ -190,8 +195,7 @@ class SignalPanel(PWidget):
         if info.uses_nfft:
             self.nfft_spin = QSpinBox()
             self.nfft_spin.setRange(16, 1_000_000)
-            self.nfft_spin.setValue(1024)
-
+            self.nfft_spin.setValue(info.default_nfft)
             self.parameters_layout.addRow(
                 "FFT size:",
                 self.nfft_spin
@@ -302,9 +306,12 @@ class SignalPanel(PWidget):
 
     def _refresh_columns(self):
         self.column_combo.clear()
-
         self.column_combo.addItems(
             self._numeric_columns()
+        )
+
+        self.run_btn.setEnabled(
+            self.column_combo.count() > 0
         )
 
     def on_tab_changed(self, event_data):
@@ -345,6 +352,9 @@ class SignalPanel(PWidget):
     def _build_command(self):
 
         if not self.current_dataset_id:
+            return None
+
+        if not self.column_combo.currentText():
             return None
 
         parameters = {}
@@ -433,10 +443,21 @@ class SignalPanel(PWidget):
             lines.append("")
             lines.append("Parameters:")
 
+            dominant = result.metadata.get("dominant_frequencies")
+
             for key, value in result.metadata.items():
-                lines.append(
-                    f"{key}: {value}"
-                )
+                if key == "dominant_frequencies":
+                    continue
+                lines.append(f"{key}: {value}")
+
+            if dominant:
+                lines.append("")
+                lines.append("Dominant frequencies:")
+
+                for freq, amp in dominant:
+                    lines.append(
+                        f"- {freq:.2f} Hz (amplitude {amp:.3f})"
+                    )
 
         return "\n".join(lines)
 
@@ -460,13 +481,115 @@ class SignalPanel(PWidget):
             self.add_btn.setEnabled(False)
 
     def clear(self):
-        self.results_text.clear()
+        if hasattr(self, "results_text"):
+            self.results_text.clear()
+
         self.last_result = None
-        self.add_btn.setEnabled(False)
+        if hasattr(self, "add_btn"):
+            self.add_btn.setEnabled(False)
 
     @override
     def _apply_theme(self):
-        pass
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+
+        card_bg = palette.get("card_bg", "#ffffff")
+        card_border = palette.get("card_border", "#dee2e6")
+        base_fg = palette.get("base_fg", "#333333")
+        secondary_fg = palette.get("secondary_fg", "#666666")
+        accent = palette.get("accent", "#4CAF50")
+        card_hover = palette.get("card_hover", "#e5f3ff")
+
+        self.setStyleSheet(f"""
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 9pt;
+                color: {base_fg};
+                margin-top: 5px;
+                padding-top: 10px;
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+            }}
+
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                background-color: {card_bg};
+            }}
+        """)
+
+        self.title_label.setStyleSheet(f"""
+            QLabel {{
+                font-size: 14px;
+                font-weight: bold;
+                color: {base_fg};
+                padding: 5px;
+                background-color: {card_border};
+                border-radius: 3px;
+            }}
+        """)
+
+        self.run_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+        """)
+
+        self.add_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {accent};
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 16px;
+                font-weight: bold;
+            }}
+
+            QPushButton:hover {{
+                background-color: {card_hover};
+                color: {base_fg};
+            }}
+
+            QPushButton:disabled {{
+                background-color: {secondary_fg};
+                color: #999999;
+            }}
+        """)
+
+        self.results_text.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {card_bg};
+                color: {base_fg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+            }}
+        """)
+
+        self.clear_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {secondary_fg};
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 10px 16px;
+                font-weight: bold;
+            }}
+
+            QPushButton:hover {{
+                background-color: #7f8c8d;
+            }}
+        """)
 
     @override
     def setup_event_subscriptions(self):
