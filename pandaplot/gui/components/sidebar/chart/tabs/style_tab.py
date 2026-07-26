@@ -339,7 +339,8 @@ class StyleTab(QWidget):
         self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
         marker_layout.addWidget(self.marker_size_slider, 2, 1)
 
-        marker_layout.addWidget(QLabel("Color:"), 3, 0)
+        self.marker_color_label = QLabel("Color:")
+        marker_layout.addWidget(self.marker_color_label, 3, 0)
         self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_color_row, 3, 1)
 
@@ -347,7 +348,8 @@ class StyleTab(QWidget):
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
         marker_layout.addWidget(self.marker_match_line_toggle, 4, 1)
 
-        marker_layout.addWidget(QLabel("Edge color:"), 5, 0)
+        self.marker_edge_color_label = QLabel("Edge color:")
+        marker_layout.addWidget(self.marker_edge_color_label, 5, 0)
         self.marker_edge_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_edge_color_row, 5, 1)
 
@@ -371,13 +373,18 @@ class StyleTab(QWidget):
         )
         error_layout.addWidget(self.error_direction_control, 1, 1)
 
-        error_layout.addWidget(QLabel("Color:"), 2, 0)
+        self.error_color_label = QLabel("Color:")
+        error_layout.addWidget(self.error_color_label, 2, 0)
         self.error_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         error_layout.addWidget(self.error_color_row, 2, 1)
 
-        error_layout.addWidget(QLabel("Cap Size:"), 3, 0)
+        error_layout.addWidget(QLabel("Match line:"), 3, 0)
+        self.error_match_line_toggle = ToggleSwitch(checked=True)
+        error_layout.addWidget(self.error_match_line_toggle, 3, 1)
+
+        error_layout.addWidget(QLabel("Cap Size:"), 4, 0)
         self.error_cap_size_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
-        error_layout.addWidget(self.error_cap_size_slider, 3, 1)
+        error_layout.addWidget(self.error_cap_size_slider, 4, 1)
 
         layout.addWidget(error_bars_card)
 
@@ -397,6 +404,7 @@ class StyleTab(QWidget):
         self.marker_edge_color_row.colorChanged.connect(self._on_field_changed)
         self.error_direction_control.currentValueChanged.connect(self._on_field_changed)
         self.error_color_row.colorChanged.connect(self._on_field_changed)
+        self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
@@ -554,17 +562,40 @@ class StyleTab(QWidget):
         self._on_field_changed()
 
     def _update_marker_controls_enabled(self):
-        """Enable/disable marker sub-controls based on the enable and
-        match-line toggles (pure UI convenience; see apply_series_style_to
-        for how this maps onto the persisted `marker_style`/`marker_color`)."""
+        """Enable/disable marker sub-controls based on the enable toggle, and
+        show/hide the fill/edge color pickers based on the match-line toggle
+        (pure UI convenience; see apply_series_style_to for how this maps
+        onto the persisted `marker_style`/`marker_color`/`marker_edge_color`).
+
+        "Match line" hides the color pickers entirely (not just disables
+        them): once matching, there's nothing for the user to set -- both
+        colors track `series.color` until unchecked.
+        """
         markers_enabled = self.markers_enabled_toggle.isChecked()
         self.marker_shape_control.setEnabled(markers_enabled)
         self.marker_size_slider.setEnabled(markers_enabled)
         self.marker_match_line_toggle.setEnabled(markers_enabled)
-        self.marker_color_row.setEnabled(
-            markers_enabled and not self.marker_match_line_toggle.isChecked()
-        )
-        self.marker_edge_color_row.setEnabled(markers_enabled)
+
+        show_colors = markers_enabled and not self.marker_match_line_toggle.isChecked()
+        for widget in (
+            self.marker_color_label, self.marker_color_row,
+            self.marker_edge_color_label, self.marker_edge_color_row,
+        ):
+            widget.setVisible(show_colors)
+
+    # -- Error-bar match-line toggle ------------------------------------
+
+    def _on_error_match_line_toggled(self, _checked: bool):
+        """Handle the Error Bars 'Match line' toggle."""
+        self._update_error_controls_visibility()
+        self._on_field_changed()
+
+    def _update_error_controls_visibility(self):
+        """Hide the error-bar color picker while it matches the line color
+        (see _update_marker_controls_enabled for the same convention)."""
+        show_color = not self.error_match_line_toggle.isChecked()
+        self.error_color_label.setVisible(show_color)
+        self.error_color_row.setVisible(show_color)
 
     # -- Series/fit style: load / apply --------------------------------------
 
@@ -588,20 +619,23 @@ class StyleTab(QWidget):
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
         # the existing MarkerType.NONE member. "Match line" reuses the
-        # existing marker_color == "" convention.
+        # existing "" == inherit-series.color convention for both
+        # marker_color and marker_edge_color (rendering already falls back
+        # to series.color for either field when empty -- see chart_editor.py).
         if self.markers_enabled_toggle.isChecked():
             series.marker_style = self.marker_shape_control.currentValue().value
             series.marker_size = self.marker_size_slider.value()
-            series.marker_color = (
-                "" if self.marker_match_line_toggle.isChecked()
-                else self.marker_color_row.currentColor()
-            )
-            series.marker_edge_color = self.marker_edge_color_row.currentColor()
+            match_line = self.marker_match_line_toggle.isChecked()
+            series.marker_color = "" if match_line else self.marker_color_row.currentColor()
+            series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
         else:
             series.marker_style = MarkerType.NONE.value
 
         series.error_direction = self.error_direction_control.currentValue()
-        series.error_color = self.error_color_row.currentColor()
+        series.error_color = (
+            "" if self.error_match_line_toggle.isChecked()
+            else self.error_color_row.currentColor()
+        )
         series.error_cap_size = self.error_cap_size_slider.value()
 
     def apply_fit_style_to(self, fit):
@@ -641,12 +675,13 @@ class StyleTab(QWidget):
 
             self.marker_size_slider.setValue(series.marker_size)
 
-            # marker_color == "" is the existing "match line color" convention.
+            # marker_color == "" is the existing "match line color"
+            # convention, now shared by marker_edge_color too.
             self.marker_color_row.setCurrentColor(series.marker_color or series.color)
             self.marker_match_line_toggle.blockSignals(True)
             self.marker_match_line_toggle.setChecked(series.marker_color == "")
             self.marker_match_line_toggle.blockSignals(False)
-            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or "#000000")
+            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or series.color)
 
             self._update_marker_controls_enabled()
 
@@ -655,6 +690,10 @@ class StyleTab(QWidget):
             except ValueError:
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
             self.error_color_row.setCurrentColor(series.error_color or series.color)
+            self.error_match_line_toggle.blockSignals(True)
+            self.error_match_line_toggle.setChecked(series.error_color == "")
+            self.error_match_line_toggle.blockSignals(False)
+            self._update_error_controls_visibility()
             self.error_cap_size_slider.setValue(series.error_cap_size)
         finally:
             self._updating_controls = previous_guard
@@ -890,4 +929,5 @@ class StyleTab(QWidget):
         self.marker_edge_color_row.set_tokens(tokens)
         self.error_direction_control.set_tokens(tokens)
         self.error_color_row.set_tokens(tokens)
+        self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
