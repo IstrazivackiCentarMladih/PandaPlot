@@ -68,6 +68,16 @@ class StyleTab(QWidget):
         self._updating_controls = False
         # (kind, obj) where kind is "chart", "series", or "fit".
         self._current_target = ("chart", None)
+        # Whether `set_series_list` has ever run a real population (i.e. the
+        # Data tab has emitted `seriesListChanged` at least once for an
+        # actual chart). `style_series_chips` starts life pre-seeded with
+        # only a "Chart" placeholder item (see below) purely so the
+        # ValueComboBox constructor has a non-empty initial item list --
+        # that is NOT a genuine user selection of "Chart" and must not be
+        # mistaken for one on the very first real population, or the
+        # newly-loaded chart's first series would wrongly appear to have
+        # "Chart" as the sticky previously-selected target.
+        self._series_list_initialized: bool = False
         self._chart_type = None
         # Whether the Custom size/DPI fields have already been pre-filled
         # for the currently loaded chart (reset on every load_chart_style/
@@ -409,6 +419,79 @@ class StyleTab(QWidget):
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
+
+    def set_series_list(self, data_series, fit_data, selected_index: int = 0):
+        """Sync `style_series_chips` with the same series+fit list the Data
+        tab's cards are built from, keeping its selection in lockstep with
+        `selected_index` (the Data tab's own combined series/fit index,
+        `DataTab.selected_index`) -- unless "Chart" is the currently selected
+        target, which is independent of the series/fit list and must survive
+        a refresh.
+
+        Values are the combined index (int) for series/fit, or the "chart"
+        sentinel, so selecting an entry can drive `set_selected` directly.
+
+        `DataTab.seriesListChanged` itself is a plain `(data_series,
+        fit_data)` two-arg signal (this tab has no direct reference to
+        DataTab), so the panel's connection wraps it to also pass
+        `self.data_tab.selected_index` as `selected_index` here -- this tab
+        does not otherwise track that index itself (unlike the pre-Task-5
+        panel's single `_expanded_series_index` shared by both concerns).
+
+        The "was Chart explicitly selected" check is intentionally based on
+        `style_series_chips.currentValue()` (this widget's own previous
+        state), not `self._current_target`: `_current_target` gets
+        reflexively reassigned to the currently-expanded series/fit on every
+        Data-tab card rebuild (via `seriesSelected`, emitted regardless of
+        whether the user actually changed anything, e.g. a purely-visual
+        accordion toggle or a live theme refresh) and so cannot reliably
+        answer "did the user deliberately choose Chart" by the time this
+        runs. The chip widget's own value is untouched by any of that -- it
+        only ever changes via a direct chip click (`_on_chip_selected`) or
+        this method's own prior conclusion -- so it survives those
+        reflexive reassignments correctly.
+        """
+        previous_value = self.style_series_chips.currentValue()
+        chip_items = [("Chart", "chart")]
+        for index, series in enumerate(data_series):
+            label = series.label or f"{series.dataset_id}:{series.y_column}"
+            chip_items.append((label, index))
+        total_series = len(data_series)
+        for fit_offset, fit in enumerate(fit_data):
+            index = total_series + fit_offset
+            chip_items.append((f"\U0001f527 {fit.label}", index))
+
+        self.style_series_chips.blockSignals(True)
+        self.style_series_chips.clear()
+        for label, value in chip_items:
+            self.style_series_chips.addItem(label, value)
+        self.style_series_chips.blockSignals(False)
+
+        # Before any real population has happened, `previous_value` is just
+        # the ValueComboBox constructor's placeholder ("chart") -- not a
+        # genuine prior user selection -- so it must not be treated as one.
+        # `_series_list_initialized` only latches True once this has run for
+        # an actual chart with at least one series/fit entry (a call with
+        # both empty -- e.g. a theme refresh before any chart is loaded, or a
+        # chart with zero series -- has nothing real to remember a selection
+        # from, so it must not count as "initialized" either, or it would
+        # make the *next* call's placeholder "chart" look like a genuine
+        # prior selection).
+        if self._series_list_initialized and previous_value == "chart":
+            self.style_series_chips.setCurrentValue("chart")
+        else:
+            self.style_series_chips.setCurrentValue(selected_index)
+        if data_series or fit_data:
+            self._series_list_initialized = True
+
+        final_value = self.style_series_chips.currentValue()
+        if final_value == "chart":
+            self._current_target = ("chart", None)
+            self._update_target_cards_visibility()
+        elif final_value < len(data_series):
+            self.set_selected("series", data_series[final_value])
+        else:
+            self.set_selected("fit", fit_data[final_value - len(data_series)])
 
     def set_selected(self, kind: str, obj):
         self._current_target = (kind, obj)
