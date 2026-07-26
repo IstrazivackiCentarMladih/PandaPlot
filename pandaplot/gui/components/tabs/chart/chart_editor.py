@@ -564,6 +564,7 @@ class ChartEditorWidget(PWidget):
                                          markersize=series.marker_size,
                                          markerfacecolor=mfc,
                                          markeredgecolor=mec,
+                                         markeredgewidth=series.marker_edge_width,
                                          label=series.label,
                                          alpha=alpha)
                     elif self.chart.chart_type == "scatter":
@@ -572,6 +573,7 @@ class ChartEditorWidget(PWidget):
                         target_axes.scatter(x_data, y_data,
                                             c=mfc,
                                             edgecolors=mec,
+                                            linewidths=series.marker_edge_width,
                                             marker=_marker_map.get(series.marker_style, "o"),
                                             s=series.marker_size ** 2,
                                             label=series.label,

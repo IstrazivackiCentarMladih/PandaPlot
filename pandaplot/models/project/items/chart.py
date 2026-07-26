@@ -36,6 +36,7 @@ class DataSeries:
     color: str = "#1f77b4"
     marker_color: str = ""
     marker_edge_color: str = "#000000"
+    marker_edge_width: float = 1.0
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
@@ -366,6 +367,7 @@ class Chart(Item):
                     "color": series.color,
                     "marker_color": series.marker_color,
                     "marker_edge_color": series.marker_edge_color,
+                    "marker_edge_width": series.marker_edge_width,
                     "line_style": series.line_style,
                     "marker_style": series.marker_style,
                     "line_width": series.line_width,
@@ -436,6 +438,7 @@ class Chart(Item):
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
                 marker_edge_color=series_dict.get("marker_edge_color", "#000000"),
+                marker_edge_width=series_dict.get("marker_edge_width", 1.0),
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),

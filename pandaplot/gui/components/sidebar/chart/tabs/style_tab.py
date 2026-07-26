@@ -349,6 +349,11 @@ class StyleTab(QWidget):
         self.marker_edge_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_edge_color_row, 5, 1)
 
+        self.marker_edge_width_label = QLabel("Edge width:")
+        marker_layout.addWidget(self.marker_edge_width_label, 6, 0)
+        self.marker_edge_width_slider = SliderWithSpinbox(minimum=0.0, maximum=5.0, decimals=1)
+        marker_layout.addWidget(self.marker_edge_width_slider, 6, 1)
+
         layout.addWidget(marker_card)
 
         # ERROR BARS group -- which columns feed the error bars is configured
@@ -399,6 +404,7 @@ class StyleTab(QWidget):
         self.marker_color_row.colorChanged.connect(self._on_field_changed)
         self.marker_match_line_toggle.toggled.connect(self._on_marker_match_line_toggled)
         self.marker_edge_color_row.colorChanged.connect(self._on_field_changed)
+        self.marker_edge_width_slider.valueChanged.connect(self._on_field_changed)
         self.error_direction_control.currentValueChanged.connect(self._on_field_changed)
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
@@ -578,6 +584,7 @@ class StyleTab(QWidget):
         for widget in (
             self.marker_color_label, self.marker_color_row,
             self.marker_edge_color_label, self.marker_edge_color_row,
+            self.marker_edge_width_label, self.marker_edge_width_slider,
         ):
             widget.setVisible(show_colors)
 
@@ -626,6 +633,7 @@ class StyleTab(QWidget):
             match_line = self.marker_match_line_toggle.isChecked()
             series.marker_color = "" if match_line else self.marker_color_row.currentColor()
             series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
+            series.marker_edge_width = self.marker_edge_width_slider.value()
         else:
             series.marker_style = MarkerType.NONE.value
 
@@ -680,6 +688,7 @@ class StyleTab(QWidget):
             self.marker_match_line_toggle.setChecked(series.marker_color == "")
             self.marker_match_line_toggle.blockSignals(False)
             self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or series.color)
+            self.marker_edge_width_slider.setValue(series.marker_edge_width)
 
             self._update_marker_controls_enabled()
 
@@ -925,6 +934,7 @@ class StyleTab(QWidget):
         self.marker_color_row.set_tokens(tokens)
         self.marker_match_line_toggle.set_tokens(tokens)
         self.marker_edge_color_row.set_tokens(tokens)
+        self.marker_edge_width_slider.set_tokens(tokens)
         self.error_direction_control.set_tokens(tokens)
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)

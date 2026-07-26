@@ -111,15 +111,19 @@ class AxesTab(QWidget):
         count_spin = QSpinBox()
         count_spin.setRange(2, 50)
         count_spin.setValue(5)
-        count_spin.setEnabled(False)
         step_spin = QDoubleSpinBox()
         step_spin.setRange(0.001, 1e9)
         step_spin.setValue(1.0)
-        step_spin.setEnabled(False)
-        ticks_layout.addWidget(QLabel("Count:"), 2, 0)
+        count_label = QLabel("Count:")
+        ticks_layout.addWidget(count_label, 2, 0)
         ticks_layout.addWidget(count_spin, 2, 1)
-        ticks_layout.addWidget(QLabel("Step:"), 3, 0)
+        step_label = QLabel("Step:")
+        ticks_layout.addWidget(step_label, 3, 0)
         ticks_layout.addWidget(step_spin, 3, 1)
+        count_label.setVisible(False)
+        count_spin.setVisible(False)
+        step_label.setVisible(False)
+        step_spin.setVisible(False)
         format_combo = QComboBox()
         for text, value in [("Auto", "auto"), ("Integer", "integer"), ("1 Decimal", "1decimal"),
                             ("2 Decimals", "2decimal"), ("Scientific", "scientific"), ("Custom...", "custom")]:
@@ -159,6 +163,7 @@ class AxesTab(QWidget):
             "range_card": range_card, "ticks_card": ticks_card,
             "auto_toggle": auto_toggle, "min_spin": min_spin, "max_spin": max_spin,
             "mode_control": mode_control, "count_spin": count_spin, "step_spin": step_spin,
+            "count_label": count_label, "step_label": step_label,
             "format_combo": format_combo, "format_custom_edit": format_custom_edit,
             "grid_toggle": grid_toggle, "copy_button": copy_button,
             "tick_direction_control": tick_direction_control, "minor_ticks_toggle": minor_ticks_toggle,
@@ -202,10 +207,15 @@ class AxesTab(QWidget):
         self._on_field_changed()
 
     def _on_axis_tick_mode_changed(self, prefix: str):
+        """Show only the field the current tick mode actually uses: Auto
+        shows neither Count nor Step, Count shows only Count, Step shows
+        only Step."""
         form = self.axes_forms[prefix]
         mode = form["mode_control"].currentValue()
-        form["count_spin"].setEnabled(mode == "count")
-        form["step_spin"].setEnabled(mode == "step")
+        form["count_label"].setVisible(mode == "count")
+        form["count_spin"].setVisible(mode == "count")
+        form["step_label"].setVisible(mode == "step")
+        form["step_spin"].setVisible(mode == "step")
         self._on_field_changed()
 
     def _on_axis_tick_format_changed(self, prefix: str):
@@ -231,8 +241,11 @@ class AxesTab(QWidget):
         target["mode_control"].setCurrentValue(source["mode_control"].currentValue())
         target["count_spin"].setValue(source["count_spin"].value())
         target["step_spin"].setValue(source["step_spin"].value())
-        target["count_spin"].setEnabled(target["mode_control"].currentValue() == "count")
-        target["step_spin"].setEnabled(target["mode_control"].currentValue() == "step")
+        target_mode = target["mode_control"].currentValue()
+        target["count_label"].setVisible(target_mode == "count")
+        target["count_spin"].setVisible(target_mode == "count")
+        target["step_label"].setVisible(target_mode == "step")
+        target["step_spin"].setVisible(target_mode == "step")
         format_index = target["format_combo"].findData(source["format_combo"].currentData())
         if format_index >= 0:
             target["format_combo"].setCurrentIndex(format_index)
@@ -313,8 +326,10 @@ class AxesTab(QWidget):
         form["mode_control"].setCurrentValue(tick_mode)
         form["count_spin"].setValue(config.get(f"{prefix}_tick_count", 5))
         form["step_spin"].setValue(config.get(f"{prefix}_tick_step", 1.0))
-        form["count_spin"].setEnabled(tick_mode == "count")
-        form["step_spin"].setEnabled(tick_mode == "step")
+        form["count_label"].setVisible(tick_mode == "count")
+        form["count_spin"].setVisible(tick_mode == "count")
+        form["step_label"].setVisible(tick_mode == "step")
+        form["step_spin"].setVisible(tick_mode == "step")
 
         tick_format = config.get(f"{prefix}_tick_format", "auto")
         format_index = form["format_combo"].findData(tick_format)
