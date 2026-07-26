@@ -110,7 +110,10 @@ def resolve_chart_size(
     return width, height, dpi
 
 
-def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt, direction="out", minor_enabled=False):
+def apply_axis_ticks(
+    axis, mode, count, step, fmt, custom_fmt,
+    direction="out", minor_enabled=False, minor_direction=None,
+):
     """Apply tick placement, label formatting, direction, and minor ticks to
     a matplotlib Axis.
 
@@ -120,8 +123,11 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt, direction="out", 
     step: fixed spacing between ticks when mode == "step"
     fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
     custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
-    direction: "out" | "in" | "inout" - which way major/minor ticks point
+    direction: "out" | "in" | "inout" - which way major ticks point
     minor_enabled: whether minor ticks are shown between the major ones
+    minor_direction: "out" | "in" | "inout" - which way minor ticks point,
+        independent of major `direction`. Defaults to `direction` when not
+        given (e.g. in tests that only care about major-tick behavior).
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -150,7 +156,7 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt, direction="out", 
 
     axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
     axis.set_tick_params(which="major", direction=direction)
-    axis.set_tick_params(which="minor", direction=direction)
+    axis.set_tick_params(which="minor", direction=minor_direction if minor_direction is not None else direction)
 
 
 def _resolve_error_column(df, column_name):
@@ -714,7 +720,8 @@ class ChartEditorWidget(PWidget):
                     config.get("y2_tick_step", 1.0), config.get("y2_tick_format", "auto"),
                     config.get("y2_tick_format_custom", ""),
                     direction=config.get("y2_tick_direction", "out"),
-                    minor_enabled=config.get("y2_minor_ticks", False))
+                    minor_enabled=config.get("y2_minor_ticks", False),
+                    minor_direction=config.get("y2_minor_tick_direction", "out"))
 
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
@@ -735,14 +742,16 @@ class ChartEditorWidget(PWidget):
                 config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
                 config.get("x_tick_format_custom", ""),
                 direction=config.get("x_tick_direction", "out"),
-                minor_enabled=config.get("x_minor_ticks", False))
+                minor_enabled=config.get("x_minor_ticks", False),
+                minor_direction=config.get("x_minor_tick_direction", "out"))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
                 config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
                 config.get("y_tick_format_custom", ""),
                 direction=config.get("y_tick_direction", "out"),
-                minor_enabled=config.get("y_minor_ticks", False))
+                minor_enabled=config.get("y_minor_ticks", False),
+                minor_direction=config.get("y_minor_tick_direction", "out"))
 
             grid_alpha = config.get("grid_alpha", 0.3)
             if config.get("show_grid_x", True):

@@ -189,13 +189,6 @@ class Chart(Item):
             "dpi": 100
         }
     
-    def update_name(self, new_name: str) -> None:
-        """Update the chart name and modification timestamp."""
-        # TODO: separate item name and title
-        self.name = new_name
-        self.config["title"] = new_name  # Update chart title as well
-        self.update_modified_time()
-    
     def set_chart_type(self, chart_type: str) -> None:
         """Set the chart type."""
         self.chart_type = chart_type

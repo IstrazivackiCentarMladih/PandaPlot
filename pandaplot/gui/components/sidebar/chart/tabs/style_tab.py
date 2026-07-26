@@ -335,24 +335,28 @@ class StyleTab(QWidget):
         self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
         marker_layout.addWidget(self.marker_size_slider, 2, 1)
 
-        self.marker_color_label = QLabel("Color:")
-        marker_layout.addWidget(self.marker_color_label, 3, 0)
-        self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        marker_layout.addWidget(self.marker_color_row, 3, 1)
+        # Edge width is independent of "Match line" (below) -- that only
+        # controls fill/edge *color*, not the edge line's thickness -- so it
+        # lives with the other always-visible marker fields, not the
+        # color-picker group that Match line hides.
+        self.marker_edge_width_label = QLabel("Edge width:")
+        marker_layout.addWidget(self.marker_edge_width_label, 3, 0)
+        self.marker_edge_width_slider = SliderWithSpinbox(minimum=0.0, maximum=5.0, decimals=1)
+        marker_layout.addWidget(self.marker_edge_width_slider, 3, 1)
 
-        marker_layout.addWidget(QLabel("Match line:"), 4, 0)
+        self.marker_color_label = QLabel("Color:")
+        marker_layout.addWidget(self.marker_color_label, 4, 0)
+        self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        marker_layout.addWidget(self.marker_color_row, 4, 1)
+
+        marker_layout.addWidget(QLabel("Match line:"), 5, 0)
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
-        marker_layout.addWidget(self.marker_match_line_toggle, 4, 1)
+        marker_layout.addWidget(self.marker_match_line_toggle, 5, 1)
 
         self.marker_edge_color_label = QLabel("Edge color:")
-        marker_layout.addWidget(self.marker_edge_color_label, 5, 0)
+        marker_layout.addWidget(self.marker_edge_color_label, 6, 0)
         self.marker_edge_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        marker_layout.addWidget(self.marker_edge_color_row, 5, 1)
-
-        self.marker_edge_width_label = QLabel("Edge width:")
-        marker_layout.addWidget(self.marker_edge_width_label, 6, 0)
-        self.marker_edge_width_slider = SliderWithSpinbox(minimum=0.0, maximum=5.0, decimals=1)
-        marker_layout.addWidget(self.marker_edge_width_slider, 6, 1)
+        marker_layout.addWidget(self.marker_edge_color_row, 6, 1)
 
         layout.addWidget(marker_card)
 
@@ -571,20 +575,23 @@ class StyleTab(QWidget):
         (pure UI convenience; see apply_series_style_to for how this maps
         onto the persisted `marker_style`/`marker_color`/`marker_edge_color`).
 
-        "Match line" hides the color pickers entirely (not just disables
-        them): once matching, there's nothing for the user to set -- both
-        colors track `series.color` until unchecked.
+        "Match line" hides only the color pickers (not just disables them):
+        once matching, there's nothing for the user to set -- both colors
+        track `series.color` until unchecked. Edge width is a separate
+        concern (line thickness, not color) and stays visible/enabled
+        whenever markers are on, regardless of the match-line state.
         """
         markers_enabled = self.markers_enabled_toggle.isChecked()
         self.marker_shape_control.setEnabled(markers_enabled)
         self.marker_size_slider.setEnabled(markers_enabled)
         self.marker_match_line_toggle.setEnabled(markers_enabled)
+        self.marker_edge_width_label.setVisible(markers_enabled)
+        self.marker_edge_width_slider.setVisible(markers_enabled)
 
         show_colors = markers_enabled and not self.marker_match_line_toggle.isChecked()
         for widget in (
             self.marker_color_label, self.marker_color_row,
             self.marker_edge_color_label, self.marker_edge_color_row,
-            self.marker_edge_width_label, self.marker_edge_width_slider,
         ):
             widget.setVisible(show_colors)
 

@@ -148,6 +148,18 @@ class AxesTab(QWidget):
         ticks_layout.addWidget(QLabel("Minor ticks"), 8, 0)
         ticks_layout.addWidget(minor_ticks_toggle, 8, 1)
 
+        # Minor ticks can point a different way than major ticks (e.g. major
+        # ticks outside the axis, minor ticks inside) -- only meaningful (and
+        # shown) once minor ticks are actually turned on.
+        minor_tick_direction_label = QLabel("Minor direction:")
+        minor_tick_direction_control = SegmentedControl(
+            [("Out", "out"), ("In", "in"), ("In & Out", "inout")]
+        )
+        ticks_layout.addWidget(minor_tick_direction_label, 9, 0)
+        ticks_layout.addWidget(minor_tick_direction_control, 9, 1)
+        minor_tick_direction_label.setVisible(False)
+        minor_tick_direction_control.setVisible(False)
+
         form_layout.addWidget(ticks_card)
 
         copy_button = None
@@ -167,6 +179,8 @@ class AxesTab(QWidget):
             "format_combo": format_combo, "format_custom_edit": format_custom_edit,
             "grid_toggle": grid_toggle, "copy_button": copy_button,
             "tick_direction_control": tick_direction_control, "minor_ticks_toggle": minor_ticks_toggle,
+            "minor_tick_direction_label": minor_tick_direction_label,
+            "minor_tick_direction_control": minor_tick_direction_control,
         }
 
         # Wire this form's widgets directly to shared handlers - the forms
@@ -187,7 +201,8 @@ class AxesTab(QWidget):
         format_custom_edit.textChanged.connect(self._on_field_changed)
         grid_toggle.toggled.connect(self._on_field_changed)
         tick_direction_control.currentValueChanged.connect(self._on_field_changed)
-        minor_ticks_toggle.toggled.connect(self._on_field_changed)
+        minor_ticks_toggle.toggled.connect(lambda checked, p=prefix: self._on_minor_ticks_toggled(p, checked))
+        minor_tick_direction_control.currentValueChanged.connect(self._on_field_changed)
 
         form_widget.setVisible(False)
         self._axis_form_container_layout.addWidget(form_widget)
@@ -216,6 +231,14 @@ class AxesTab(QWidget):
         form["count_spin"].setVisible(mode == "count")
         form["step_label"].setVisible(mode == "step")
         form["step_spin"].setVisible(mode == "step")
+        self._on_field_changed()
+
+    def _on_minor_ticks_toggled(self, prefix: str, checked: bool):
+        """Show the minor-tick direction control only once minor ticks are
+        actually enabled -- it has nothing to apply to otherwise."""
+        form = self.axes_forms[prefix]
+        form["minor_tick_direction_label"].setVisible(checked)
+        form["minor_tick_direction_control"].setVisible(checked)
         self._on_field_changed()
 
     def _on_axis_tick_format_changed(self, prefix: str):
@@ -254,6 +277,12 @@ class AxesTab(QWidget):
         target["grid_toggle"].setChecked(source["grid_toggle"].isChecked())
         target["tick_direction_control"].setCurrentValue(source["tick_direction_control"].currentValue())
         target["minor_ticks_toggle"].setChecked(source["minor_ticks_toggle"].isChecked())
+        target["minor_tick_direction_control"].setCurrentValue(
+            source["minor_tick_direction_control"].currentValue()
+        )
+        target_minor_enabled = target["minor_ticks_toggle"].isChecked()
+        target["minor_tick_direction_label"].setVisible(target_minor_enabled)
+        target["minor_tick_direction_control"].setVisible(target_minor_enabled)
 
         self._on_field_changed()
 
@@ -296,6 +325,7 @@ class AxesTab(QWidget):
         config[f"show_grid_{prefix}"] = form["grid_toggle"].isChecked()
         config[f"{prefix}_tick_direction"] = form["tick_direction_control"].currentValue()
         config[f"{prefix}_minor_ticks"] = form["minor_ticks_toggle"].isChecked()
+        config[f"{prefix}_minor_tick_direction"] = form["minor_tick_direction_control"].currentValue()
 
     def _read_axis_config(self, prefix: str, config: dict):
         """Populate one axis form's widgets from `config`. Assumes the caller
@@ -340,7 +370,13 @@ class AxesTab(QWidget):
         form["grid_toggle"].setChecked(config.get(f"show_grid_{prefix}", True))
 
         form["tick_direction_control"].setCurrentValue(config.get(f"{prefix}_tick_direction", "out"))
-        form["minor_ticks_toggle"].setChecked(config.get(f"{prefix}_minor_ticks", False))
+        minor_ticks_enabled = config.get(f"{prefix}_minor_ticks", False)
+        form["minor_ticks_toggle"].setChecked(minor_ticks_enabled)
+        form["minor_tick_direction_control"].setCurrentValue(
+            config.get(f"{prefix}_minor_tick_direction", "out")
+        )
+        form["minor_tick_direction_label"].setVisible(minor_ticks_enabled)
+        form["minor_tick_direction_control"].setVisible(minor_ticks_enabled)
 
     def _on_field_changed(self):
         if self._chart is None or self._updating_controls:
@@ -391,3 +427,4 @@ class AxesTab(QWidget):
             form["grid_toggle"].set_tokens(tokens)
             form["tick_direction_control"].set_tokens(tokens)
             form["minor_ticks_toggle"].set_tokens(tokens)
+            form["minor_tick_direction_control"].set_tokens(tokens)
