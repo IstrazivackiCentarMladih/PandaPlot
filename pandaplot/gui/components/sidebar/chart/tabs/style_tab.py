@@ -270,6 +270,26 @@ class StyleTab(QWidget):
 
         layout.addWidget(self.dpi_card)
 
+        # -- Background card --
+        self.background_card = Card()
+        self.chart_style_cards.append(self.background_card)
+        bg_layout = QGridLayout(self.background_card)
+        bg_layout.addWidget(SectionHeader("Background"), 0, 0, 1, 3)
+
+        bg_layout.addWidget(QLabel("Figure:"), 1, 0)
+        self.figure_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.figure_bg_color_row, 1, 1)
+        self.figure_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.figure_bg_transparent_toggle, 1, 2)
+
+        bg_layout.addWidget(QLabel("Plot area:"), 2, 0)
+        self.axes_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.axes_bg_color_row, 2, 1)
+        self.axes_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.axes_bg_transparent_toggle, 2, 2)
+
+        layout.addWidget(self.background_card)
+
         # LINE group
         self.line_card = Card()
         line_card = self.line_card
@@ -432,6 +452,10 @@ class StyleTab(QWidget):
         self.chart_width_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_height_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_dpi_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
+        self.axes_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.axes_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
 
     # -- Chip selection / target routing -----------------------------------
 
@@ -609,6 +633,16 @@ class StyleTab(QWidget):
         self.error_color_label.setVisible(show_color)
         self.error_color_row.setVisible(show_color)
 
+    # -- Background transparent toggles ----------------------------------
+
+    def _on_bg_transparent_toggled(self, _checked: bool):
+        """Grey out the paired color swatch while its 'Transparent' toggle
+        is on; the swatch keeps its last color underneath so re-enabling
+        restores it (mirrors _update_marker_controls_enabled's convention)."""
+        self.figure_bg_color_row.setEnabled(not self.figure_bg_transparent_toggle.isChecked())
+        self.axes_bg_color_row.setEnabled(not self.axes_bg_transparent_toggle.isChecked())
+        self._on_chart_style_field_changed()
+
     # -- Series/fit style: load / apply --------------------------------------
 
     def _on_field_changed(self):
@@ -755,6 +789,16 @@ class StyleTab(QWidget):
             self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
             self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
 
+            fig_bg = chart.style.get("figure_background_color", "#ffffff")
+            self.figure_bg_transparent_toggle.setChecked(fig_bg is None)
+            self.figure_bg_color_row.setCurrentColor(fig_bg or "#ffffff")
+            self.figure_bg_color_row.setEnabled(fig_bg is not None)
+
+            axes_bg = chart.style.get("axes_background_color", "#ffffff")
+            self.axes_bg_transparent_toggle.setChecked(axes_bg is None)
+            self.axes_bg_color_row.setCurrentColor(axes_bg or "#ffffff")
+            self.axes_bg_color_row.setEnabled(axes_bg is not None)
+
             # QComboBox.findData() is unreliable for tuple-valued itemData
             # (Qt's QVariant comparison doesn't match Python tuple equality
             # here), so look up the matching index manually.
@@ -803,6 +847,14 @@ class StyleTab(QWidget):
         chart.config["title_italic"] = self.title_italic_check.isChecked()
         chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
 
@@ -823,6 +875,12 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(False)
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
+            self.figure_bg_transparent_toggle.setChecked(False)
+            self.figure_bg_color_row.setCurrentColor("#ffffff")
+            self.figure_bg_color_row.setEnabled(True)
+            self.axes_bg_transparent_toggle.setChecked(False)
+            self.axes_bg_color_row.setCurrentColor("#ffffff")
+            self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
             self.chart_height_spin.setValue(15.0)
@@ -920,6 +978,14 @@ class StyleTab(QWidget):
         config["title_italic"] = self.title_italic_check.isChecked()
         config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        self._chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        self._chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         config["width_cm"], config["height_cm"] = self._size_from_controls()
         config["dpi"] = self._dpi_from_controls()
         self.configChanged.emit()
@@ -946,3 +1012,7 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.figure_bg_color_row.set_tokens(tokens)
+        self.figure_bg_transparent_toggle.set_tokens(tokens)
+        self.axes_bg_color_row.set_tokens(tokens)
+        self.axes_bg_transparent_toggle.set_tokens(tokens)
