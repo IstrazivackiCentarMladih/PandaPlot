@@ -113,6 +113,7 @@ def resolve_chart_size(
 def apply_axis_ticks(
     axis, mode, count, step, fmt, custom_fmt,
     direction="out", minor_enabled=False, minor_direction=None,
+    major_color="#000000", minor_color="#000000",
 ):
     """Apply tick placement, label formatting, direction, and minor ticks to
     a matplotlib Axis.
@@ -128,6 +129,8 @@ def apply_axis_ticks(
     minor_direction: "out" | "in" | "inout" - which way minor ticks point,
         independent of major `direction`. Defaults to `direction` when not
         given (e.g. in tests that only care about major-tick behavior).
+    major_color: color of the major tick marks
+    minor_color: color of the minor tick marks
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -155,8 +158,25 @@ def apply_axis_ticks(
         axis.set_major_formatter(ScalarFormatter())
 
     axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
-    axis.set_tick_params(which="major", direction=direction)
-    axis.set_tick_params(which="minor", direction=minor_direction if minor_direction is not None else direction)
+    axis.set_tick_params(which="major", direction=direction, color=major_color)
+    axis.set_tick_params(
+        which="minor",
+        direction=minor_direction if minor_direction is not None else direction,
+        color=minor_color,
+    )
+
+
+def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
+    """Color the axis box lines ('spines'). Bottom/top belong to x, left
+    belongs to y. Right belongs to y2 when a secondary y axis is active,
+    otherwise to y."""
+    axes.spines["bottom"].set_color(x_color)
+    axes.spines["top"].set_color(x_color)
+    axes.spines["left"].set_color(y_color)
+    if axes2 is not None:
+        axes2.spines["right"].set_color(y2_color)
+    else:
+        axes.spines["right"].set_color(y_color)
 
 
 def _resolve_error_column(df, column_name):
@@ -726,7 +746,9 @@ class ChartEditorWidget(PWidget):
                     config.get("y2_tick_format_custom", ""),
                     direction=config.get("y2_tick_direction", "out"),
                     minor_enabled=config.get("y2_minor_ticks", False),
-                    minor_direction=config.get("y2_minor_tick_direction", "out"))
+                    minor_direction=config.get("y2_minor_tick_direction", "out"),
+                    major_color=config.get("y2_major_tick_color", "#000000"),
+                    minor_color=config.get("y2_minor_tick_color", "#000000"))
 
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
@@ -748,7 +770,9 @@ class ChartEditorWidget(PWidget):
                 config.get("x_tick_format_custom", ""),
                 direction=config.get("x_tick_direction", "out"),
                 minor_enabled=config.get("x_minor_ticks", False),
-                minor_direction=config.get("x_minor_tick_direction", "out"))
+                minor_direction=config.get("x_minor_tick_direction", "out"),
+                major_color=config.get("x_major_tick_color", "#000000"),
+                minor_color=config.get("x_minor_tick_color", "#000000"))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
@@ -756,7 +780,15 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_format_custom", ""),
                 direction=config.get("y_tick_direction", "out"),
                 minor_enabled=config.get("y_minor_ticks", False),
-                minor_direction=config.get("y_minor_tick_direction", "out"))
+                minor_direction=config.get("y_minor_tick_direction", "out"),
+                major_color=config.get("y_major_tick_color", "#000000"),
+                minor_color=config.get("y_minor_tick_color", "#000000"))
+
+            apply_spine_colors(
+                self.chart_canvas.axes, self.chart_canvas.axes2,
+                config.get("x_spine_color", "#000000"),
+                config.get("y_spine_color", "#000000"),
+                config.get("y2_spine_color", "#000000"))
 
             grid_alpha = config.get("grid_alpha", 0.3)
             if config.get("show_grid_x", True):
