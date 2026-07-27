@@ -16,6 +16,18 @@ def test_apply_axis_ticks_sets_major_and_minor_tick_colors():
     assert minor_params["color"] == "#00ff00"
 
 
+def test_apply_axis_ticks_sets_labelcolor_for_major_and_minor():
+    fig = Figure()
+    axes = fig.add_subplot(111)
+    apply_axis_ticks(
+        axes.xaxis, "auto", 5, 1.0, "auto", "",
+        minor_enabled=True, labelcolor="#ff0000")
+    major_params = axes.xaxis.get_tick_params(which="major")
+    minor_params = axes.xaxis.get_tick_params(which="minor")
+    assert major_params["labelcolor"] == "#ff0000"
+    assert minor_params["labelcolor"] == "#ff0000"
+
+
 def test_apply_spine_colors_without_secondary_axis():
     fig = Figure()
     axes = fig.add_subplot(111)

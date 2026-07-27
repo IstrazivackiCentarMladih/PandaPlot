@@ -401,3 +401,60 @@ def test_title_and_subtitle_color_default_when_missing_from_saved_data():
     assert restored.config.get("subtitle_color", "#000000") == "#000000"
     assert restored.config.get("subtitle_match_title_color", True) is True
     assert restored.style["axes_background_color"] == "#ffffff"
+
+
+def test_axis_label_and_tick_label_colors_default_to_black():
+    # Same "absent from default config, .get(...,'#000000') fallback"
+    # convention as the spine/tick-mark colors above.
+    chart = Chart(name="Test Chart")
+    for p in ("x", "y", "y2"):
+        assert f"{p}_label_color" not in chart.config
+        assert f"{p}_tick_label_color" not in chart.config
+        assert chart.config.get(f"{p}_label_color", "#000000") == "#000000"
+        assert chart.config.get(f"{p}_tick_label_color", "#000000") == "#000000"
+
+
+def test_axis_match_x_flags_default_to_true_for_y_and_y2():
+    chart = Chart(name="Test Chart")
+    for p in ("y", "y2"):
+        assert f"{p}_match_x_label_color" not in chart.config
+        assert f"{p}_match_x_colors" not in chart.config
+        assert chart.config.get(f"{p}_match_x_label_color", True) is True
+        assert chart.config.get(f"{p}_match_x_colors", True) is True
+
+
+def test_axis_label_and_tick_label_colors_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.update_config({
+        "x_label_color": "#123456",
+        "y_label_color": "#654321",
+        "y2_tick_label_color": "#abcdef",
+        "y_match_x_label_color": False,
+        "y2_match_x_colors": False,
+    })
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_label_color"] == "#123456"
+    assert restored.config["y_label_color"] == "#654321"
+    assert restored.config["y2_tick_label_color"] == "#abcdef"
+    assert restored.config["y_match_x_label_color"] is False
+    assert restored.config["y2_match_x_colors"] is False
+
+
+def test_axis_label_color_applies_to_xlabel_and_ylabel_via_rendering_convention():
+    # Mirrors how chart_editor.py's update_chart resolves x/y label color:
+    # x always uses its own color; y/y2 substitute x's color when their
+    # match flag is True (the default).
+    chart = Chart(name="Test Chart")
+    chart.update_config({"x_label_color": "#ff0000"})
+    fig = Figure()
+    axes = fig.add_subplot(111)
+
+    x_label_color = chart.config.get("x_label_color", "#000000")
+    y_match_label = chart.config.get("y_match_x_label_color", True)
+    y_label_color = x_label_color if y_match_label else chart.config.get("y_label_color", "#000000")
+    axes.set_xlabel("X", color=x_label_color)
+    axes.set_ylabel("Y", color=y_label_color)
+
+    assert axes.xaxis.label.get_color() == "#ff0000"
+    assert axes.yaxis.label.get_color() == "#ff0000"

@@ -117,7 +117,7 @@ def resolve_chart_size(
 def apply_axis_ticks(
     axis, mode, count, step, fmt, custom_fmt,
     direction="out", minor_enabled=False, minor_direction=None,
-    major_color="#000000", minor_color="#000000",
+    major_color="#000000", minor_color="#000000", labelcolor="#000000",
 ):
     """Apply tick placement, label formatting, direction, and minor ticks to
     a matplotlib Axis.
@@ -135,6 +135,7 @@ def apply_axis_ticks(
         given (e.g. in tests that only care about major-tick behavior).
     major_color: color of the major tick marks
     minor_color: color of the minor tick marks
+    labelcolor: color of the tick value text (shared by major and minor)
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -162,11 +163,11 @@ def apply_axis_ticks(
         axis.set_major_formatter(ScalarFormatter())
 
     axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
-    axis.set_tick_params(which="major", direction=direction, color=major_color)
+    axis.set_tick_params(which="major", direction=direction, color=major_color, labelcolor=labelcolor)
     axis.set_tick_params(
         which="minor",
         direction=minor_direction if minor_direction is not None else direction,
-        color=minor_color,
+        color=minor_color, labelcolor=labelcolor,
     )
 
 
@@ -729,8 +730,11 @@ class ChartEditorWidget(PWidget):
                 dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
             )
 
-            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
-            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
+            x_label_color = config.get("x_label_color", "#000000")
+            y_match_label = config.get("y_match_x_label_color", True)
+            y_label_color = x_label_color if y_match_label else config.get("y_label_color", "#000000")
+            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""), color=x_label_color)
+            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""), color=y_label_color)
             self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
             self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
@@ -743,7 +747,9 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.axes.yaxis.set_label_position("left")
 
             if self.chart_canvas.axes2 is not None:
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
+                y2_match_label = config.get("y2_match_x_label_color", True)
+                y2_label_color = x_label_color if y2_match_label else config.get("y2_label_color", "#000000")
+                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""), color=y2_label_color)
                 self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
                 self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
                 if config.get("y2_side", "right") == "left":
@@ -765,8 +771,21 @@ class ChartEditorWidget(PWidget):
                     direction=config.get("y2_tick_direction", "out"),
                     minor_enabled=config.get("y2_minor_ticks", False),
                     minor_direction=config.get("y2_minor_tick_direction", "out"),
-                    major_color=config.get("y2_major_tick_color", "#000000"),
-                    minor_color=config.get("y2_minor_tick_color", "#000000"))
+                    major_color=(
+                        config.get("x_major_tick_color", "#000000")
+                        if config.get("y2_match_x_colors", True)
+                        else config.get("y2_major_tick_color", "#000000")
+                    ),
+                    minor_color=(
+                        config.get("x_minor_tick_color", "#000000")
+                        if config.get("y2_match_x_colors", True)
+                        else config.get("y2_minor_tick_color", "#000000")
+                    ),
+                    labelcolor=(
+                        config.get("x_tick_label_color", "#000000")
+                        if config.get("y2_match_x_colors", True)
+                        else config.get("y2_tick_label_color", "#000000")
+                    ))
 
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
@@ -790,7 +809,8 @@ class ChartEditorWidget(PWidget):
                 minor_enabled=config.get("x_minor_ticks", False),
                 minor_direction=config.get("x_minor_tick_direction", "out"),
                 major_color=config.get("x_major_tick_color", "#000000"),
-                minor_color=config.get("x_minor_tick_color", "#000000"))
+                minor_color=config.get("x_minor_tick_color", "#000000"),
+                labelcolor=config.get("x_tick_label_color", "#000000"))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
@@ -799,14 +819,29 @@ class ChartEditorWidget(PWidget):
                 direction=config.get("y_tick_direction", "out"),
                 minor_enabled=config.get("y_minor_ticks", False),
                 minor_direction=config.get("y_minor_tick_direction", "out"),
-                major_color=config.get("y_major_tick_color", "#000000"),
-                minor_color=config.get("y_minor_tick_color", "#000000"))
+                major_color=(
+                    config.get("x_major_tick_color", "#000000")
+                    if config.get("y_match_x_colors", True)
+                    else config.get("y_major_tick_color", "#000000")
+                ),
+                minor_color=(
+                    config.get("x_minor_tick_color", "#000000")
+                    if config.get("y_match_x_colors", True)
+                    else config.get("y_minor_tick_color", "#000000")
+                ),
+                labelcolor=(
+                    config.get("x_tick_label_color", "#000000")
+                    if config.get("y_match_x_colors", True)
+                    else config.get("y_tick_label_color", "#000000")
+                ))
 
             apply_spine_colors(
                 self.chart_canvas.axes, self.chart_canvas.axes2,
                 config.get("x_spine_color", "#000000"),
-                config.get("y_spine_color", "#000000"),
-                config.get("y2_spine_color", "#000000"))
+                (config.get("x_spine_color", "#000000") if config.get("y_match_x_colors", True)
+                 else config.get("y_spine_color", "#000000")),
+                (config.get("x_spine_color", "#000000") if config.get("y2_match_x_colors", True)
+                 else config.get("y2_spine_color", "#000000")))
 
             grid_alpha = config.get("grid_alpha", 0.3)
             if config.get("show_grid_x", True):

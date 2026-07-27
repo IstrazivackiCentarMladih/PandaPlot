@@ -4,7 +4,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -69,16 +68,28 @@ class AxesTab(QWidget):
         form_layout = QVBoxLayout(form_widget)
         form_layout.setContentsMargins(0, 0, 0, 0)
 
-        label_row = QHBoxLayout()
-        label_row.addWidget(QLabel("Label:"))
+        label_layout = QGridLayout()
+        label_layout.addWidget(QLabel("Label:"), 0, 0)
         label_edit = QLineEdit()
-        label_row.addWidget(label_edit)
-        label_row.addWidget(QLabel("Font size:"))
+        label_layout.addWidget(label_edit, 0, 1, 1, 2)
+
+        label_layout.addWidget(QLabel("Font size:"), 1, 0)
         font_spin = QSpinBox()
         font_spin.setRange(6, 32)
         font_spin.setValue(12)
-        label_row.addWidget(font_spin)
-        form_layout.addLayout(label_row)
+        label_layout.addWidget(font_spin, 1, 1)
+
+        label_layout.addWidget(QLabel("Color:"), 2, 0)
+        label_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        label_layout.addWidget(label_color_row, 2, 1)
+        match_x_label_toggle = None
+        if prefix in ("y", "y2"):
+            match_x_label_toggle = ToggleSwitch(checked=True)
+            label_layout.addWidget(QLabel("Match X:"), 2, 2)
+            label_layout.addWidget(match_x_label_toggle, 2, 3)
+            label_color_row.setVisible(False)  # hidden while matching, per default checked=True
+
+        form_layout.addLayout(label_layout)
 
         scale_control = SegmentedControl([("Linear", ScaleType.LINEAR), ("Log", ScaleType.LOG)])
         form_layout.addWidget(scale_control)
@@ -185,6 +196,23 @@ class AxesTab(QWidget):
         minor_tick_color_label.setVisible(False)
         minor_tick_color_row.setVisible(False)
 
+        match_x_colors_toggle = None
+        if prefix in ("y", "y2"):
+            match_x_colors_toggle = ToggleSwitch(checked=True)
+            colors_layout.addWidget(QLabel("Match X:"), 4, 0)
+            colors_layout.addWidget(match_x_colors_toggle, 4, 1)
+
+        tick_label_color_label = QLabel("Tick values:")
+        colors_layout.addWidget(tick_label_color_label, 5, 0)
+        tick_label_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(tick_label_color_row, 5, 1)
+
+        if match_x_colors_toggle is not None:
+            # Hidden while matching X, per default checked=True.
+            spine_color_row.setVisible(False)
+            major_tick_color_row.setVisible(False)
+            tick_label_color_row.setVisible(False)
+
         form_layout.addWidget(colors_card)
 
         copy_button = None
@@ -211,6 +239,11 @@ class AxesTab(QWidget):
             "major_tick_color_row": major_tick_color_row,
             "minor_tick_color_row": minor_tick_color_row,
             "minor_tick_color_label": minor_tick_color_label,
+            "label_color_row": label_color_row,
+            "match_x_label_toggle": match_x_label_toggle,
+            "match_x_colors_toggle": match_x_colors_toggle,
+            "tick_label_color_row": tick_label_color_row,
+            "tick_label_color_label": tick_label_color_label,
         }
 
         # Wire this form's widgets directly to shared handlers - the forms
@@ -236,6 +269,12 @@ class AxesTab(QWidget):
         spine_color_row.colorChanged.connect(self._on_field_changed)
         major_tick_color_row.colorChanged.connect(self._on_field_changed)
         minor_tick_color_row.colorChanged.connect(self._on_field_changed)
+        label_color_row.colorChanged.connect(self._on_field_changed)
+        tick_label_color_row.colorChanged.connect(self._on_field_changed)
+        if match_x_label_toggle is not None:
+            match_x_label_toggle.toggled.connect(lambda checked, p=prefix: self._on_match_x_label_toggled(p, checked))
+        if match_x_colors_toggle is not None:
+            match_x_colors_toggle.toggled.connect(lambda checked, p=prefix: self._on_match_x_colors_toggled(p, checked))
 
         form_widget.setVisible(False)
         self._axis_form_container_layout.addWidget(form_widget)
@@ -268,12 +307,45 @@ class AxesTab(QWidget):
 
     def _on_minor_ticks_toggled(self, prefix: str, checked: bool):
         """Show the minor-tick direction control only once minor ticks are
-        actually enabled -- it has nothing to apply to otherwise."""
+        actually enabled -- it has nothing to apply to otherwise. The minor
+        tick color swatch is additionally gated by the Colors card's
+        "Match X" toggle (when present): it should only show once minor
+        ticks are on AND this axis isn't matching X's colors."""
         form = self.axes_forms[prefix]
         form["minor_tick_direction_label"].setVisible(checked)
         form["minor_tick_direction_control"].setVisible(checked)
-        form["minor_tick_color_label"].setVisible(checked)
-        form["minor_tick_color_row"].setVisible(checked)
+        matching = form["match_x_colors_toggle"] is not None and form["match_x_colors_toggle"].isChecked()
+        form["minor_tick_color_label"].setVisible(checked and not matching)
+        form["minor_tick_color_row"].setVisible(checked and not matching)
+        self._on_field_changed()
+
+    def _on_match_x_label_toggled(self, prefix: str, checked: bool):
+        """Hide the axis-name color swatch while it matches X's; pre-fill
+        from X's current color the first time it's revealed."""
+        form = self.axes_forms[prefix]
+        if not checked:
+            form["label_color_row"].setCurrentColor(self.axes_forms["x"]["label_color_row"].currentColor())
+        form["label_color_row"].setVisible(not checked)
+        self._on_field_changed()
+
+    def _on_match_x_colors_toggled(self, prefix: str, checked: bool):
+        """Hide spine/major/minor/tick-value color swatches while this axis
+        matches X's colors for all four; pre-fill from X's current colors
+        the first time they're revealed."""
+        form = self.axes_forms[prefix]
+        x_form = self.axes_forms["x"]
+        if not checked:
+            form["spine_color_row"].setCurrentColor(x_form["spine_color_row"].currentColor())
+            form["major_tick_color_row"].setCurrentColor(x_form["major_tick_color_row"].currentColor())
+            form["minor_tick_color_row"].setCurrentColor(x_form["minor_tick_color_row"].currentColor())
+            form["tick_label_color_row"].setCurrentColor(x_form["tick_label_color_row"].currentColor())
+        form["spine_color_row"].setVisible(not checked)
+        form["major_tick_color_row"].setVisible(not checked)
+        # minor_tick_color_row's visibility is also gated by minor_ticks_toggle
+        # (see _on_minor_ticks_toggled) -- both conditions must hold.
+        form["minor_tick_color_row"].setVisible(not checked and form["minor_ticks_toggle"].isChecked())
+        form["minor_tick_color_label"].setVisible(not checked and form["minor_ticks_toggle"].isChecked())
+        form["tick_label_color_row"].setVisible(not checked)
         self._on_field_changed()
 
     def _on_axis_tick_format_changed(self, prefix: str):
@@ -325,6 +397,20 @@ class AxesTab(QWidget):
         target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
         target["minor_tick_color_row"].setCurrentColor(source["minor_tick_color_row"].currentColor())
 
+        target["label_color_row"].setCurrentColor(source["label_color_row"].currentColor())
+        target["tick_label_color_row"].setCurrentColor(source["tick_label_color_row"].currentColor())
+        if source["match_x_label_toggle"] is not None and target["match_x_label_toggle"] is not None:
+            target["match_x_label_toggle"].setChecked(source["match_x_label_toggle"].isChecked())
+        if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
+            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+        target["label_color_row"].setVisible(not target["match_x_label_toggle"].isChecked())
+        target_matching_colors = target["match_x_colors_toggle"].isChecked()
+        target["spine_color_row"].setVisible(not target_matching_colors)
+        target["major_tick_color_row"].setVisible(not target_matching_colors)
+        target["tick_label_color_row"].setVisible(not target_matching_colors)
+        target["minor_tick_color_row"].setVisible(not target_matching_colors and target["minor_ticks_toggle"].isChecked())
+        target["minor_tick_color_label"].setVisible(not target_matching_colors and target["minor_ticks_toggle"].isChecked())
+
         self._on_field_changed()
 
     def refresh_axis_chips(self, chart):
@@ -370,6 +456,12 @@ class AxesTab(QWidget):
         config[f"{prefix}_spine_color"] = form["spine_color_row"].currentColor()
         config[f"{prefix}_major_tick_color"] = form["major_tick_color_row"].currentColor()
         config[f"{prefix}_minor_tick_color"] = form["minor_tick_color_row"].currentColor()
+        config[f"{prefix}_label_color"] = form["label_color_row"].currentColor()
+        config[f"{prefix}_tick_label_color"] = form["tick_label_color_row"].currentColor()
+        if form["match_x_label_toggle"] is not None:
+            config[f"{prefix}_match_x_label_color"] = form["match_x_label_toggle"].isChecked()
+        if form["match_x_colors_toggle"] is not None:
+            config[f"{prefix}_match_x_colors"] = form["match_x_colors_toggle"].isChecked()
 
     def _read_axis_config(self, prefix: str, config: dict):
         """Populate one axis form's widgets from `config`. Assumes the caller
@@ -428,6 +520,21 @@ class AxesTab(QWidget):
         form["minor_tick_color_label"].setVisible(minor_ticks_enabled)
         form["minor_tick_color_row"].setVisible(minor_ticks_enabled)
 
+        form["label_color_row"].setCurrentColor(config.get(f"{prefix}_label_color", "#000000"))
+        form["tick_label_color_row"].setCurrentColor(config.get(f"{prefix}_tick_label_color", "#000000"))
+        if form["match_x_label_toggle"] is not None:
+            match_label = config.get(f"{prefix}_match_x_label_color", True)
+            form["match_x_label_toggle"].setChecked(match_label)
+            form["label_color_row"].setVisible(not match_label)
+        if form["match_x_colors_toggle"] is not None:
+            match_colors = config.get(f"{prefix}_match_x_colors", True)
+            form["match_x_colors_toggle"].setChecked(match_colors)
+            form["spine_color_row"].setVisible(not match_colors)
+            form["major_tick_color_row"].setVisible(not match_colors)
+            form["tick_label_color_row"].setVisible(not match_colors)
+            form["minor_tick_color_row"].setVisible(not match_colors and minor_ticks_enabled)
+            form["minor_tick_color_label"].setVisible(not match_colors and minor_ticks_enabled)
+
     def _on_field_changed(self):
         if self._chart is None or self._updating_controls:
             return
@@ -482,3 +589,9 @@ class AxesTab(QWidget):
             form["spine_color_row"].set_tokens(tokens)
             form["major_tick_color_row"].set_tokens(tokens)
             form["minor_tick_color_row"].set_tokens(tokens)
+            form["label_color_row"].set_tokens(tokens)
+            form["tick_label_color_row"].set_tokens(tokens)
+            if form["match_x_label_toggle"] is not None:
+                form["match_x_label_toggle"].set_tokens(tokens)
+            if form["match_x_colors_toggle"] is not None:
+                form["match_x_colors_toggle"].set_tokens(tokens)
