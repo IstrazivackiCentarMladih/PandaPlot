@@ -265,3 +265,42 @@ def test_subtitle_font_size_defaults_when_missing_from_saved_data():
     }
     restored = Chart.from_dict(data)
     assert restored.config.get("subtitle_font_size", 12) == 12
+
+
+def test_chart_style_background_colors_default_to_opaque_white():
+    chart = Chart(name="Test Chart", chart_type="line")
+    assert chart.style["figure_background_color"] == "#ffffff"
+    assert chart.style["axes_background_color"] == "#ffffff"
+
+
+def test_chart_style_background_colors_round_trip_through_serialization():
+    chart = Chart(name="Test Chart", chart_type="line")
+    chart.update_style({
+        "figure_background_color": None,
+        "axes_background_color": "#123456",
+    })
+
+    data = chart.to_dict()
+    assert data["style"]["figure_background_color"] is None
+    assert data["style"]["axes_background_color"] == "#123456"
+
+    restored = Chart.from_dict(data)
+    assert restored.style["figure_background_color"] is None
+    assert restored.style["axes_background_color"] == "#123456"
+
+
+def test_chart_style_background_colors_default_when_missing_from_saved_data():
+    # Simulates loading a project saved before these fields existed.
+    data = {
+        "id": "chart1",
+        "name": "Test Chart",
+        "chart_type": "line",
+        "data_series": [],
+        "fit_data": [],
+        "config": {},
+        "style": {},
+    }
+
+    restored = Chart.from_dict(data)
+    assert restored.style["figure_background_color"] == "#ffffff"
+    assert restored.style["axes_background_color"] == "#ffffff"

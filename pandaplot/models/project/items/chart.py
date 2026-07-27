@@ -183,7 +183,8 @@ class Chart(Item):
 
         self.style = {
             "figure_size": (10, 6),
-            "background_color": "#ffffff",
+            "figure_background_color": "#ffffff",
+            "axes_background_color": "#ffffff",
             "font_size": 12,
             "font_family": "Arial",
             "dpi": 100
