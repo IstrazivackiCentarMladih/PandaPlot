@@ -53,6 +53,8 @@ def apply_chart_title(
     title_italic: bool = False,
     subtitle_bold: bool = False,
     subtitle_italic: bool = False,
+    title_color: str = "#000000",
+    subtitle_color: str = "#000000",
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
@@ -86,6 +88,7 @@ def apply_chart_title(
             title, fontsize=title_font_size, y=y,
             fontweight="bold" if title_bold else "normal",
             fontstyle="italic" if title_italic else "normal",
+            color=title_color,
         )
     elif fig._suptitle is not None:
         fig._suptitle.set_text("")
@@ -94,6 +97,7 @@ def apply_chart_title(
         subtitle, fontsize=subtitle_font_size, pad=title_padding,
         fontweight="bold" if subtitle_bold else "normal",
         fontstyle="italic" if subtitle_italic else "normal",
+        color=subtitle_color,
     )
 
 
@@ -705,6 +709,12 @@ class ChartEditorWidget(PWidget):
                 title_italic=config.get("title_italic", False),
                 subtitle_bold=config.get("subtitle_bold", False),
                 subtitle_italic=config.get("subtitle_italic", False),
+                title_color=config.get("title_color", "#000000"),
+                subtitle_color=(
+                    config.get("title_color", "#000000")
+                    if config.get("subtitle_match_title_color", True)
+                    else config.get("subtitle_color", "#000000")
+                ),
             )
 
             chart_padding = config.get("chart_padding", 2.0)

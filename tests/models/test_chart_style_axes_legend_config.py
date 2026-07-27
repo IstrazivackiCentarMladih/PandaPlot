@@ -363,4 +363,41 @@ def test_chart_style_background_colors_default_when_missing_from_saved_data():
 
     restored = Chart.from_dict(data)
     assert restored.style["figure_background_color"] == "#ffffff"
+
+
+def test_default_config_has_title_and_subtitle_color_keys():
+    chart = Chart(name="Test Chart")
+    assert chart.config["title_color"] == "#000000"
+    assert chart.config["subtitle_color"] == "#000000"
+    assert chart.config["subtitle_match_title_color"] is True
+
+
+def test_title_and_subtitle_color_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["title_color"] = "#123456"
+    chart.config["subtitle_color"] = "#654321"
+    chart.config["subtitle_match_title_color"] = False
+
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["title_color"] == "#123456"
+    assert restored.config["subtitle_color"] == "#654321"
+    assert restored.config["subtitle_match_title_color"] is False
+
+
+def test_title_and_subtitle_color_default_when_missing_from_saved_data():
+    # Simulates loading a project saved before these fields existed.
+    data = {
+        "id": "chart1",
+        "name": "Test Chart",
+        "chart_type": "line",
+        "data_series": [],
+        "fit_data": [],
+        "config": {"title": "Test Chart"},  # non-empty, so _init_default_config is NOT re-run
+        "style": {},
+    }
+
+    restored = Chart.from_dict(data)
+    assert restored.config.get("title_color", "#000000") == "#000000"
+    assert restored.config.get("subtitle_color", "#000000") == "#000000"
+    assert restored.config.get("subtitle_match_title_color", True) is True
     assert restored.style["axes_background_color"] == "#ffffff"

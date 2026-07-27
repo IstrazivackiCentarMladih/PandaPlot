@@ -150,6 +150,24 @@ class StyleTab(QWidget):
             _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
         )
 
+        # -- Title/subtitle color (rows 5-7, appended after the existing
+        # title/subtitle font-size/bold/italic rows above to avoid
+        # renumbering them) --
+        self.title_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        font_size_layout.addWidget(QLabel("Title color:"), 5, 0)
+        font_size_layout.addWidget(self.title_color_row, 5, 1)
+
+        self.subtitle_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        self.subtitle_match_title_toggle = ToggleSwitch(checked=True)
+        font_size_layout.addWidget(QLabel("Subtitle color:"), 6, 0)
+        font_size_layout.addWidget(self.subtitle_color_row, 6, 1)
+        font_size_layout.addWidget(QLabel("Match title:"), 7, 0)
+        font_size_layout.addWidget(self.subtitle_match_title_toggle, 7, 1)
+        # Hidden by default: subtitle_match_title_toggle starts checked, so
+        # the subtitle color swatch (which would otherwise be redundant with
+        # the title's) stays hidden until the user opts out of matching.
+        self.subtitle_color_row.setVisible(False)
+
         layout.addWidget(self.font_size_card)
 
         # -- Padding card --
@@ -449,6 +467,9 @@ class StyleTab(QWidget):
         self.title_italic_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_bold_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_italic_check.toggled.connect(self._on_chart_style_field_changed)
+        self.title_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_match_title_toggle.toggled.connect(self._on_subtitle_match_title_toggled)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -582,6 +603,17 @@ class StyleTab(QWidget):
         finally:
             self._updating_controls = previous_guard
         self._update_target_cards_visibility()
+
+    def _on_subtitle_match_title_toggled(self, checked: bool):
+        """Handle the 'Match title' toggle for subtitle color: hides the
+        subtitle color swatch while matching (mirrors
+        _update_marker_controls_enabled's hide-not-disable convention), and
+        seeds it with the title's current color on every uncheck."""
+        if not checked:
+            self.subtitle_color_row.setCurrentColor(self.title_color_row.currentColor())
+        self.subtitle_color_row.setVisible(not checked)
+        if self._chart is not None:
+            self._on_chart_style_field_changed()
 
     # -- Marker enable/match-line toggles ------------------------------------
 
@@ -790,6 +822,14 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(chart.config.get("title_italic", False))
             self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
             self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
+            self.title_color_row.setCurrentColor(chart.config.get("title_color", "#000000"))
+            match_title = chart.config.get("subtitle_match_title_color", True)
+            self.subtitle_match_title_toggle.setChecked(match_title)
+            self.subtitle_color_row.setCurrentColor(
+                chart.config.get("title_color", "#000000") if match_title
+                else chart.config.get("subtitle_color", "#000000")
+            )
+            self.subtitle_color_row.setVisible(not match_title)
 
             fig_bg = chart.style.get("figure_background_color", "#ffffff")
             self.figure_bg_transparent_toggle.setChecked(fig_bg is None)
@@ -849,6 +889,9 @@ class StyleTab(QWidget):
         chart.config["title_italic"] = self.title_italic_check.isChecked()
         chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        chart.config["title_color"] = self.title_color_row.currentColor()
+        chart.config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        chart.config["subtitle_color"] = self.subtitle_color_row.currentColor()
         chart.style["figure_background_color"] = (
             None if self.figure_bg_transparent_toggle.isChecked()
             else self.figure_bg_color_row.currentColor()
@@ -877,6 +920,10 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(False)
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
+            self.title_color_row.setCurrentColor("#000000")
+            self.subtitle_match_title_toggle.setChecked(True)
+            self.subtitle_color_row.setCurrentColor("#000000")
+            self.subtitle_color_row.setVisible(False)
             self.figure_bg_transparent_toggle.setChecked(False)
             self.figure_bg_color_row.setCurrentColor("#ffffff")
             self.figure_bg_color_row.setEnabled(True)
@@ -980,6 +1027,9 @@ class StyleTab(QWidget):
         config["title_italic"] = self.title_italic_check.isChecked()
         config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        config["title_color"] = self.title_color_row.currentColor()
+        config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        config["subtitle_color"] = self.subtitle_color_row.currentColor()
         self._chart.style["figure_background_color"] = (
             None if self.figure_bg_transparent_toggle.isChecked()
             else self.figure_bg_color_row.currentColor()
@@ -995,6 +1045,9 @@ class StyleTab(QWidget):
     # -- Theme ----------------------------------------------------------------
 
     def apply_theme(self, tokens: dict):
+        self.title_color_row.set_tokens(tokens)
+        self.subtitle_color_row.set_tokens(tokens)
+        self.subtitle_match_title_toggle.set_tokens(tokens)
         self.style_series_chips.set_tokens(tokens)
         self.line_color_row.set_tokens(tokens)
         self.line_style_control.set_tokens(tokens)
