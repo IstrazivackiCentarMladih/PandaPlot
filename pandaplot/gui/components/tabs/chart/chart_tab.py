@@ -142,8 +142,15 @@ class ChartTab(PWidget):
             fit_params = fit_results.params
             fit_stats = {"r_squared": fit_results.r_squared}
 
+            # Pass the source dataset object so add_fit_data binds the fit's
+            # source columns to stable ids (rename-proof); falls back to the id
+            # string if it can't be resolved.
+            app_state = self.app_context.get_app_state()
+            project = app_state.current_project if app_state.has_project else None
+            source_dataset = project.find_item(source_dataset_id) if project else None
+
             self.chart.add_fit_data(
-                source_dataset_id=source_dataset_id,
+                source_dataset if source_dataset is not None else source_dataset_id,
                 source_x_column=source_x_column,
                 source_y_column=source_y_column,
                 fit_type=fit_type,

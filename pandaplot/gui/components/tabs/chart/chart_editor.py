@@ -194,6 +194,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     x_err_minus/y_err_minus are only meaningful when series.error_symmetric
     is False.
     """
+    from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
 
     if project is None:
@@ -204,24 +205,27 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         return SeriesData(None, None, None, None, None, None, f"dataset '{series.dataset_id}' not found")
 
     df = dataset.data
-    if not series.y_column:
+    # Resolve column references by stable id (name is only a fallback), so a
+    # renamed column keeps binding without the series being touched.
+    y_column = resolve_series_column(dataset, series.y_column_id, series.y_column)
+    if not y_column:
         return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
     needs_x_column = chart_type != "hist"
-    x_column = series.x_column if needs_x_column else None
+    x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
-    missing = [c for c in (x_column, series.y_column)
+    missing = [c for c in (x_column, y_column)
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
     x_data = df[x_column] if x_column else df.index
-    x_err = _resolve_error_column(df, series.x_error_column)
-    y_err = _resolve_error_column(df, series.y_error_column)
-    x_err_minus = _resolve_error_column(df, series.x_error_minus_column)
-    y_err_minus = _resolve_error_column(df, series.y_error_minus_column)
-    return SeriesData(x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+    x_err = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_column_id, series.x_error_column))
+    y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
+    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
+    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
+    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
 
 
 class ChartEditorWidget(PWidget):
@@ -618,10 +622,20 @@ class ChartEditorWidget(PWidget):
                         fit_axes = self.chart_canvas.axes
                         if self.chart_canvas.axes2 is not None:
                             for series in self.chart.data_series:
+                                # Match series to the fit it came from: prefer
+                                # stable column ids, fall back to names (both
+                                # sides carry ids once assigned; renames keep
+                                # the ids equal without touching either).
+                                def _col_match(s_id, s_name, f_id, f_name):
+                                    if s_id and f_id:
+                                        return s_id == f_id
+                                    return s_name == f_name
                                 if (series.y_axis == "secondary"
                                         and series.dataset_id == fit.source_dataset_id
-                                        and series.x_column == fit.source_x_column
-                                        and series.y_column == fit.source_y_column):
+                                        and _col_match(series.x_column_id, series.x_column,
+                                                       fit.source_x_column_id, fit.source_x_column)
+                                        and _col_match(series.y_column_id, series.y_column,
+                                                       fit.source_y_column_id, fit.source_y_column)):
                                     fit_axes = self.chart_canvas.axes2
                                     break
 

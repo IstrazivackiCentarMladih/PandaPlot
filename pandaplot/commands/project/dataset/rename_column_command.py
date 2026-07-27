@@ -78,13 +78,23 @@ class RenameColumnCommand(Command):
             return False
 
     def _apply_rename(self, from_name: str, to_name: str) -> None:
-        """Rename the DataFrame column, cascade references, emit events."""
+        """Rename the column and notify; do not rewrite series references.
+
+        Series/fits reference the column by its stable id, so the rename only
+        needs to update the dataset's id->name registry (in place, keeping the
+        id) and the DataFrame. Charts that use the column are refreshed via
+        events rather than by mutating their series — that's the whole point of
+        the column id: the reference survives the rename untouched.
+        """
         if self.dataset is None or self.dataset.data is None:
             return
+        # Update the id registry first (preserves the column's id), then the
+        # DataFrame, keeping the two in sync.
+        self.dataset.rename_column(from_name, to_name)
         self.dataset.data.rename(columns={from_name: to_name}, inplace=True)
         self.dataset.update_modified_time()
 
-        affected_charts = self._update_chart_references(from_name, to_name)
+        affected_charts = self._charts_referencing_column(to_name)
 
         self.app_context.event_bus.emit(
             DatasetOperationEvents.DATASET_COLUMN_RENAMED,
@@ -95,53 +105,50 @@ class RenameColumnCommand(Command):
                 new_name=to_name,
             ).to_dict())
         for chart in affected_charts:
+            chart.update_modified_time()
             self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
                 "chart_id": chart.id,
                 "chart": chart,
             })
 
-    def _update_chart_references(self, from_name: str, to_name: str) -> List[Chart]:
-        """Point series/fits of this dataset at the new name; return affected charts."""
+    def _charts_referencing_column(self, current_name: str) -> List[Chart]:
+        """Return charts whose series/fits reference the renamed column.
+
+        Matched by column id (via the dataset registry) with a name fallback
+        for legacy references that never got an id. Nothing is mutated — this
+        only decides which charts to refresh.
+        """
         project = self.app_state.current_project
-        if not project:
+        if not project or self.dataset is None:
             return []
+        column_id = self.dataset.column_id(current_name)
+
+        def series_refs(series) -> bool:
+            id_fields = (series.x_column_id, series.y_column_id,
+                         series.x_error_column_id, series.y_error_column_id,
+                         series.x_error_minus_column_id, series.y_error_minus_column_id)
+            if column_id and column_id in id_fields:
+                return True
+            name_fields = (series.x_column, series.y_column,
+                           series.x_error_column, series.y_error_column,
+                           series.x_error_minus_column, series.y_error_minus_column)
+            return current_name in name_fields or self.old_name in name_fields
+
+        def fit_refs(fit) -> bool:
+            if column_id and column_id in (fit.source_x_column_id, fit.source_y_column_id):
+                return True
+            names = (fit.source_x_column, fit.source_y_column)
+            return current_name in names or self.old_name in names
+
         affected: List[Chart] = []
         for item in project.get_all_items():
             if not isinstance(item, Chart):
                 continue
-            changed = False
-            for series in item.data_series:
-                if series.dataset_id != self.dataset_id:
-                    continue
-                if series.x_column == from_name:
-                    series.x_column = to_name
-                    changed = True
-                if series.y_column == from_name:
-                    series.y_column = to_name
-                    changed = True
-                if series.x_error_column == from_name:
-                    series.x_error_column = to_name
-                    changed = True
-                if series.y_error_column == from_name:
-                    series.y_error_column = to_name
-                    changed = True
-                if series.x_error_minus_column == from_name:
-                    series.x_error_minus_column = to_name
-                    changed = True
-                if series.y_error_minus_column == from_name:
-                    series.y_error_minus_column = to_name
-                    changed = True
-            for fit in item.fit_data:
-                if fit.source_dataset_id != self.dataset_id:
-                    continue
-                if fit.source_x_column == from_name:
-                    fit.source_x_column = to_name
-                    changed = True
-                if fit.source_y_column == from_name:
-                    fit.source_y_column = to_name
-                    changed = True
-            if changed:
-                item.update_modified_time()
+            uses = any(s.dataset_id == self.dataset_id and series_refs(s)
+                       for s in item.data_series)
+            uses = uses or any(f.source_dataset_id == self.dataset_id and fit_refs(f)
+                               for f in item.fit_data)
+            if uses:
                 affected.append(item)
         return affected
 

@@ -645,6 +645,10 @@ class DataTab(QWidget):
             series.y_error_minus_column = self.y_error_minus_column_combo.currentData() or ""
             series.error_symmetric = not self.error_asymmetric_check.isChecked()
 
+            # Re-bind the series to stable column ids from its (possibly newly
+            # chosen) column names, so later renames don't require touching it.
+            self._rebind_series_column_ids(series)
+
             # Refresh the Axes-tab Y2 chip immediately so switching a series
             # to the secondary axis is reflected without waiting for Apply
             # or a full chart reload. This only touches the axis_chips
@@ -861,6 +865,15 @@ class DataTab(QWidget):
                     self.dataset_combo.addItem(item.name, item.id)
                     self.datasets.append(item)
 
+    def _rebind_series_column_ids(self, series):
+        """Sync a series' column ids from its name fields via its dataset."""
+        from pandaplot.models.project.items.chart import assign_series_column_ids
+        if not self.current_project:
+            return
+        dataset = self.current_project.find_item(series.dataset_id)
+        if isinstance(dataset, Dataset):
+            assign_series_column_ids(series, dataset)
+
     def _populate_column_combos(self, dataset_id):
         """Fill the x/y column combos with the columns of the given dataset.
 
@@ -979,8 +992,10 @@ class DataTab(QWidget):
             x_column = self.x_column_combo.currentText()
             y_column = self.y_column_combo.currentText()
             if dataset_id and x_column and y_column:
+                # Pass the dataset object so add_data_series binds column ids.
+                dataset = self.current_project.find_item(dataset_id) if self.current_project else None
                 chart.add_data_series(
-                    dataset_id=dataset_id,
+                    dataset if isinstance(dataset, Dataset) else dataset_id,
                     x_column=x_column,
                     y_column=y_column,
                     label=f"{dataset_name}:{y_column}",

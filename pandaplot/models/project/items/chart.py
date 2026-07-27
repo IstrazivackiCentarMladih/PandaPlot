@@ -28,10 +28,24 @@ class ErrorDirection(StrEnum):
 
 @dataclass
 class DataSeries:
-    """Represents a single data series in a chart."""
+    """Represents a single data series in a chart.
+
+    Columns are referenced by their stable id (``*_column_id``); the
+    ``*_column`` name fields are a resolution fallback for legacy/externally
+    edited data and a display hint, never the authoritative reference. A
+    column rename updates the dataset registry only — the ids here are
+    untouched, so nothing has to cascade into series. Resolve a live name with
+    :func:`pandaplot.models.project.items.chart.resolve_series_column`.
+    """
     dataset_id: str
     x_column: str
     y_column: str
+    x_column_id: str = ""
+    y_column_id: str = ""
+    x_error_column_id: str = ""
+    y_error_column_id: str = ""
+    x_error_minus_column_id: str = ""
+    y_error_minus_column_id: str = ""
     label: str = ""
     color: str = "#1f77b4"
     marker_color: str = ""
@@ -71,6 +85,8 @@ class FitData:
     x_data: np.ndarray
     y_data: np.ndarray
     label: str
+    source_x_column_id: str = ""
+    source_y_column_id: str = ""
     color: str = "#ff7f0e"
     line_style: str = "dashed"
     line_width: float = 2.0
@@ -194,9 +210,19 @@ class Chart(Item):
         self.chart_type = chart_type
         self.update_modified_time()
     
-    def add_data_series(self, dataset_id: str, x_column: str, y_column: str, 
+    def add_data_series(self, dataset_id: Any, x_column: str, y_column: str,
                        label: str = "", **kwargs) -> DataSeries:
-        """Add a new data series to the chart."""
+        """Add a new data series to the chart.
+
+        ``dataset_id`` may be the owning :class:`Dataset` (preferred) or its id
+        string. Passing the object binds the series' column references to
+        stable column ids in one step, so nothing has to remember to call
+        :func:`assign_series_column_ids` afterward. Passing a bare id creates
+        the series without ids (name-only fallback) — used by tests/contexts
+        that have no dataset to resolve against.
+        """
+        dataset_obj = dataset_id if not isinstance(dataset_id, str) else None
+        dataset_id = dataset_obj.id if dataset_obj is not None else dataset_id
         series = DataSeries(
             dataset_id=dataset_id,
             x_column=x_column,
@@ -204,6 +230,8 @@ class Chart(Item):
             label=label or f"{dataset_id}:{y_column}",
             **kwargs
         )
+        if dataset_obj is not None:
+            assign_series_column_ids(series, dataset_obj)
         self.data_series.append(series)
         self.update_modified_time()
         return series
@@ -237,13 +265,20 @@ class Chart(Item):
         """Get all unique dataset IDs used in this chart."""
         return list(set(series.dataset_id for series in self.data_series))
     
-    def add_fit_data(self, source_dataset_id: str, source_x_column: str, 
-                    source_y_column: str, fit_type: str, x_data: np.ndarray, 
+    def add_fit_data(self, source_dataset_id: Any, source_x_column: str,
+                    source_y_column: str, fit_type: str, x_data: np.ndarray,
                     y_data: np.ndarray, label: str = "", **kwargs) -> FitData:
-        """Add fit data to the chart."""
+        """Add fit data to the chart.
+
+        ``source_dataset_id`` may be the source :class:`Dataset` (preferred) or
+        its id string. Passing the object binds the fit's source columns to
+        stable column ids in one step (see :meth:`add_data_series`).
+        """
+        dataset_obj = source_dataset_id if not isinstance(source_dataset_id, str) else None
+        source_dataset_id = dataset_obj.id if dataset_obj is not None else source_dataset_id
         if not label:
             label = f"{fit_type.title()} Fit for {source_dataset_id}:{source_y_column}"
-        
+
         fit = FitData(
             source_dataset_id=source_dataset_id,
             source_x_column=source_x_column,
@@ -254,6 +289,8 @@ class Chart(Item):
             label=label,
             **kwargs
         )
+        if dataset_obj is not None:
+            assign_fit_column_ids(fit, dataset_obj)
         self.fit_data.append(fit)
         self.update_modified_time()
         return fit
@@ -356,6 +393,12 @@ class Chart(Item):
                     "dataset_id": series.dataset_id,
                     "x_column": series.x_column,
                     "y_column": series.y_column,
+                    "x_column_id": series.x_column_id,
+                    "y_column_id": series.y_column_id,
+                    "x_error_column_id": series.x_error_column_id,
+                    "y_error_column_id": series.y_error_column_id,
+                    "x_error_minus_column_id": series.x_error_minus_column_id,
+                    "y_error_minus_column_id": series.y_error_minus_column_id,
                     "label": series.label,
                     "color": series.color,
                     "marker_color": series.marker_color,
@@ -383,6 +426,8 @@ class Chart(Item):
                     "source_dataset_id": fit.source_dataset_id,
                     "source_x_column": fit.source_x_column,
                     "source_y_column": fit.source_y_column,
+                    "source_x_column_id": fit.source_x_column_id,
+                    "source_y_column_id": fit.source_y_column_id,
                     "fit_type": fit.fit_type,
                     "x_data": fit.x_data.tolist(),
                     "y_data": fit.y_data.tolist(),
@@ -427,6 +472,12 @@ class Chart(Item):
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
                 y_column=series_dict["y_column"],
+                x_column_id=series_dict.get("x_column_id", ""),
+                y_column_id=series_dict.get("y_column_id", ""),
+                x_error_column_id=series_dict.get("x_error_column_id", ""),
+                y_error_column_id=series_dict.get("y_error_column_id", ""),
+                x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
+                y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
                 label=series_dict.get("label", ""),
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
@@ -457,6 +508,8 @@ class Chart(Item):
                 source_dataset_id=fit_dict["source_dataset_id"],
                 source_x_column=fit_dict["source_x_column"],
                 source_y_column=fit_dict["source_y_column"],
+                source_x_column_id=fit_dict.get("source_x_column_id", ""),
+                source_y_column_id=fit_dict.get("source_y_column_id", ""),
                 fit_type=fit_dict["fit_type"],
                 x_data=np.array(fit_dict["x_data"]),
                 y_data=np.array(fit_dict["y_data"]),
@@ -475,6 +528,61 @@ class Chart(Item):
             chart._init_default_config()
 
         return chart
+
+
+def resolve_series_column(dataset: Any, column_id: str,
+                          fallback_name: str) -> Optional[str]:
+    """Resolve a column reference to its current DataFrame name.
+
+    Prefers the stable ``column_id`` (via the dataset's id->name registry) so a
+    renamed column keeps resolving without any series update; falls back to the
+    stored name for legacy files or data edited outside the app. Returns None
+    when neither resolves (a genuinely missing column). An empty ``fallback_name``
+    stays empty (e.g. "no x column" means plot against the index).
+    """
+    if dataset is not None and column_id:
+        name = dataset.column_name(column_id)
+        if name is not None:
+            return name
+    return fallback_name or None
+
+
+def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
+    """Fill a series' ``*_column_id`` fields from its name fields via ``dataset``.
+
+    Called at series write sites and during legacy-chart migration. A name that
+    resolves to a column gets that column's id; an unresolved name leaves the
+    existing id untouched (resolution falls back to the stored name).
+    """
+    if dataset is None:
+        return
+    pairs = (
+        ("x_column", "x_column_id"),
+        ("y_column", "y_column_id"),
+        ("x_error_column", "x_error_column_id"),
+        ("y_error_column", "y_error_column_id"),
+        ("x_error_minus_column", "x_error_minus_column_id"),
+        ("y_error_minus_column", "y_error_minus_column_id"),
+    )
+    for name_field, id_field in pairs:
+        name = getattr(series, name_field, "")
+        if name:
+            cid = dataset.column_id(name)
+            if cid is not None:
+                setattr(series, id_field, cid)
+
+
+def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
+    """Fill a fit's source ``*_column_id`` fields from its name fields."""
+    if dataset is None:
+        return
+    for name_field, id_field in (("source_x_column", "source_x_column_id"),
+                                 ("source_y_column", "source_y_column_id")):
+        name = getattr(fit, name_field, "")
+        if name:
+            cid = dataset.column_id(name)
+            if cid is not None:
+                setattr(fit, id_field, cid)
 
 
 def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:

@@ -1,4 +1,11 @@
-"""Tests for RenameColumnCommand (DataFrame rename + chart-reference cascade)."""
+"""Tests for RenameColumnCommand.
+
+Columns carry a stable id; series/fits reference the column by id, so a rename
+updates only the dataset's id->name registry and the DataFrame. Series
+references are *not* rewritten — they keep resolving to the new name via their
+id (see resolve_series_column). The name fields are only a fallback and are
+intentionally left untouched.
+"""
 
 from unittest.mock import Mock
 
@@ -10,6 +17,7 @@ from pandaplot.commands.project.dataset.rename_column_command import RenameColum
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items.chart import resolve_series_column
 
 
 @pytest.fixture
@@ -20,15 +28,16 @@ def env():
     project.add_item(dataset)
     project.add_item(other)
 
+    # Passing the dataset object binds column ids at creation (the real path).
     chart = Chart(name="c")
-    chart.add_data_series(dataset.id, "a", "b", label="s1")
-    chart.add_data_series(other.id, "a", "a", label="s2")  # other dataset: must not change
-    chart.add_fit_data(dataset.id, "a", "b", "Linear",
+    chart.add_data_series(dataset, "a", "b", label="s1")
+    chart.add_data_series(other, "a", "a", label="s2")  # other dataset: must not change
+    chart.add_fit_data(dataset, "a", "b", "Linear",
                        np.array([1.0]), np.array([2.0]))
     project.add_item(chart)
 
     untouched_chart = Chart(name="c2")
-    untouched_chart.add_data_series(other.id, "a", "a", label="s3")
+    untouched_chart.add_data_series(other, "a", "a", label="s3")
     project.add_item(untouched_chart)
 
     app_state = Mock()
@@ -46,34 +55,43 @@ def _chart_updated_calls(app_context):
             if c.args[0] == ChartEvents.CHART_UPDATED]
 
 
-def test_rename_updates_dataframe_and_matching_references(env):
+def test_rename_updates_dataframe_and_series_resolve_via_id(env):
     app_context, dataset, other, chart = env
+    s1 = chart.data_series[0]
+    fit = chart.fit_data[0]
+    x_id_before = s1.x_column_id
+
     command = RenameColumnCommand(app_context, dataset.id, 0, "time")
 
     assert command.execute() is True
     assert list(dataset.data.columns) == ["time", "b"]
-    assert chart.data_series[0].x_column == "time"
-    assert chart.data_series[0].y_column == "b"
-    assert chart.fit_data[0].source_x_column == "time"
-    assert chart.fit_data[0].source_y_column == "b"
-    # same column name in another dataset: untouched
-    assert chart.data_series[1].x_column == "a"
+    # The series reference is untouched but resolves to the new name via its id.
+    assert s1.x_column_id == x_id_before
+    assert s1.x_column == "a"  # fallback name deliberately not rewritten
+    assert resolve_series_column(dataset, s1.x_column_id, s1.x_column) == "time"
+    assert resolve_series_column(dataset, s1.y_column_id, s1.y_column) == "b"
+    assert resolve_series_column(dataset, fit.source_x_column_id, fit.source_x_column) == "time"
+    # same column name in another dataset: resolves to its own unchanged column
+    assert resolve_series_column(other, chart.data_series[1].x_column_id,
+                                 chart.data_series[1].x_column) == "a"
     assert list(other.data.columns) == ["a"]
 
 
 def test_undo_and_redo_round_trip(env):
     app_context, dataset, _, chart = env
+    s1 = chart.data_series[0]
+    fit = chart.fit_data[0]
     command = RenameColumnCommand(app_context, dataset.id, 0, "time")
     command.execute()
 
     command.undo()
     assert list(dataset.data.columns) == ["a", "b"]
-    assert chart.data_series[0].x_column == "a"
-    assert chart.fit_data[0].source_x_column == "a"
+    assert resolve_series_column(dataset, s1.x_column_id, s1.x_column) == "a"
+    assert resolve_series_column(dataset, fit.source_x_column_id, fit.source_x_column) == "a"
 
     command.redo()
     assert list(dataset.data.columns) == ["time", "b"]
-    assert chart.data_series[0].x_column == "time"
+    assert resolve_series_column(dataset, s1.x_column_id, s1.x_column) == "time"
 
 
 def test_duplicate_name_rejected(env):

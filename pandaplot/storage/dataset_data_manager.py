@@ -40,7 +40,8 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 "modified_at": item.modified_at,
                 "metadata": item.metadata,
                 "source_file": item.source_file,
-                "has_data": item.data is not None
+                "has_data": item.data is not None,
+                "column_ids": dict(item.column_ids),
             }
             
             self.logger.debug("Saving dataset metadata for '%s'", item.name)
@@ -97,7 +98,28 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 data=data,
                 source_file=metadata.get("source_file")
             )
-            
+
+            # Restore the saved column-id registry so column ids stay stable
+            # across save/load (chart series reference columns by these ids).
+            # Only ids whose names still match the loaded data are kept; any
+            # drift is reconciled by name, matching _sync_column_ids.
+            saved_column_ids = metadata.get("column_ids")
+            if saved_column_ids:
+                from collections import OrderedDict
+                current_names = [str(c) for c in dataset.data.columns] if dataset.data is not None else []
+                name_to_saved_id = {name: cid for cid, name in saved_column_ids.items()}
+                restored: "OrderedDict[str, str]" = OrderedDict()
+                for name in current_names:
+                    cid = name_to_saved_id.get(name)
+                    if cid is not None:
+                        restored[cid] = name
+                    else:
+                        # New/unmatched column keeps the fresh id __init__ assigned.
+                        existing_id = dataset.column_id(name)
+                        if existing_id is not None:
+                            restored[existing_id] = name
+                dataset.column_ids = restored
+
             self.logger.info("Successfully loaded dataset '%s' (ID: %s)", dataset_name, dataset_id)
             return dataset
             

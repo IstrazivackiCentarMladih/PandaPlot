@@ -36,8 +36,15 @@ class AddSeriesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
+        # Pass the dataset object (not just its id) so add_data_series binds
+        # the series' column ids automatically. Falls back to the id string if
+        # the dataset can't be resolved.
+        app_state = self.app_context.get_app_state()
+        project = app_state.current_project if app_state.has_project else None
+        dataset = project.find_item(self.dataset_id) if project else None
+
         chart.add_data_series(
-            dataset_id=self.dataset_id,
+            dataset if dataset is not None else self.dataset_id,
             x_column=self.x_column,
             y_column=self.y_column,
             label=self.label,
