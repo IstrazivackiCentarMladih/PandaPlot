@@ -50,7 +50,7 @@ class ChartCanvas(FigureCanvas):
     """Custom matplotlib canvas for displaying charts."""
 
     def __init__(self, width=10, height=6, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor="white")
+        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor="none")
         super().__init__(self.fig)
         self.axes = self.fig.add_subplot(111)
         self.axes2 = None  # Secondary Y axis (created via twinx() when needed)

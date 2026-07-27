@@ -521,6 +521,11 @@ class ChartEditorWidget(PWidget):
             # Clear the current plot
             self.chart_canvas.axes.clear()
 
+            fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
+            axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
+            self.chart_canvas.fig.set_facecolor(fig_bg if fig_bg is not None else "none")
+            self.chart_canvas.axes.set_facecolor(axes_bg if axes_bg is not None else "none")
+
             # Set up (or tear down) the secondary Y axis depending on whether
             # any series is currently routed to it.
             needs_secondary = any(series.y_axis == "secondary" for series in self.chart.data_series)
