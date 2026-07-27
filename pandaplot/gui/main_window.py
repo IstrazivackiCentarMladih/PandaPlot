@@ -11,6 +11,7 @@ from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSet
 from pandaplot.gui.core.widget_extension import PMainWindow
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
@@ -72,18 +73,27 @@ class PandaMainWindow(PMainWindow):
         self.panel_setup_manager = PanelSetupManager(self.app_context)
         self.panel_setup_manager.register_default_panels()
 
-        # Create project manager (left pane) with enhanced styling
-        self.sidebar = CollapsibleSidebar(self.app_context, self.main_splitter, width=250)
-        self.main_splitter.addWidget(self.sidebar)
+        # Resolve the persisted dock side for the sidebar (defaults to left)
+        sidebar_position = self._get_sidebar_position()
 
-        # Create main content area (right pane) with tab container
+        # Create project manager (side pane) with enhanced styling
+        self.sidebar = CollapsibleSidebar(
+            self.app_context, self.main_splitter, width=250, position=sidebar_position)
+        self.sidebar.position_changed.connect(self.on_sidebar_position_changed)
+
+        # Create main content area with tab container
         self.tab_container = TabContainer(
             app_context=self.app_context, parent=self.main_splitter)
 
-        self.main_splitter.addWidget(self.tab_container)
-
-        # Set initial splitter sizes: [sidebar_width, remaining_width]
-        self.main_splitter.setSizes([250, 1000])
+        # Order the panes so the sidebar sits on its configured side
+        if sidebar_position == "right":
+            self.main_splitter.addWidget(self.tab_container)
+            self.main_splitter.addWidget(self.sidebar)
+            self.main_splitter.setSizes([1000, 250])
+        else:
+            self.main_splitter.addWidget(self.sidebar)
+            self.main_splitter.addWidget(self.tab_container)
+            self.main_splitter.setSizes([250, 1000])
 
         # Initialize conditional panel manager for dynamic sidebar panels
         # TODO: move this outside of main window
@@ -94,7 +104,28 @@ class PandaMainWindow(PMainWindow):
         # Connect tab changes to conditional panel manager (centralized)
         self.tab_container.tab_widget.currentChanged.connect(
             self.conditional_panel_manager.on_tab_changed)
-    
+
+    def _get_sidebar_position(self) -> str:
+        """Read the persisted sidebar dock side, defaulting to 'left'."""
+        config_manager = self.app_context.get_manager(ConfigManager)
+        if config_manager and config_manager.config:
+            return config_manager.config.appearance.sidebar_position
+        return "left"
+
+    def on_sidebar_position_changed(self, position: str):
+        """Reorder the splitter and persist when the sidebar is moved."""
+        # Move the sidebar to the appropriate end of the splitter.
+        if position == "right":
+            self.main_splitter.addWidget(self.sidebar)  # re-adds at the end
+        else:
+            self.main_splitter.insertWidget(0, self.sidebar)
+
+        # Persist the new dock side so it survives restarts.
+        config_manager = self.app_context.get_manager(ConfigManager)
+        if config_manager:
+            config_manager.update(
+                {"appearance": {"sidebar_position": position}}, save=True)
+
     def setup_event_subscriptions(self):
         """Set up event subscriptions for the main window."""
         self.subscribe_to_event(AppEvents.APP_CLOSING,
