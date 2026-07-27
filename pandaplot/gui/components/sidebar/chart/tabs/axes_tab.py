@@ -175,6 +175,16 @@ class AxesTab(QWidget):
         minor_tick_direction_label.setVisible(False)
         minor_tick_direction_control.setVisible(False)
 
+        # Minor gridlines only draw where minor tick locations exist, so
+        # this toggle -- like minor tick direction above -- is only shown
+        # (and meaningful) once minor ticks are actually turned on.
+        minor_grid_label = QLabel("Minor grid")
+        minor_grid_toggle = ToggleSwitch()
+        ticks_layout.addWidget(minor_grid_label, 10, 0)
+        ticks_layout.addWidget(minor_grid_toggle, 10, 1)
+        minor_grid_label.setVisible(False)
+        minor_grid_toggle.setVisible(False)
+
         form_layout.addWidget(ticks_card)
 
         colors_card = Card()
@@ -234,6 +244,8 @@ class AxesTab(QWidget):
             "tick_direction_control": tick_direction_control, "minor_ticks_toggle": minor_ticks_toggle,
             "minor_tick_direction_label": minor_tick_direction_label,
             "minor_tick_direction_control": minor_tick_direction_control,
+            "minor_grid_label": minor_grid_label,
+            "minor_grid_toggle": minor_grid_toggle,
             "colors_card": colors_card,
             "spine_color_row": spine_color_row,
             "major_tick_color_row": major_tick_color_row,
@@ -266,6 +278,7 @@ class AxesTab(QWidget):
         tick_direction_control.currentValueChanged.connect(self._on_field_changed)
         minor_ticks_toggle.toggled.connect(lambda checked, p=prefix: self._on_minor_ticks_toggled(p, checked))
         minor_tick_direction_control.currentValueChanged.connect(self._on_field_changed)
+        minor_grid_toggle.toggled.connect(self._on_field_changed)
         spine_color_row.colorChanged.connect(self._on_field_changed)
         major_tick_color_row.colorChanged.connect(self._on_field_changed)
         minor_tick_color_row.colorChanged.connect(self._on_field_changed)
@@ -314,6 +327,8 @@ class AxesTab(QWidget):
         form = self.axes_forms[prefix]
         form["minor_tick_direction_label"].setVisible(checked)
         form["minor_tick_direction_control"].setVisible(checked)
+        form["minor_grid_label"].setVisible(checked)
+        form["minor_grid_toggle"].setVisible(checked)
         matching = form["match_x_colors_toggle"] is not None and form["match_x_colors_toggle"].isChecked()
         form["minor_tick_color_label"].setVisible(checked and not matching)
         form["minor_tick_color_row"].setVisible(checked and not matching)
@@ -387,11 +402,14 @@ class AxesTab(QWidget):
         target["minor_tick_direction_control"].setCurrentValue(
             source["minor_tick_direction_control"].currentValue()
         )
+        target["minor_grid_toggle"].setChecked(source["minor_grid_toggle"].isChecked())
         target_minor_enabled = target["minor_ticks_toggle"].isChecked()
         target["minor_tick_direction_label"].setVisible(target_minor_enabled)
         target["minor_tick_direction_control"].setVisible(target_minor_enabled)
         target["minor_tick_color_label"].setVisible(target_minor_enabled)
         target["minor_tick_color_row"].setVisible(target_minor_enabled)
+        target["minor_grid_label"].setVisible(target_minor_enabled)
+        target["minor_grid_toggle"].setVisible(target_minor_enabled)
 
         target["spine_color_row"].setCurrentColor(source["spine_color_row"].currentColor())
         target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
@@ -453,6 +471,7 @@ class AxesTab(QWidget):
         config[f"{prefix}_tick_direction"] = form["tick_direction_control"].currentValue()
         config[f"{prefix}_minor_ticks"] = form["minor_ticks_toggle"].isChecked()
         config[f"{prefix}_minor_tick_direction"] = form["minor_tick_direction_control"].currentValue()
+        config[f"{prefix}_show_minor_grid"] = form["minor_grid_toggle"].isChecked()
         config[f"{prefix}_spine_color"] = form["spine_color_row"].currentColor()
         config[f"{prefix}_major_tick_color"] = form["major_tick_color_row"].currentColor()
         config[f"{prefix}_minor_tick_color"] = form["minor_tick_color_row"].currentColor()
@@ -513,6 +532,9 @@ class AxesTab(QWidget):
         )
         form["minor_tick_direction_label"].setVisible(minor_ticks_enabled)
         form["minor_tick_direction_control"].setVisible(minor_ticks_enabled)
+        form["minor_grid_toggle"].setChecked(config.get(f"{prefix}_show_minor_grid", False))
+        form["minor_grid_label"].setVisible(minor_ticks_enabled)
+        form["minor_grid_toggle"].setVisible(minor_ticks_enabled)
 
         form["spine_color_row"].setCurrentColor(config.get(f"{prefix}_spine_color", "#000000"))
         form["major_tick_color_row"].setCurrentColor(config.get(f"{prefix}_major_tick_color", "#000000"))
@@ -585,6 +607,7 @@ class AxesTab(QWidget):
             form["tick_direction_control"].set_tokens(tokens)
             form["minor_ticks_toggle"].set_tokens(tokens)
             form["minor_tick_direction_control"].set_tokens(tokens)
+            form["minor_grid_toggle"].set_tokens(tokens)
             form["colors_card"].set_tokens(tokens)
             form["spine_color_row"].set_tokens(tokens)
             form["major_tick_color_row"].set_tokens(tokens)

@@ -458,3 +458,36 @@ def test_axis_label_color_applies_to_xlabel_and_ylabel_via_rendering_convention(
 
     assert axes.xaxis.label.get_color() == "#ff0000"
     assert axes.yaxis.label.get_color() == "#ff0000"
+
+
+def test_minor_grid_alpha_defaults_to_point_15():
+    chart = Chart(name="Test Chart")
+    assert chart.config["minor_grid_alpha"] == 0.15
+
+
+def test_minor_grid_alpha_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.update_config({"minor_grid_alpha": 0.4})
+    restored = Chart.from_dict(chart.to_dict())
+    assert restored.config["minor_grid_alpha"] == 0.4
+
+
+def test_show_minor_grid_defaults_to_false_for_all_axes():
+    chart = Chart(name="Test Chart")
+    for p in ("x", "y", "y2"):
+        assert f"{p}_show_minor_grid" not in chart.config
+        assert chart.config.get(f"{p}_show_minor_grid", False) is False
+
+
+def test_show_minor_grid_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.update_config({
+        "x_show_minor_grid": True,
+        "y_show_minor_grid": True,
+        "y2_show_minor_grid": False,
+    })
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_show_minor_grid"] is True
+    assert restored.config["y_show_minor_grid"] is True
+    assert restored.config["y2_show_minor_grid"] is False

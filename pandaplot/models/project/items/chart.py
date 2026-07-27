@@ -125,6 +125,7 @@ class Chart(Item):
             "legend_bg_color": "#ffffff",
             "grid_style": "solid",
             "grid_alpha": 0.3,
+            "minor_grid_alpha": 0.15,
             "show_grid_x": True,
             "show_grid_y": True,
             "show_grid_y2": True,

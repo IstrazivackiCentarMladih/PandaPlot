@@ -791,6 +791,11 @@ class ChartEditorWidget(PWidget):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
                 else:
                     self.chart_canvas.axes2.grid(False, axis="y")
+                if config.get("y2_show_minor_grid", False):
+                    self.chart_canvas.axes2.grid(
+                        True, axis="y", which="minor", alpha=config.get("minor_grid_alpha", 0.15))
+                else:
+                    self.chart_canvas.axes2.grid(False, axis="y", which="minor")
 
             if not config.get("x_auto_limits", True):
                 self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
@@ -841,14 +846,23 @@ class ChartEditorWidget(PWidget):
                  else config.get("y2_spine_color", "#000000")))
 
             grid_alpha = config.get("grid_alpha", 0.3)
+            minor_grid_alpha = config.get("minor_grid_alpha", 0.15)
             if config.get("show_grid_x", True):
                 self.chart_canvas.axes.grid(True, axis="x", alpha=grid_alpha)
             else:
                 self.chart_canvas.axes.grid(False, axis="x")
+            if config.get("x_show_minor_grid", False):
+                self.chart_canvas.axes.grid(True, axis="x", which="minor", alpha=minor_grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="x", which="minor")
             if config.get("show_grid_y", True):
                 self.chart_canvas.axes.grid(True, axis="y", alpha=grid_alpha)
             else:
                 self.chart_canvas.axes.grid(False, axis="y")
+            if config.get("y_show_minor_grid", False):
+                self.chart_canvas.axes.grid(True, axis="y", which="minor", alpha=minor_grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="y", which="minor")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 # Combine handles/labels from both axes since twinx() legends
