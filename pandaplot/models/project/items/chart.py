@@ -36,6 +36,7 @@ class DataSeries:
     color: str = "#1f77b4"
     marker_color: str = ""
     marker_edge_color: str = "#000000"
+    marker_edge_width: float = 1.0
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
@@ -126,27 +127,58 @@ class Chart(Item):
             "grid_alpha": 0.3,
             "show_grid_x": True,
             "show_grid_y": True,
+            "show_grid_y2": True,
             "x_font_size": 12,
             "y_font_size": 12,
+            "y2_font_size": 12,
             "x_scale": "linear",
             "y_scale": "linear",
+            "y2_scale": "linear",
+            "y_side": "left",
+            "y2_side": "right",
             "x_auto_limits": True,
             "y_auto_limits": True,
+            "y2_auto_limits": True,
             "x_min": 0.0,
             "x_max": 1.0,
             "y_min": 0.0,
             "y_max": 1.0,
+            "y2_min": 0.0,
+            "y2_max": 1.0,
             "x_tick_mode": "auto",
             "y_tick_mode": "auto",
+            "y2_tick_mode": "auto",
             "x_tick_count": 5,
             "y_tick_count": 5,
+            "y2_tick_count": 5,
             "x_tick_step": 1.0,
             "y_tick_step": 1.0,
+            "y2_tick_step": 1.0,
             "x_tick_format": "auto",
             "y_tick_format": "auto",
+            "y2_tick_format": "auto",
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
+            "y2_tick_format_custom": "",
             "hist_bins": 20,
+            "subtitle": "",
+            "title_font_size": 14,
+            "subtitle_font_size": 12,
+            "chart_padding": 2.0,
+            "chart_padding_w": 2.0,
+            "chart_padding_h": 2.0,
+            "title_padding": 6.0,
+            "main_title_padding": 10.0,
+            "top_margin": 1.0,
+            "title_bold": True,
+            "title_italic": False,
+            "subtitle_bold": False,
+            "subtitle_italic": False,
+            "width_cm": None,
+            "height_cm": None,
+            "dpi": None,
+            "legend_columns": 1,
+            "legend_bg_alpha": 1.0,
         }
 
         self.style = {
@@ -156,13 +188,6 @@ class Chart(Item):
             "font_family": "Arial",
             "dpi": 100
         }
-    
-    def update_name(self, new_name: str) -> None:
-        """Update the chart name and modification timestamp."""
-        # TODO: separate item name and title
-        self.name = new_name
-        self.config["title"] = new_name  # Update chart title as well
-        self.update_modified_time()
     
     def set_chart_type(self, chart_type: str) -> None:
         """Set the chart type."""
@@ -335,6 +360,7 @@ class Chart(Item):
                     "color": series.color,
                     "marker_color": series.marker_color,
                     "marker_edge_color": series.marker_edge_color,
+                    "marker_edge_width": series.marker_edge_width,
                     "line_style": series.line_style,
                     "marker_style": series.marker_style,
                     "line_width": series.line_width,
@@ -405,6 +431,7 @@ class Chart(Item):
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
                 marker_edge_color=series_dict.get("marker_edge_color", "#000000"),
+                marker_edge_width=series_dict.get("marker_edge_width", 1.0),
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
