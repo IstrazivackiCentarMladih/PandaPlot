@@ -792,9 +792,6 @@ class ChartEditorWidget(PWidget):
                 else:
                     self.chart_canvas.axes2.grid(False, axis="y")
 
-            if self.chart_canvas.axes2 is not None:
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
-
             if not config.get("x_auto_limits", True):
                 self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
             if not config.get("y_auto_limits", True):
