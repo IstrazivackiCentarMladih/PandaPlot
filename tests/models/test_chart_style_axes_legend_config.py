@@ -289,6 +289,23 @@ def test_chart_style_background_colors_round_trip_through_serialization():
     assert restored.style["axes_background_color"] == "#123456"
 
 
+def test_axis_spine_and_tick_colors_default_to_black():
+    chart = Chart(name="Test Chart")
+    for p in ("x", "y", "y2"):
+        assert chart.config.get(f"{p}_spine_color", "#000000") == "#000000"
+        assert chart.config.get(f"{p}_major_tick_color", "#000000") == "#000000"
+        assert chart.config.get(f"{p}_minor_tick_color", "#000000") == "#000000"
+
+
+def test_axis_spine_and_tick_colors_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.update_config({"x_spine_color": "#123456", "y_major_tick_color": "#654321"})
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_spine_color"] == "#123456"
+    assert restored.config["y_major_tick_color"] == "#654321"
+
+
 def test_chart_style_background_colors_default_when_missing_from_saved_data():
     # Simulates loading a project saved before these fields existed.
     data = {

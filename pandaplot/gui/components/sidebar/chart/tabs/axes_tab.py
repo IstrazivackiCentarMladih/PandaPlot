@@ -15,11 +15,15 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.chip_row import ChipRow
+from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.models.chart.chart_configuration import ScaleType
 from pandaplot.models.project.items.chart import YAxis
+
+# Neutral palette for axis/tick colors (distinct from style_tab's saturated series palette).
+AXES_SWATCH_PALETTE = ["#000000", "#404040", "#808080", "#bfbfbf", "#ffffff"]
 
 
 class AxesTab(QWidget):
@@ -162,6 +166,27 @@ class AxesTab(QWidget):
 
         form_layout.addWidget(ticks_card)
 
+        colors_card = Card()
+        colors_layout = QGridLayout(colors_card)
+        colors_layout.addWidget(SectionHeader("Colors"), 0, 0, 1, 2)
+
+        colors_layout.addWidget(QLabel("Spine:"), 1, 0)
+        spine_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(spine_color_row, 1, 1)
+
+        colors_layout.addWidget(QLabel("Major ticks:"), 2, 0)
+        major_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(major_tick_color_row, 2, 1)
+
+        minor_tick_color_label = QLabel("Minor ticks:")
+        colors_layout.addWidget(minor_tick_color_label, 3, 0)
+        minor_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(minor_tick_color_row, 3, 1)
+        minor_tick_color_label.setVisible(False)
+        minor_tick_color_row.setVisible(False)
+
+        form_layout.addWidget(colors_card)
+
         copy_button = None
         if prefix in ("y", "y2"):
             copy_button = QPushButton("Copy settings to Y axis")
@@ -181,6 +206,11 @@ class AxesTab(QWidget):
             "tick_direction_control": tick_direction_control, "minor_ticks_toggle": minor_ticks_toggle,
             "minor_tick_direction_label": minor_tick_direction_label,
             "minor_tick_direction_control": minor_tick_direction_control,
+            "colors_card": colors_card,
+            "spine_color_row": spine_color_row,
+            "major_tick_color_row": major_tick_color_row,
+            "minor_tick_color_row": minor_tick_color_row,
+            "minor_tick_color_label": minor_tick_color_label,
         }
 
         # Wire this form's widgets directly to shared handlers - the forms
@@ -203,6 +233,9 @@ class AxesTab(QWidget):
         tick_direction_control.currentValueChanged.connect(self._on_field_changed)
         minor_ticks_toggle.toggled.connect(lambda checked, p=prefix: self._on_minor_ticks_toggled(p, checked))
         minor_tick_direction_control.currentValueChanged.connect(self._on_field_changed)
+        spine_color_row.colorChanged.connect(self._on_field_changed)
+        major_tick_color_row.colorChanged.connect(self._on_field_changed)
+        minor_tick_color_row.colorChanged.connect(self._on_field_changed)
 
         form_widget.setVisible(False)
         self._axis_form_container_layout.addWidget(form_widget)
@@ -239,6 +272,8 @@ class AxesTab(QWidget):
         form = self.axes_forms[prefix]
         form["minor_tick_direction_label"].setVisible(checked)
         form["minor_tick_direction_control"].setVisible(checked)
+        form["minor_tick_color_label"].setVisible(checked)
+        form["minor_tick_color_row"].setVisible(checked)
         self._on_field_changed()
 
     def _on_axis_tick_format_changed(self, prefix: str):
@@ -283,6 +318,12 @@ class AxesTab(QWidget):
         target_minor_enabled = target["minor_ticks_toggle"].isChecked()
         target["minor_tick_direction_label"].setVisible(target_minor_enabled)
         target["minor_tick_direction_control"].setVisible(target_minor_enabled)
+        target["minor_tick_color_label"].setVisible(target_minor_enabled)
+        target["minor_tick_color_row"].setVisible(target_minor_enabled)
+
+        target["spine_color_row"].setCurrentColor(source["spine_color_row"].currentColor())
+        target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
+        target["minor_tick_color_row"].setCurrentColor(source["minor_tick_color_row"].currentColor())
 
         self._on_field_changed()
 
@@ -326,6 +367,9 @@ class AxesTab(QWidget):
         config[f"{prefix}_tick_direction"] = form["tick_direction_control"].currentValue()
         config[f"{prefix}_minor_ticks"] = form["minor_ticks_toggle"].isChecked()
         config[f"{prefix}_minor_tick_direction"] = form["minor_tick_direction_control"].currentValue()
+        config[f"{prefix}_spine_color"] = form["spine_color_row"].currentColor()
+        config[f"{prefix}_major_tick_color"] = form["major_tick_color_row"].currentColor()
+        config[f"{prefix}_minor_tick_color"] = form["minor_tick_color_row"].currentColor()
 
     def _read_axis_config(self, prefix: str, config: dict):
         """Populate one axis form's widgets from `config`. Assumes the caller
@@ -378,6 +422,12 @@ class AxesTab(QWidget):
         form["minor_tick_direction_label"].setVisible(minor_ticks_enabled)
         form["minor_tick_direction_control"].setVisible(minor_ticks_enabled)
 
+        form["spine_color_row"].setCurrentColor(config.get(f"{prefix}_spine_color", "#000000"))
+        form["major_tick_color_row"].setCurrentColor(config.get(f"{prefix}_major_tick_color", "#000000"))
+        form["minor_tick_color_row"].setCurrentColor(config.get(f"{prefix}_minor_tick_color", "#000000"))
+        form["minor_tick_color_label"].setVisible(minor_ticks_enabled)
+        form["minor_tick_color_row"].setVisible(minor_ticks_enabled)
+
     def _on_field_changed(self):
         if self._chart is None or self._updating_controls:
             return
@@ -428,3 +478,7 @@ class AxesTab(QWidget):
             form["tick_direction_control"].set_tokens(tokens)
             form["minor_ticks_toggle"].set_tokens(tokens)
             form["minor_tick_direction_control"].set_tokens(tokens)
+            form["colors_card"].set_tokens(tokens)
+            form["spine_color_row"].set_tokens(tokens)
+            form["major_tick_color_row"].set_tokens(tokens)
+            form["minor_tick_color_row"].set_tokens(tokens)
