@@ -169,14 +169,22 @@ def apply_axis_ticks(
 def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
     """Color the axis box lines ('spines'). Bottom/top belong to x, left
     belongs to y. Right belongs to y2 when a secondary y axis is active,
-    otherwise to y."""
+    otherwise to y. When axes2 exists (twinx()), it draws its own full
+    spine box on top of axes, so its bottom/top/left must be kept in sync
+    with axes's x/y colors or they'd visually override them with black.
+    axes's own right spine is always kept on y_color too; when axes2 is
+    present it is visually covered by axes2's right spine (set to
+    y2_color), but keeping it in sync avoids a stray black edge showing
+    through and keeps axes internally consistent."""
     axes.spines["bottom"].set_color(x_color)
     axes.spines["top"].set_color(x_color)
     axes.spines["left"].set_color(y_color)
+    axes.spines["right"].set_color(y_color)
     if axes2 is not None:
+        axes2.spines["bottom"].set_color(x_color)
+        axes2.spines["top"].set_color(x_color)
+        axes2.spines["left"].set_color(y_color)
         axes2.spines["right"].set_color(y2_color)
-    else:
-        axes.spines["right"].set_color(y_color)
 
 
 def _resolve_error_column(df, column_name):

@@ -31,5 +31,18 @@ def test_apply_spine_colors_right_spine_follows_y2_when_present():
     axes = fig.add_subplot(111)
     axes2 = axes.twinx()
     apply_spine_colors(axes, axes2, "#ff0000", "#00ff00", "#0000ff")
-    assert axes.spines["right"].get_edgecolor() != (0.0, 0.0, 1.0, 1.0)
+    assert axes.spines["right"].get_edgecolor() == (0.0, 1.0, 0.0, 1.0)
     assert axes2.spines["right"].get_edgecolor() == (0.0, 0.0, 1.0, 1.0)
+
+
+def test_apply_spine_colors_mirrors_x_y_onto_secondary_axis_spines():
+    # Regression test: axes2 (twinx()) draws its own full spine box on top
+    # of axes, so its bottom/top/left spines must be kept in sync with
+    # axes's x/y colors, or they silently paint over them with black.
+    fig = Figure()
+    axes = fig.add_subplot(111)
+    axes2 = axes.twinx()
+    apply_spine_colors(axes, axes2, "#ff0000", "#00ff00", "#0000ff")
+    assert axes2.spines["bottom"].get_edgecolor() == (1.0, 0.0, 0.0, 1.0)
+    assert axes2.spines["top"].get_edgecolor() == (1.0, 0.0, 0.0, 1.0)
+    assert axes2.spines["left"].get_edgecolor() == (0.0, 1.0, 0.0, 1.0)

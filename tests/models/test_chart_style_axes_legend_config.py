@@ -4,7 +4,20 @@ Style/Axes/Legend sidebar tabs (per-axis grid, scale, font size,
 axis limits, tick configuration, legend styling, series alpha).
 """
 
+import pytest
+from matplotlib.figure import Figure
+from PySide6.QtWidgets import QApplication
+
+from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
+from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AXES_SWATCH_PALETTE
+from pandaplot.gui.components.tabs.chart.chart_editor import apply_axis_ticks, apply_spine_colors
 from pandaplot.models.project.items.chart import Chart, DataSeries
+
+
+@pytest.fixture(scope="module", autouse=True)
+def qapp():
+    app = QApplication.instance() or QApplication([])
+    yield app
 
 
 def test_data_series_alpha_defaults_to_fully_opaque():
@@ -290,11 +303,41 @@ def test_chart_style_background_colors_round_trip_through_serialization():
 
 
 def test_axis_spine_and_tick_colors_default_to_black():
+    # The sidebar's color swatch widget for spine/tick colors must itself
+    # default to black, since that's what a fresh chart (with no
+    # x/y/y2_*_color keys in its config) will render with.
+    assert ColorSwatchRow(AXES_SWATCH_PALETTE).currentColor() == "#000000"
+
     chart = Chart(name="Test Chart")
     for p in ("x", "y", "y2"):
-        assert chart.config.get(f"{p}_spine_color", "#000000") == "#000000"
-        assert chart.config.get(f"{p}_major_tick_color", "#000000") == "#000000"
-        assert chart.config.get(f"{p}_minor_tick_color", "#000000") == "#000000"
+        assert f"{p}_spine_color" not in chart.config
+        assert f"{p}_major_tick_color" not in chart.config
+        assert f"{p}_minor_tick_color" not in chart.config
+
+    # And the rendering code must actually apply black when these keys are
+    # absent from a chart's config, mirroring how chart_editor.py calls
+    # apply_spine_colors/apply_axis_ticks with a "#000000" fallback.
+    fig = Figure()
+    axes = fig.add_subplot(111)
+    axes2 = axes.twinx()
+    apply_spine_colors(
+        axes, axes2,
+        chart.config.get("x_spine_color", "#000000"),
+        chart.config.get("y_spine_color", "#000000"),
+        chart.config.get("y2_spine_color", "#000000"))
+    assert axes.spines["bottom"].get_edgecolor() == (0.0, 0.0, 0.0, 1.0)
+    assert axes.spines["left"].get_edgecolor() == (0.0, 0.0, 0.0, 1.0)
+    assert axes2.spines["right"].get_edgecolor() == (0.0, 0.0, 0.0, 1.0)
+
+    apply_axis_ticks(
+        axes.xaxis, "auto", 5, 1.0, "auto", "",
+        minor_enabled=True,
+        major_color=chart.config.get("x_major_tick_color", "#000000"),
+        minor_color=chart.config.get("x_minor_tick_color", "#000000"))
+    major_params = axes.xaxis.get_tick_params(which="major")
+    minor_params = axes.xaxis.get_tick_params(which="minor")
+    assert major_params["color"] == "#000000"
+    assert minor_params["color"] == "#000000"
 
 
 def test_axis_spine_and_tick_colors_round_trip_through_serialization():
