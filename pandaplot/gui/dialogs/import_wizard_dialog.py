@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QProxyStyle,
     QPushButton,
     QSpinBox,
@@ -229,11 +231,13 @@ class ImportWizardDialog(PDialog):
         self.encoding_combo.currentIndexChanged.connect(self._on_option_changed)
         form.addRow("Encoding:", self.encoding_combo)
 
-        # Worksheet (Excel only)
-        self.sheet_combo = QComboBox()
-        self.sheet_combo.setStyle(self._combo_style)
-        self.sheet_combo.currentIndexChanged.connect(self._on_option_changed)
-        form.addRow("Worksheet:", self.sheet_combo)
+        # Worksheets (Excel only). A checkable list so multiple sheets can be
+        # imported at once, each becoming its own dataset. The preview follows
+        # the first checked sheet.
+        self.sheet_list = QListWidget()
+        self.sheet_list.setMaximumHeight(110)
+        self.sheet_list.itemChanged.connect(self._on_option_changed)
+        form.addRow("Worksheets:", self.sheet_list)
 
         # Dataset name
         self.name_edit = QLineEdit()
@@ -329,12 +333,16 @@ class ImportWizardDialog(PDialog):
                     self._select_combo_text(self.delimiter_combo, _CUSTOM)
                     self.custom_delimiter_edit.setText(options.delimiter)
 
-            # Worksheets for Excel.
-            self.sheet_combo.clear()
+            # Worksheets for Excel: list every sheet, checked by default so a
+            # plain confirm imports the whole workbook.
+            self.sheet_list.clear()
             if options.file_format == EXCEL_FORMAT and self.file_path:
                 try:
                     for sheet in data_importer.list_excel_sheets(self.file_path):
-                        self.sheet_combo.addItem(str(sheet))
+                        item = QListWidgetItem(str(sheet))
+                        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                        item.setCheckState(Qt.CheckState.Checked)
+                        self.sheet_list.addItem(item)
                 except Exception as error:  # noqa: BLE001
                     self.logger.warning("Failed to list Excel sheets: %s", error)
         finally:
@@ -353,8 +361,23 @@ class ImportWizardDialog(PDialog):
             has_header=self.header_checkbox.isChecked(),
             skip_rows=self.skip_rows_spin.value(),
             encoding=self.encoding_combo.currentText(),
-            sheet_name=self.sheet_combo.currentText() if self.sheet_combo.count() else 0,
+            # Preview follows the first checked sheet; the full set is exposed
+            # separately via get_selected_sheets().
+            sheet_name=self._first_checked_sheet(),
         )
+
+    def _first_checked_sheet(self) -> "str | int":
+        for sheet in self.get_selected_sheets():
+            return sheet
+        return 0
+
+    def get_selected_sheets(self) -> list:
+        """Return the checked worksheet names, in workbook order (Excel only)."""
+        return [
+            self.sheet_list.item(row).text()
+            for row in range(self.sheet_list.count())
+            if self.sheet_list.item(row).checkState() == Qt.CheckState.Checked
+        ]
 
     def _resolve_delimiter(self) -> str:
         choice = self.delimiter_combo.currentText()
@@ -397,7 +420,7 @@ class ImportWizardDialog(PDialog):
         self.header_checkbox.setEnabled(has_file and (is_csv or is_excel))
         self.skip_rows_spin.setEnabled(has_file and (is_csv or is_excel))
         self.encoding_combo.setEnabled(has_file and (is_csv or is_json))
-        self.sheet_combo.setEnabled(has_file and is_excel and self.sheet_combo.count() > 0)
+        self.sheet_list.setEnabled(has_file and is_excel and self.sheet_list.count() > 0)
         self.name_edit.setEnabled(has_file)
 
     # -------------------------------------------------------------------- preview
@@ -405,6 +428,14 @@ class ImportWizardDialog(PDialog):
     def _refresh_preview(self):
         """Read a small preview with the current options and render the table."""
         if not self.file_path:
+            self._set_import_enabled(False)
+            return
+
+        # For Excel, at least one worksheet must be checked to import anything.
+        if self.format_combo.currentData() == EXCEL_FORMAT and self.sheet_list.count() and not self.get_selected_sheets():
+            self.preview_table.clearContents()
+            self.preview_table.setRowCount(0)
+            self._set_status("Select at least one worksheet to import.", error=True)
             self._set_import_enabled(False)
             return
 
@@ -600,6 +631,20 @@ class ImportWizardDialog(PDialog):
                 color: {base_fg};
                 padding: 4px;
                 border: none;
+            }}
+            QListWidget {{
+                background-color: {input_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                color: {base_fg};
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 3px 4px;
+            }}
+            QListWidget::item:selected {{
+                background-color: {accent};
+                color: white;
             }}
         """)
 
