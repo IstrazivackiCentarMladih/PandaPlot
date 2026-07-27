@@ -118,6 +118,8 @@ class ChartTab(PWidget):
         """Handle fit applied events to add fit curves to the chart."""
         fit_chart_id = event_data.get("chart_id")
 
+        self.logger.info("FIT_APPLIED received")
+
         # Only respond if this is our chart
         if fit_chart_id == self.chart.id:
             fit_results = event_data.get("fit_results")
@@ -157,7 +159,7 @@ class ChartTab(PWidget):
                 fit_type=fit_type,
                 x_data=x_fit,
                 y_data=y_fit,
-                label=f"{short_fit_name} Fit ({source_dataset_name})",
+                label = f"{short_fit_name} Fit: ({fit_results.equation})",
                 color=fit_color,
                 line_style="dashed",
                 line_width=2.0,
