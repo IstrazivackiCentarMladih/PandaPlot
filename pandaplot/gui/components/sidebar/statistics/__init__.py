@@ -1,0 +1,1 @@
+"""Statistics sidebar panel package."""

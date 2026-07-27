@@ -19,6 +19,13 @@ class YAxis(StrEnum):
     SECONDARY = "secondary"
 
 
+class ErrorDirection(StrEnum):
+    """Which side(s) of a data point a symmetric error bar's magnitude is drawn on."""
+    BOTH = "both"
+    PLUS = "plus"
+    MINUS = "minus"
+
+
 @dataclass
 class DataSeries:
     """Represents a single data series in a chart."""
@@ -29,6 +36,7 @@ class DataSeries:
     color: str = "#1f77b4"
     marker_color: str = ""
     marker_edge_color: str = "#000000"
+    marker_edge_width: float = 1.0
     line_style: str = "solid"
     marker_style: str = "circle"
     line_width: float = 2.0
@@ -36,6 +44,14 @@ class DataSeries:
     visible: bool = True
     y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
+    x_error_column: str = ""
+    y_error_column: str = ""
+    x_error_minus_column: str = ""  # only used when error_symmetric is False
+    y_error_minus_column: str = ""  # only used when error_symmetric is False
+    error_symmetric: bool = True
+    error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
+    error_color: str = ""  # "" => inherit series.color
+    error_cap_size: float = 3.0
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -111,27 +127,58 @@ class Chart(Item):
             "grid_alpha": 0.3,
             "show_grid_x": True,
             "show_grid_y": True,
+            "show_grid_y2": True,
             "x_font_size": 12,
             "y_font_size": 12,
+            "y2_font_size": 12,
             "x_scale": "linear",
             "y_scale": "linear",
+            "y2_scale": "linear",
+            "y_side": "left",
+            "y2_side": "right",
             "x_auto_limits": True,
             "y_auto_limits": True,
+            "y2_auto_limits": True,
             "x_min": 0.0,
             "x_max": 1.0,
             "y_min": 0.0,
             "y_max": 1.0,
+            "y2_min": 0.0,
+            "y2_max": 1.0,
             "x_tick_mode": "auto",
             "y_tick_mode": "auto",
+            "y2_tick_mode": "auto",
             "x_tick_count": 5,
             "y_tick_count": 5,
+            "y2_tick_count": 5,
             "x_tick_step": 1.0,
             "y_tick_step": 1.0,
+            "y2_tick_step": 1.0,
             "x_tick_format": "auto",
             "y_tick_format": "auto",
+            "y2_tick_format": "auto",
             "x_tick_format_custom": "",
             "y_tick_format_custom": "",
+            "y2_tick_format_custom": "",
             "hist_bins": 20,
+            "subtitle": "",
+            "title_font_size": 14,
+            "subtitle_font_size": 12,
+            "chart_padding": 2.0,
+            "chart_padding_w": 2.0,
+            "chart_padding_h": 2.0,
+            "title_padding": 6.0,
+            "main_title_padding": 10.0,
+            "top_margin": 1.0,
+            "title_bold": True,
+            "title_italic": False,
+            "subtitle_bold": False,
+            "subtitle_italic": False,
+            "width_cm": None,
+            "height_cm": None,
+            "dpi": None,
+            "legend_columns": 1,
+            "legend_bg_alpha": 1.0,
         }
 
         self.style = {
@@ -141,13 +188,6 @@ class Chart(Item):
             "font_family": "Arial",
             "dpi": 100
         }
-    
-    def update_name(self, new_name: str) -> None:
-        """Update the chart name and modification timestamp."""
-        # TODO: separate item name and title
-        self.name = new_name
-        self.config["title"] = new_name  # Update chart title as well
-        self.update_modified_time()
     
     def set_chart_type(self, chart_type: str) -> None:
         """Set the chart type."""
@@ -320,13 +360,22 @@ class Chart(Item):
                     "color": series.color,
                     "marker_color": series.marker_color,
                     "marker_edge_color": series.marker_edge_color,
+                    "marker_edge_width": series.marker_edge_width,
                     "line_style": series.line_style,
                     "marker_style": series.marker_style,
                     "line_width": series.line_width,
                     "marker_size": series.marker_size,
                     "visible": series.visible,
                     "y_axis": series.y_axis,
-                    "alpha": series.alpha
+                    "alpha": series.alpha,
+                    "x_error_column": series.x_error_column,
+                    "y_error_column": series.y_error_column,
+                    "x_error_minus_column": series.x_error_minus_column,
+                    "y_error_minus_column": series.y_error_minus_column,
+                    "error_symmetric": series.error_symmetric,
+                    "error_direction": series.error_direction,
+                    "error_color": series.error_color,
+                    "error_cap_size": series.error_cap_size
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -382,13 +431,22 @@ class Chart(Item):
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
                 marker_edge_color=series_dict.get("marker_edge_color", "#000000"),
+                marker_edge_width=series_dict.get("marker_edge_width", 1.0),
                 line_style=series_dict.get("line_style", "solid"),
                 marker_style=series_dict.get("marker_style", "circle"),
                 line_width=series_dict.get("line_width", 2.0),
                 marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 y_axis=series_dict.get("y_axis", "primary"),
-                alpha=series_dict.get("alpha", 1.0)
+                alpha=series_dict.get("alpha", 1.0),
+                x_error_column=series_dict.get("x_error_column", ""),
+                y_error_column=series_dict.get("y_error_column", ""),
+                x_error_minus_column=series_dict.get("x_error_minus_column", ""),
+                y_error_minus_column=series_dict.get("y_error_minus_column", ""),
+                error_symmetric=series_dict.get("error_symmetric", True),
+                error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
+                error_color=series_dict.get("error_color", ""),
+                error_cap_size=series_dict.get("error_cap_size", 3.0)
             )
             chart.data_series.append(series)
         

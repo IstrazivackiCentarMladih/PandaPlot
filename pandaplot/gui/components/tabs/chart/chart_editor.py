@@ -1,11 +1,18 @@
-from typing import override
+from dataclasses import dataclass
+from typing import Any, Optional, override
 
-from matplotlib.ticker import AutoLocator, FuncFormatter, MaxNLocator, MultipleLocator, ScalarFormatter
+from matplotlib.ticker import (
+    AutoLocator,
+    AutoMinorLocator,
+    FuncFormatter,
+    MaxNLocator,
+    MultipleLocator,
+    NullLocator,
+    ScalarFormatter,
+)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QAbstractSpinBox,
-    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -18,6 +25,7 @@ from PySide6.QtWidgets import (
 from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
+from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
@@ -32,8 +40,82 @@ from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
-    """Apply tick placement and label formatting to a matplotlib Axis.
+def apply_chart_title(
+    axes,
+    title: str,
+    subtitle: str,
+    title_font_size: float,
+    subtitle_font_size: float,
+    title_padding: float = 6.0,
+    main_title_padding: float = 10.0,
+    fig_height_inches: float | None = None,
+    title_bold: bool = True,
+    title_italic: bool = False,
+    subtitle_bold: bool = False,
+    subtitle_italic: bool = False,
+) -> None:
+    """Render the title (figure-level) and subtitle (axes-level) as two
+    independent Matplotlib Text artists so each can have its own font size
+    -- a single set_title() call can't mix font sizes within one string.
+
+    `title_padding` is the gap (in points) between the plot area and the
+    subtitle/title block, matching Axes.set_title's own `pad` parameter
+    (rcParam `axes.titlepad` default: 6.0).
+
+    `main_title_padding` is the gap (in points) between the top edge of the
+    figure and the main title. Figure.suptitle() has no `pad` parameter of
+    its own -- it's positioned via `y`, a 0-1 fraction of the figure height
+    (fixed default 0.98) -- so the points value is converted to that
+    fraction, keeping the same points-based unit the subtitle's padding
+    uses. `fig_height_inches` should be the figure's TARGET height (the one
+    about to be applied via ChartCanvas.set_size(), which callers must
+    resolve before calling this), not necessarily its current height -- the
+    conversion is wrong if the figure is resized afterward using a
+    different height than was used here. Defaults to the figure's current
+    height when not given (e.g. in tests using a bare Figure/Axes).
+
+    When `title`/`subtitle` is empty, that artist's text is cleared instead
+    of being (re)positioned, so an absent title/subtitle doesn't leave a
+    stale reserved-looking gap where it used to be."""
+    fig = axes.figure
+
+    if title:
+        height = fig_height_inches if fig_height_inches is not None else fig.get_figheight()
+        y = 1.0 - (main_title_padding / 72.0) / height if height else 0.98
+        fig.suptitle(
+            title, fontsize=title_font_size, y=y,
+            fontweight="bold" if title_bold else "normal",
+            fontstyle="italic" if title_italic else "normal",
+        )
+    elif fig._suptitle is not None:
+        fig._suptitle.set_text("")
+
+    axes.set_title(
+        subtitle, fontsize=subtitle_font_size, pad=title_padding,
+        fontweight="bold" if subtitle_bold else "normal",
+        fontstyle="italic" if subtitle_italic else "normal",
+    )
+
+
+def resolve_chart_size(
+    chart_width_cm, chart_height_cm, chart_dpi,
+    default_width_cm: float, default_height_cm: float, default_dpi: int,
+) -> tuple[float, float, int]:
+    """Resolve effective (width_cm, height_cm, dpi), preferring per-chart
+    overrides and falling back to the app-wide Settings defaults for any
+    value left as None."""
+    width = chart_width_cm if chart_width_cm is not None else default_width_cm
+    height = chart_height_cm if chart_height_cm is not None else default_height_cm
+    dpi = chart_dpi if chart_dpi is not None else default_dpi
+    return width, height, dpi
+
+
+def apply_axis_ticks(
+    axis, mode, count, step, fmt, custom_fmt,
+    direction="out", minor_enabled=False, minor_direction=None,
+):
+    """Apply tick placement, label formatting, direction, and minor ticks to
+    a matplotlib Axis.
 
     axis: a matplotlib Axis object (e.g. ax.xaxis or ax.yaxis)
     mode: "auto" | "count" | "step" - tick placement strategy
@@ -41,6 +123,11 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
     step: fixed spacing between ticks when mode == "step"
     fmt: "auto" | "integer" | "1decimal" | "2decimal" | "scientific" | "custom"
     custom_fmt: a Python format spec (e.g. "{:.2f}") used when fmt == "custom"
+    direction: "out" | "in" | "inout" - which way major ticks point
+    minor_enabled: whether minor ticks are shown between the major ones
+    minor_direction: "out" | "in" | "inout" - which way minor ticks point,
+        independent of major `direction`. Defaults to `direction` when not
+        given (e.g. in tests that only care about major-tick behavior).
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -67,27 +154,58 @@ def apply_axis_ticks(axis, mode, count, step, fmt, custom_fmt):
     else:
         axis.set_major_formatter(ScalarFormatter())
 
+    axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
+    axis.set_tick_params(which="major", direction=direction)
+    axis.set_tick_params(which="minor", direction=minor_direction if minor_direction is not None else direction)
 
-def resolve_series_data(project, series, chart_type=None):
+
+def _resolve_error_column(df, column_name):
+    """Best-effort lookup of an optional error column.
+
+    Returns None (never an error) when the column isn't configured or no
+    longer exists, so a stale error-column reference just silently drops
+    the error bars instead of hiding the whole series.
+    """
+    if not column_name or column_name not in df.columns:
+        return None
+    return df[column_name].to_numpy()
+
+
+@dataclass
+class SeriesData:
+    x_data: Any
+    y_data: Any
+    x_err: Optional[Any]
+    y_err: Optional[Any]
+    x_err_minus: Optional[Any]
+    y_err_minus: Optional[Any]
+    error: Optional[str]
+
+
+def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     """Resolve a DataSeries against the project's datasets.
 
-    Returns (x_data, y_data, None) on success, or (None, None, message)
-    when the dataset or a column can't be found. An empty x_column means
-    "plot against the DataFrame index". Histograms only ever plot
-    y_column, so a stale/unused x_column is ignored when chart_type == "hist".
+    Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
+    success, or all-None with a message when the dataset or a required
+    column can't be found. An empty x_column means "plot against the
+    DataFrame index". Histograms only ever plot y_column, so a stale/unused
+    x_column is ignored when chart_type == "hist". The error columns are
+    resolved leniently (see _resolve_error_column) since they're optional;
+    x_err_minus/y_err_minus are only meaningful when series.error_symmetric
+    is False.
     """
     from pandaplot.models.project.items.dataset import Dataset
 
     if project is None:
-        return None, None, "no project loaded"
+        return SeriesData(None, None, None, None, None, None, "no project loaded")
 
     dataset = project.find_item(series.dataset_id)
     if not isinstance(dataset, Dataset) or dataset.data is None:
-        return None, None, f"dataset '{series.dataset_id}' not found"
+        return SeriesData(None, None, None, None, None, None, f"dataset '{series.dataset_id}' not found")
 
     df = dataset.data
     if not series.y_column:
-        return None, None, "no Y column configured"
+        return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
     needs_x_column = chart_type != "hist"
     x_column = series.x_column if needs_x_column else None
@@ -96,10 +214,14 @@ def resolve_series_data(project, series, chart_type=None):
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
-        return None, None, f"column {cols} not found in '{dataset.name}'"
+        return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
     x_data = df[x_column] if x_column else df.index
-    return x_data, df[series.y_column], None
+    x_err = _resolve_error_column(df, series.x_error_column)
+    y_err = _resolve_error_column(df, series.y_error_column)
+    x_err_minus = _resolve_error_column(df, series.x_error_minus_column)
+    y_err_minus = _resolve_error_column(df, series.y_error_minus_column)
+    return SeriesData(x_data, df[series.y_column], x_err, y_err, x_err_minus, y_err_minus, None)
 
 
 class ChartEditorWidget(PWidget):
@@ -162,62 +284,9 @@ class ChartEditorWidget(PWidget):
         
         # Apply theme to toolbar if it exists
         self._apply_toolbar_theme()
-        
-        # Apply theme to spinboxes
-        self._apply_spinbox_style(self.width_spin)
-        self._apply_spinbox_style(self.height_spin)
-        
-        # Apply theme to size label
-        self._apply_label_style(self.size_label)
-        self._apply_label_style(self.multiply_label)
-        
+
         # Apply theme to chart canvas navigation if it exists
         self.chart_canvas.apply_navigation_theme(base_fg, card_bg, card_border)
-
-    def _apply_spinbox_style(self, spinbox):
-        """Apply theme-aware styling to a spin box (QSpinBox or QDoubleSpinBox)"""
-        try:
-            theme_manager = self.app_context.get_manager(ThemeManager)
-            palette = theme_manager.get_surface_palette()
-
-            base_fg = palette.get("base_fg", "#000000")
-            card_border = palette.get("card_border", "#dee2e6")
-            card_bg = palette.get("card_bg", "#f8f9fa")
-
-            spinbox.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
-            spinbox.setStyleSheet(f"""
-                QAbstractSpinBox {{
-                    background-color: {card_bg};
-                    border: 1px solid {card_border};
-                    border-radius: 3px;
-                    padding: 2px 5px;
-                    color: {base_fg};
-                    font-size: 12px;
-                }}
-                QAbstractSpinBox:focus {{
-                    border-color: #007bff;
-                    background-color: {card_bg};
-                }}
-            """)
-        except Exception as e:
-            self.logger.debug(f"Could not apply spinbox style: {e}")
-
-    def _apply_label_style(self, label):
-        """Apply theme-aware styling to a QLabel"""
-        try:
-            theme_manager = self.app_context.get_manager(ThemeManager)
-            palette = theme_manager.get_surface_palette()
-            base_fg = palette.get("base_fg", "#000000")
-
-            label.setStyleSheet(f"""
-                QLabel {{
-                    color: {base_fg};
-                    font-weight: 500;
-                    margin: 0 5px;
-                }}
-            """)
-        except Exception as e:
-            self.logger.debug(f"Could not apply label style: {e}")
 
     def _apply_toolbar_theme(self):
         """Apply theme-aware styling to the preview toolbar."""
@@ -298,7 +367,13 @@ class ChartEditorWidget(PWidget):
                 return
             dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
             if dpi and isValid(self.chart_canvas):
-                self.chart_canvas.set_dpi(dpi)
+                self.chart_canvas.set_dpi(
+                    dpi,
+                    pad=self.chart.config.get("chart_padding", 2.0),
+                    w_pad=self.chart.config.get("chart_padding_w", 2.0),
+                    h_pad=self.chart.config.get("chart_padding_h", 2.0),
+                    top_margin=self.chart.config.get("top_margin", 1.0),
+                )
         except Exception:
             self.logger.exception("Failed applying updated DPI setting")
 
@@ -324,13 +399,6 @@ class ChartEditorWidget(PWidget):
         # Add chart actions
         self.create_chart_toolbar_actions(self.preview_toolbar)
 
-        # Add separator
-        self.preview_toolbar.addSeparator()
-
-        # Add size controls
-        self.size_label = QLabel("Size:")
-        self.preview_toolbar.addWidget(self.size_label)
-
         # Fetch preferred DPI and default chart size from config manager
         dpi = 100
         default_width_cm = 20
@@ -346,34 +414,16 @@ class ChartEditorWidget(PWidget):
         except Exception:
             pass
 
-        # Width control
-        self.width_spin = QDoubleSpinBox()
-        self.width_spin.setDecimals(1)
-        self.width_spin.setSingleStep(0.1)
-        self.width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.width_spin.setValue(default_width_cm)
-        self.width_spin.setSuffix(" cm")
-        self.width_spin.setToolTip("Chart width in centimeters")
-        self.width_spin.valueChanged.connect(self._on_size_changed)
-        self.preview_toolbar.addWidget(self.width_spin)
-
-        self.multiply_label = QLabel("×")
-        self.preview_toolbar.addWidget(self.multiply_label)
-
-        # Height control
-        self.height_spin = QDoubleSpinBox()
-        self.height_spin.setDecimals(1)
-        self.height_spin.setSingleStep(0.1)
-        self.height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.height_spin.setValue(default_height_cm)
-        self.height_spin.setSuffix(" cm")
-        self.height_spin.setToolTip("Chart height in centimeters")
-        self.height_spin.valueChanged.connect(self._on_size_changed)
-        self.preview_toolbar.addWidget(self.height_spin)
+        # Resolve the initial canvas size/DPI, preferring per-chart overrides
+        # (chart.config) over the app-wide Settings defaults fetched above.
+        width_cm, height_cm, dpi = resolve_chart_size(
+            self.chart.config.get("width_cm"), self.chart.config.get("height_cm"),
+            self.chart.config.get("dpi"), default_width_cm, default_height_cm, dpi,
+        )
 
         # Chart canvas
         self.chart_canvas = ChartCanvas(
-            width=cm_to_inches(default_width_cm), height=cm_to_inches(default_height_cm), dpi=dpi)
+            width=cm_to_inches(width_cm), height=cm_to_inches(height_cm), dpi=dpi)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -495,8 +545,14 @@ class ChartEditorWidget(PWidget):
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    x_data, y_data, error = resolve_series_data(
-                        project, series, self.chart.chart_type)
+                    series_data = resolve_series_data(project, series, self.chart.chart_type)
+                    x_data = series_data.x_data
+                    y_data = series_data.y_data
+                    x_err = series_data.x_err
+                    y_err = series_data.y_err
+                    x_err_minus = series_data.x_err_minus
+                    y_err_minus = series_data.y_err_minus
+                    error = series_data.error
                     if error:
                         series_errors.append(
                             f"{series.label or f'Series {i + 1}'}: {error}")
@@ -514,6 +570,7 @@ class ChartEditorWidget(PWidget):
                                          markersize=series.marker_size,
                                          markerfacecolor=mfc,
                                          markeredgecolor=mec,
+                                         markeredgewidth=series.marker_edge_width,
                                          label=series.label,
                                          alpha=alpha)
                     elif self.chart.chart_type == "scatter":
@@ -522,6 +579,7 @@ class ChartEditorWidget(PWidget):
                         target_axes.scatter(x_data, y_data,
                                             c=mfc,
                                             edgecolors=mec,
+                                            linewidths=series.marker_edge_width,
                                             marker=_marker_map.get(series.marker_style, "o"),
                                             s=series.marker_size ** 2,
                                             label=series.label,
@@ -537,10 +595,25 @@ class ChartEditorWidget(PWidget):
                                          label=series.label,
                                          alpha=alpha)
 
+                    if self.chart.chart_type in ("line", "scatter", "bar"):
+                        xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
+                        yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
+                        if xerr is not None or yerr is not None:
+                            err_color = series.error_color or series.color
+                            target_axes.errorbar(
+                                x_data, y_data,
+                                xerr=xerr,
+                                yerr=yerr,
+                                fmt="none",
+                                ecolor=err_color,
+                                elinewidth=series.line_width,
+                                capsize=series.error_cap_size,
+                                alpha=alpha)
+
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
                 # secondary Y axis).
-                for i, fit in enumerate(self.chart.fit_data):
+                for fit in self.chart.fit_data:
                     if fit.visible:
                         fit_axes = self.chart_canvas.axes
                         if self.chart_canvas.axes2 is not None:
@@ -559,15 +632,10 @@ class ChartEditorWidget(PWidget):
                                      linestyle=_linestyle_map.get(fit.line_style, "--"),
                                      label=fit.label,
                                      alpha=1.0)
-                        self.chart_canvas.axes.plot(fit.x_data, fit.y_data,
-                                                    color=fit.color,
-                                                    linewidth=fit.line_width,
-                                                    linestyle=_linestyle_map.get(fit.line_style, "--"),
-                                                    label=fit.label,
-                                                    alpha=1.0)
                         # Plot confidence band if available
                         if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            self.chart_canvas.axes.fill_between(
+                            # Plot confidence band on the same axis as the fitted curve.
+                            fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
@@ -576,14 +644,89 @@ class ChartEditorWidget(PWidget):
 
             # Apply chart configuration
             config = self.chart.config
-            self.chart_canvas.axes.set_title(config.get(
-                "title", self.chart.name), fontsize=14, fontweight="bold")
+
+            # Resolve the target figure size *before* applying the title:
+            # main_title_padding's points-to-fraction conversion needs the
+            # height the figure is about to be set to, not whatever height
+            # it happened to have from the previous render.
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+            default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
+            default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
+            default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
+            width_cm, height_cm, dpi = resolve_chart_size(
+                config.get("width_cm"), config.get("height_cm"), config.get("dpi"),
+                default_width, default_height, default_dpi,
+            )
+
+            apply_chart_title(
+                self.chart_canvas.axes,
+                title=config.get("title", self.chart.name),
+                subtitle=config.get("subtitle", ""),
+                title_font_size=config.get("title_font_size", 14),
+                subtitle_font_size=config.get("subtitle_font_size", 12),
+                title_padding=config.get("title_padding", 6.0),
+                main_title_padding=config.get("main_title_padding", 10.0),
+                fig_height_inches=cm_to_inches(height_cm),
+                title_bold=config.get("title_bold", True),
+                title_italic=config.get("title_italic", False),
+                subtitle_bold=config.get("subtitle_bold", False),
+                subtitle_italic=config.get("subtitle_italic", False),
+            )
+
+            chart_padding = config.get("chart_padding", 2.0)
+            chart_padding_w = config.get("chart_padding_w", 2.0)
+            chart_padding_h = config.get("chart_padding_h", 2.0)
+            top_margin = config.get("top_margin", 1.0)
+            self.chart_canvas.set_size(
+                cm_to_inches(width_cm), cm_to_inches(height_cm),
+                pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
+            )
+            self.chart_canvas.set_dpi(
+                dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
+            )
+
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
             self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
             self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
+            if config.get("y_side", "left") == "right":
+                self.chart_canvas.axes.yaxis.tick_right()
+                self.chart_canvas.axes.yaxis.set_label_position("right")
+            else:
+                self.chart_canvas.axes.yaxis.tick_left()
+                self.chart_canvas.axes.yaxis.set_label_position("left")
+
+            if self.chart_canvas.axes2 is not None:
+                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
+                self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
+                self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
+                if config.get("y2_side", "right") == "left":
+                    self.chart_canvas.axes2.yaxis.tick_left()
+                    self.chart_canvas.axes2.yaxis.set_label_position("left")
+                else:
+                    self.chart_canvas.axes2.yaxis.tick_right()
+                    self.chart_canvas.axes2.yaxis.set_label_position("right")
+
+                if not config.get("y2_auto_limits", True):
+                    self.chart_canvas.axes2.set_ylim(
+                        config.get("y2_min", 0.0), config.get("y2_max", 1.0))
+
+                apply_axis_ticks(
+                    self.chart_canvas.axes2.yaxis,
+                    config.get("y2_tick_mode", "auto"), config.get("y2_tick_count", 5),
+                    config.get("y2_tick_step", 1.0), config.get("y2_tick_format", "auto"),
+                    config.get("y2_tick_format_custom", ""),
+                    direction=config.get("y2_tick_direction", "out"),
+                    minor_enabled=config.get("y2_minor_ticks", False),
+                    minor_direction=config.get("y2_minor_tick_direction", "out"))
+
+                if config.get("show_grid_y2", True):
+                    self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
+                else:
+                    self.chart_canvas.axes2.grid(False, axis="y")
 
             if self.chart_canvas.axes2 is not None:
                 self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
@@ -597,12 +740,18 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.axes.xaxis,
                 config.get("x_tick_mode", "auto"), config.get("x_tick_count", 5),
                 config.get("x_tick_step", 1.0), config.get("x_tick_format", "auto"),
-                config.get("x_tick_format_custom", ""))
+                config.get("x_tick_format_custom", ""),
+                direction=config.get("x_tick_direction", "out"),
+                minor_enabled=config.get("x_minor_ticks", False),
+                minor_direction=config.get("x_minor_tick_direction", "out"))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
                 config.get("y_tick_step", 1.0), config.get("y_tick_format", "auto"),
-                config.get("y_tick_format_custom", ""))
+                config.get("y_tick_format_custom", ""),
+                direction=config.get("y_tick_direction", "out"),
+                minor_enabled=config.get("y_minor_ticks", False),
+                minor_direction=config.get("y_minor_tick_direction", "out"))
 
             grid_alpha = config.get("grid_alpha", 0.3)
             if config.get("show_grid_x", True):
@@ -627,7 +776,19 @@ class ChartEditorWidget(PWidget):
                     loc=config.get("legend_position", "upper right"),
                     fontsize=config.get("legend_font_size", 10),
                     facecolor=config.get("legend_bg_color", "#ffffff"),
-                    frameon=config.get("legend_show_frame", True))
+                    frameon=config.get("legend_show_frame", True),
+                    ncol=config.get("legend_columns", 1),
+                    framealpha=config.get("legend_bg_alpha", 1.0))
+
+            if self.chart_canvas.axes2 is not None:
+                # Reserve room for the secondary axis label/ticks so they
+                # aren't clipped at the right edge of the figure.
+                self.chart_canvas.fig.tight_layout(
+                    pad=config.get("chart_padding", 2.0),
+                    w_pad=config.get("chart_padding_w", 2.0),
+                    h_pad=config.get("chart_padding_h", 2.0),
+                    rect=(0, 0, 1, config.get("top_margin", 1.0)),
+                )
 
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they
@@ -672,9 +833,15 @@ class ChartEditorWidget(PWidget):
 
         Runs once, shortly after construction, once the scroll area has a
         real viewport size to measure. Has no effect if the widget was
-        already closed or the panel hasn't been laid out yet.
+        already closed or the panel hasn't been laid out yet, or if this
+        chart already has a per-chart width/height saved in its config
+        (in which case that saved size takes precedence and must not be
+        overwritten by the fit-to-panel heuristic).
         """
         if not isValid(self.canvas_scroll) or not isValid(self.chart_canvas):
+            return
+
+        if self.chart.config.get("width_cm") is not None or self.chart.config.get("height_cm") is not None:
             return
 
         viewport = self.canvas_scroll.viewport()
@@ -685,30 +852,12 @@ class ChartEditorWidget(PWidget):
 
         width_cm, height_cm = fit_size_cm(
             width_px, height_px, self.chart_canvas.fig.dpi,
-            min_width_cm=self.width_spin.minimum(), max_width_cm=self.width_spin.maximum(),
-            min_height_cm=self.height_spin.minimum(), max_height_cm=self.height_spin.maximum())
+            min_width_cm=MIN_CHART_WIDTH_CM, max_width_cm=MAX_CHART_WIDTH_CM,
+            min_height_cm=MIN_CHART_HEIGHT_CM, max_height_cm=MAX_CHART_HEIGHT_CM)
 
-        self.width_spin.blockSignals(True)
-        self.height_spin.blockSignals(True)
-        self.width_spin.setValue(width_cm)
-        self.height_spin.setValue(height_cm)
-        self.width_spin.blockSignals(False)
-        self.height_spin.blockSignals(False)
-        self._on_size_changed()
-
-    def _on_size_changed(self):
-        """Handle chart size changes."""
-        if hasattr(self, "chart_canvas"):
-            try:
-                width = cm_to_inches(self.width_spin.value())
-                height = cm_to_inches(self.height_spin.value())
-                self.chart_canvas.set_size(width, height)
-                self.update_status("Chart size updated")
-            except Exception as e:
-                self.update_status(f"Resize error: {str(e)}")
-
-            # Reset status after 2 seconds
-            QTimer.singleShot(2000, lambda: self.update_status("Ready"))
+        self.chart.config["width_cm"] = width_cm
+        self.chart.config["height_cm"] = height_cm
+        self.update_chart()
 
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
