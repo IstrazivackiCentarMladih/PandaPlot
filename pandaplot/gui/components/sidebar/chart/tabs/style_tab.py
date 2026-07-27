@@ -279,16 +279,16 @@ class StyleTab(QWidget):
         bg_layout.addWidget(QLabel("Figure:"), 1, 0)
         self.figure_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         bg_layout.addWidget(self.figure_bg_color_row, 1, 1)
-        bg_layout.addWidget(QLabel("Transparent:"), 1, 2)
+        bg_layout.addWidget(QLabel("Transparent:"), 2, 1)
         self.figure_bg_transparent_toggle = ToggleSwitch()
-        bg_layout.addWidget(self.figure_bg_transparent_toggle, 1, 3)
+        bg_layout.addWidget(self.figure_bg_transparent_toggle, 2, 2)
 
-        bg_layout.addWidget(QLabel("Plot area:"), 2, 0)
+        bg_layout.addWidget(QLabel("Plot area:"), 3, 0)
         self.axes_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        bg_layout.addWidget(self.axes_bg_color_row, 2, 1)
-        bg_layout.addWidget(QLabel("Transparent:"), 2, 2)
+        bg_layout.addWidget(self.axes_bg_color_row, 3, 1)
+        bg_layout.addWidget(QLabel("Transparent:"), 4, 1)
         self.axes_bg_transparent_toggle = ToggleSwitch()
-        bg_layout.addWidget(self.axes_bg_transparent_toggle, 2, 3)
+        bg_layout.addWidget(self.axes_bg_transparent_toggle, 4, 2)
 
         layout.addWidget(self.background_card)
 
