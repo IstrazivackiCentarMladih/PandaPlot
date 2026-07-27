@@ -487,6 +487,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
     """
     return {
         "config": copy.deepcopy(chart.config),
+        "style": copy.deepcopy(chart.style),
         "chart_type": chart.chart_type,
         "name": chart.name,
         "data_series": [asdict(s) for s in chart.data_series],
@@ -500,6 +501,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
 def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     """Restore chart state captured by snapshot_chart_state."""
     chart.config = copy.deepcopy(snapshot["config"])
+    chart.style = copy.deepcopy(snapshot["style"])
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
     chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
