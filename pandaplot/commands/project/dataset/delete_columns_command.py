@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List, Tuple, Union, override
 
 from pandaplot.commands.base_command import Command
@@ -8,6 +9,14 @@ from pandaplot.models.project.items import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
+
+
+@dataclass
+class ChartReferenceMatch:
+    chart: Chart
+    series_indices: List[int]
+    fit_indices: List[int]
+    error_only_indices: List[int]
 
 
 class DeleteColumnsCommand(Command):
@@ -39,6 +48,12 @@ class DeleteColumnsCommand(Command):
         # chart_id -> {"series": [(index, DataSeries)], "fits": [(index, FitData)]}
         # populated when columns being deleted are referenced by chart series/fits
         self.removed_chart_refs = {}
+
+        # chart_id -> [(series_index, old_x_error_column, old_y_error_column)]
+        # populated when a deleted column is only referenced as an (optional)
+        # error-bar column, so the series survives with error bars cleared
+        # instead of being removed entirely
+        self.cleared_error_refs = {}
 
     @override
     def execute(self) -> bool:
@@ -135,17 +150,19 @@ class DeleteColumnsCommand(Command):
             references = self._find_chart_references(self.column_names)
             if references:
                 details = "\n".join(
-                    f"{chart.name}: " + ", ".join(
-                        ([f"{len(series_idx)} series"] if series_idx else [])
-                        + ([f"{len(fit_idx)} fit curve(s)"] if fit_idx else [])
+                    f"{match.chart.name}: " + ", ".join(
+                        ([f"{len(match.series_indices)} series"] if match.series_indices else [])
+                        + ([f"{len(match.fit_indices)} fit curve(s)"] if match.fit_indices else [])
+                        + ([f"{len(match.error_only_indices)} series losing error bars"] if match.error_only_indices else [])
                     )
-                    for chart, series_idx, fit_idx in references
+                    for match in references
                 )
                 proceed = self.ui_controller.show_confirmation(
                     "Delete Columns",
                     f"{len(self.column_names)} column(s) are used by {len(references)} "
                     "chart(s). Deleting them will remove the dependent series/fit "
-                    "curves from those charts. Continue?",
+                    "curves from those charts (series only using the column for "
+                    "error bars will keep plotting, with error bars removed). Continue?",
                     details=details
                 )
                 if not proceed:
@@ -172,16 +189,20 @@ class DeleteColumnsCommand(Command):
 
     def _find_chart_references(
         self, column_names: List[str]
-    ) -> List[Tuple[Chart, List[int], List[int]]]:
+    ) -> List[ChartReferenceMatch]:
         """Find charts whose series/fits reference this dataset's columns.
 
-        Returns a list of (chart, data_series indices, fit_data indices) for
-        every chart with at least one matching reference.
+        Returns a list of (chart, data_series indices, fit_data indices,
+        error-only data_series indices) for every chart with at least one
+        matching reference. A series lands in error-only indices (instead of
+        data_series indices) when the only matching reference is its
+        optional x_error_column/y_error_column, since that series still
+        renders fine without error bars and shouldn't be removed.
         """
         if not self.project:
             return []
         column_set = set(column_names)
-        matches: List[Tuple[Chart, List[int], List[int]]] = []
+        matches: List[ChartReferenceMatch] = []
         for item in self.project.get_all_items():
             if not isinstance(item, Chart):
                 continue
@@ -190,16 +211,24 @@ class DeleteColumnsCommand(Command):
                 if series.dataset_id == self.dataset_id
                 and (series.x_column in column_set or series.y_column in column_set)
             ]
+            error_only_idx = [
+                i for i, series in enumerate(item.data_series)
+                if i not in series_idx and series.dataset_id == self.dataset_id
+                and (series.x_error_column in column_set or series.y_error_column in column_set
+                     or series.x_error_minus_column in column_set or series.y_error_minus_column in column_set)
+            ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
                 if fit.source_dataset_id == self.dataset_id
                 and (fit.source_x_column in column_set or fit.source_y_column in column_set)
             ]
-            if series_idx or fit_idx:
-                matches.append((item, series_idx, fit_idx))
+            if series_idx or fit_idx or error_only_idx:
+                matches.append(ChartReferenceMatch(item, series_idx, fit_idx, error_only_idx))
         return matches
 
-    def _perform_deletion(self, references: List[Tuple[Chart, List[int], List[int]]]) -> None:
+    def _perform_deletion(
+        self, references: List[ChartReferenceMatch]
+    ) -> None:
         """Drop the columns from the dataset and remove dependent chart references."""
         # Create new DataFrame with the columns removed
         new_data = self.dataset.data.drop(columns=self.column_names)
@@ -212,20 +241,50 @@ class DeleteColumnsCommand(Command):
                                       DatasetColumnsRemovedData(dataset_id=self.dataset_id, column_positions=self.column_positions).to_dict()
         )
 
+        column_set = set(self.column_names)
         self.removed_chart_refs = {}
-        for chart, series_idx, fit_idx in references:
+        self.cleared_error_refs = {}
+        for match in references:
+            chart = match.chart
+            series_idx = match.series_indices
+            fit_idx = match.fit_indices
+            error_only_idx = match.error_only_indices
             removed_series = [(i, chart.data_series[i]) for i in series_idx]
             removed_fits = [(i, chart.fit_data[i]) for i in fit_idx]
+
+            # Clear error-only references using original indices before any
+            # deletion shifts the list, so `i` still points at the right series.
+            cleared_series = []
+            for i in error_only_idx:
+                series = chart.data_series[i]
+                old_values = (
+                    series.x_error_column, series.y_error_column,
+                    series.x_error_minus_column, series.y_error_minus_column,
+                )
+                if series.x_error_column in column_set:
+                    series.x_error_column = ""
+                if series.y_error_column in column_set:
+                    series.y_error_column = ""
+                if series.x_error_minus_column in column_set:
+                    series.x_error_minus_column = ""
+                if series.y_error_minus_column in column_set:
+                    series.y_error_minus_column = ""
+                cleared_series.append((i, *old_values))
+
             for i in sorted(series_idx, reverse=True):
                 del chart.data_series[i]
             for i in sorted(fit_idx, reverse=True):
                 del chart.fit_data[i]
-            if removed_series or removed_fits:
+
+            if removed_series or removed_fits or cleared_series:
                 chart.update_modified_time()
-                self.removed_chart_refs[chart.id] = {
-                    "series": removed_series,
-                    "fits": removed_fits,
-                }
+                if removed_series or removed_fits:
+                    self.removed_chart_refs[chart.id] = {
+                        "series": removed_series,
+                        "fits": removed_fits,
+                    }
+                if cleared_series:
+                    self.cleared_error_refs[chart.id] = cleared_series
                 self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
                     "chart_id": chart.id,
                     "chart": chart,
@@ -233,23 +292,34 @@ class DeleteColumnsCommand(Command):
 
     def _restore_chart_references(self) -> None:
         """Re-insert chart series/fits removed by _perform_deletion, for undo."""
-        if not self.project or not self.removed_chart_refs:
+        if not self.project or not (self.removed_chart_refs or self.cleared_error_refs):
             return
-        for chart_id, removed in self.removed_chart_refs.items():
+        chart_ids = set(self.removed_chart_refs) | set(self.cleared_error_refs)
+        for chart_id in chart_ids:
             chart = self.project.find_item(chart_id)
             if not isinstance(chart, Chart):
                 continue
+            removed = self.removed_chart_refs.get(chart_id, {"series": [], "fits": []})
             for i, series in sorted(removed["series"], key=lambda pair: pair[0]):
                 chart.data_series.insert(i, series)
             for i, fit in sorted(removed["fits"], key=lambda pair: pair[0]):
                 chart.fit_data.insert(i, fit)
-            if removed["series"] or removed["fits"]:
+
+            for i, old_x_err, old_y_err, old_x_err_minus, old_y_err_minus in self.cleared_error_refs.get(chart_id, []):
+                if 0 <= i < len(chart.data_series):
+                    chart.data_series[i].x_error_column = old_x_err
+                    chart.data_series[i].y_error_column = old_y_err
+                    chart.data_series[i].x_error_minus_column = old_x_err_minus
+                    chart.data_series[i].y_error_minus_column = old_y_err_minus
+
+            if removed["series"] or removed["fits"] or chart_id in self.cleared_error_refs:
                 chart.update_modified_time()
                 self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
                     "chart_id": chart.id,
                     "chart": chart,
                 })
         self.removed_chart_refs = {}
+        self.cleared_error_refs = {}
 
     def _resolve_columns(self):
         """

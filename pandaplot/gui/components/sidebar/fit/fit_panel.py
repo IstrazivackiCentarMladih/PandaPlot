@@ -491,8 +491,14 @@ class FitPanel(PWidget):
                     mask = ~(pd.isna(df[x_column]) | pd.isna(df[y_column]))
                     x_data = df[x_column][mask].values
                     y_data = df[y_column][mask].values
-                    return x_data, y_data
 
+                    if not self.current_chart or not self.current_chart.data_series:
+                        self.logger.warning("No active chart or data series available")
+                        return None
+
+                    # Chart contains single data series
+                    series = self.current_chart.data_series[0]
+                    return df, mask, x_data, y_data, series
         return None
 
     def _on_tab_changed(self, event_data):
@@ -509,8 +515,8 @@ class FitPanel(PWidget):
                 chart = project.find_item(chart_id)
                 if chart:
                     # Load the chart into the fit panel for data analysis
-                    self.load_chart_object(chart)
                     self.set_project(project)
+                    self.load_chart_object(chart)
                     self.logger.info("Fit panel context set to chart %s", chart.name)
                 else:
                     self.logger.warning("Fit panel: chart id %s not found in project", chart_id)
@@ -536,7 +542,7 @@ class FitPanel(PWidget):
         """Update the data points display."""
         current_data = self.get_current_data()
         if current_data is not None:
-            x_data, y_data = current_data
+            df, mask, x_data, y_data, series = current_data
             self.data_points_label.setText(f"{len(x_data)} points")
             self.data_points_label.setStyleSheet("color: #333;")
         else:
@@ -641,4 +647,3 @@ class FitPanel(PWidget):
             # Update data points display
             self.update_data_points_display()
 
-#TODO: show confidence bands
