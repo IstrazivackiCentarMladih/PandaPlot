@@ -361,27 +361,36 @@ class Chart(Item):
             "has_grid": self.config.get("show_grid_x", True) or self.config.get("show_grid_y", True)
         }
     
-    def search_chart(self, query: str) -> bool:
-        """Search for a query string in the chart name or configuration."""
+    def search_chart(self, query: str, project: Any = None) -> bool:
+        """Search for a query string in the chart name or configuration.
+
+        Series columns are referenced by id; pass ``project`` to resolve each
+        series' column ids to their current names so the search matches on live
+        column names (falls back to any stored legacy name when ``project`` is
+        omitted or a column can't be resolved).
+        """
         query_lower = query.lower()
-        
+
         # Search in name and title
-        if (query_lower in self.name.lower() or 
+        if (query_lower in self.name.lower() or
             query_lower in self.config.get("title", "").lower()):
             return True
-        
+
         # Search in chart type
         if query_lower in self.chart_type.lower():
             return True
-        
+
         # Search in data series columns and labels
         for series in self.data_series:
-            if (query_lower in series.x_column.lower() or
-                query_lower in series.y_column.lower() or
+            dataset = project.find_item(series.dataset_id) if project else None
+            x_name = resolve_series_column(dataset, series.x_column_id, series.x_column) or ""
+            y_name = resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
+            if (query_lower in x_name.lower() or
+                query_lower in y_name.lower() or
                 query_lower in series.label.lower() or
                 query_lower in series.dataset_id.lower()):
                 return True
-        
+
         return False
     
     def to_dict(self) -> Dict[str, Any]:

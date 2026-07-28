@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.project import Project
 from pandaplot.models.project.items.chart import (
     Chart,
     DataSeries,
@@ -131,3 +132,24 @@ def test_add_fit_data_stores_column_ids():
     assert fit.source_dataset_id == ds.id
     assert fit.source_x_column_id == ds.column_id("a")
     assert fit.source_y_column_id == ds.column_id("b")
+
+
+def test_search_chart_resolves_column_ids_via_project():
+    """search_chart matches on live column names resolved from ids."""
+    ds = Dataset(name="ds", data=pd.DataFrame({"velocity": [1], "b": [2]}))
+    project = Project("P")
+    project.add_item(ds)
+    chart = Chart(name="c")
+    chart.add_data_series(ds.id, x_column_id=ds.column_id("velocity"),
+                          y_column_id=ds.column_id("b"))
+    project.add_item(chart)
+
+    # Resolves the id -> current name and matches on it.
+    assert chart.search_chart("velocity", project) is True
+    # A rename is reflected without touching the series.
+    ds.rename_column("velocity", "speed")
+    ds.data.rename(columns={"velocity": "speed"}, inplace=True)
+    assert chart.search_chart("speed", project) is True
+    assert chart.search_chart("velocity", project) is False
+    # Without a project, id-only series expose no column name to match.
+    assert chart.search_chart("speed") is False
