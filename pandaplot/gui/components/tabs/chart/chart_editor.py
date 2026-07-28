@@ -190,6 +190,15 @@ def resolve_axis_color(prefix, own_color, match_enabled, x_color):
     return x_color if match_enabled else own_color
 
 
+def resolve_scale_kwargs(scale: str, log_base: float) -> dict:
+    """Build the extra kwargs for Axes.set_xscale/set_yscale: a log axis
+    needs an explicit `base` (matplotlib requires base > 0 and base != 1,
+    which also covers custom bases between 0 and 1); a linear axis's scale
+    class doesn't accept a `base` kwarg at all, so it must be omitted
+    entirely rather than passed as None/default."""
+    return {"base": log_base} if scale == "log" else {}
+
+
 def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
     """Color the axis box lines ('spines'). Bottom/top belong to x, left
     belongs to y. Right belongs to y2 when a secondary y axis is active,
@@ -771,8 +780,10 @@ class ChartEditorWidget(PWidget):
                 "y", config.get("y_label_color", "#000000"), y_match_label, x_label_color)
             self.chart_canvas.axes.set_xlabel(config.get("x_label", ""), color=x_label_color)
             self.chart_canvas.axes.set_ylabel(config.get("y_label", ""), color=y_label_color)
-            self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
-            self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
+            x_scale = config.get("x_scale", "linear")
+            y_scale = config.get("y_scale", "linear")
+            self.chart_canvas.axes.set_xscale(x_scale, **resolve_scale_kwargs(x_scale, config.get("x_log_base", 10.0)))
+            self.chart_canvas.axes.set_yscale(y_scale, **resolve_scale_kwargs(y_scale, config.get("y_log_base", 10.0)))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
             if config.get("y_side", "left") == "right":
@@ -787,7 +798,9 @@ class ChartEditorWidget(PWidget):
                 y2_label_color = resolve_axis_color(
                     "y2", config.get("y2_label_color", "#000000"), y2_match_label, x_label_color)
                 self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""), color=y2_label_color)
-                self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
+                y2_scale = config.get("y2_scale", "linear")
+                self.chart_canvas.axes2.set_yscale(
+                    y2_scale, **resolve_scale_kwargs(y2_scale, config.get("y2_log_base", 10.0)))
                 self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
                 if config.get("y2_side", "right") == "left":
                     self.chart_canvas.axes2.yaxis.tick_left()

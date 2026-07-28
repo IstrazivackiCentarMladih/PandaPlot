@@ -1,4 +1,6 @@
 """Axes tab: X/Y1/Y2 chip switcher over per-axis scale/limits/ticks/grid forms."""
+import math
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -95,6 +97,24 @@ class AxesTab(QWidget):
 
         scale_control = SegmentedControl([("Linear", ScaleType.LINEAR), ("Log", ScaleType.LOG)])
         form_layout.addWidget(scale_control)
+
+        log_base_row = QWidget()
+        log_base_layout = QGridLayout(log_base_row)
+        log_base_layout.setContentsMargins(0, 0, 0, 0)
+        log_base_label = QLabel("Base:")
+        log_base_layout.addWidget(log_base_label, 0, 0)
+        log_base_combo = QComboBox()
+        for text, value in [("10", 10.0), ("2", 2.0), ("e (natural log)", math.e), ("Custom...", "custom")]:
+            log_base_combo.addItem(text, value)
+        log_base_layout.addWidget(log_base_combo, 0, 1)
+        log_base_custom_spin = QDoubleSpinBox()
+        log_base_custom_spin.setRange(0.001, 1000.0)
+        log_base_custom_spin.setSingleStep(0.1)
+        log_base_custom_spin.setValue(10.0)
+        log_base_layout.addWidget(log_base_custom_spin, 1, 0, 1, 2)
+        log_base_custom_spin.setVisible(False)
+        form_layout.addWidget(log_base_row)
+        log_base_row.setVisible(False)
 
         side_control = None
         if prefix in ("y", "y2"):
@@ -242,6 +262,8 @@ class AxesTab(QWidget):
         self.axes_forms[prefix] = {
             "widget": form_widget, "label_edit": label_edit, "font_spin": font_spin,
             "scale_control": scale_control, "side_control": side_control,
+            "log_base_row": log_base_row, "log_base_combo": log_base_combo,
+            "log_base_custom_spin": log_base_custom_spin,
             "range_card": range_card, "ticks_card": ticks_card,
             "auto_toggle": auto_toggle, "min_spin": min_spin, "max_spin": max_spin,
             "mode_control": mode_control, "count_spin": count_spin, "step_spin": step_spin,
@@ -273,7 +295,9 @@ class AxesTab(QWidget):
         # attributes to hook up elsewhere), so wiring happens here.
         label_edit.textChanged.connect(self._on_field_changed)
         font_spin.valueChanged.connect(self._on_field_changed)
-        scale_control.currentValueChanged.connect(self._on_field_changed)
+        scale_control.currentValueChanged.connect(lambda _v, p=prefix: self._on_scale_changed(p))
+        log_base_combo.currentIndexChanged.connect(lambda _i, p=prefix: self._on_log_base_combo_changed(p))
+        log_base_custom_spin.valueChanged.connect(self._on_field_changed)
         if side_control is not None:
             side_control.currentValueChanged.connect(self._on_field_changed)
         auto_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_auto_limits_toggled(p, checked))
@@ -393,6 +417,29 @@ class AxesTab(QWidget):
         form["format_custom_edit"].setEnabled(form["format_combo"].currentData() == "custom")
         self._on_field_changed()
 
+    def _on_scale_changed(self, prefix: str):
+        """Show the Base row only for Log scale."""
+        form = self.axes_forms[prefix]
+        is_log = form["scale_control"].currentValue() == ScaleType.LOG
+        form["log_base_row"].setVisible(is_log)
+        self._on_field_changed()
+
+    def _on_log_base_combo_changed(self, prefix: str):
+        form = self.axes_forms[prefix]
+        form["log_base_custom_spin"].setVisible(form["log_base_combo"].currentData() == "custom")
+        self._on_field_changed()
+
+    def _resolve_log_base(self, prefix: str) -> float:
+        """Resolve the effective log base from the Base combo, reading the
+        custom spin box when "Custom..." is selected. Rejects exactly 1.0
+        (matplotlib's LogScale forbids it) by falling back to 10.0 --
+        QDoubleSpinBox can't exclude a single interior value via setRange,
+        so this is enforced here instead."""
+        form = self.axes_forms[prefix]
+        data = form["log_base_combo"].currentData()
+        base = form["log_base_custom_spin"].value() if data == "custom" else data
+        return base if base and base != 1.0 else 10.0
+
     def _on_copy_axis_settings(self, prefix: str):
         """Copy the shown Y axis's non-label settings to the other Y axis."""
         other = "y2" if prefix == "y" else "y"
@@ -401,6 +448,10 @@ class AxesTab(QWidget):
 
         target["font_spin"].setValue(source["font_spin"].value())
         target["scale_control"].setCurrentValue(source["scale_control"].currentValue())
+        target["log_base_combo"].setCurrentIndex(target["log_base_combo"].findData(source["log_base_combo"].currentData()))
+        target["log_base_custom_spin"].setValue(source["log_base_custom_spin"].value())
+        target["log_base_custom_spin"].setVisible(target["log_base_combo"].currentData() == "custom")
+        target["log_base_row"].setVisible(target["scale_control"].currentValue() == ScaleType.LOG)
         if source["side_control"] is not None and target["side_control"] is not None:
             target["side_control"].setCurrentValue(source["side_control"].currentValue())
         target["auto_toggle"].setChecked(source["auto_toggle"].isChecked())
@@ -499,6 +550,7 @@ class AxesTab(QWidget):
         config[f"{prefix}_font_size"] = form["font_spin"].value()
         if form["scale_control"].currentValue():
             config[f"{prefix}_scale"] = form["scale_control"].currentValue().value
+        config[f"{prefix}_log_base"] = self._resolve_log_base(prefix)
         if form["side_control"] is not None:
             config[f"{prefix}_side"] = form["side_control"].currentValue()
         config[f"{prefix}_auto_limits"] = form["auto_toggle"].isChecked()
@@ -537,6 +589,18 @@ class AxesTab(QWidget):
             form["scale_control"].setCurrentValue(ScaleType(scale_value))
         except ValueError:
             form["scale_control"].setCurrentValue(ScaleType.LINEAR)
+
+        log_base = config.get(f"{prefix}_log_base", 10.0)
+        preset_index = form["log_base_combo"].findData(log_base)
+        if preset_index >= 0:
+            form["log_base_combo"].setCurrentIndex(preset_index)
+            form["log_base_custom_spin"].setVisible(False)
+        else:
+            form["log_base_combo"].setCurrentIndex(form["log_base_combo"].findData("custom"))
+            form["log_base_custom_spin"].setValue(log_base)
+            form["log_base_custom_spin"].setVisible(True)
+        is_log = form["scale_control"].currentValue() == ScaleType.LOG
+        form["log_base_row"].setVisible(is_log)
 
         if form["side_control"] is not None:
             default_side = "left" if prefix == "y" else "right"

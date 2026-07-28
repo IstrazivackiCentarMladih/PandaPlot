@@ -570,3 +570,16 @@ def test_show_minor_grid_round_trips_through_serialization():
     assert restored.config["x_show_minor_grid"] is True
     assert restored.config["y_show_minor_grid"] is True
     assert restored.config["y2_show_minor_grid"] is False
+
+
+def test_log_base_defaults_to_ten_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_log_base", 10.0) == 10.0
+
+
+def test_log_base_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["x_log_base"] = 2.0
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_log_base"] == 2.0
