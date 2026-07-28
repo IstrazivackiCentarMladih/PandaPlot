@@ -471,6 +471,15 @@ class StyleTab(QWidget):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
 
+    def _series_y_name(self, series) -> str:
+        """Resolve a series' Y column id to its current name for a fallback
+        chip label (used only when the series has no explicit label)."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        app_state = self.app_context.get_app_state()
+        project = app_state.current_project if app_state.has_project else None
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
+
     def set_series_list(self, data_series, fit_data, selected_index: int = 0):
         """Sync `style_series_chips` with the same series+fit list the Data
         tab's cards are built from, keeping its selection in lockstep with
@@ -505,7 +514,7 @@ class StyleTab(QWidget):
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart")]
         for index, series in enumerate(data_series):
-            label = series.label or f"{series.dataset_id}:{series.y_column}"
+            label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
         total_series = len(data_series)
         for fit_offset, fit in enumerate(fit_data):

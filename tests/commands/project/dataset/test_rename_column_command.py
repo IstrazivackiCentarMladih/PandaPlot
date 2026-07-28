@@ -28,16 +28,20 @@ def env():
     project.add_item(dataset)
     project.add_item(other)
 
-    # Passing the dataset object binds column ids at creation (the real path).
+    # Series/fits reference columns by stable id (the caller resolves names).
     chart = Chart(name="c")
-    chart.add_data_series(dataset, "a", "b", label="s1")
-    chart.add_data_series(other, "a", "a", label="s2")  # other dataset: must not change
-    chart.add_fit_data(dataset, "a", "b", "Linear",
-                       np.array([1.0]), np.array([2.0]))
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("a"),
+                          y_column_id=dataset.column_id("b"), label="s1")
+    chart.add_data_series(other.id, x_column_id=other.column_id("a"),  # other dataset: must not change
+                          y_column_id=other.column_id("a"), label="s2")
+    chart.add_fit_data(dataset.id, "Linear", np.array([1.0]), np.array([2.0]),
+                       source_x_column_id=dataset.column_id("a"),
+                       source_y_column_id=dataset.column_id("b"))
     project.add_item(chart)
 
     untouched_chart = Chart(name="c2")
-    untouched_chart.add_data_series(other, "a", "a", label="s3")
+    untouched_chart.add_data_series(other.id, x_column_id=other.column_id("a"),
+                                    y_column_id=other.column_id("a"), label="s3")
     project.add_item(untouched_chart)
 
     app_state = Mock()
@@ -67,7 +71,7 @@ def test_rename_updates_dataframe_and_series_resolve_via_id(env):
     assert list(dataset.data.columns) == ["time", "b"]
     # The series reference is untouched but resolves to the new name via its id.
     assert s1.x_column_id == x_id_before
-    assert s1.x_column == "a"  # fallback name deliberately not rewritten
+    assert s1.x_column == ""  # new series hold no name; id is authoritative
     assert resolve_series_column(dataset, s1.x_column_id, s1.x_column) == "time"
     assert resolve_series_column(dataset, s1.y_column_id, s1.y_column) == "b"
     assert resolve_series_column(dataset, fit.source_x_column_id, fit.source_x_column) == "time"
@@ -124,7 +128,8 @@ def test_undo_after_rejected_execute_is_a_noop(env):
 
     command.undo()  # CommandExecutor pushes commands even on failure; undo must not corrupt
     assert list(dataset.data.columns) == ["a", "b"]
-    assert chart.data_series[0].y_column == "b"
+    assert resolve_series_column(dataset, chart.data_series[0].y_column_id,
+                                 chart.data_series[0].y_column) == "b"
 
     command.redo()
     assert list(dataset.data.columns) == ["a", "b"]

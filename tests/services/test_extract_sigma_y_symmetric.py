@@ -5,30 +5,36 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.project import Project
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import DataSeries
 from pandaplot.services.fit.fit_service import FitService
 
 
 def test_extract_sigma_y_symmetric():
-    """Extract symmetric y uncertainties."""
+    """Extract symmetric y uncertainties (error column referenced by id)."""
 
-    # Create a simple dataset
     df = pd.DataFrame({
         "x": [0, 1, 2],
         "y": [1.0, 2.0, 3.0],
         "std": [0.1, 0.2, 0.3]})
 
-    # Select all rows
+    dataset = Dataset(name="ds", data=df)
+    project = Project("P")
+    project.add_item(dataset)
+
     mask = np.array([True, True, True])
 
-    # Mock a data series with symmetric error bars
-    series = Mock()
-    series.y_error_column = "std"
-    series.y_error_minus_column = ""
+    series = DataSeries(
+        dataset_id=dataset.id,
+        y_error_column_id=dataset.column_id("std"),
+    )
 
-    # Create the service (fit_panel is not used in this method)
-    service = FitService(Mock())
+    fit_panel = Mock()
+    fit_panel.current_project = project
+    service = FitService(fit_panel)
 
-    sigma = service._extract_sigma_y(df, mask, series)
+    sigma = service._extract_sigma_y(dataset.data, mask, series)
 
     np.testing.assert_allclose(
         sigma,

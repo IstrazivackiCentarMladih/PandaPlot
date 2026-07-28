@@ -38,14 +38,16 @@ class DataSeries:
     :func:`pandaplot.models.project.items.chart.resolve_series_column`.
     """
     dataset_id: str
-    x_column: str
-    y_column: str
     x_column_id: str = ""
     y_column_id: str = ""
     x_error_column_id: str = ""
     y_error_column_id: str = ""
     x_error_minus_column_id: str = ""
     y_error_minus_column_id: str = ""
+    # Legacy/fallback column names — populated only by loading old projects
+    # (see resolve_series_column). New series reference columns by id.
+    x_column: str = ""
+    y_column: str = ""
     label: str = ""
     color: str = "#1f77b4"
     marker_color: str = ""
@@ -77,16 +79,22 @@ class DataSeries:
 
 @dataclass
 class FitData:
-    """Represents fitted curve data."""
+    """Represents fitted curve data.
+
+    Source columns are referenced by stable id (``source_*_column_id``); the
+    ``source_*_column`` name fields are a legacy/fallback populated only when
+    loading old projects. The fit line itself renders from ``x_data``/``y_data``,
+    so the source columns are metadata (display + series↔fit matching).
+    """
     source_dataset_id: str
-    source_x_column: str
-    source_y_column: str
     fit_type: str
     x_data: np.ndarray
     y_data: np.ndarray
     label: str
     source_x_column_id: str = ""
     source_y_column_id: str = ""
+    source_x_column: str = ""
+    source_y_column: str = ""
     color: str = "#ff7f0e"
     line_style: str = "dashed"
     line_width: float = 2.0
@@ -210,28 +218,23 @@ class Chart(Item):
         self.chart_type = chart_type
         self.update_modified_time()
     
-    def add_data_series(self, dataset_id: Any, x_column: str, y_column: str,
-                       label: str = "", **kwargs) -> DataSeries:
+    def add_data_series(self, dataset_id: str, x_column_id: str = "",
+                       y_column_id: str = "", label: str = "", **kwargs) -> DataSeries:
         """Add a new data series to the chart.
 
-        ``dataset_id`` may be the owning :class:`Dataset` (preferred) or its id
-        string. Passing the object binds the series' column references to
-        stable column ids in one step, so nothing has to remember to call
-        :func:`assign_series_column_ids` afterward. Passing a bare id creates
-        the series without ids (name-only fallback) — used by tests/contexts
-        that have no dataset to resolve against.
+        Columns are referenced by their stable ids (``x_column_id`` /
+        ``y_column_id`` and the error-column ids via ``kwargs``). The caller
+        resolves names to ids against the dataset; this model holds no
+        :class:`Dataset` reference — the renderer resolves ids back to live
+        names with :func:`resolve_series_column`.
         """
-        dataset_obj = dataset_id if not isinstance(dataset_id, str) else None
-        dataset_id = dataset_obj.id if dataset_obj is not None else dataset_id
         series = DataSeries(
             dataset_id=dataset_id,
-            x_column=x_column,
-            y_column=y_column,
-            label=label or f"{dataset_id}:{y_column}",
+            x_column_id=x_column_id,
+            y_column_id=y_column_id,
+            label=label,
             **kwargs
         )
-        if dataset_obj is not None:
-            assign_series_column_ids(series, dataset_obj)
         self.data_series.append(series)
         self.update_modified_time()
         return series
@@ -265,32 +268,30 @@ class Chart(Item):
         """Get all unique dataset IDs used in this chart."""
         return list(set(series.dataset_id for series in self.data_series))
     
-    def add_fit_data(self, source_dataset_id: Any, source_x_column: str,
-                    source_y_column: str, fit_type: str, x_data: np.ndarray,
-                    y_data: np.ndarray, label: str = "", **kwargs) -> FitData:
+    def add_fit_data(self, source_dataset_id: str, fit_type: str,
+                    x_data: np.ndarray, y_data: np.ndarray,
+                    source_x_column_id: str = "", source_y_column_id: str = "",
+                    label: str = "", **kwargs) -> FitData:
         """Add fit data to the chart.
 
-        ``source_dataset_id`` may be the source :class:`Dataset` (preferred) or
-        its id string. Passing the object binds the fit's source columns to
-        stable column ids in one step (see :meth:`add_data_series`).
+        Source columns are referenced by their stable ids
+        (``source_x_column_id`` / ``source_y_column_id``); the caller resolves
+        names to ids against the dataset. This model holds no :class:`Dataset`
+        reference (see :meth:`add_data_series`).
         """
-        dataset_obj = source_dataset_id if not isinstance(source_dataset_id, str) else None
-        source_dataset_id = dataset_obj.id if dataset_obj is not None else source_dataset_id
         if not label:
-            label = f"{fit_type.title()} Fit for {source_dataset_id}:{source_y_column}"
+            label = f"{fit_type.title()} Fit"
 
         fit = FitData(
             source_dataset_id=source_dataset_id,
-            source_x_column=source_x_column,
-            source_y_column=source_y_column,
+            source_x_column_id=source_x_column_id,
+            source_y_column_id=source_y_column_id,
             fit_type=fit_type,
             x_data=x_data,
             y_data=y_data,
             label=label,
             **kwargs
         )
-        if dataset_obj is not None:
-            assign_fit_column_ids(fit, dataset_obj)
         self.fit_data.append(fit)
         self.update_modified_time()
         return fit

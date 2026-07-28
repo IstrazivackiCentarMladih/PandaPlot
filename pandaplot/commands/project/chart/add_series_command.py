@@ -12,14 +12,14 @@ class AddSeriesCommand(Command):
     """Command to add a new data series to an existing chart."""
 
     def __init__(self, app_context: AppContext, chart_id: str,
-                 dataset_id: str, x_column: str, y_column: str,
+                 dataset_id: str, x_column_id: str, y_column_id: str,
                  label: str = "", color: str = "#1f77b4"):
         super().__init__()
         self.app_context = app_context
         self.chart_id = chart_id
         self.dataset_id = dataset_id
-        self.x_column = x_column
-        self.y_column = y_column
+        self.x_column_id = x_column_id
+        self.y_column_id = y_column_id
         self.label = label
         self.color = color
         self.added_index: Optional[int] = None
@@ -36,17 +36,10 @@ class AddSeriesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
-        # Pass the dataset object (not just its id) so add_data_series binds
-        # the series' column ids automatically. Falls back to the id string if
-        # the dataset can't be resolved.
-        app_state = self.app_context.get_app_state()
-        project = app_state.current_project if app_state.has_project else None
-        dataset = project.find_item(self.dataset_id) if project else None
-
         chart.add_data_series(
-            dataset if dataset is not None else self.dataset_id,
-            x_column=self.x_column,
-            y_column=self.y_column,
+            self.dataset_id,
+            x_column_id=self.x_column_id,
+            y_column_id=self.y_column_id,
             label=self.label,
             color=self.color,
         )

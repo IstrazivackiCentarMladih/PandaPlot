@@ -88,34 +88,45 @@ def test_assign_series_column_ids_via_dataset():
     assert series.y_column_id == ds.column_id("b")
 
 
-def test_add_data_series_with_dataset_object_binds_ids():
-    """Passing the Dataset object auto-binds column ids at the source."""
+def test_add_data_series_stores_column_ids():
+    """add_data_series references columns purely by id; the caller resolves."""
     ds = Dataset(name="ds", data=pd.DataFrame({"a": [1], "b": [2]}))
     chart = Chart(name="c")
 
-    series = chart.add_data_series(ds, "a", "b", label="s")
+    series = chart.add_data_series(
+        ds.id,
+        x_column_id=ds.column_id("a"),
+        y_column_id=ds.column_id("b"),
+        label="s",
+    )
 
     assert series.dataset_id == ds.id
     assert series.x_column_id == ds.column_id("a")
     assert series.y_column_id == ds.column_id("b")
+    # No dataset reference is held; names are left empty (id is authoritative).
+    assert series.x_column == ""
+    assert series.y_column == ""
 
 
-def test_add_data_series_with_id_string_leaves_ids_empty():
-    """Passing a bare id string (no dataset to resolve) yields name-only refs."""
+def test_add_data_series_defaults_to_empty_ids():
+    """Omitting column ids yields an unbound series (e.g. index-only x)."""
     chart = Chart(name="c")
-    series = chart.add_data_series("ds1", "x", "y")
+    series = chart.add_data_series("ds1")
 
     assert series.dataset_id == "ds1"
     assert series.x_column_id == ""
     assert series.y_column_id == ""
 
 
-def test_add_fit_data_with_dataset_object_binds_ids():
+def test_add_fit_data_stores_column_ids():
     ds = Dataset(name="ds", data=pd.DataFrame({"a": [1], "b": [2]}))
     chart = Chart(name="c")
 
-    fit = chart.add_fit_data(ds, "a", "b", "Linear",
-                             np.array([1.0]), np.array([2.0]))
+    fit = chart.add_fit_data(
+        ds.id, "Linear", np.array([1.0]), np.array([2.0]),
+        source_x_column_id=ds.column_id("a"),
+        source_y_column_id=ds.column_id("b"),
+    )
 
     assert fit.source_dataset_id == ds.id
     assert fit.source_x_column_id == ds.column_id("a")
