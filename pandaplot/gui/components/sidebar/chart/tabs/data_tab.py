@@ -891,16 +891,33 @@ class DataTab(QWidget):
         self._update_datasets()
 
     def _update_datasets(self):
-        """Update the available datasets."""
-        self.dataset_combo.clear()
-        self.datasets = []
+        """Update the available datasets.
 
-        if self.current_project:
-            # Iterate through all items in the project to find datasets
-            for item in self.current_project.get_all_items():
-                if isinstance(item, Dataset):
-                    self.dataset_combo.addItem(item.name, item.id)
-                    self.datasets.append(item)
+        Signals are blocked while clearing/populating: unlike
+        `_populate_column_combos`/`_populate_error_column_combos`, this used
+        to fire `dataset_combo.currentTextChanged` live -- `set_project` (and
+        so this) runs on every chart-tab switch (`ChartPropertiesPanel.
+        _on_tab_changed`), well after a chart may already be loaded and a
+        series selected here, so an unblocked fire of `_on_dataset_changed`
+        -> `_on_series_config_changed` silently overwrote the currently
+        selected series' `dataset_id`/`x_column_id`/`y_column_id` with
+        whatever dataset happened to land at the freshly-rebuilt combo's
+        index 0/1 -- corrupting a series having nothing to do with the tab
+        switch that triggered it.
+        """
+        self.dataset_combo.blockSignals(True)
+        try:
+            self.dataset_combo.clear()
+            self.datasets = []
+
+            if self.current_project:
+                # Iterate through all items in the project to find datasets
+                for item in self.current_project.get_all_items():
+                    if isinstance(item, Dataset):
+                        self.dataset_combo.addItem(item.name, item.id)
+                        self.datasets.append(item)
+        finally:
+            self.dataset_combo.blockSignals(False)
 
     def _column_display_name(self, dataset_id, column_id, fallback_name=""):
         """Resolve a column id to its current name for display, falling back to
