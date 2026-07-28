@@ -407,12 +407,16 @@ def test_title_and_subtitle_color_default_when_missing_from_saved_data():
 
     restored = Chart.from_dict(data)
 
+    # Chart.from_dict merges the sparse saved config over freshly-initialized
+    # defaults, so the missing keys are backfilled with "#000000"/True.
+    assert restored.config["title_color"] == "#000000"
+    assert restored.config["subtitle_color"] == "#000000"
+    assert restored.config["subtitle_match_title_color"] is True
+
     # Real render: apply_chart_title's own title_color/subtitle_color
     # parameter defaults are what actually paint the title/subtitle black
-    # when these config keys are absent from the saved data (restored.config
-    # itself already holds "#000000" for these -- Chart.from_dict merges the
-    # sparse saved config over freshly-initialized defaults -- so what
-    # matters here is that the real renderer, given no override, agrees).
+    # when these config keys are absent from the saved data -- so what
+    # matters here is that the real renderer, given no override, agrees.
     fig = Figure()
     axes = fig.add_subplot(111)
     apply_chart_title(axes, title="Title", subtitle="Subtitle",
