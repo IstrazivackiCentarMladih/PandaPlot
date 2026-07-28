@@ -150,6 +150,24 @@ class StyleTab(QWidget):
             _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
         )
 
+        # -- Title/subtitle color (rows 5-7, appended after the existing
+        # title/subtitle font-size/bold/italic rows above to avoid
+        # renumbering them) --
+        self.title_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        font_size_layout.addWidget(QLabel("Title color:"), 5, 0)
+        font_size_layout.addWidget(self.title_color_row, 5, 1)
+
+        self.subtitle_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        self.subtitle_match_title_toggle = ToggleSwitch(checked=True)
+        font_size_layout.addWidget(QLabel("Subtitle color:"), 6, 0)
+        font_size_layout.addWidget(self.subtitle_color_row, 6, 1)
+        font_size_layout.addWidget(QLabel("Match title:"), 7, 0)
+        font_size_layout.addWidget(self.subtitle_match_title_toggle, 7, 1)
+        # Hidden by default: subtitle_match_title_toggle starts checked, so
+        # the subtitle color swatch (which would otherwise be redundant with
+        # the title's) stays hidden until the user opts out of matching.
+        self.subtitle_color_row.setVisible(False)
+
         layout.addWidget(self.font_size_card)
 
         # -- Padding card --
@@ -269,6 +287,28 @@ class StyleTab(QWidget):
         self.custom_dpi_row.setVisible(False)
 
         layout.addWidget(self.dpi_card)
+
+        # -- Background card --
+        self.background_card = Card()
+        self.chart_style_cards.append(self.background_card)
+        bg_layout = QGridLayout(self.background_card)
+        bg_layout.addWidget(SectionHeader("Background"), 0, 0, 1, 4)
+
+        bg_layout.addWidget(QLabel("Figure:"), 1, 0)
+        self.figure_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.figure_bg_color_row, 1, 1)
+        bg_layout.addWidget(QLabel("Transparent:"), 2, 1)
+        self.figure_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.figure_bg_transparent_toggle, 2, 2)
+
+        bg_layout.addWidget(QLabel("Plot area:"), 3, 0)
+        self.axes_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.axes_bg_color_row, 3, 1)
+        bg_layout.addWidget(QLabel("Transparent:"), 4, 1)
+        self.axes_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.axes_bg_transparent_toggle, 4, 2)
+
+        layout.addWidget(self.background_card)
 
         # LINE group
         self.line_card = Card()
@@ -427,11 +467,18 @@ class StyleTab(QWidget):
         self.title_italic_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_bold_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_italic_check.toggled.connect(self._on_chart_style_field_changed)
+        self.title_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_match_title_toggle.toggled.connect(self._on_subtitle_match_title_toggled)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_height_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_dpi_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
+        self.axes_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.axes_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
 
     # -- Chip selection / target routing -----------------------------------
 
@@ -557,6 +604,17 @@ class StyleTab(QWidget):
             self._updating_controls = previous_guard
         self._update_target_cards_visibility()
 
+    def _on_subtitle_match_title_toggled(self, checked: bool):
+        """Handle the 'Match title' toggle for subtitle color: hides the
+        subtitle color swatch while matching (mirrors
+        _update_marker_controls_enabled's hide-not-disable convention), and
+        seeds it with the title's current color on every uncheck."""
+        if not checked:
+            self.subtitle_color_row.setCurrentColor(self.title_color_row.currentColor())
+        self.subtitle_color_row.setVisible(not checked)
+        if self._chart is not None:
+            self._on_chart_style_field_changed()
+
     # -- Marker enable/match-line toggles ------------------------------------
 
     def _on_markers_enabled_toggled(self, _checked: bool):
@@ -608,6 +666,16 @@ class StyleTab(QWidget):
         show_color = not self.error_match_line_toggle.isChecked()
         self.error_color_label.setVisible(show_color)
         self.error_color_row.setVisible(show_color)
+
+    # -- Background transparent toggles ----------------------------------
+
+    def _on_bg_transparent_toggled(self, _checked: bool):
+        """Grey out the paired color swatch while its 'Transparent' toggle
+        is on; the swatch keeps its last color underneath so re-enabling
+        restores it (mirrors _update_marker_controls_enabled's convention)."""
+        self.figure_bg_color_row.setEnabled(not self.figure_bg_transparent_toggle.isChecked())
+        self.axes_bg_color_row.setEnabled(not self.axes_bg_transparent_toggle.isChecked())
+        self._on_chart_style_field_changed()
 
     # -- Series/fit style: load / apply --------------------------------------
 
@@ -754,6 +822,24 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(chart.config.get("title_italic", False))
             self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
             self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
+            self.title_color_row.setCurrentColor(chart.config.get("title_color", "#000000"))
+            match_title = chart.config.get("subtitle_match_title_color", True)
+            self.subtitle_match_title_toggle.setChecked(match_title)
+            self.subtitle_color_row.setCurrentColor(
+                chart.config.get("title_color", "#000000") if match_title
+                else chart.config.get("subtitle_color", "#000000")
+            )
+            self.subtitle_color_row.setVisible(not match_title)
+
+            fig_bg = chart.style.get("figure_background_color", "#ffffff")
+            self.figure_bg_transparent_toggle.setChecked(fig_bg is None)
+            self.figure_bg_color_row.setCurrentColor(fig_bg or "#ffffff")
+            self.figure_bg_color_row.setEnabled(fig_bg is not None)
+
+            axes_bg = chart.style.get("axes_background_color", "#ffffff")
+            self.axes_bg_transparent_toggle.setChecked(axes_bg is None)
+            self.axes_bg_color_row.setCurrentColor(axes_bg or "#ffffff")
+            self.axes_bg_color_row.setEnabled(axes_bg is not None)
 
             # QComboBox.findData() is unreliable for tuple-valued itemData
             # (Qt's QVariant comparison doesn't match Python tuple equality
@@ -803,6 +889,17 @@ class StyleTab(QWidget):
         chart.config["title_italic"] = self.title_italic_check.isChecked()
         chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        chart.config["title_color"] = self.title_color_row.currentColor()
+        chart.config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        chart.config["subtitle_color"] = self.subtitle_color_row.currentColor()
+        chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
 
@@ -823,6 +920,16 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(False)
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
+            self.title_color_row.setCurrentColor("#000000")
+            self.subtitle_match_title_toggle.setChecked(True)
+            self.subtitle_color_row.setCurrentColor("#000000")
+            self.subtitle_color_row.setVisible(False)
+            self.figure_bg_transparent_toggle.setChecked(False)
+            self.figure_bg_color_row.setCurrentColor("#ffffff")
+            self.figure_bg_color_row.setEnabled(True)
+            self.axes_bg_transparent_toggle.setChecked(False)
+            self.axes_bg_color_row.setCurrentColor("#ffffff")
+            self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
             self.chart_height_spin.setValue(15.0)
@@ -920,6 +1027,17 @@ class StyleTab(QWidget):
         config["title_italic"] = self.title_italic_check.isChecked()
         config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        config["title_color"] = self.title_color_row.currentColor()
+        config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        config["subtitle_color"] = self.subtitle_color_row.currentColor()
+        self._chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        self._chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         config["width_cm"], config["height_cm"] = self._size_from_controls()
         config["dpi"] = self._dpi_from_controls()
         self.configChanged.emit()
@@ -927,6 +1045,9 @@ class StyleTab(QWidget):
     # -- Theme ----------------------------------------------------------------
 
     def apply_theme(self, tokens: dict):
+        self.title_color_row.set_tokens(tokens)
+        self.subtitle_color_row.set_tokens(tokens)
+        self.subtitle_match_title_toggle.set_tokens(tokens)
         self.style_series_chips.set_tokens(tokens)
         self.line_color_row.set_tokens(tokens)
         self.line_style_control.set_tokens(tokens)
@@ -946,3 +1067,7 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.figure_bg_color_row.set_tokens(tokens)
+        self.figure_bg_transparent_toggle.set_tokens(tokens)
+        self.axes_bg_color_row.set_tokens(tokens)
+        self.axes_bg_transparent_toggle.set_tokens(tokens)

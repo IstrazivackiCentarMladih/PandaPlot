@@ -53,6 +53,8 @@ def apply_chart_title(
     title_italic: bool = False,
     subtitle_bold: bool = False,
     subtitle_italic: bool = False,
+    title_color: str = "#000000",
+    subtitle_color: str = "#000000",
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
@@ -86,6 +88,7 @@ def apply_chart_title(
             title, fontsize=title_font_size, y=y,
             fontweight="bold" if title_bold else "normal",
             fontstyle="italic" if title_italic else "normal",
+            color=title_color,
         )
     elif fig._suptitle is not None:
         fig._suptitle.set_text("")
@@ -94,6 +97,7 @@ def apply_chart_title(
         subtitle, fontsize=subtitle_font_size, pad=title_padding,
         fontweight="bold" if subtitle_bold else "normal",
         fontstyle="italic" if subtitle_italic else "normal",
+        color=subtitle_color,
     )
 
 
@@ -113,6 +117,7 @@ def resolve_chart_size(
 def apply_axis_ticks(
     axis, mode, count, step, fmt, custom_fmt,
     direction="out", minor_enabled=False, minor_direction=None,
+    major_color="#000000", minor_color="#000000", labelcolor="#000000",
 ):
     """Apply tick placement, label formatting, direction, and minor ticks to
     a matplotlib Axis.
@@ -128,6 +133,9 @@ def apply_axis_ticks(
     minor_direction: "out" | "in" | "inout" - which way minor ticks point,
         independent of major `direction`. Defaults to `direction` when not
         given (e.g. in tests that only care about major-tick behavior).
+    major_color: color of the major tick marks
+    minor_color: color of the minor tick marks
+    labelcolor: color of the tick value text (shared by major and minor)
     """
     if mode == "count":
         axis.set_major_locator(MaxNLocator(nbins=count))
@@ -155,8 +163,48 @@ def apply_axis_ticks(
         axis.set_major_formatter(ScalarFormatter())
 
     axis.set_minor_locator(AutoMinorLocator() if minor_enabled else NullLocator())
-    axis.set_tick_params(which="major", direction=direction)
-    axis.set_tick_params(which="minor", direction=minor_direction if minor_direction is not None else direction)
+    axis.set_tick_params(which="major", direction=direction, color=major_color, labelcolor=labelcolor)
+    axis.set_tick_params(
+        which="minor",
+        direction=minor_direction if minor_direction is not None else direction,
+        color=minor_color, labelcolor=labelcolor,
+    )
+
+
+def resolve_axis_color(prefix, own_color, match_enabled, x_color):
+    """Resolve the effective color for a Y/Y2 axis element (label, tick
+    marks, tick values, or spine): X's color when this axis is matching X
+    (`match_enabled` True, the default), otherwise the axis's own saved
+    color. Mirrors the `{prefix}_match_x_label_color`/`{prefix}_match_x_colors`
+    config flags read by AxesTab.
+
+    `prefix` isn't used by the logic itself -- it's accepted purely so call
+    sites (e.g. `resolve_axis_color("y2", ...)`) stay self-documenting about
+    which axis is being resolved, since `own_color`/`x_color` alone don't
+    make that obvious at a glance.
+    """
+    return x_color if match_enabled else own_color
+
+
+def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
+    """Color the axis box lines ('spines'). Bottom/top belong to x, left
+    belongs to y. Right belongs to y2 when a secondary y axis is active,
+    otherwise to y. When axes2 exists (twinx()), it draws its own full
+    spine box on top of axes, so its bottom/top/left must be kept in sync
+    with axes's x/y colors or they'd visually override them with black.
+    axes's own right spine is always kept on y_color too; when axes2 is
+    present it is visually covered by axes2's right spine (set to
+    y2_color), but keeping it in sync avoids a stray black edge showing
+    through and keeps axes internally consistent."""
+    axes.spines["bottom"].set_color(x_color)
+    axes.spines["top"].set_color(x_color)
+    axes.spines["left"].set_color(y_color)
+    axes.spines["right"].set_color(y_color)
+    if axes2 is not None:
+        axes2.spines["bottom"].set_color(x_color)
+        axes2.spines["top"].set_color(x_color)
+        axes2.spines["left"].set_color(y_color)
+        axes2.spines["right"].set_color(y2_color)
 
 
 def _resolve_error_column(df, column_name):
@@ -521,6 +569,11 @@ class ChartEditorWidget(PWidget):
             # Clear the current plot
             self.chart_canvas.axes.clear()
 
+            fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
+            axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
+            self.chart_canvas.fig.set_facecolor(fig_bg if fig_bg is not None else "none")
+            self.chart_canvas.axes.set_facecolor(axes_bg if axes_bg is not None else "none")
+
             # Set up (or tear down) the secondary Y axis depending on whether
             # any series is currently routed to it.
             needs_secondary = any(series.y_axis == "secondary" for series in self.chart.data_series)
@@ -672,6 +725,12 @@ class ChartEditorWidget(PWidget):
                 title_italic=config.get("title_italic", False),
                 subtitle_bold=config.get("subtitle_bold", False),
                 subtitle_italic=config.get("subtitle_italic", False),
+                title_color=config.get("title_color", "#000000"),
+                subtitle_color=(
+                    config.get("title_color", "#000000")
+                    if config.get("subtitle_match_title_color", True)
+                    else config.get("subtitle_color", "#000000")
+                ),
             )
 
             chart_padding = config.get("chart_padding", 2.0)
@@ -686,8 +745,12 @@ class ChartEditorWidget(PWidget):
                 dpi, pad=chart_padding, w_pad=chart_padding_w, h_pad=chart_padding_h, top_margin=top_margin,
             )
 
-            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""))
-            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""))
+            x_label_color = config.get("x_label_color", "#000000")
+            y_match_label = config.get("y_match_x_label_color", True)
+            y_label_color = resolve_axis_color(
+                "y", config.get("y_label_color", "#000000"), y_match_label, x_label_color)
+            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""), color=x_label_color)
+            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""), color=y_label_color)
             self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
             self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
@@ -700,7 +763,10 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.axes.yaxis.set_label_position("left")
 
             if self.chart_canvas.axes2 is not None:
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
+                y2_match_label = config.get("y2_match_x_label_color", True)
+                y2_label_color = resolve_axis_color(
+                    "y2", config.get("y2_label_color", "#000000"), y2_match_label, x_label_color)
+                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""), color=y2_label_color)
                 self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
                 self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
                 if config.get("y2_side", "right") == "left":
@@ -721,15 +787,29 @@ class ChartEditorWidget(PWidget):
                     config.get("y2_tick_format_custom", ""),
                     direction=config.get("y2_tick_direction", "out"),
                     minor_enabled=config.get("y2_minor_ticks", False),
-                    minor_direction=config.get("y2_minor_tick_direction", "out"))
+                    minor_direction=config.get("y2_minor_tick_direction", "out"),
+                    major_color=resolve_axis_color(
+                        "y2", config.get("y2_major_tick_color", "#000000"),
+                        config.get("y2_match_x_colors", True),
+                        config.get("x_major_tick_color", "#000000")),
+                    minor_color=resolve_axis_color(
+                        "y2", config.get("y2_minor_tick_color", "#000000"),
+                        config.get("y2_match_x_colors", True),
+                        config.get("x_minor_tick_color", "#000000")),
+                    labelcolor=resolve_axis_color(
+                        "y2", config.get("y2_tick_label_color", "#000000"),
+                        config.get("y2_match_x_colors", True),
+                        config.get("x_tick_label_color", "#000000")))
 
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
                 else:
                     self.chart_canvas.axes2.grid(False, axis="y")
-
-            if self.chart_canvas.axes2 is not None:
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""))
+                if config.get("y2_show_minor_grid", False):
+                    self.chart_canvas.axes2.grid(
+                        True, axis="y", which="minor", alpha=config.get("minor_grid_alpha", 0.15))
+                else:
+                    self.chart_canvas.axes2.grid(False, axis="y", which="minor")
 
             if not config.get("x_auto_limits", True):
                 self.chart_canvas.axes.set_xlim(config.get("x_min", 0.0), config.get("x_max", 1.0))
@@ -743,7 +823,10 @@ class ChartEditorWidget(PWidget):
                 config.get("x_tick_format_custom", ""),
                 direction=config.get("x_tick_direction", "out"),
                 minor_enabled=config.get("x_minor_ticks", False),
-                minor_direction=config.get("x_minor_tick_direction", "out"))
+                minor_direction=config.get("x_minor_tick_direction", "out"),
+                major_color=config.get("x_major_tick_color", "#000000"),
+                minor_color=config.get("x_minor_tick_color", "#000000"),
+                labelcolor=config.get("x_tick_label_color", "#000000"))
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
@@ -751,17 +834,50 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_format_custom", ""),
                 direction=config.get("y_tick_direction", "out"),
                 minor_enabled=config.get("y_minor_ticks", False),
-                minor_direction=config.get("y_minor_tick_direction", "out"))
+                minor_direction=config.get("y_minor_tick_direction", "out"),
+                major_color=resolve_axis_color(
+                    "y", config.get("y_major_tick_color", "#000000"),
+                    config.get("y_match_x_colors", True),
+                    config.get("x_major_tick_color", "#000000")),
+                minor_color=resolve_axis_color(
+                    "y", config.get("y_minor_tick_color", "#000000"),
+                    config.get("y_match_x_colors", True),
+                    config.get("x_minor_tick_color", "#000000")),
+                labelcolor=resolve_axis_color(
+                    "y", config.get("y_tick_label_color", "#000000"),
+                    config.get("y_match_x_colors", True),
+                    config.get("x_tick_label_color", "#000000")))
+
+            apply_spine_colors(
+                self.chart_canvas.axes, self.chart_canvas.axes2,
+                config.get("x_spine_color", "#000000"),
+                resolve_axis_color(
+                    "y", config.get("y_spine_color", "#000000"),
+                    config.get("y_match_x_colors", True),
+                    config.get("x_spine_color", "#000000")),
+                resolve_axis_color(
+                    "y2", config.get("y2_spine_color", "#000000"),
+                    config.get("y2_match_x_colors", True),
+                    config.get("x_spine_color", "#000000")))
 
             grid_alpha = config.get("grid_alpha", 0.3)
+            minor_grid_alpha = config.get("minor_grid_alpha", 0.15)
             if config.get("show_grid_x", True):
                 self.chart_canvas.axes.grid(True, axis="x", alpha=grid_alpha)
             else:
                 self.chart_canvas.axes.grid(False, axis="x")
+            if config.get("x_show_minor_grid", False):
+                self.chart_canvas.axes.grid(True, axis="x", which="minor", alpha=minor_grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="x", which="minor")
             if config.get("show_grid_y", True):
                 self.chart_canvas.axes.grid(True, axis="y", alpha=grid_alpha)
             else:
                 self.chart_canvas.axes.grid(False, axis="y")
+            if config.get("y_show_minor_grid", False):
+                self.chart_canvas.axes.grid(True, axis="y", which="minor", alpha=minor_grid_alpha)
+            else:
+                self.chart_canvas.axes.grid(False, axis="y", which="minor")
 
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 # Combine handles/labels from both axes since twinx() legends

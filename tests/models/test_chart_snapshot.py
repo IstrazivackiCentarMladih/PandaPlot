@@ -48,6 +48,19 @@ def test_restore_recreates_removed_series():
     assert chart.data_series[0].label == "s1"
 
 
+def test_restore_reverts_background_style_fields():
+    chart = _make_chart()
+    snap = snapshot_chart_state(chart)
+
+    chart.style["figure_background_color"] = "#000000"
+    chart.style["axes_background_color"] = "#111111"
+
+    restore_chart_state(chart, snap)
+
+    assert chart.style["figure_background_color"] == "#ffffff"
+    assert chart.style["axes_background_color"] == "#ffffff"
+
+
 def test_restore_only_touches_fit_style_fields():
     chart = _make_chart()
     chart.add_fit_data(
