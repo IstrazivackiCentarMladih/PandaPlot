@@ -92,7 +92,7 @@ class PandaMainWindow(PMainWindow):
         self.panel_setup_manager.add_panels(self.sidebar, self.conditional_panel_manager)
 
         # Connect tab changes to conditional panel manager (centralized)
-        self.tab_container.tab_widget.currentChanged.connect(
+        self.tab_container.active_tab_changed.connect(
             self.conditional_panel_manager.on_tab_changed)
     
     def setup_event_subscriptions(self):

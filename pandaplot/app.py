@@ -122,11 +122,12 @@ def restore_last_session(app_context: AppContext, main_window: PandaMainWindow) 
     if not last_path or not os.path.isfile(last_path):
         return
 
-    tab_ids = session_manager.last_open_tabs
+    panes_data = session_manager.last_tab_panes
     active_tab_id = session_manager.last_active_tab_id
+    splitter_sizes = session_manager.last_splitter_sizes
 
     def _on_loaded(project) -> None:  # noqa: ANN001 - Project, avoiding import cycle concerns
-        main_window.tab_container.restore_tab_session(tab_ids, active_tab_id)
+        main_window.tab_container.restore_tab_session(panes_data, active_tab_id, splitter_sizes)
 
     command = LoadProjectCommand(app_context, last_path, on_loaded=_on_loaded)
     app_context.get_command_executor().execute_command(command)
