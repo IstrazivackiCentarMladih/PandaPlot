@@ -79,7 +79,8 @@ class AxesTab(QWidget):
         font_spin.setValue(12)
         label_layout.addWidget(font_spin, 1, 1)
 
-        label_layout.addWidget(QLabel("Color:"), 2, 0)
+        label_color_label = QLabel("Color:")
+        label_layout.addWidget(label_color_label, 2, 0)
         label_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
         label_layout.addWidget(label_color_row, 2, 1)
         match_x_label_toggle = None
@@ -87,6 +88,7 @@ class AxesTab(QWidget):
             match_x_label_toggle = ToggleSwitch(checked=True)
             label_layout.addWidget(QLabel("Match X:"), 2, 2)
             label_layout.addWidget(match_x_label_toggle, 2, 3)
+            label_color_label.setVisible(False)  # hidden while matching, per default checked=True
             label_color_row.setVisible(False)  # hidden while matching, per default checked=True
 
         form_layout.addLayout(label_layout)
@@ -178,7 +180,7 @@ class AxesTab(QWidget):
         # Minor gridlines only draw where minor tick locations exist, so
         # this toggle -- like minor tick direction above -- is only shown
         # (and meaningful) once minor ticks are actually turned on.
-        minor_grid_label = QLabel("Minor grid")
+        minor_grid_label = QLabel("Minor grid:")
         minor_grid_toggle = ToggleSwitch()
         ticks_layout.addWidget(minor_grid_label, 10, 0)
         ticks_layout.addWidget(minor_grid_toggle, 10, 1)
@@ -191,11 +193,13 @@ class AxesTab(QWidget):
         colors_layout = QGridLayout(colors_card)
         colors_layout.addWidget(SectionHeader("Colors"), 0, 0, 1, 2)
 
-        colors_layout.addWidget(QLabel("Spine:"), 1, 0)
+        spine_color_label = QLabel("Spine:")
+        colors_layout.addWidget(spine_color_label, 1, 0)
         spine_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
         colors_layout.addWidget(spine_color_row, 1, 1)
 
-        colors_layout.addWidget(QLabel("Major ticks:"), 2, 0)
+        major_tick_color_label = QLabel("Major ticks:")
+        colors_layout.addWidget(major_tick_color_label, 2, 0)
         major_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
         colors_layout.addWidget(major_tick_color_row, 2, 1)
 
@@ -219,8 +223,11 @@ class AxesTab(QWidget):
 
         if match_x_colors_toggle is not None:
             # Hidden while matching X, per default checked=True.
+            spine_color_label.setVisible(False)
             spine_color_row.setVisible(False)
+            major_tick_color_label.setVisible(False)
             major_tick_color_row.setVisible(False)
+            tick_label_color_label.setVisible(False)
             tick_label_color_row.setVisible(False)
 
         form_layout.addWidget(colors_card)
@@ -248,10 +255,13 @@ class AxesTab(QWidget):
             "minor_grid_toggle": minor_grid_toggle,
             "colors_card": colors_card,
             "spine_color_row": spine_color_row,
+            "spine_color_label": spine_color_label,
             "major_tick_color_row": major_tick_color_row,
+            "major_tick_color_label": major_tick_color_label,
             "minor_tick_color_row": minor_tick_color_row,
             "minor_tick_color_label": minor_tick_color_label,
             "label_color_row": label_color_row,
+            "label_color_label": label_color_label,
             "match_x_label_toggle": match_x_label_toggle,
             "match_x_colors_toggle": match_x_colors_toggle,
             "tick_label_color_row": tick_label_color_row,
@@ -336,30 +346,45 @@ class AxesTab(QWidget):
 
     def _on_match_x_label_toggled(self, prefix: str, checked: bool):
         """Hide the axis-name color swatch while it matches X's; pre-fill
-        from X's current color the first time it's revealed."""
+        from X's current color the first time it's revealed.
+
+        The pre-fill is guarded by `not self._updating_controls` so that
+        `_read_axis_config`/`_on_copy_axis_settings` setting this toggle's
+        checked state while loading/copying real values (which still fires
+        `toggled`, since `setChecked` doesn't consult `_updating_controls`)
+        can't clobber a value the caller is about to load or has already
+        loaded, by explicitly setting the swatch color themselves right
+        after this handler runs."""
         form = self.axes_forms[prefix]
-        if not checked:
+        if not checked and not self._updating_controls:
             form["label_color_row"].setCurrentColor(self.axes_forms["x"]["label_color_row"].currentColor())
+        form["label_color_label"].setVisible(not checked)
         form["label_color_row"].setVisible(not checked)
         self._on_field_changed()
 
     def _on_match_x_colors_toggled(self, prefix: str, checked: bool):
         """Hide spine/major/minor/tick-value color swatches while this axis
         matches X's colors for all four; pre-fill from X's current colors
-        the first time they're revealed."""
+        the first time they're revealed.
+
+        The pre-fill is guarded by `not self._updating_controls` -- see
+        `_on_match_x_label_toggled` for why."""
         form = self.axes_forms[prefix]
         x_form = self.axes_forms["x"]
-        if not checked:
+        if not checked and not self._updating_controls:
             form["spine_color_row"].setCurrentColor(x_form["spine_color_row"].currentColor())
             form["major_tick_color_row"].setCurrentColor(x_form["major_tick_color_row"].currentColor())
             form["minor_tick_color_row"].setCurrentColor(x_form["minor_tick_color_row"].currentColor())
             form["tick_label_color_row"].setCurrentColor(x_form["tick_label_color_row"].currentColor())
+        form["spine_color_label"].setVisible(not checked)
         form["spine_color_row"].setVisible(not checked)
+        form["major_tick_color_label"].setVisible(not checked)
         form["major_tick_color_row"].setVisible(not checked)
         # minor_tick_color_row's visibility is also gated by minor_ticks_toggle
         # (see _on_minor_ticks_toggled) -- both conditions must hold.
         form["minor_tick_color_row"].setVisible(not checked and form["minor_ticks_toggle"].isChecked())
         form["minor_tick_color_label"].setVisible(not checked and form["minor_ticks_toggle"].isChecked())
+        form["tick_label_color_label"].setVisible(not checked)
         form["tick_label_color_row"].setVisible(not checked)
         self._on_field_changed()
 
@@ -411,20 +436,37 @@ class AxesTab(QWidget):
         target["minor_grid_label"].setVisible(target_minor_enabled)
         target["minor_grid_toggle"].setVisible(target_minor_enabled)
 
+        # Match-X toggles MUST be set BEFORE the color swatches are copied
+        # from `source`: `setChecked` fires `toggled` unconditionally, and
+        # the toggled handlers pre-fill their swatches from X's *current*
+        # color whenever the new state is "not matching" (see
+        # _on_match_x_label_toggled/_on_match_x_colors_toggled). If the
+        # swatches were copied from `source` first, that pre-fill would
+        # immediately overwrite them with X's colors instead of the
+        # `source` colors we just copied. Setting the toggles first means
+        # any pre-fill the handler does gets overwritten a few lines down
+        # by the explicit `setCurrentColor(source[...])` calls below, which
+        # is what we actually want to end up in `target`.
+        if source["match_x_label_toggle"] is not None and target["match_x_label_toggle"] is not None:
+            target["match_x_label_toggle"].setChecked(source["match_x_label_toggle"].isChecked())
+        if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
+            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+
         target["spine_color_row"].setCurrentColor(source["spine_color_row"].currentColor())
         target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
         target["minor_tick_color_row"].setCurrentColor(source["minor_tick_color_row"].currentColor())
 
         target["label_color_row"].setCurrentColor(source["label_color_row"].currentColor())
         target["tick_label_color_row"].setCurrentColor(source["tick_label_color_row"].currentColor())
-        if source["match_x_label_toggle"] is not None and target["match_x_label_toggle"] is not None:
-            target["match_x_label_toggle"].setChecked(source["match_x_label_toggle"].isChecked())
-        if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
-            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+
+        target["label_color_label"].setVisible(not target["match_x_label_toggle"].isChecked())
         target["label_color_row"].setVisible(not target["match_x_label_toggle"].isChecked())
         target_matching_colors = target["match_x_colors_toggle"].isChecked()
+        target["spine_color_label"].setVisible(not target_matching_colors)
         target["spine_color_row"].setVisible(not target_matching_colors)
+        target["major_tick_color_label"].setVisible(not target_matching_colors)
         target["major_tick_color_row"].setVisible(not target_matching_colors)
+        target["tick_label_color_label"].setVisible(not target_matching_colors)
         target["tick_label_color_row"].setVisible(not target_matching_colors)
         target["minor_tick_color_row"].setVisible(not target_matching_colors and target["minor_ticks_toggle"].isChecked())
         target["minor_tick_color_label"].setVisible(not target_matching_colors and target["minor_ticks_toggle"].isChecked())
@@ -536,6 +578,29 @@ class AxesTab(QWidget):
         form["minor_grid_label"].setVisible(minor_ticks_enabled)
         form["minor_grid_toggle"].setVisible(minor_ticks_enabled)
 
+        # Match-X toggles MUST be set BEFORE the color swatches they gate.
+        # `ToggleSwitch.setChecked` emits `toggled` unconditionally -- even
+        # while `self._updating_controls` is True -- and the toggled
+        # handlers (`_on_match_x_label_toggled`/`_on_match_x_colors_toggled`)
+        # pre-fill their swatches from X's *current* color whenever the new
+        # state is "not matching". If the swatches were populated from
+        # `config` first, that pre-fill would silently overwrite a saved
+        # custom color with X's color. Setting the toggles first means any
+        # pre-fill the handler does gets overwritten a few lines down by the
+        # explicit `setCurrentColor(config.get(...))` calls below, which are
+        # the actual saved values we want. (Mirrors style_tab.py's
+        # load_chart_style, which sets subtitle_match_title_toggle before
+        # subtitle_color_row for the same reason.)
+        match_label = True
+        if form["match_x_label_toggle"] is not None:
+            match_label = config.get(f"{prefix}_match_x_label_color", True)
+            form["match_x_label_toggle"].setChecked(match_label)
+
+        match_colors = True
+        if form["match_x_colors_toggle"] is not None:
+            match_colors = config.get(f"{prefix}_match_x_colors", True)
+            form["match_x_colors_toggle"].setChecked(match_colors)
+
         form["spine_color_row"].setCurrentColor(config.get(f"{prefix}_spine_color", "#000000"))
         form["major_tick_color_row"].setCurrentColor(config.get(f"{prefix}_major_tick_color", "#000000"))
         form["minor_tick_color_row"].setCurrentColor(config.get(f"{prefix}_minor_tick_color", "#000000"))
@@ -544,15 +609,16 @@ class AxesTab(QWidget):
 
         form["label_color_row"].setCurrentColor(config.get(f"{prefix}_label_color", "#000000"))
         form["tick_label_color_row"].setCurrentColor(config.get(f"{prefix}_tick_label_color", "#000000"))
+
         if form["match_x_label_toggle"] is not None:
-            match_label = config.get(f"{prefix}_match_x_label_color", True)
-            form["match_x_label_toggle"].setChecked(match_label)
+            form["label_color_label"].setVisible(not match_label)
             form["label_color_row"].setVisible(not match_label)
         if form["match_x_colors_toggle"] is not None:
-            match_colors = config.get(f"{prefix}_match_x_colors", True)
-            form["match_x_colors_toggle"].setChecked(match_colors)
+            form["spine_color_label"].setVisible(not match_colors)
             form["spine_color_row"].setVisible(not match_colors)
+            form["major_tick_color_label"].setVisible(not match_colors)
             form["major_tick_color_row"].setVisible(not match_colors)
+            form["tick_label_color_label"].setVisible(not match_colors)
             form["tick_label_color_row"].setVisible(not match_colors)
             form["minor_tick_color_row"].setVisible(not match_colors and minor_ticks_enabled)
             form["minor_tick_color_label"].setVisible(not match_colors and minor_ticks_enabled)
