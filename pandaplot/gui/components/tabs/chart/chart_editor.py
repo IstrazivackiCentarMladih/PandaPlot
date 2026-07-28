@@ -195,8 +195,18 @@ def resolve_scale_kwargs(scale: str, log_base: float) -> dict:
     needs an explicit `base` (matplotlib requires base > 0 and base != 1,
     which also covers custom bases between 0 and 1); a linear axis's scale
     class doesn't accept a `base` kwarg at all, so it must be omitted
-    entirely rather than passed as None/default."""
-    return {"base": log_base} if scale == "log" else {}
+    entirely rather than passed as None/default.
+
+    Validated defensively here (not just in the GUI's write path) because
+    `log_base` may come from a hand-edited or corrupted project file: an
+    invalid value (<= 0 or exactly 1.0) would otherwise reach
+    Axes.set_xscale/set_yscale unfiltered and raise an unhandled
+    ValueError, crashing rendering. Falls back to base 10 instead."""
+    if scale != "log":
+        return {}
+    if log_base <= 0 or log_base == 1.0:
+        log_base = 10.0
+    return {"base": log_base}
 
 
 def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):

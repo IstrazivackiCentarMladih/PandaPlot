@@ -4,6 +4,8 @@ Style/Axes/Legend sidebar tabs (per-axis grid, scale, font size,
 axis limits, tick configuration, legend styling, series alpha).
 """
 
+import math
+
 import pytest
 from matplotlib.figure import Figure
 from PySide6.QtWidgets import QApplication
@@ -579,7 +581,13 @@ def test_log_base_defaults_to_ten_when_missing():
 
 def test_log_base_round_trips_through_serialization():
     chart = Chart(name="Test Chart")
-    chart.config["x_log_base"] = 2.0
+    chart.update_config({
+        "x_log_base": 2.0,
+        "y_log_base": 2.0,
+        "y2_log_base": math.e,
+    })
     data = chart.to_dict()
     restored = Chart.from_dict(data)
     assert restored.config["x_log_base"] == 2.0
+    assert restored.config["y_log_base"] == 2.0
+    assert restored.config["y2_log_base"] == math.e
