@@ -256,18 +256,16 @@ class AddColumnsCommand(Command):
     def _insert_column_block(self, data: pd.DataFrame, position: int, column_names: List[str], default_values: List[Any]) -> pd.DataFrame:
         """
         Insert multiple columns as a block at the specified position.
-        
+
         Args:
             data: DataFrame to insert into
             position: Position to insert at (0-based)
             column_names: Names of the new columns
             default_values: Default values for the new columns
-            
+
         Returns:
             New DataFrame with the columns inserted
         """
-        import numpy as np
-        
         # Clamp position to valid range
         position = max(0, min(position, len(data.columns)))
         
@@ -276,22 +274,15 @@ class AddColumnsCommand(Command):
         num_rows = len(data)
         
         for col_name, default_val in zip(column_names, default_values, strict=False):
-            # Determine default value
-            if default_val is not None:
-                final_default = default_val
+            if default_val is None:
+                # No explicit value given: new columns default to float64/0.0.
+                new_columns_data[col_name] = pd.Series(
+                    [0.0] * num_rows, name=col_name, index=data.index, dtype="float64"
+                )
+            elif isinstance(default_val, (int, float)):
+                new_columns_data[col_name] = pd.Series([default_val] * num_rows, name=col_name, index=data.index)
             else:
-                # Try to infer a reasonable default based on existing data
-                numeric_cols = data.select_dtypes(include=[np.number]).columns
-                if len(numeric_cols) > 0:
-                    final_default = 0
-                else:
-                    final_default = ""
-            
-            # Create the column series
-            if isinstance(final_default, (int, float)):
-                new_columns_data[col_name] = pd.Series([final_default] * num_rows, name=col_name, index=data.index)
-            else:
-                new_columns_data[col_name] = pd.Series([str(final_default)] * num_rows, name=col_name, index=data.index)
+                new_columns_data[col_name] = pd.Series([str(default_val)] * num_rows, name=col_name, index=data.index)
         
         if position >= len(data.columns):
             # Append at end
