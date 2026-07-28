@@ -349,7 +349,8 @@ class StyleTab(QWidget):
         self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_color_row, 4, 1)
 
-        marker_layout.addWidget(QLabel("Match line:"), 5, 0)
+        self.marker_match_line_label = QLabel("Match line:")
+        marker_layout.addWidget(self.marker_match_line_label, 5, 0)
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
         marker_layout.addWidget(self.marker_match_line_toggle, 5, 1)
 
@@ -383,7 +384,8 @@ class StyleTab(QWidget):
         self.error_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         error_layout.addWidget(self.error_color_row, 2, 1)
 
-        error_layout.addWidget(QLabel("Match line:"), 3, 0)
+        self.error_match_line_label = QLabel("Match line:")
+        error_layout.addWidget(self.error_match_line_label, 3, 0)
         self.error_match_line_toggle = ToggleSwitch(checked=True)
         error_layout.addWidget(self.error_match_line_toggle, 3, 1)
 
@@ -466,6 +468,17 @@ class StyleTab(QWidget):
         # Fit data has no error-bar fields (DataSeries-only), so the Error
         # Bars card only applies to a selected series.
         self.error_bars_card.setVisible(kind == "series")
+        self._update_match_line_labels()
+
+    def _update_match_line_labels(self):
+        """"Match line" toggles mean "track series.color", which doubles as
+        the line color for chart types that draw a connecting line. Scatter
+        charts draw no line (the Line card is hidden entirely for them), so
+        relabel both toggles to avoid implying a line exists there.
+        """
+        text = "Match series color:" if self._chart_type == ChartType.SCATTER else "Match line:"
+        self.marker_match_line_label.setText(text)
+        self.error_match_line_label.setText(text)
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
