@@ -26,7 +26,7 @@ from pandaplot.models.chart.chart_configuration import (
     LineStyleType,
     MarkerType,
 )
-from pandaplot.models.project.items.chart import ErrorDirection
+from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -512,16 +512,20 @@ class StyleTab(QWidget):
         concept at all (see load_fit_style/apply_fit_style_to), so it's
         hidden whenever a fit entry is selected, not just for "chart".
         """
-        kind, _obj = self._current_target
+        kind, obj = self._current_target
         is_chart = kind == "chart"
         for card in self.chart_style_cards:
             card.setVisible(is_chart)
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
         self.marker_card.setVisible(kind == "series")
-        # Fit data has no error-bar fields (DataSeries-only), so the Error
-        # Bars card only applies to a selected series.
-        self.error_bars_card.setVisible(kind == "series")
+        # Fit data has no error-bar fields at all (DataSeries-only), and even
+        # for a series there's nothing to style unless an error column is
+        # actually configured (on the Data tab) -- otherwise the card's
+        # controls (direction/color/cap size) have no error bars to apply to.
+        self.error_bars_card.setVisible(
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+        )
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
@@ -763,6 +767,7 @@ class StyleTab(QWidget):
         fit.color = self.line_color_row.currentColor()
         fit.line_style = self.line_style_control.currentValue().value
         fit.line_width = self.line_width_slider.value()
+        fit.alpha = self.line_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
@@ -822,14 +827,14 @@ class StyleTab(QWidget):
 
     def load_fit_style(self, fit):
         """Populate the Line/Marker cards from a fit-data entry's style
-        fields. Fit data has no marker/opacity concept, so markers are
-        forced off and locked."""
+        fields. Fit data has no marker concept, so markers are forced off
+        and locked; opacity, however, does apply to the fit line itself."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             self.line_color_row.setCurrentColor(fit.color)
             self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(1.0)
+            self.line_opacity_slider.setValue(fit.alpha)
             try:
                 self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
             except ValueError:

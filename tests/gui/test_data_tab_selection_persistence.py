@@ -104,3 +104,62 @@ def test_rename_persists_after_apply_reload_for_non_first_series():
     data_tab._on_label_committed()
     assert chart.data_series[1].label == "Renamed Twice"
     assert chart.data_series[0].label == "Series A"
+
+
+def test_label_commit_emits_dirty_only_when_label_actually_changes():
+    """Regression: a label-only edit must mark the panel dirty (so the
+    footer's Apply button enables) exactly when the label actually changed.
+
+    Before this fix, `_on_label_committed` never emitted any signal, so
+    Apply stayed disabled after a label-only edit -- the label had already
+    been written straight into the model, but clicking the (disabled) Apply
+    button did nothing, and only editing something else afterwards (which
+    does emit a dirty/config-changed signal) made Apply start working again.
+    """
+    _qapp()
+    app_context = build_app_context()
+    project, chart = _project_with_two_series()
+
+    data_tab = DataTab(app_context=app_context)
+    data_tab.set_project(project)
+    data_tab.load(chart)
+
+    seen = []
+    data_tab.dirtyOnly.connect(lambda: seen.append(True))
+
+    # Re-committing the same label (no-op edit) must not mark dirty.
+    data_tab._pending_label = chart.data_series[0].label
+    data_tab._on_label_committed()
+    assert seen == []
+
+    # An actual label change must mark dirty.
+    data_tab._pending_label = "Renamed"
+    data_tab._on_label_committed()
+    assert seen == [True]
+
+
+def test_typing_a_label_marks_dirty_immediately():
+    """Regression: typing into the label field must mark the panel dirty
+    right away, not only once the field loses focus.
+
+    Before this fix, dirty-marking was deferred to `editingFinished`
+    (blur). But the footer's Apply button starts out *disabled*, and a
+    disabled QPushButton doesn't accept mouse clicks -- so clicking Apply
+    directly after typing (without first clicking some other widget) never
+    blurred the label field, editingFinished never fired, and Apply stayed
+    disabled forever: a deadlock only escapable by clicking away first.
+    """
+    _qapp()
+    app_context = build_app_context()
+    project, chart = _project_with_two_series()
+
+    data_tab = DataTab(app_context=app_context)
+    data_tab.set_project(project)
+    data_tab.load(chart)
+
+    seen = []
+    data_tab.dirtyOnly.connect(lambda: seen.append(True))
+
+    data_tab.series_label_edit.setText("Renamed While Typing")
+
+    assert seen == [True]

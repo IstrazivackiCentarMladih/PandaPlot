@@ -655,6 +655,14 @@ class DataTab(QWidget):
             # request from here.
             self.axesRefreshRequested.emit()
 
+            # Re-emit `seriesSelected` for the still-selected series: the
+            # panel wires this to `StyleTab.set_selected`, which re-checks
+            # whether the Error Bars card should show now that an error
+            # column may have just been added/cleared here. (The Style tab
+            # lives on a different tab and has no other way to learn about
+            # this edit.)
+            self.seriesSelected.emit("series", series)
+
             # Update the expanded card's own Y1/Y2 badge in place too.
             # Deliberately NOT calling `_rebuild_series_cards()` from this
             # handler: that tears down and rebuilds the card list, including
@@ -798,8 +806,24 @@ class DataTab(QWidget):
             self._updating_controls = previous_guard
 
     def _on_label_typing(self, text: str):
-        """Buffer label text while user is typing without mutating the model."""
+        """Buffer label text while user is typing without mutating the model.
+
+        Also marks the panel dirty immediately (not deferred to
+        editingFinished like the model write itself): the footer's Apply
+        button starts out disabled, and a *disabled* QPushButton doesn't
+        accept mouse clicks at all -- so if dirty-marking waited for
+        editingFinished, clicking Apply directly after typing would never
+        blur the field (a disabled button can't steal focus), meaning
+        editingFinished never fires, the label never commits, and Apply
+        stays disabled forever. The user would have to click some other
+        widget first just to force the blur. Marking dirty on every
+        keystroke (safe here: blockSignals during programmatic population
+        means this only ever fires for genuine user edits) breaks that
+        deadlock by enabling Apply before the user ever tries to click it.
+        """
         self._pending_label = text
+        if not self._updating_controls and self.current_chart:
+            self.dirtyOnly.emit()
 
     def _on_label_committed(self):
         """Persist buffered label to model after editing finishes.
@@ -816,14 +840,28 @@ class DataTab(QWidget):
             return
         total_series = len(self.current_chart.data_series)
         new_label = self._pending_label or self.series_label_edit.text()
+        changed = False
         if current_row < total_series:
             if current_row < len(self.current_chart.data_series):
-                self.current_chart.data_series[current_row].label = new_label
+                entry = self.current_chart.data_series[current_row]
+                changed = entry.label != new_label
+                entry.label = new_label
         else:
             fit_index = current_row - total_series
             if 0 <= fit_index < len(self.current_chart.fit_data):
-                self.current_chart.fit_data[fit_index].label = new_label
+                entry = self.current_chart.fit_data[fit_index]
+                changed = entry.label != new_label
+                entry.label = new_label
         self._pending_label = new_label
+        if changed:
+            # Mirrors _on_series_config_changed: mark the panel dirty so the
+            # footer's Apply button enables. Without this, a label-only edit
+            # left Apply disabled (the model was already updated directly,
+            # but silently -- no undo entry, no "unsaved changes" indicator,
+            # and clicking the disabled Apply button did nothing), which is
+            # why editing anything else afterwards was needed to make Apply
+            # start doing something again.
+            self.dirtyOnly.emit()
 
     def _reset_controls_for_series(self):
         """Reset controls for editing regular data series."""
