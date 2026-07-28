@@ -6,9 +6,11 @@ import uuid
 from typing import Optional, override
 
 import pandas as pd
+from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.gui.dialogs.dataset.new_dataset_dialog import NewDatasetDialog
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext, AppState
@@ -49,22 +51,25 @@ class CreateEmptyDatasetCommand(Command):
             if not self.project:
                 return False
 
-            # Get dataset name from user if not provided
+            # Get dataset shape/name from the dialog if not provided programmatically
             if self.dataset_name is None:
-                self.dataset_name = self.ui_controller.get_text_input(
-                    "Create New Dataset",
-                    "Enter dataset name:",
-                    "New Dataset"
-                )
+                dialog = NewDatasetDialog(self.ui_controller.parent_widget)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return False  # User cancelled
+
+                self.dataset_name = dialog.get_dataset_name()
+                rows = dialog.get_rows()
+                cols = dialog.get_columns()
+                fill_value = dialog.get_fill_value()
+            else:
+                rows, cols, fill_value = 1, 3, ""
 
             if not self.dataset_name:
                 return False  # User cancelled
 
-            # Create empty DataFrame with basic structure
+            # Create empty DataFrame with the chosen shape and fill value
             empty_data = pd.DataFrame({
-                "Column1": [""],
-                "Column2": [""],
-                "Column3": [""]
+                f"Column{i + 1}": [fill_value] * rows for i in range(cols)
             })
 
             # Create dataset ID

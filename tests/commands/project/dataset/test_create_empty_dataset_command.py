@@ -1,0 +1,151 @@
+import math
+from unittest.mock import Mock, patch
+
+import pytest
+
+from pandaplot.commands.project.dataset.create_empty_dataset_command import CreateEmptyDatasetCommand
+from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.events.event_types import DatasetEvents
+from pandaplot.models.project import Project
+from pandaplot.models.state import AppContext, AppState
+
+
+class TestCreateEmptyDatasetCommand:
+    @pytest.fixture
+    def mock_app_context(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        ui_controller = Mock(spec=UIController)
+        ui_controller.parent_widget = None
+
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = ui_controller
+        app_state.event_bus = Mock()
+        app_state.event_bus.emit = Mock()
+
+        return app_context, app_state, ui_controller
+
+    @pytest.fixture
+    def sample_project(self):
+        project = Project("Test Project")
+        project.find_item = Mock()
+        project.add_item = Mock()
+        project.remove_item = Mock()
+        return project
+
+    def test_programmatic_name_skips_dialog_and_uses_legacy_shape(
+        self, mock_app_context, sample_project
+    ):
+        """When dataset_name is supplied (e.g. by a test or other programmatic
+        caller), no dialog opens and the dataset keeps today's fixed
+        3-column/1-row/'' shape -- there is no channel to pass rows/cols/fill
+        without the dialog, so this path is intentionally unchanged."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog"
+        ) as mock_dialog_cls:
+            command = CreateEmptyDatasetCommand(app_context, dataset_name="Programmatic")
+            result = command.execute()
+
+        assert result is True
+        mock_dialog_cls.assert_not_called()
+        dataset = sample_project.add_item.call_args[0][0]
+        assert list(dataset.data.columns) == ["Column1", "Column2", "Column3"]
+        assert dataset.data.shape == (1, 3)
+        # pandas>=3.0 (pinned in pyproject.toml) infers pure-string columns as
+        # the "str" dtype rather than legacy "object"; the assertion tracks
+        # that actual behavior rather than a pre-pandas-3.0 assumption.
+        assert str(dataset.data["Column1"].dtype) == "str"
+        assert dataset.data["Column1"].tolist() == [""]
+
+    def test_dialog_accepted_builds_float64_dataframe_with_nan(
+        self, mock_app_context, sample_project
+    ):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        mock_dialog = Mock()
+        mock_dialog.exec.return_value = 1  # QDialog.DialogCode.Accepted == 1
+        mock_dialog.get_dataset_name.return_value = "My Dataset"
+        mock_dialog.get_rows.return_value = 5
+        mock_dialog.get_columns.return_value = 2
+        mock_dialog.get_fill_value.return_value = math.nan
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog",
+            return_value=mock_dialog,
+        ):
+            command = CreateEmptyDatasetCommand(app_context)
+            result = command.execute()
+
+        assert result is True
+        dataset = sample_project.add_item.call_args[0][0]
+        assert dataset.name == "My Dataset"
+        assert list(dataset.data.columns) == ["Column1", "Column2"]
+        assert dataset.data.shape == (5, 2)
+        assert str(dataset.data["Column1"].dtype) == "float64"
+        assert dataset.data["Column1"].isna().all()
+
+    def test_dialog_accepted_with_zero_fill_value(self, mock_app_context, sample_project):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        mock_dialog = Mock()
+        mock_dialog.exec.return_value = 1
+        mock_dialog.get_dataset_name.return_value = "Zeros"
+        mock_dialog.get_rows.return_value = 3
+        mock_dialog.get_columns.return_value = 1
+        mock_dialog.get_fill_value.return_value = 0.0
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog",
+            return_value=mock_dialog,
+        ):
+            command = CreateEmptyDatasetCommand(app_context)
+            result = command.execute()
+
+        assert result is True
+        dataset = sample_project.add_item.call_args[0][0]
+        assert dataset.data.shape == (3, 1)
+        assert str(dataset.data["Column1"].dtype) == "float64"
+        assert dataset.data["Column1"].tolist() == [0.0, 0.0, 0.0]
+
+    def test_dialog_cancelled_aborts_creation(self, mock_app_context, sample_project):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        mock_dialog = Mock()
+        mock_dialog.exec.return_value = 0  # QDialog.DialogCode.Rejected == 0
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog",
+            return_value=mock_dialog,
+        ):
+            command = CreateEmptyDatasetCommand(app_context)
+            result = command.execute()
+
+        assert result is False
+        sample_project.add_item.assert_not_called()
+        app_state.event_bus.emit.assert_not_called()
+
+    def test_no_project_loaded_shows_warning_before_opening_dialog(self, mock_app_context):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog"
+        ) as mock_dialog_cls:
+            command = CreateEmptyDatasetCommand(app_context)
+            result = command.execute()
+
+        assert result is False
+        mock_dialog_cls.assert_not_called()
+        ui_controller.show_warning_message.assert_called_once_with(
+            "Create Dataset", "Please open or create a project first."
+        )
