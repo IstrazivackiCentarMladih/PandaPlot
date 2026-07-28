@@ -34,6 +34,12 @@ class CreateEmptyDatasetCommand(Command):
         self.dataset_id: Optional[str] = None
         self.project = None
 
+        # Store the dataset shape/fill so redo() reuses the values chosen on
+        # the first execute() instead of re-deriving (or re-prompting for) them.
+        self.rows: Optional[int] = None
+        self.cols: Optional[int] = None
+        self.fill_value = None
+
     @override
     def execute(self) -> bool:
         """Execute the create empty dataset command."""
@@ -58,18 +64,24 @@ class CreateEmptyDatasetCommand(Command):
                     return False  # User cancelled
 
                 self.dataset_name = dialog.get_dataset_name()
-                rows = dialog.get_rows()
-                cols = dialog.get_columns()
-                fill_value = dialog.get_fill_value()
-            else:
-                rows, cols, fill_value = 1, 3, ""
+                self.rows = dialog.get_rows()
+                self.cols = dialog.get_columns()
+                self.fill_value = dialog.get_fill_value()
+            elif self.rows is None:
+                # First execute() with a programmatically-provided dataset_name (no dialog).
+                self.rows, self.cols, self.fill_value = 1, 3, ""
+            # else: this is a redo() -- self.rows/self.cols/self.fill_value already hold
+            # the values chosen the first time this command ran; reuse them as-is.
 
             if not self.dataset_name:
                 return False  # User cancelled
 
+            assert self.rows is not None and self.cols is not None
+            rows, cols = self.rows, self.cols
+
             # Create empty DataFrame with the chosen shape and fill value
             empty_data = pd.DataFrame({
-                f"Column{i + 1}": [fill_value] * rows for i in range(cols)
+                f"Column{i + 1}": [self.fill_value] * rows for i in range(cols)
             })
 
             # Create dataset ID

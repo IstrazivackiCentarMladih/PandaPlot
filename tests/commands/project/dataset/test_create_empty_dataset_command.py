@@ -134,6 +134,57 @@ class TestCreateEmptyDatasetCommand:
         sample_project.add_item.assert_not_called()
         app_state.event_bus.emit.assert_not_called()
 
+    def test_redo_reuses_dialog_shape_instead_of_legacy_default(
+        self, mock_app_context, sample_project
+    ):
+        """Regression test: create a dataset via the dialog with a non-default
+        shape, undo it, then redo it. Before the fix, redo() re-ran execute()
+        with self.dataset_name already set, which took the 'programmatic name'
+        branch and silently rebuilt the dataset as the legacy 1x3/'' shape
+        instead of the shape originally chosen in the dialog."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        mock_dialog = Mock()
+        mock_dialog.exec.return_value = 1  # QDialog.DialogCode.Accepted == 1
+        mock_dialog.get_dataset_name.return_value = "My Dataset"
+        mock_dialog.get_rows.return_value = 5
+        mock_dialog.get_columns.return_value = 2
+        mock_dialog.get_fill_value.return_value = math.nan
+
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog",
+            return_value=mock_dialog,
+        ):
+            command = CreateEmptyDatasetCommand(app_context)
+            result = command.execute()
+
+        assert result is True
+
+        # Undo removes the dataset.
+        command.undo()
+
+        # Redo re-runs execute(); the dialog must NOT be re-opened, and the
+        # dataset re-added should match the originally chosen shape.
+        with patch(
+            "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog"
+        ) as mock_dialog_cls_on_redo:
+            redo_result = command.redo()
+
+        assert redo_result is True
+        mock_dialog_cls_on_redo.assert_not_called()
+
+        assert sample_project.add_item.call_count == 2
+        first_dataset = sample_project.add_item.call_args_list[0][0][0]
+        redone_dataset = sample_project.add_item.call_args_list[1][0][0]
+
+        for dataset in (first_dataset, redone_dataset):
+            assert list(dataset.data.columns) == ["Column1", "Column2"]
+            assert dataset.data.shape == (5, 2)
+            assert str(dataset.data["Column1"].dtype) == "float64"
+            assert dataset.data["Column1"].isna().all()
+
     def test_no_project_loaded_shows_warning_before_opening_dialog(self, mock_app_context):
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
