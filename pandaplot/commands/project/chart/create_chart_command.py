@@ -85,19 +85,18 @@ class CreateChartCommand(Command):
             if isinstance(dataset_obj, Dataset) and dataset_obj.data is not None:
                 columns = list(dataset_obj.data.columns)
                 if len(columns) >= 2:
-                    # Use first column as X and second as Y by default
+                    # Use first column as X and second as Y by default.
                     chart.add_data_series(
-                        dataset_id=self.dataset_id,
-                        x_column=columns[0],
-                        y_column=columns[1],
+                        self.dataset_id,
+                        x_column_id=dataset_obj.column_id(columns[0]) or "",
+                        y_column_id=dataset_obj.column_id(columns[1]) or "",
                         label=f"{dataset_obj.name}:{columns[1]}"
                     )
                 elif len(columns) == 1:
-                    # Use index as X and only column as Y
+                    # Use index as X (empty x_column_id) and only column as Y
                     chart.add_data_series(
-                        dataset_id=self.dataset_id,
-                        x_column="",  # Empty means use index
-                        y_column=columns[0],
+                        self.dataset_id,
+                        y_column_id=dataset_obj.column_id(columns[0]) or "",
                         label=f"{dataset_obj.name}:{columns[0]}"
                     )
 

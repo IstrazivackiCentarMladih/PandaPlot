@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import List, Tuple, Union, override
 
@@ -41,6 +42,7 @@ class DeleteColumnsCommand(Command):
         
         # Store state for undo
         self.original_data = None
+        self.original_column_ids = None
         self.deleted_columns_data = None
         self.project = None
         self.dataset = None
@@ -168,8 +170,12 @@ class DeleteColumnsCommand(Command):
                 if not proceed:
                     return False
 
-            # Store original data for undo
+            # Store original data + column-id registry for undo. Restoring the
+            # registry keeps deleted columns' ids stable across delete/undo, so
+            # series that reference them by id resolve again after undo (a plain
+            # set_data would mint fresh ids for the reappearing columns).
             self.original_data = self.dataset.data.copy()
+            self.original_column_ids = OrderedDict(self.dataset.column_ids)
 
             # Store the deleted columns data for potential restoration
             self.deleted_columns_data = {}
@@ -202,6 +208,17 @@ class DeleteColumnsCommand(Command):
         if not self.project:
             return []
         column_set = set(column_names)
+        # Series/fits reference columns by stable id; resolve the names being
+        # deleted to ids (the dataset still has them — deletion runs later) and
+        # match by id, with a name fallback for legacy references.
+        id_set = {
+            cid for name in column_names
+            if self.dataset and (cid := self.dataset.column_id(name))
+        }
+
+        def refs(id_value, name_value) -> bool:
+            return (id_value in id_set and id_value) or name_value in column_set
+
         matches: List[ChartReferenceMatch] = []
         for item in self.project.get_all_items():
             if not isinstance(item, Chart):
@@ -209,18 +226,22 @@ class DeleteColumnsCommand(Command):
             series_idx = [
                 i for i, series in enumerate(item.data_series)
                 if series.dataset_id == self.dataset_id
-                and (series.x_column in column_set or series.y_column in column_set)
+                and (refs(series.x_column_id, series.x_column)
+                     or refs(series.y_column_id, series.y_column))
             ]
             error_only_idx = [
                 i for i, series in enumerate(item.data_series)
                 if i not in series_idx and series.dataset_id == self.dataset_id
-                and (series.x_error_column in column_set or series.y_error_column in column_set
-                     or series.x_error_minus_column in column_set or series.y_error_minus_column in column_set)
+                and (refs(series.x_error_column_id, series.x_error_column)
+                     or refs(series.y_error_column_id, series.y_error_column)
+                     or refs(series.x_error_minus_column_id, series.x_error_minus_column)
+                     or refs(series.y_error_minus_column_id, series.y_error_minus_column))
             ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
                 if fit.source_dataset_id == self.dataset_id
-                and (fit.source_x_column in column_set or fit.source_y_column in column_set)
+                and (refs(fit.source_x_column_id, fit.source_x_column)
+                     or refs(fit.source_y_column_id, fit.source_y_column))
             ]
             if series_idx or fit_idx or error_only_idx:
                 matches.append(ChartReferenceMatch(item, series_idx, fit_idx, error_only_idx))
@@ -230,6 +251,14 @@ class DeleteColumnsCommand(Command):
         self, references: List[ChartReferenceMatch]
     ) -> None:
         """Drop the columns from the dataset and remove dependent chart references."""
+        # Resolve the deleted columns' stable ids *before* dropping (set_data
+        # would drop them from the registry), so error-column references can be
+        # cleared by id below.
+        deleted_ids = {
+            cid for name in self.column_names
+            if (cid := self.dataset.column_id(name))
+        }
+
         # Create new DataFrame with the columns removed
         new_data = self.dataset.data.drop(columns=self.column_names)
 
@@ -254,22 +283,28 @@ class DeleteColumnsCommand(Command):
 
             # Clear error-only references using original indices before any
             # deletion shifts the list, so `i` still points at the right series.
+            # Match by stable id (deleted_ids) with a name fallback for legacy
+            # references; clear both the id and the name field together.
+            error_field_pairs = (
+                ("x_error_column_id", "x_error_column"),
+                ("y_error_column_id", "y_error_column"),
+                ("x_error_minus_column_id", "x_error_minus_column"),
+                ("y_error_minus_column_id", "y_error_minus_column"),
+            )
             cleared_series = []
             for i in error_only_idx:
                 series = chart.data_series[i]
-                old_values = (
-                    series.x_error_column, series.y_error_column,
-                    series.x_error_minus_column, series.y_error_minus_column,
-                )
-                if series.x_error_column in column_set:
-                    series.x_error_column = ""
-                if series.y_error_column in column_set:
-                    series.y_error_column = ""
-                if series.x_error_minus_column in column_set:
-                    series.x_error_minus_column = ""
-                if series.y_error_minus_column in column_set:
-                    series.y_error_minus_column = ""
-                cleared_series.append((i, *old_values))
+                old_values = {
+                    field: getattr(series, field)
+                    for pair in error_field_pairs for field in pair
+                }
+                for id_field, name_field in error_field_pairs:
+                    cid = getattr(series, id_field)
+                    name = getattr(series, name_field)
+                    if (cid and cid in deleted_ids) or name in column_set:
+                        setattr(series, id_field, "")
+                        setattr(series, name_field, "")
+                cleared_series.append((i, old_values))
 
             for i in sorted(series_idx, reverse=True):
                 del chart.data_series[i]
@@ -305,12 +340,10 @@ class DeleteColumnsCommand(Command):
             for i, fit in sorted(removed["fits"], key=lambda pair: pair[0]):
                 chart.fit_data.insert(i, fit)
 
-            for i, old_x_err, old_y_err, old_x_err_minus, old_y_err_minus in self.cleared_error_refs.get(chart_id, []):
+            for i, old_values in self.cleared_error_refs.get(chart_id, []):
                 if 0 <= i < len(chart.data_series):
-                    chart.data_series[i].x_error_column = old_x_err
-                    chart.data_series[i].y_error_column = old_y_err
-                    chart.data_series[i].x_error_minus_column = old_x_err_minus
-                    chart.data_series[i].y_error_minus_column = old_y_err_minus
+                    for field, value in old_values.items():
+                        setattr(chart.data_series[i], field, value)
 
             if removed["series"] or removed["fits"] or chart_id in self.cleared_error_refs:
                 chart.update_modified_time()
@@ -357,8 +390,11 @@ class DeleteColumnsCommand(Command):
         """Undo the delete columns command by restoring the original data and chart refs."""
         try:
             if self.dataset and self.original_data is not None and self.column_positions:
-                # Restore original data
+                # Restore original data, then the saved id registry so restored
+                # columns keep their original ids (see execute()).
                 self.dataset.set_data(self.original_data)
+                if self.original_column_ids is not None:
+                    self.dataset.column_ids = OrderedDict(self.original_column_ids)
                 self._restore_chart_references()
 
                 # Emit event
