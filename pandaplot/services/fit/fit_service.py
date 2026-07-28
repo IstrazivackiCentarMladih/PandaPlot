@@ -333,11 +333,16 @@ class FitService:
         if series is None:
             return None
 
-        # Asymmetric error bars
-        if series.y_error_column and series.y_error_minus_column:
-            plus_column = series.y_error_column
-            minus_column = series.y_error_minus_column
+        # Error columns are referenced by stable id; resolve them to current
+        # DataFrame names against the series' dataset (name fallback for legacy).
+        from pandaplot.models.project.items.chart import resolve_series_column
+        project = getattr(self.fit_panel, "current_project", None)
+        dataset = project.find_item(series.dataset_id) if project else None
+        plus_column = resolve_series_column(dataset, series.y_error_column_id, series.y_error_column)
+        minus_column = resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column)
 
+        # Asymmetric error bars
+        if plus_column and minus_column:
             if (
                     plus_column not in df.columns
                     or minus_column not in df.columns
@@ -353,7 +358,7 @@ class FitService:
 
         # Symmetric error bars
         else:
-            column = series.y_error_column
+            column = plus_column
 
             if not column or column not in df.columns:
                 return None

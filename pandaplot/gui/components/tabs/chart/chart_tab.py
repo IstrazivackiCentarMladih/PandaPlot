@@ -13,7 +13,7 @@ from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Chart
+from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state.app_context import AppContext
 
 # Maps a short fit-type name to its chart color. `fit_type` from the fit panel is a
@@ -142,13 +142,22 @@ class ChartTab(PWidget):
             fit_params = fit_results.params
             fit_stats = {"r_squared": fit_results.r_squared}
 
+            # Resolve the fit's source column names to stable ids against the
+            # dataset, so the fit stays rename-proof (the model holds no dataset
+            # reference). Unresolved names leave empty ids (name-only fallback).
+            app_state = self.app_context.get_app_state()
+            project = app_state.current_project if app_state.has_project else None
+            source_dataset = project.find_item(source_dataset_id) if project else None
+            source_x_column_id = source_dataset.column_id(source_x_column) if isinstance(source_dataset, Dataset) else None
+            source_y_column_id = source_dataset.column_id(source_y_column) if isinstance(source_dataset, Dataset) else None
+
             self.chart.add_fit_data(
-                source_dataset_id=source_dataset_id,
-                source_x_column=source_x_column,
-                source_y_column=source_y_column,
+                source_dataset_id,
                 fit_type=fit_type,
                 x_data=x_fit,
                 y_data=y_fit,
+                source_x_column_id=source_x_column_id or "",
+                source_y_column_id=source_y_column_id or "",
                 label = f"{short_fit_name} Fit: ({fit_results.equation})",
                 color=fit_color,
                 line_style="dashed",

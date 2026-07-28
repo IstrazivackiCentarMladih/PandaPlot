@@ -352,7 +352,7 @@ class DataTab(QWidget):
 
         row.addWidget(self._make_swatch(series.color, tokens))
 
-        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         row.addWidget(name_label, 1)
 
@@ -419,7 +419,7 @@ class DataTab(QWidget):
 
         header = QHBoxLayout()
         header.addWidget(self._make_swatch(series.color, tokens))
-        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         header.addWidget(name_label, 1)
         header.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
@@ -429,8 +429,8 @@ class DataTab(QWidget):
 
         outer.addLayout(self._build_detail_field_grid(tokens, (
             ("Dataset:", self._dataset_display_name(series.dataset_id)),
-            ("X Column:", series.x_column),
-            ("Y Column:", series.y_column),
+            ("X Column:", self._column_display_name(series.dataset_id, series.x_column_id, series.x_column)),
+            ("Y Column:", self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)),
         )))
 
         return card
@@ -455,8 +455,8 @@ class DataTab(QWidget):
         outer.addLayout(self._build_detail_field_grid(tokens, (
             ("Dataset:", self._dataset_display_name(fit.source_dataset_id)),
             ("Fit Type:", fit.fit_type),
-            ("X Column:", fit.source_x_column),
-            ("Y Column:", fit.source_y_column),
+            ("X Column:", self._column_display_name(fit.source_dataset_id, fit.source_x_column_id, fit.source_x_column)),
+            ("Y Column:", self._column_display_name(fit.source_dataset_id, fit.source_y_column_id, fit.source_y_column)),
         )))
 
         return card
@@ -543,20 +543,22 @@ class DataTab(QWidget):
         if not self.current_chart:
             return
 
-        # Create a new series with default values
+        # Create a new series with default values. Combos carry the column id
+        # as itemData; currentText() is only used to build the display label.
         dataset_id = self.dataset_combo.currentData() if self.dataset_combo.count() > 0 else ""
         dataset_name = self.dataset_combo.currentText() if self.dataset_combo.count() > 0 else ""
-        x_column = self.x_column_combo.currentText() if self.x_column_combo.count() > 0 else ""
-        y_column = self.y_column_combo.currentText() if self.y_column_combo.count() > 0 else ""
+        x_column_id = self.x_column_combo.currentData() if self.x_column_combo.count() > 0 else ""
+        y_column_id = self.y_column_combo.currentData() if self.y_column_combo.count() > 0 else ""
+        y_column_name = self.y_column_combo.currentText() if self.y_column_combo.count() > 0 else ""
 
-        if dataset_id and x_column and y_column:
+        if dataset_id and x_column_id and y_column_id:
             command = AddSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
                 dataset_id=dataset_id,
-                x_column=x_column,
-                y_column=y_column,
-                label=f"{dataset_name}:{y_column}",
+                x_column_id=x_column_id,
+                y_column_id=y_column_id,
+                label=f"{dataset_name}:{y_column_name}",
                 color=self._get_next_series_color(),
             )
             self.command_executor.execute_command(command)
@@ -636,13 +638,14 @@ class DataTab(QWidget):
             series = self.current_chart.data_series[current_row]
             if self.dataset_combo.currentData():
                 series.dataset_id = self.dataset_combo.currentData()
-            series.x_column = self.x_column_combo.currentText()
-            series.y_column = self.y_column_combo.currentText()
+            # Combos carry the stable column id as itemData; store ids directly.
+            series.x_column_id = self.x_column_combo.currentData() or ""
+            series.y_column_id = self.y_column_combo.currentData() or ""
             series.y_axis = self.series_y_axis_control.currentValue()
-            series.x_error_column = self.x_error_column_combo.currentData() or ""
-            series.y_error_column = self.y_error_column_combo.currentData() or ""
-            series.x_error_minus_column = self.x_error_minus_column_combo.currentData() or ""
-            series.y_error_minus_column = self.y_error_minus_column_combo.currentData() or ""
+            series.x_error_column_id = self.x_error_column_combo.currentData() or ""
+            series.y_error_column_id = self.y_error_column_combo.currentData() or ""
+            series.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
+            series.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
             series.error_symmetric = not self.error_asymmetric_check.isChecked()
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
@@ -733,12 +736,12 @@ class DataTab(QWidget):
             self._populate_column_combos(series.dataset_id)
             self._populate_error_column_combos(series.dataset_id)
 
-            # Set columns
-            x_index = self.x_column_combo.findText(series.x_column)
+            # Set columns by stable id (combos carry the id as itemData)
+            x_index = self.x_column_combo.findData(series.x_column_id)
             if x_index >= 0:
                 self.x_column_combo.setCurrentIndex(x_index)
 
-            y_index = self.y_column_combo.findText(series.y_column)
+            y_index = self.y_column_combo.findData(series.y_column_id)
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
 
@@ -746,15 +749,15 @@ class DataTab(QWidget):
             # doesn't emit currentValueChanged, so no signal-blocking needed.
             self.series_y_axis_control.setCurrentValue(series.y_axis)
 
-            # Set error columns (block signals while populating)
-            for combo, column in (
-                (self.x_error_column_combo, series.x_error_column),
-                (self.y_error_column_combo, series.y_error_column),
-                (self.x_error_minus_column_combo, series.x_error_minus_column),
-                (self.y_error_minus_column_combo, series.y_error_minus_column),
+            # Set error columns by id (block signals while populating)
+            for combo, column_id in (
+                (self.x_error_column_combo, series.x_error_column_id),
+                (self.y_error_column_combo, series.y_error_column_id),
+                (self.x_error_minus_column_combo, series.x_error_minus_column_id),
+                (self.y_error_minus_column_combo, series.y_error_minus_column_id),
             ):
                 combo.blockSignals(True)
-                index = combo.findData(column)
+                index = combo.findData(column_id)
                 combo.setCurrentIndex(index if index >= 0 else 0)
                 combo.blockSignals(False)
 
@@ -861,8 +864,18 @@ class DataTab(QWidget):
                     self.dataset_combo.addItem(item.name, item.id)
                     self.datasets.append(item)
 
+    def _column_display_name(self, dataset_id, column_id, fallback_name=""):
+        """Resolve a column id to its current name for display, falling back to
+        a stored legacy name (empty -> empty string)."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = self.current_project.find_item(dataset_id) if self.current_project else None
+        return resolve_series_column(dataset, column_id, fallback_name) or ""
+
     def _populate_column_combos(self, dataset_id):
         """Fill the x/y column combos with the columns of the given dataset.
+
+        Each item's display text is the column name and its itemData is the
+        stable column id, so callers read the selected id via currentData().
 
         Signals are blocked while clearing/populating so this can safely be
         called from contexts that don't want side effects from
@@ -881,8 +894,9 @@ class DataTab(QWidget):
                 self.x_column_combo.clear()
                 self.y_column_combo.clear()
                 for column in columns:
-                    self.x_column_combo.addItem(column)
-                    self.y_column_combo.addItem(column)
+                    column_id = dataset.column_id(column) or ""
+                    self.x_column_combo.addItem(column, column_id)
+                    self.y_column_combo.addItem(column, column_id)
             finally:
                 self.x_column_combo.blockSignals(False)
                 self.y_column_combo.blockSignals(False)
@@ -894,7 +908,7 @@ class DataTab(QWidget):
         followed by the columns of the given dataset.
 
         Signals are blocked while clearing/populating, same as
-        _populate_column_combos. Item data is the column name (or "" for
+        _populate_column_combos. Item data is the column id (or "" for
         "None"), since "None" is itself a valid display label and can't be
         distinguished from a real column via currentText().
         """
@@ -913,8 +927,9 @@ class DataTab(QWidget):
                 dataset = self.current_project.find_item(dataset_id)
                 if isinstance(dataset, Dataset) and dataset.data is not None:
                     for column in dataset.data.columns:
+                        column_id = dataset.column_id(column) or ""
                         for combo in combos:
-                            combo.addItem(column, column)
+                            combo.addItem(column, column_id)
         finally:
             for combo in combos:
                 combo.blockSignals(False)
@@ -976,19 +991,20 @@ class DataTab(QWidget):
         if not chart.data_series:
             dataset_id = self.dataset_combo.currentData()
             dataset_name = self.dataset_combo.currentText()
-            x_column = self.x_column_combo.currentText()
-            y_column = self.y_column_combo.currentText()
-            if dataset_id and x_column and y_column:
+            x_column_id = self.x_column_combo.currentData()
+            y_column_id = self.y_column_combo.currentData()
+            y_column_name = self.y_column_combo.currentText()
+            if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
-                    dataset_id=dataset_id,
-                    x_column=x_column,
-                    y_column=y_column,
-                    label=f"{dataset_name}:{y_column}",
+                    dataset_id,
+                    x_column_id=x_column_id,
+                    y_column_id=y_column_id,
+                    label=f"{dataset_name}:{y_column_name}",
                     y_axis=self.series_y_axis_control.currentValue(),
-                    x_error_column=self.x_error_column_combo.currentData() or "",
-                    y_error_column=self.y_error_column_combo.currentData() or "",
-                    x_error_minus_column=self.x_error_minus_column_combo.currentData() or "",
-                    y_error_minus_column=self.y_error_minus_column_combo.currentData() or "",
+                    x_error_column_id=self.x_error_column_combo.currentData() or "",
+                    y_error_column_id=self.y_error_column_combo.currentData() or "",
+                    x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
+                    y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
                     error_symmetric=not self.error_asymmetric_check.isChecked(),
                 )
 
