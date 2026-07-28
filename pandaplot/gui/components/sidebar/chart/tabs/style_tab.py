@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
+from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
@@ -141,28 +142,34 @@ class StyleTab(QWidget):
             _bold_italic_widget(self.title_bold_check, self.title_italic_check), 2, 1,
         )
 
+        self.title_font_family_combo = ValueComboBox(list_available_font_families())
+        _field_row(font_size_layout, 3, "Title font", self.title_font_family_combo)
+
         self.subtitle_font_size_spin = QSpinBox()
         self.subtitle_font_size_spin.setRange(8, 32)
         self.subtitle_font_size_spin.setValue(12)
-        _field_row(font_size_layout, 3, "Subtitle", self.subtitle_font_size_spin)
+        _field_row(font_size_layout, 4, "Subtitle", self.subtitle_font_size_spin)
         self.subtitle_bold_check, self.subtitle_italic_check = _make_bold_italic_checks()
         font_size_layout.addWidget(
-            _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
+            _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 5, 1,
         )
 
-        # -- Title/subtitle color (rows 5-7, appended after the existing
-        # title/subtitle font-size/bold/italic rows above to avoid
-        # renumbering them) --
+        self.subtitle_font_family_combo = ValueComboBox(list_available_font_families())
+        _field_row(font_size_layout, 6, "Subtitle font", self.subtitle_font_family_combo)
+
+        # -- Title/subtitle color (rows 7-9, appended after the existing
+        # title/subtitle font-size/bold/italic/font-family rows above to
+        # avoid renumbering them) --
         self.title_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        font_size_layout.addWidget(QLabel("Title color:"), 5, 0)
-        font_size_layout.addWidget(self.title_color_row, 5, 1)
+        font_size_layout.addWidget(QLabel("Title color:"), 7, 0)
+        font_size_layout.addWidget(self.title_color_row, 7, 1)
 
         self.subtitle_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         self.subtitle_match_title_toggle = ToggleSwitch(checked=True)
-        font_size_layout.addWidget(QLabel("Subtitle color:"), 6, 0)
-        font_size_layout.addWidget(self.subtitle_color_row, 6, 1)
-        font_size_layout.addWidget(QLabel("Match title:"), 7, 0)
-        font_size_layout.addWidget(self.subtitle_match_title_toggle, 7, 1)
+        font_size_layout.addWidget(QLabel("Subtitle color:"), 8, 0)
+        font_size_layout.addWidget(self.subtitle_color_row, 8, 1)
+        font_size_layout.addWidget(QLabel("Match title:"), 9, 0)
+        font_size_layout.addWidget(self.subtitle_match_title_toggle, 9, 1)
         # Hidden by default: subtitle_match_title_toggle starts checked, so
         # the subtitle color swatch (which would otherwise be redundant with
         # the title's) stays hidden until the user opts out of matching.
@@ -470,6 +477,8 @@ class StyleTab(QWidget):
         self.subtitle_italic_check.toggled.connect(self._on_chart_style_field_changed)
         self.title_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         self.subtitle_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.title_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
         self.subtitle_match_title_toggle.toggled.connect(self._on_subtitle_match_title_toggled)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
@@ -857,6 +866,10 @@ class StyleTab(QWidget):
         try:
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
+            self.title_font_family_combo.setCurrentValue(chart.config.get("title_font_family", "DejaVu Sans"))
+            self.subtitle_font_family_combo.setCurrentValue(
+                chart.config.get("subtitle_font_family", "DejaVu Sans")
+            )
             self.chart_padding_spin.setValue(chart.config.get("chart_padding", 2.0))
             self.chart_padding_w_spin.setValue(chart.config.get("chart_padding_w", 2.0))
             self.chart_padding_h_spin.setValue(chart.config.get("chart_padding_h", 2.0))
@@ -924,6 +937,8 @@ class StyleTab(QWidget):
     def apply_chart_style_to(self, chart):
         chart.config["title_font_size"] = self.title_font_size_spin.value()
         chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        chart.config["title_font_family"] = self.title_font_family_combo.currentValue()
+        chart.config["subtitle_font_family"] = self.subtitle_font_family_combo.currentValue()
         chart.config["chart_padding"] = self.chart_padding_spin.value()
         chart.config["chart_padding_w"] = self.chart_padding_w_spin.value()
         chart.config["chart_padding_h"] = self.chart_padding_h_spin.value()
@@ -955,6 +970,8 @@ class StyleTab(QWidget):
         try:
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
+            self.title_font_family_combo.setCurrentValue("DejaVu Sans")
+            self.subtitle_font_family_combo.setCurrentValue("DejaVu Sans")
             self.chart_padding_spin.setValue(2.0)
             self.chart_padding_w_spin.setValue(2.0)
             self.chart_padding_h_spin.setValue(2.0)
@@ -1062,6 +1079,8 @@ class StyleTab(QWidget):
         config = self._chart.config
         config["title_font_size"] = self.title_font_size_spin.value()
         config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        config["title_font_family"] = self.title_font_family_combo.currentValue()
+        config["subtitle_font_family"] = self.subtitle_font_family_combo.currentValue()
         config["chart_padding"] = self.chart_padding_spin.value()
         config["chart_padding_w"] = self.chart_padding_w_spin.value()
         config["chart_padding_h"] = self.chart_padding_h_spin.value()

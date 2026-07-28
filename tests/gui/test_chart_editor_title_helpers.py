@@ -65,3 +65,28 @@ def test_title_and_subtitle_color_default_to_black():
     apply_chart_title(axes, title="My Chart", subtitle="n = 42", title_font_size=14, subtitle_font_size=10)
     assert axes.figure._suptitle.get_color() == "#000000"
     assert axes.title.get_color() == "#000000"
+
+
+def test_title_font_family_is_applied_to_the_suptitle():
+    axes = _make_axes()
+    apply_chart_title(
+        axes, title="My Chart", subtitle="", title_font_size=14, subtitle_font_size=12,
+        title_font_family="Georgia",
+    )
+    assert axes.figure._suptitle.get_fontfamily() == ["Georgia"]
+
+
+def test_subtitle_font_family_is_applied_to_the_axes_title():
+    axes = _make_axes()
+    apply_chart_title(
+        axes, title="My Chart", subtitle="n = 42", title_font_size=14, subtitle_font_size=10,
+        subtitle_font_family="Georgia",
+    )
+    assert axes.title.get_fontfamily() == ["Georgia"]
+
+
+def test_title_and_subtitle_font_family_default_to_dejavu_sans():
+    axes = _make_axes()
+    apply_chart_title(axes, title="My Chart", subtitle="n = 42", title_font_size=14, subtitle_font_size=10)
+    assert axes.figure._suptitle.get_fontfamily() == ["DejaVu Sans"]
+    assert axes.title.get_fontfamily() == ["DejaVu Sans"]

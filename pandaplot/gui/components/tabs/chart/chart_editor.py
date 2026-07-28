@@ -55,6 +55,8 @@ def apply_chart_title(
     subtitle_italic: bool = False,
     title_color: str = "#000000",
     subtitle_color: str = "#000000",
+    title_font_family: str = "DejaVu Sans",
+    subtitle_font_family: str = "DejaVu Sans",
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
@@ -89,6 +91,7 @@ def apply_chart_title(
             fontweight="bold" if title_bold else "normal",
             fontstyle="italic" if title_italic else "normal",
             color=title_color,
+            fontfamily=title_font_family,
         )
     elif fig._suptitle is not None:
         fig._suptitle.set_text("")
@@ -98,6 +101,7 @@ def apply_chart_title(
         fontweight="bold" if subtitle_bold else "normal",
         fontstyle="italic" if subtitle_italic else "normal",
         color=subtitle_color,
+        fontfamily=subtitle_font_family,
     )
 
 
@@ -745,6 +749,8 @@ class ChartEditorWidget(PWidget):
                     if config.get("subtitle_match_title_color", True)
                     else config.get("subtitle_color", "#000000")
                 ),
+                title_font_family=config.get("title_font_family", "DejaVu Sans"),
+                subtitle_font_family=config.get("subtitle_font_family", "DejaVu Sans"),
             )
 
             chart_padding = config.get("chart_padding", 2.0)

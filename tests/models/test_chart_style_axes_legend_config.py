@@ -542,6 +542,22 @@ def test_show_minor_grid_defaults_to_false_for_all_axes():
         assert axis.get_tick_params(which="minor")["gridOn"] is False
 
 
+def test_title_and_subtitle_font_family_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("title_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("subtitle_font_family", "DejaVu Sans") == "DejaVu Sans"
+
+
+def test_title_font_family_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["title_font_family"] = "Georgia"
+    chart.config["subtitle_font_family"] = "Verdana"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["title_font_family"] == "Georgia"
+    assert restored.config["subtitle_font_family"] == "Verdana"
+
+
 def test_show_minor_grid_round_trips_through_serialization():
     chart = Chart(name="Test Chart")
     chart.update_config({
