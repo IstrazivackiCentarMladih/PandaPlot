@@ -942,18 +942,34 @@ class DataTab(QWidget):
     def load(self, chart):
         """Load a Chart object's series/fit list into this tab.
 
+        Reloading the *same* chart object (e.g. the full-panel refresh that
+        follows every Apply, via `ChartPropertiesPanel._on_chart_updated`'s
+        "chart" branch) preserves the current selection instead of jumping
+        back to the first entry -- otherwise, editing/renaming any series
+        other than the first one and clicking Apply silently moves the live
+        form to series 0, so a second edit on the entry the user thinks is
+        still selected actually edits the wrong one. A different chart
+        object (switching to another chart tab, or the first-ever load)
+        still starts at index 0.
+
         Args:
             chart: Chart object to load, or None to clear.
         """
+        same_chart = chart is not None and chart is self.current_chart
         self.current_chart = chart
         if chart:
             previous_guard = self._updating_controls
             self._updating_controls = True
             try:
-                # Expand the first series/fit entry and rebuild the card list
-                # (this also (re)loads it into the config form controls).
-                self._expanded_series_index = 0
-                self._expanded_card_indices = {0}
+                total_items = len(chart.data_series) + len(chart.fit_data)
+                if same_chart and total_items:
+                    self._expanded_series_index = max(
+                        0, min(self._expanded_series_index, total_items - 1)
+                    )
+                    self._expanded_card_indices.add(self._expanded_series_index)
+                else:
+                    self._expanded_series_index = 0
+                    self._expanded_card_indices = {0}
                 self._rebuild_series_cards()
             finally:
                 self._updating_controls = previous_guard

@@ -498,18 +498,26 @@ class StyleTab(QWidget):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
         Style-tab chip is currently selected.
 
-        The Line card is additionally hidden for Scatter charts: a scatter
-        plot draws independent markers with no connecting line (unlike
-        Line's ordered, connected points), so line color/style/width/opacity
-        have nothing to apply to there.
+        The Line card is hidden for a selected *series* on Scatter charts: a
+        scatter plot draws independent markers with no connecting line
+        (unlike Line's ordered, connected points), so line color/style/
+        width/opacity have nothing to apply to there. A selected *fit* entry
+        is unaffected by that -- a fit is always rendered as a line
+        (chart_editor.py plots it unconditionally), regardless of the
+        chart's own type -- so the Line card stays visible for fit even on
+        Scatter charts.
+
+        The Marker card only applies to a series: fit data has no marker
+        concept at all (see load_fit_style/apply_fit_style_to), so it's
+        hidden whenever a fit entry is selected, not just for "chart".
         """
         kind, _obj = self._current_target
         is_chart = kind == "chart"
         for card in self.chart_style_cards:
             card.setVisible(is_chart)
         is_scatter = self._chart_type == ChartType.SCATTER
-        self.line_card.setVisible(not is_chart and not is_scatter)
-        self.marker_card.setVisible(not is_chart)
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        self.marker_card.setVisible(kind == "series")
         # Fit data has no error-bar fields (DataSeries-only), so the Error
         # Bars card only applies to a selected series.
         self.error_bars_card.setVisible(kind == "series")
