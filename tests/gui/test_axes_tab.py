@@ -13,6 +13,8 @@
    toggles, so if the target's toggle changed state, the toggled handler's
    pre-fill overwrote the just-copied colors with X's instead.
 """
+import types
+
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -24,6 +26,15 @@ from pandaplot.models.project.items.chart import Chart
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+def _make_app_context():
+    """Minimal stand-in exposing the one attribute AxesTab reads:
+    `app_context.app_state.current_project` (consulted by
+    `_refresh_range_display`). None here means `compute_axis_data_range`
+    can't resolve any series and falls back to (0.0, 1.0), which is fine
+    since these tests don't assert on the Range card's min/max values."""
+    return types.SimpleNamespace(app_state=types.SimpleNamespace(current_project=None))
 
 
 def test_load_preserves_custom_y_colors_when_not_matching_x():
@@ -46,7 +57,7 @@ def test_load_preserves_custom_y_colors_when_not_matching_x():
         "y_label_color": "#fedcba",
     })
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     y_form = tab.axes_forms["y"]
@@ -81,7 +92,7 @@ def test_copy_axis_settings_copies_source_colors_not_x_colors():
     })
     chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y", y_axis="secondary")
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     # Sanity check: Y starts out matching X, as loaded.
@@ -107,7 +118,7 @@ def test_selecting_custom_log_base_reveals_spin_and_round_trips_into_config():
     chart = Chart(name="Test Chart")
     chart.update_config({"y_scale": "log"})
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     y_form = tab.axes_forms["y"]
@@ -128,7 +139,7 @@ def test_log_base_of_one_falls_back_to_ten():
     chart = Chart(name="Test Chart")
     chart.update_config({"y_scale": "log"})
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     y_form = tab.axes_forms["y"]
@@ -148,7 +159,7 @@ def test_copy_axis_settings_copies_log_base_from_source_y_to_target_y2():
     chart.update_config({"y_scale": "log", "y_log_base": 2.0})
     chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y", y_axis="secondary")
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     y2_form = tab.axes_forms["y2"]
@@ -168,7 +179,7 @@ def test_load_selects_custom_for_non_preset_log_base_and_populates_spin():
     chart = Chart(name="Test Chart")
     chart.update_config({"y_scale": "log", "y_log_base": 3.5})
 
-    tab = AxesTab()
+    tab = AxesTab(_make_app_context())
     tab.load(chart)
 
     y_form = tab.axes_forms["y"]

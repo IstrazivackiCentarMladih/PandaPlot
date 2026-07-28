@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional, override
 
+import numpy as np
 from matplotlib.ticker import (
     AutoLocator,
     AutoMinorLocator,
@@ -297,6 +298,37 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
     return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+
+
+def compute_axis_data_range(project, data_series, prefix: str) -> Optional[tuple[float, float]]:
+    """Compute (min, max) across every series plotted against the given
+    axis (`prefix` in "x", "y", "y2"). All series contribute to "x"
+    regardless of which y-axis they use; "y"/"y2" are filtered by
+    `series.y_axis`. Returns None if no series have resolvable data for
+    this axis (no series yet, or every reference is broken) -- callers
+    fall back to a fixed default range in that case."""
+    from pandaplot.models.project.items.chart import YAxis
+
+    ranges: list[tuple[float, float]] = []
+    for series in data_series:
+        if prefix in ("y", "y2"):
+            wants_secondary = prefix == "y2"
+            if (series.y_axis == YAxis.SECONDARY) != wants_secondary:
+                continue
+        data = resolve_series_data(project, series)
+        if data.error:
+            continue
+        arr = data.x_data if prefix == "x" else data.y_data
+        if arr is None:
+            continue
+        values = np.asarray(arr, dtype=float)
+        values = values[np.isfinite(values)]
+        if values.size:
+            ranges.append((float(values.min()), float(values.max())))
+
+    if not ranges:
+        return None
+    return (min(r[0] for r in ranges), max(r[1] for r in ranges))
 
 
 class ChartEditorWidget(PWidget):

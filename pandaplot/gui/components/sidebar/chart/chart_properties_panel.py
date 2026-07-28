@@ -84,7 +84,7 @@ class ChartPropertiesPanel(PWidget):
         # widget after Style, below) because building the Data tab's series
         # cards calls `_rebuild_series_cards`, which calls
         # `self.axes_tab.refresh_axis_chips` to sync the Y2 chip.
-        self.axes_tab = AxesTab(self)
+        self.axes_tab = AxesTab(self.app_context, self)
         self.axes_tab.configChanged.connect(self._on_any_tab_config_changed)
 
         # Data tab: series list + per-series dataset/X/Y/label configuration

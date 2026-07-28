@@ -41,8 +41,9 @@ class AxesTab(QWidget):
 
     configChanged = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, app_context, parent=None):
         super().__init__(parent)
+        self.app_context = app_context
         self._chart = None
         self._updating_controls = False
 
@@ -335,10 +336,32 @@ class AxesTab(QWidget):
         self._show_axis_form(prefix)
 
     def _on_axis_auto_limits_toggled(self, prefix: str, checked: bool):
-        form = self.axes_forms[prefix]
-        form["min_spin"].setEnabled(not checked)
-        form["max_spin"].setEnabled(not checked)
+        self._refresh_range_display(prefix)
         self._on_field_changed()
+
+    def _refresh_range_display(self, prefix: str):
+        """Recompute the data-driven min/max for this axis and show it:
+        Auto shows it disabled (for reference); Manual shows it enabled
+        and freshly seeded (never restoring a previously-typed value --
+        every Auto<->Manual transition recomputes from the current data)."""
+        form = self.axes_forms[prefix]
+        auto = form["auto_toggle"].isChecked()
+        if self._chart is not None:
+            from pandaplot.gui.components.tabs.chart.chart_editor import compute_axis_data_range
+            project = self.app_context.app_state.current_project
+            computed = compute_axis_data_range(project, self._chart.data_series, prefix)
+        else:
+            computed = None
+        min_value, max_value = computed if computed is not None else (0.0, 1.0)
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            form["min_spin"].setValue(min_value)
+            form["max_spin"].setValue(max_value)
+        finally:
+            self._updating_controls = previous_guard
+        form["min_spin"].setEnabled(not auto)
+        form["max_spin"].setEnabled(not auto)
 
     def _on_axis_tick_mode_changed(self, prefix: str):
         """Show only the field the current tick mode actually uses: Auto
@@ -608,10 +631,6 @@ class AxesTab(QWidget):
 
         auto_limits = config.get(f"{prefix}_auto_limits", True)
         form["auto_toggle"].setChecked(auto_limits)
-        form["min_spin"].setValue(config.get(f"{prefix}_min", 0.0))
-        form["max_spin"].setValue(config.get(f"{prefix}_max", 1.0))
-        form["min_spin"].setEnabled(not auto_limits)
-        form["max_spin"].setEnabled(not auto_limits)
 
         tick_mode = config.get(f"{prefix}_tick_mode", "auto")
         form["mode_control"].setCurrentValue(tick_mode)
@@ -702,6 +721,7 @@ class AxesTab(QWidget):
         try:
             for prefix in ("x", "y", "y2"):
                 self._read_axis_config(prefix, chart.config)
+                self._refresh_range_display(prefix)
             self.refresh_axis_chips(chart)
             self._show_axis_form("x")
             self.axis_chips.setCurrentValue("x")
