@@ -76,6 +76,16 @@ class DataSeries:
             except ValueError:
                 self.y_axis = YAxis.PRIMARY
 
+    @property
+    def has_error_data(self) -> bool:
+        """Whether any error-bar column is configured for this series, by
+        stable id (current data) or legacy name (old projects loaded before
+        stable column ids)."""
+        return bool(
+            self.x_error_column_id or self.y_error_column_id
+            or self.x_error_column or self.y_error_column
+        )
+
 
 @dataclass
 class FitData:
@@ -98,6 +108,7 @@ class FitData:
     color: str = "#ff7f0e"
     line_style: str = "dashed"
     line_width: float = 2.0
+    alpha: float = 1.0
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
@@ -450,6 +461,7 @@ class Chart(Item):
                     "color": fit.color,
                     "line_style": fit.line_style,
                     "line_width": fit.line_width,
+                    "alpha": fit.alpha,
                     "visible": fit.visible,
                     "fit_params": fit.fit_params,
                     "fit_stats": fit.fit_stats
@@ -532,6 +544,7 @@ class Chart(Item):
                 color=fit_dict.get("color", "#ff7f0e"),
                 line_style=fit_dict.get("line_style", "dashed"),
                 line_width=fit_dict.get("line_width", 2.0),
+                alpha=fit_dict.get("alpha", 1.0),
                 visible=fit_dict.get("visible", True),
                 fit_params=fit_dict.get("fit_params", {}),
                 fit_stats=fit_dict.get("fit_stats", {})
@@ -614,7 +627,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "name": chart.name,
         "data_series": [asdict(s) for s in chart.data_series],
         "fit_data_styles": [
-            {"color": f.color, "line_width": f.line_width}
+            {"color": f.color, "line_width": f.line_width, "alpha": f.alpha}
             for f in chart.fit_data
         ],
     }
@@ -631,5 +644,6 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
         if i < len(chart.fit_data):
             chart.fit_data[i].color = fit_style["color"]
             chart.fit_data[i].line_width = fit_style["line_width"]
+            chart.fit_data[i].alpha = fit_style.get("alpha", 1.0)
     chart.update_modified_time()
 

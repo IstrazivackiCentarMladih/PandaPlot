@@ -64,7 +64,7 @@ def test_restore_reverts_background_style_fields():
 def test_restore_only_touches_fit_style_fields():
     chart = _make_chart()
     chart.add_fit_data(
-        "ds1", "x", "y", "Linear",
+        "ds1", "Linear",
         np.array([1.0]), np.array([2.0]),
         color="#ff0000", line_width=2.0,
     )
@@ -77,3 +77,22 @@ def test_restore_only_touches_fit_style_fields():
 
     assert chart.fit_data[0].color == "#ff0000"
     assert chart.fit_data[0].line_width == 2.0
+
+
+def test_restore_reverts_fit_alpha():
+    """Regression: fit opacity (alpha) must be part of the snapshot/restore
+    cycle, same as color and line_width -- otherwise Revert silently leaves
+    an opacity edit in place."""
+    chart = _make_chart()
+    chart.add_fit_data(
+        "ds1", "Linear",
+        np.array([1.0]), np.array([2.0]),
+        alpha=1.0,
+    )
+    snap = snapshot_chart_state(chart)
+
+    chart.fit_data[0].alpha = 0.3
+
+    restore_chart_state(chart, snap)
+
+    assert chart.fit_data[0].alpha == 1.0

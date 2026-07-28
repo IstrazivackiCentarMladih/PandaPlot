@@ -655,6 +655,14 @@ class DataTab(QWidget):
             # request from here.
             self.axesRefreshRequested.emit()
 
+            # Re-emit `seriesSelected` for the still-selected series: the
+            # panel wires this to `StyleTab.set_selected`, which re-checks
+            # whether the Error Bars card should show now that an error
+            # column may have just been added/cleared here. (The Style tab
+            # lives on a different tab and has no other way to learn about
+            # this edit.)
+            self.seriesSelected.emit("series", series)
+
             # Update the expanded card's own Y1/Y2 badge in place too.
             # Deliberately NOT calling `_rebuild_series_cards()` from this
             # handler: that tears down and rebuilds the card list, including
@@ -798,8 +806,24 @@ class DataTab(QWidget):
             self._updating_controls = previous_guard
 
     def _on_label_typing(self, text: str):
-        """Buffer label text while user is typing without mutating the model."""
+        """Buffer label text while user is typing without mutating the model.
+
+        Also marks the panel dirty immediately (not deferred to
+        editingFinished like the model write itself): the footer's Apply
+        button starts out disabled, and a *disabled* QPushButton doesn't
+        accept mouse clicks at all -- so if dirty-marking waited for
+        editingFinished, clicking Apply directly after typing would never
+        blur the field (a disabled button can't steal focus), meaning
+        editingFinished never fires, the label never commits, and Apply
+        stays disabled forever. The user would have to click some other
+        widget first just to force the blur. Marking dirty on every
+        keystroke (safe here: blockSignals during programmatic population
+        means this only ever fires for genuine user edits) breaks that
+        deadlock by enabling Apply before the user ever tries to click it.
+        """
         self._pending_label = text
+        if not self._updating_controls and self.current_chart:
+            self.dirtyOnly.emit()
 
     def _on_label_committed(self):
         """Persist buffered label to model after editing finishes.
@@ -816,14 +840,28 @@ class DataTab(QWidget):
             return
         total_series = len(self.current_chart.data_series)
         new_label = self._pending_label or self.series_label_edit.text()
+        changed = False
         if current_row < total_series:
             if current_row < len(self.current_chart.data_series):
-                self.current_chart.data_series[current_row].label = new_label
+                entry = self.current_chart.data_series[current_row]
+                changed = entry.label != new_label
+                entry.label = new_label
         else:
             fit_index = current_row - total_series
             if 0 <= fit_index < len(self.current_chart.fit_data):
-                self.current_chart.fit_data[fit_index].label = new_label
+                entry = self.current_chart.fit_data[fit_index]
+                changed = entry.label != new_label
+                entry.label = new_label
         self._pending_label = new_label
+        if changed:
+            # Mirrors _on_series_config_changed: mark the panel dirty so the
+            # footer's Apply button enables. Without this, a label-only edit
+            # left Apply disabled (the model was already updated directly,
+            # but silently -- no undo entry, no "unsaved changes" indicator,
+            # and clicking the disabled Apply button did nothing), which is
+            # why editing anything else afterwards was needed to make Apply
+            # start doing something again.
+            self.dirtyOnly.emit()
 
     def _reset_controls_for_series(self):
         """Reset controls for editing regular data series."""
@@ -853,16 +891,33 @@ class DataTab(QWidget):
         self._update_datasets()
 
     def _update_datasets(self):
-        """Update the available datasets."""
-        self.dataset_combo.clear()
-        self.datasets = []
+        """Update the available datasets.
 
-        if self.current_project:
-            # Iterate through all items in the project to find datasets
-            for item in self.current_project.get_all_items():
-                if isinstance(item, Dataset):
-                    self.dataset_combo.addItem(item.name, item.id)
-                    self.datasets.append(item)
+        Signals are blocked while clearing/populating: unlike
+        `_populate_column_combos`/`_populate_error_column_combos`, this used
+        to fire `dataset_combo.currentTextChanged` live -- `set_project` (and
+        so this) runs on every chart-tab switch (`ChartPropertiesPanel.
+        _on_tab_changed`), well after a chart may already be loaded and a
+        series selected here, so an unblocked fire of `_on_dataset_changed`
+        -> `_on_series_config_changed` silently overwrote the currently
+        selected series' `dataset_id`/`x_column_id`/`y_column_id` with
+        whatever dataset happened to land at the freshly-rebuilt combo's
+        index 0/1 -- corrupting a series having nothing to do with the tab
+        switch that triggered it.
+        """
+        self.dataset_combo.blockSignals(True)
+        try:
+            self.dataset_combo.clear()
+            self.datasets = []
+
+            if self.current_project:
+                # Iterate through all items in the project to find datasets
+                for item in self.current_project.get_all_items():
+                    if isinstance(item, Dataset):
+                        self.dataset_combo.addItem(item.name, item.id)
+                        self.datasets.append(item)
+        finally:
+            self.dataset_combo.blockSignals(False)
 
     def _column_display_name(self, dataset_id, column_id, fallback_name=""):
         """Resolve a column id to its current name for display, falling back to
@@ -957,18 +1012,34 @@ class DataTab(QWidget):
     def load(self, chart):
         """Load a Chart object's series/fit list into this tab.
 
+        Reloading the *same* chart object (e.g. the full-panel refresh that
+        follows every Apply, via `ChartPropertiesPanel._on_chart_updated`'s
+        "chart" branch) preserves the current selection instead of jumping
+        back to the first entry -- otherwise, editing/renaming any series
+        other than the first one and clicking Apply silently moves the live
+        form to series 0, so a second edit on the entry the user thinks is
+        still selected actually edits the wrong one. A different chart
+        object (switching to another chart tab, or the first-ever load)
+        still starts at index 0.
+
         Args:
             chart: Chart object to load, or None to clear.
         """
+        same_chart = chart is not None and chart is self.current_chart
         self.current_chart = chart
         if chart:
             previous_guard = self._updating_controls
             self._updating_controls = True
             try:
-                # Expand the first series/fit entry and rebuild the card list
-                # (this also (re)loads it into the config form controls).
-                self._expanded_series_index = 0
-                self._expanded_card_indices = {0}
+                total_items = len(chart.data_series) + len(chart.fit_data)
+                if same_chart and total_items:
+                    self._expanded_series_index = max(
+                        0, min(self._expanded_series_index, total_items - 1)
+                    )
+                    self._expanded_card_indices.add(self._expanded_series_index)
+                else:
+                    self._expanded_series_index = 0
+                    self._expanded_card_indices = {0}
                 self._rebuild_series_cards()
             finally:
                 self._updating_controls = previous_guard

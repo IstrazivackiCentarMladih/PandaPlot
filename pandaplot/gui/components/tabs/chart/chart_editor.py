@@ -698,7 +698,7 @@ class ChartEditorWidget(PWidget):
                                      linewidth=fit.line_width,
                                      linestyle=_linestyle_map.get(fit.line_style, "--"),
                                      label=fit.label,
-                                     alpha=1.0)
+                                     alpha=fit.alpha)
                         # Plot confidence band if available
                         if fit.confidence_lower is not None and fit.confidence_upper is not None:
                             # Plot confidence band on the same axis as the fitted curve.
