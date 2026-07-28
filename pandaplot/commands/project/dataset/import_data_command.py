@@ -1,6 +1,7 @@
 import os
 import uuid
-from typing import Any, Callable, Optional, Tuple, override
+from dataclasses import replace
+from typing import Any, Callable, List, Optional, Tuple, override
 
 import pandas as pd
 
@@ -9,23 +10,23 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.data_import import ImportOptions, data_importer
+from pandaplot.services.data_import.data_importer import (
+    EXCEL_EXTENSIONS,
+    SUPPORTED_EXTENSIONS,
+)
 from pandaplot.services.qtasks import TaskScheduler
-
-# Delimited-text extensions handled via pandas' CSV reader.
-CSV_EXTENSIONS = {".csv", ".txt", ".tsv"}
-# Excel workbook extensions. Only the first sheet is imported today; see
-# _read_excel_file() for how multi-sheet support can be added later.
-EXCEL_EXTENSIONS = {".xlsx", ".xls"}
-SUPPORTED_EXTENSIONS = CSV_EXTENSIONS | EXCEL_EXTENSIONS
 
 
 class ImportDataCommand(Command):
     """
-    Command to import a single data file (CSV/TSV or single-sheet Excel
-    workbook) as a dataset in the project, via one unified "Import Data" action.
+    Command to import a data file (CSV/TSV, or one or more sheets of an Excel
+    workbook) as dataset(s) in the project, via one unified "Import Data" action.
 
-    Supporting a new file format only requires adding a `_read_*_file` method
-    and registering its extensions in the sets above.
+    The command drives the interactive import wizard
+    (:class:`ImportWizardDialog`), which handles format detection, parse
+    options, and preview. Once the user confirms, the full file is read on a
+    background thread using the chosen :class:`ImportOptions`.
     """
 
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
@@ -38,10 +39,15 @@ class ImportDataCommand(Command):
         self.folder_id = folder_id
         self.file_path = None  # Path to the data file, can be set later
         self.dataset_name = None
+        # Parse options chosen in the wizard; drives the background read.
+        self.import_options: Optional[ImportOptions] = None
+        # Excel worksheets to import, in workbook order, as chosen in the
+        # wizard. None for CSV/TSV/JSON or until the wizard has run.
+        self.selected_sheets: Optional[List[str]] = None
 
         # Store state for undo
-        self.dataset_id = None
-        self.imported_data = None
+        self.dataset_ids: List[str] = []
+        self.imported_datasets: List[Dataset] = []
         self.project = None
 
         # Task state
@@ -68,14 +74,12 @@ class ImportDataCommand(Command):
             if not self.project:
                 return False
 
-            # Get file path
-            if not self.file_path:
-                self.file_path = self.ui_controller.show_import_data_dialog()
-            if not self.file_path:
+            # Collect the file, parse options, and dataset name via the wizard.
+            if not self._collect_import_settings():
                 return False  # User cancelled
 
-            # Preflight check: validate file exists before starting import
-            if not os.path.exists(self.file_path):
+            # Preflight check: validate file still exists before starting import
+            if not self.file_path or not os.path.exists(self.file_path):
                 error_msg = f"Selected file does not exist: {self.file_path}"
                 self.ui_controller.show_error_message("Import Data Error", error_msg)
                 self.logger.error(error_msg)
@@ -89,12 +93,6 @@ class ImportDataCommand(Command):
                 self.ui_controller.show_error_message("Import Data Error", error_msg)
                 self.logger.error(error_msg)
                 return False
-
-            # Get dataset name if not provided
-            self.dataset_name = os.path.splitext(os.path.basename(self.file_path))[0]
-
-            # Show starting message
-            self.ui_controller.show_info_message("Import Starting", f"Starting to import file:\n{self.file_path}")
 
             # Start background import operation
             self.is_importing = True
@@ -118,53 +116,61 @@ class ImportDataCommand(Command):
             self.is_importing = False  # Reset flag on error
             return False
 
-    def _read_csv_file(self, file_path: str) -> pd.DataFrame:
+    def _collect_import_settings(self) -> bool:
         """
-        Read a delimited-text file, falling back through common encodings if
-        the file isn't UTF-8 (e.g. files saved by Excel on Windows).
+        Show the import wizard and capture the chosen file, parse options, and
+        dataset name. Returns False if the user cancels.
+
+        When `self.file_path` is already set (e.g. programmatic import), it
+        seeds the wizard so tests and callers can pre-select a file.
         """
-        last_error: Optional[UnicodeDecodeError] = None
-        for encoding in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
-            try:
-                return pd.read_csv(file_path, encoding=encoding)
-            except UnicodeDecodeError as e:
-                last_error = e
-                continue
-        assert last_error is not None
-        raise last_error
+        # Imported lazily to keep the wizard dialog (and its widgets) off the
+        # startup import path; it is only needed when an import actually runs.
+        from PySide6.QtWidgets import QDialog
 
-    def _read_excel_file(self, file_path: str) -> pd.DataFrame:
+        from pandaplot.gui.dialogs.import_wizard_dialog import ImportWizardDialog
+
+        dialog = ImportWizardDialog(
+            self.app_context,
+            parent=self.ui_controller.parent_widget,
+            initial_file_path=self.file_path,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.logger.info("Import wizard cancelled by user")
+            return False
+
+        self.file_path = dialog.get_file_path()
+        self.import_options = dialog.get_import_options()
+        self.dataset_name = dialog.get_dataset_name()
+        # Excel workbooks may import several sheets at once, each as its own
+        # dataset; empty for other formats. None lets redo() re-run cleanly.
+        self.selected_sheets = dialog.get_selected_sheets() or None
+        return True
+
+    def _read_frames(self) -> List[Tuple[str, pd.DataFrame]]:
         """
-        Read a single-sheet Excel workbook.
+        Read the file into (dataset_name, dataframe) pairs, honoring the parse
+        options chosen in the wizard. Excel workbooks yield one pair per
+        selected sheet; other formats yield a single pair.
 
-        Only the first sheet is imported for now. To add multi-sheet import
-        later: use `pd.ExcelFile(file_path).sheet_names` to list sheets and let
-        the caller choose which one(s) to import (e.g. one Dataset per sheet).
+        A lone sheet is named after the file (matching CSV behaviour); multiple
+        sheets are suffixed with " - <sheet>" so their datasets stay distinct.
         """
-        excel_file = pd.ExcelFile(file_path)
-        sheet_names = excel_file.sheet_names
-        if not sheet_names:
-            raise ValueError("The Excel workbook contains no sheets.")
+        assert self.file_path is not None
+        options = self.import_options or data_importer.default_options(self.file_path)
+        base_name = self.dataset_name or os.path.splitext(os.path.basename(self.file_path))[0]
 
-        if len(sheet_names) > 1:
-            self.logger.info(
-                "Excel file '%s' has %d sheets; importing only the first sheet '%s'.",
-                file_path,
-                len(sheet_names),
-                sheet_names[0],
-            )
+        extension = os.path.splitext(self.file_path)[1].lower()
+        if extension in EXCEL_EXTENSIONS:
+            sheets = self.selected_sheets or [options.sheet_name]
+            frames = []
+            for sheet in sheets:
+                df = data_importer.read_dataframe(self.file_path, replace(options, sheet_name=sheet))
+                name = base_name if len(sheets) == 1 else f"{base_name} - {sheet}"
+                frames.append((name, df))
+            return frames
 
-        return excel_file.parse(sheet_name=0)
-
-    def _read_data_file(self, file_path: str) -> pd.DataFrame:
-        """Dispatch to the reader for the file's extension."""
-        extension = os.path.splitext(file_path)[1].lower()
-        if extension in CSV_EXTENSIONS:
-            return self._read_csv_file(file_path)
-        elif extension in EXCEL_EXTENSIONS:
-            return self._read_excel_file(file_path)
-        else:
-            raise ValueError(f"Unsupported file type '{extension}'")
+        return [(base_name, data_importer.read_dataframe(self.file_path, options))]
 
     def _import_data_task(self, progress_callback: Callable[[float], None], **kwargs) -> dict:
         """
@@ -175,7 +181,7 @@ class ImportDataCommand(Command):
             progress_callback: Optional callback for progress updates
 
         Returns:
-            dict: {'success': bool, 'error': str or None, 'dataset_id': str or None, 'dataset': Dataset or None}
+            dict: {'success': bool, 'error': str or None, 'datasets': List[Dataset], 'file_path': str or None}
         """
         self.logger.debug("Starting data import task")
         try:
@@ -183,49 +189,39 @@ class ImportDataCommand(Command):
                 progress_callback(0.1)  # Starting import
 
             if not self.file_path or not os.path.exists(self.file_path):
-                return {"success": False, "error": f"File not found: {self.file_path}", "dataset_id": None, "dataset": None}
+                return {"success": False, "error": f"File not found: {self.file_path}", "datasets": []}
 
             if progress_callback:
                 progress_callback(0.2)  # File validation complete
 
-            # Read the data file
+            # Read the data file into one or more (name, dataframe) pairs
             try:
-                df = self._read_data_file(self.file_path)
-                if df.empty:
-                    return {"success": False, "error": "The selected file is empty.", "dataset_id": None, "dataset": None}
-
-                # Note: Don't assign to self.imported_data here to avoid thread safety issues
-                # The DataFrame will be returned in the result payload
-
+                frames = self._read_frames()
             except Exception as e:
-                return {"success": False, "error": f"Failed to read file: {str(e)}", "dataset_id": None, "dataset": None}
+                return {"success": False, "error": f"Failed to read file: {str(e)}", "datasets": []}
 
             if progress_callback:
                 progress_callback(0.6)  # File read successfully
 
-            # Get dataset name if not provided
-            if not self.dataset_name:
-                self.dataset_name = os.path.splitext(os.path.basename(self.file_path))[0]
+            # Drop empty sheets rather than failing the whole import over one blank tab
+            non_empty = [(name, df) for name, df in frames if not df.empty]
+            if not non_empty:
+                error_msg = "The selected file is empty." if len(frames) == 1 else "The selected sheet(s) contain no data."
+                return {"success": False, "error": error_msg, "datasets": []}
 
-            # Create dataset ID
-            self.dataset_id = str(uuid.uuid4())
-
-            if progress_callback:
-                progress_callback(0.8)  # Dataset metadata prepared
-
-            # Create dataset object
-            dataset = Dataset(id=self.dataset_id, name=self.dataset_name, data=df, source_file=self.file_path)
+            datasets = []
+            for name, df in non_empty:
+                dataset = Dataset(id=str(uuid.uuid4()), name=name, data=df, source_file=self.file_path)
+                datasets.append(dataset)
 
             if progress_callback:
-                progress_callback(0.9)  # Dataset object created
+                progress_callback(0.9)  # Dataset objects created
 
             self.logger.info(
-                "Successfully imported '%s' from '%s' with ID '%s' (rows=%d, cols=%d)",
-                self.dataset_name,
+                "Successfully imported %d dataset(s) from '%s' (%s)",
+                len(datasets),
                 self.file_path,
-                self.dataset_id,
-                df.shape[0],
-                df.shape[1],
+                ", ".join(f"{d.name} (rows={d.data.shape[0]}, cols={d.data.shape[1]})" for d in datasets),
             )
 
             if progress_callback:
@@ -234,19 +230,14 @@ class ImportDataCommand(Command):
             return {
                 "success": True,
                 "error": None,
-                "dataset_id": self.dataset_id,
-                "dataset": dataset,
-                "dataset_name": self.dataset_name,
+                "datasets": datasets,
                 "file_path": self.file_path,
-                "rows": df.shape[0],
-                "cols": df.shape[1],
-                "imported_data": df,  # Return DataFrame in result payload
             }
 
         except Exception as e:
             error_msg = f"Error during data import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
-            return {"success": False, "error": error_msg, "dataset_id": None, "dataset": None}
+            return {"success": False, "error": error_msg, "datasets": []}
 
     def _on_import_result(self, result: dict):
         """Handle successful completion of import task."""
@@ -254,26 +245,20 @@ class ImportDataCommand(Command):
             self.is_importing = False
 
             if result.get("success", False):
-                dataset = result.get("dataset")
-                dataset_id = result.get("dataset_id")
-                dataset_name = result.get("dataset_name")
+                datasets: List[Dataset] = result.get("datasets") or []
                 file_path = result.get("file_path")
-                rows = result.get("rows", 0)
-                cols = result.get("cols", 0)
-                imported_data = result.get("imported_data")
 
-                # Assign imported_data on main thread to avoid thread safety issues
-                self.imported_data = imported_data
+                # Assign on main thread to avoid thread safety issues
+                self.imported_datasets = datasets
 
-                if dataset and self.project:
+                if datasets and self.project:
                     # Verify that we still have a project and it's the same as when we started the import
                     if not self.app_state.has_project:
                         # Project was closed during import - abort with user message
                         self.logger.warning("Project was closed during import - aborting import operation")
                         self.ui_controller.show_warning_message(
                             "Import Cancelled",
-                            f"The project was closed during import of '{dataset_name}'. "
-                            "The import has been cancelled."
+                            "The project was closed during import. The import has been cancelled."
                         )
                         return
 
@@ -283,35 +268,45 @@ class ImportDataCommand(Command):
                         self.logger.warning("Project changed during import - aborting import operation")
                         self.ui_controller.show_warning_message(
                             "Import Cancelled",
-                            f"The project was changed during import of '{dataset_name}'. "
-                            "The import has been cancelled to prevent data inconsistency."
+                            "The project was changed during import. The import has been cancelled to prevent data inconsistency."
                         )
                         return
 
-                    # Add dataset to project
-                    self.project.add_item(dataset, parent_id=self.folder_id)
+                    # Add each dataset to the project
+                    for dataset in datasets:
+                        self.project.add_item(dataset, parent_id=self.folder_id)
+                        self.dataset_ids.append(dataset.id)
 
-                    # Emit event
-                    # TODO: migrate to item created and create data class
-                    self.app_state.event_bus.emit(
-                        DatasetEvents.DATASET_CREATED,
-                        {
-                            "project": self.project,
-                            "dataset_id": dataset_id,
-                            "dataset_name": dataset_name,
-                            "folder_id": self.folder_id,
-                            "dataset_data": dataset.data,
-                            "file_path": file_path,
-                            "dataframe": imported_data,  # Use DataFrame from result payload
-                        },
-                    )
+                        # Emit event
+                        # TODO: migrate to item created and create data class
+                        self.app_state.event_bus.emit(
+                            DatasetEvents.DATASET_CREATED,
+                            {
+                                "project": self.project,
+                                "dataset_id": dataset.id,
+                                "dataset_name": dataset.name,
+                                "folder_id": self.folder_id,
+                                "dataset_data": dataset.data,
+                                "file_path": file_path,
+                                "dataframe": dataset.data,
+                            },
+                        )
 
-                    self.logger.info("Dataset '%s' successfully added to project", dataset_name)
+                    self.logger.info("%d dataset(s) successfully added to project", len(datasets))
 
                     # Show success message to user
-                    self.ui_controller.show_info_message("Import Data", f"Successfully imported '{dataset_name}'\nRows: {rows}, Columns: {cols}")
+                    if len(datasets) == 1:
+                        d = datasets[0]
+                        self.ui_controller.show_info_message(
+                            "Import Data", f"Successfully imported '{d.name}'\nRows: {d.data.shape[0]}, Columns: {d.data.shape[1]}"
+                        )
+                    else:
+                        names = "\n".join(f"- {d.name} ({d.data.shape[0]} rows, {d.data.shape[1]} cols)" for d in datasets)
+                        self.ui_controller.show_info_message(
+                            "Import Data", f"Successfully imported {len(datasets)} sheets as datasets:\n{names}"
+                        )
                 else:
-                    error_msg = "Missing dataset or project in import result"
+                    error_msg = "Missing datasets or project in import result"
                     self.ui_controller.show_error_message("Import Failed", error_msg)
                     self.logger.error(error_msg)
             else:
@@ -361,19 +356,20 @@ class ImportDataCommand(Command):
     def undo(self):
         """Undo the import data command."""
         try:
-            if self.dataset_id and self.app_state.has_project:
+            if self.dataset_ids and self.app_state.has_project:
                 project = self.app_state.current_project
                 if project:
-                    dataset = project.find_item(self.dataset_id)
-                    if dataset:
-                        project.remove_item(dataset)
+                    for dataset_id in self.dataset_ids:
+                        dataset = project.find_item(dataset_id)
+                        if dataset:
+                            project.remove_item(dataset)
 
-                    # Emit event
-                    self.app_state.event_bus.emit(
-                        DatasetEvents.DATASET_DELETED, {"project": project, "dataset_id": self.dataset_id, "dataset_data": self.imported_data}
-                    )
+                        # Emit event
+                        self.app_state.event_bus.emit(
+                            DatasetEvents.DATASET_DELETED, {"project": project, "dataset_id": dataset_id, "dataset_data": None}
+                        )
 
-                    self.logger.info("Undone import of dataset '%s'", self.dataset_id)
+                    self.logger.info("Undone import of %d dataset(s)", len(self.dataset_ids))
 
         except Exception as e:
             error_msg = f"Failed to undo data import: {str(e)}"
@@ -381,19 +377,23 @@ class ImportDataCommand(Command):
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
     def redo(self):
-        """Redo the import data command."""
+        """
+        Redo the import by re-running it through the wizard.
+
+        The cached dataset ids are cleared so ``execute()`` performs a clean
+        re-import rather than colliding with the undone datasets.
+        """
         try:
-            if not self.is_importing:
-                if self.dataset_id and self.imported_data is not None and self.app_state.has_project:
-                    # We have cached data, could re-add directly or re-execute
-                    # For now, re-execute to maintain consistency
-                    return self.execute()
-                else:
-                    self.logger.warning("Cannot redo: no cached import data available")
-                    return False
-            else:
+            if self.is_importing:
                 self.logger.warning("Cannot redo import command while import is in progress")
                 return False
+
+            if self.dataset_ids and self.imported_datasets and self.app_state.has_project:
+                self.dataset_ids = []
+                return self.execute()
+
+            self.logger.warning("Cannot redo: no cached import data available")
+            return False
         except Exception as e:
             error_msg = f"Failed to redo data import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)

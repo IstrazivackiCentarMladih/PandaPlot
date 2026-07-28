@@ -356,7 +356,8 @@ class TabContainer(PWidget):
         """Reopen tabs (and the pane layout) remembered from the previous session.
 
         Called once the project a session was saved against has finished
-        loading (see pandaplot/app.py's startup restore hook).
+        loading (see pandaplot/app.py's startup restore hook). Restoration always
+        happens into a single pane - split layouts are not persisted across restarts.
         """
         panes_data = [list(ids) for ids in panes_data if ids]
         if not panes_data:

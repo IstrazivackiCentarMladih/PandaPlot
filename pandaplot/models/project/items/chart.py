@@ -125,6 +125,7 @@ class Chart(Item):
             "legend_bg_color": "#ffffff",
             "grid_style": "solid",
             "grid_alpha": 0.3,
+            "minor_grid_alpha": 0.15,
             "show_grid_x": True,
             "show_grid_y": True,
             "show_grid_y2": True,
@@ -174,6 +175,9 @@ class Chart(Item):
             "title_italic": False,
             "subtitle_bold": False,
             "subtitle_italic": False,
+            "title_color": "#000000",
+            "subtitle_color": "#000000",
+            "subtitle_match_title_color": True,
             "width_cm": None,
             "height_cm": None,
             "dpi": None,
@@ -183,7 +187,8 @@ class Chart(Item):
 
         self.style = {
             "figure_size": (10, 6),
-            "background_color": "#ffffff",
+            "figure_background_color": "#ffffff",
+            "axes_background_color": "#ffffff",
             "font_size": 12,
             "font_family": "Arial",
             "dpi": 100
@@ -486,6 +491,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
     """
     return {
         "config": copy.deepcopy(chart.config),
+        "style": copy.deepcopy(chart.style),
         "chart_type": chart.chart_type,
         "name": chart.name,
         "data_series": [asdict(s) for s in chart.data_series],
@@ -499,6 +505,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
 def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     """Restore chart state captured by snapshot_chart_state."""
     chart.config = copy.deepcopy(snapshot["config"])
+    chart.style = copy.deepcopy(snapshot["style"])
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
     chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
