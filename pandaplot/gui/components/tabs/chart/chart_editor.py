@@ -176,6 +176,21 @@ def apply_axis_ticks(
     )
 
 
+def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False):
+    """Set font size/family/weight/style on every major and minor tick-value
+    label of a matplotlib Axis. `Axis.set_tick_params` (used by
+    `apply_axis_ticks` for color/direction) has no font-family/weight/style
+    knobs of its own, so those three must be set directly on each tick
+    label's Text artist instead."""
+    fontweight = "bold" if bold else "normal"
+    fontstyle = "italic" if italic else "normal"
+    for label in axis.get_ticklabels() + axis.get_ticklabels(minor=True):
+        label.set_fontsize(font_size)
+        label.set_fontfamily(font_family)
+        label.set_fontweight(fontweight)
+        label.set_fontstyle(fontstyle)
+
+
 def resolve_axis_color(prefix, own_color, match_enabled, x_color):
     """Resolve the effective color for a Y/Y2 axis element (label, tick
     marks, tick values, or spine): X's color when this axis is matching X
@@ -828,8 +843,18 @@ class ChartEditorWidget(PWidget):
             y_match_label = config.get("y_match_x_label_color", True)
             y_label_color = resolve_axis_color(
                 "y", config.get("y_label_color", "#000000"), y_match_label, x_label_color)
-            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""), color=x_label_color)
-            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""), color=y_label_color)
+            self.chart_canvas.axes.set_xlabel(
+                config.get("x_label", ""), color=x_label_color,
+                fontfamily=config.get("x_font_family", "DejaVu Sans"),
+                fontweight="bold" if config.get("x_title_bold", False) else "normal",
+                fontstyle="italic" if config.get("x_title_italic", False) else "normal",
+            )
+            self.chart_canvas.axes.set_ylabel(
+                config.get("y_label", ""), color=y_label_color,
+                fontfamily=config.get("y_font_family", "DejaVu Sans"),
+                fontweight="bold" if config.get("y_title_bold", False) else "normal",
+                fontstyle="italic" if config.get("y_title_italic", False) else "normal",
+            )
             x_scale = config.get("x_scale", "linear")
             y_scale = config.get("y_scale", "linear")
             self.chart_canvas.axes.set_xscale(x_scale, **resolve_scale_kwargs(x_scale, config.get("x_log_base", 10.0)))
@@ -847,7 +872,12 @@ class ChartEditorWidget(PWidget):
                 y2_match_label = config.get("y2_match_x_label_color", True)
                 y2_label_color = resolve_axis_color(
                     "y2", config.get("y2_label_color", "#000000"), y2_match_label, x_label_color)
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""), color=y2_label_color)
+                self.chart_canvas.axes2.set_ylabel(
+                    config.get("y2_label", ""), color=y2_label_color,
+                    fontfamily=config.get("y2_font_family", "DejaVu Sans"),
+                    fontweight="bold" if config.get("y2_title_bold", False) else "normal",
+                    fontstyle="italic" if config.get("y2_title_italic", False) else "normal",
+                )
                 y2_scale = config.get("y2_scale", "linear")
                 self.chart_canvas.axes2.set_yscale(
                     y2_scale, **resolve_scale_kwargs(y2_scale, config.get("y2_log_base", 10.0)))
@@ -884,6 +914,14 @@ class ChartEditorWidget(PWidget):
                         config.get("y2_match_x_colors", True),
                         config.get("x_tick_label_color", "#000000")))
 
+                apply_tick_label_font(
+                    self.chart_canvas.axes2.yaxis,
+                    config.get("y2_tick_label_font_size", 10),
+                    config.get("y2_tick_label_font_family", "DejaVu Sans"),
+                    bold=config.get("y2_tick_label_bold", False),
+                    italic=config.get("y2_tick_label_italic", False),
+                )
+
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
                 else:
@@ -910,6 +948,13 @@ class ChartEditorWidget(PWidget):
                 major_color=config.get("x_major_tick_color", "#000000"),
                 minor_color=config.get("x_minor_tick_color", "#000000"),
                 labelcolor=config.get("x_tick_label_color", "#000000"))
+            apply_tick_label_font(
+                self.chart_canvas.axes.xaxis,
+                config.get("x_tick_label_font_size", 10),
+                config.get("x_tick_label_font_family", "DejaVu Sans"),
+                bold=config.get("x_tick_label_bold", False),
+                italic=config.get("x_tick_label_italic", False),
+            )
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
@@ -930,6 +975,13 @@ class ChartEditorWidget(PWidget):
                     "y", config.get("y_tick_label_color", "#000000"),
                     config.get("y_match_x_colors", True),
                     config.get("x_tick_label_color", "#000000")))
+            apply_tick_label_font(
+                self.chart_canvas.axes.yaxis,
+                config.get("y_tick_label_font_size", 10),
+                config.get("y_tick_label_font_family", "DejaVu Sans"),
+                bold=config.get("y_tick_label_bold", False),
+                italic=config.get("y_tick_label_italic", False),
+            )
 
             apply_spine_colors(
                 self.chart_canvas.axes, self.chart_canvas.axes2,
