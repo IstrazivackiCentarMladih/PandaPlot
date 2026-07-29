@@ -50,11 +50,12 @@ class ChartTab(QWidget):
 
         info_layout.addWidget(QLabel("Title:"), 0, 0)
         self.title_edit = QLineEdit()
+        self.title_edit.setPlaceholderText("Chart title (supports $LaTeX$ math)")
         info_layout.addWidget(self.title_edit, 0, 1, 1, 2)
 
         info_layout.addWidget(QLabel("Subtitle:"), 1, 0)
         self.subtitle_edit = QLineEdit()
-        self.subtitle_edit.setPlaceholderText("Optional")
+        self.subtitle_edit.setPlaceholderText("Optional (supports $LaTeX$ math)")
         info_layout.addWidget(self.subtitle_edit, 1, 1, 1, 2)
 
         info_layout.addWidget(QLabel("Type:"), 2, 0)

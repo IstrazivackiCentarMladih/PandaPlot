@@ -73,6 +73,7 @@ class AxesTab(QWidget):
         label_layout = QGridLayout()
         label_layout.addWidget(QLabel("Label:"), 0, 0)
         label_edit = QLineEdit()
+        label_edit.setToolTip("Supports $LaTeX$ math notation, e.g. $x^2$")
         label_layout.addWidget(label_edit, 0, 1, 1, 2)
         form_layout.addLayout(label_layout)
 

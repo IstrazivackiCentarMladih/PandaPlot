@@ -90,3 +90,15 @@ def test_title_and_subtitle_font_family_default_to_dejavu_sans():
     apply_chart_title(axes, title="My Chart", subtitle="n = 42", title_font_size=14, subtitle_font_size=10)
     assert axes.figure._suptitle.get_fontfamily() == ["DejaVu Sans"]
     assert axes.title.get_fontfamily() == ["DejaVu Sans"]
+
+
+def test_mathtext_title_text_passes_through_unmodified():
+    axes = _make_axes()
+    apply_chart_title(axes, title=r"Energy $E = mc^2$", subtitle="", title_font_size=14, subtitle_font_size=12)
+    assert axes.figure.get_suptitle() == r"Energy $E = mc^2$"
+
+
+def test_mathtext_subtitle_text_passes_through_unmodified():
+    axes = _make_axes()
+    apply_chart_title(axes, title="t", subtitle=r"$\alpha = 0.05$", title_font_size=14, subtitle_font_size=10)
+    assert axes.get_title() == r"$\alpha = 0.05$"
