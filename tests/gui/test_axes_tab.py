@@ -258,6 +258,25 @@ def test_load_auto_axis_shows_recomputed_data_range_disabled():
     assert y_form["max_spin"].isEnabled() is False
 
 
+def test_log_scale_axis_range_display_excludes_non_positive_values():
+    """A Log-scaled axis must show Min/Max computed from only the positive
+    subset of the data -- matplotlib's log-scale autoscale ignores
+    non-positive points entirely, and a raw min <= 0 would later be
+    silently rejected by set_ylim() on a log axis."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[-5, 10, 20])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({"y_auto_limits": True, "y_scale": "log"})
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["min_spin"].value() == 10.0
+    assert y_form["max_spin"].value() == 20.0
+
+
 def test_toggling_auto_to_manual_recomputes_fresh_from_data():
     """Regression check: an explicit Auto->Manual toggle is the one case
     that SHOULD still recompute-and-overwrite -- it must ignore whatever

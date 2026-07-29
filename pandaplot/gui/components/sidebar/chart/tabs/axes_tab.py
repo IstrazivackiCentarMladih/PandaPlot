@@ -349,7 +349,11 @@ class AxesTab(QWidget):
         if self._chart is not None:
             from pandaplot.gui.components.tabs.chart.chart_editor import compute_axis_data_range
             project = self.app_context.app_state.current_project
-            computed = compute_axis_data_range(project, self._chart.data_series, prefix)
+            # A Log-scaled axis must ignore non-positive data points, same as
+            # matplotlib's own autoscale would -- otherwise a computed min <= 0
+            # gets shown here and later rejected/ignored by set_xlim/set_ylim.
+            is_log = form["scale_control"].currentValue() == ScaleType.LOG
+            computed = compute_axis_data_range(project, self._chart.data_series, prefix, positive_only=is_log)
         else:
             computed = None
         min_value, max_value = computed if computed is not None else (0.0, 1.0)

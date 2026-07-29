@@ -69,3 +69,24 @@ def test_combines_min_max_across_multiple_series():
         DataSeries(dataset_id="ds2", x_column="x", y_column="y"),
     ]
     assert compute_axis_data_range(project, series, "x") == (-5.0, 2.0)
+
+
+def test_positive_only_excludes_non_positive_values_from_range():
+    """Log-scaled axes must ignore zero/negative data points -- matplotlib's
+    own autoscale does the same when computing log-scale view limits."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[-5, 10, 20])
+    project = _FakeProject([ds])
+    series = [DataSeries(dataset_id="ds1", x_column="x", y_column="y")]
+    assert compute_axis_data_range(project, series, "y", positive_only=True) == (10.0, 20.0)
+    assert compute_axis_data_range(project, series, "y") == (-5.0, 20.0)
+    assert compute_axis_data_range(project, series, "y", positive_only=False) == (-5.0, 20.0)
+
+
+def test_positive_only_series_with_all_non_positive_values_contributes_nothing():
+    """If every value in the only series is <= 0 and positive_only=True,
+    that series contributes no range at all -- matching the existing 'no
+    resolvable data' contract of returning None."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[-5, 0, -1])
+    project = _FakeProject([ds])
+    series = [DataSeries(dataset_id="ds1", x_column="x", y_column="y")]
+    assert compute_axis_data_range(project, series, "y", positive_only=True) is None

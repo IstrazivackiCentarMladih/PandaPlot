@@ -300,13 +300,19 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
 
 
-def compute_axis_data_range(project, data_series, prefix: str) -> Optional[tuple[float, float]]:
+def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
     """Compute (min, max) across every series plotted against the given
     axis (`prefix` in "x", "y", "y2"). All series contribute to "x"
     regardless of which y-axis they use; "y"/"y2" are filtered by
     `series.y_axis`. Returns None if no series have resolvable data for
     this axis (no series yet, or every reference is broken) -- callers
-    fall back to a fixed default range in that case."""
+    fall back to a fixed default range in that case.
+
+    `positive_only` should be True when the axis is Log-scaled: matplotlib's
+    own autoscale ignores non-positive data points when computing log-scale
+    view limits (a <= 0 limit is invalid on a log axis and gets silently
+    rejected), so we match that behavior here rather than letting zero/
+    negative values leak into the Range card or into set_xlim/set_ylim."""
     from pandaplot.models.project.items.chart import YAxis
 
     ranges: list[tuple[float, float]] = []
@@ -323,6 +329,8 @@ def compute_axis_data_range(project, data_series, prefix: str) -> Optional[tuple
             continue
         values = np.asarray(arr, dtype=float)
         values = values[np.isfinite(values)]
+        if positive_only:
+            values = values[values > 0]
         if values.size:
             ranges.append((float(values.min()), float(values.max())))
 
