@@ -267,6 +267,40 @@ def resolve_legend_placement(position: str, custom_x: float, custom_y: float, cu
     return {"loc": position}
 
 
+def build_legend(
+    axes, handles, labels,
+    font_family: str, font_size,
+    bg_color: str, show_frame: bool, columns: int, bg_alpha: float,
+    placement_kwargs: dict,
+):
+    """Add a legend to `axes`, merging `font_size` into `prop` alongside
+    `font_family`. Matplotlib silently ignores a `fontsize=` kwarg whenever
+    `prop=` is also passed -- the legend text falls back to
+    rcParams["legend.fontsize"] regardless of what's configured, unless the
+    size is merged into `prop` itself, as done here."""
+    return axes.legend(
+        handles, labels,
+        facecolor=bg_color,
+        frameon=show_frame,
+        ncol=columns,
+        framealpha=bg_alpha,
+        prop={"family": font_family, "size": font_size},
+        **placement_kwargs,
+    )
+
+
+def apply_layout_with_legend(fig, tight_layout_kwargs: dict, legend_placed_outside: bool) -> None:
+    """Run Figure.tight_layout(), re-running it once more when the legend was
+    placed outside the axes (`bbox_to_anchor` set -- Outside Right/Top/Bottom
+    or Custom, see resolve_legend_placement). The first tight_layout() pass
+    runs before Matplotlib can account for an out-of-axes legend's extent,
+    so without the second pass such a legend gets clipped by the figure
+    boundary."""
+    fig.tight_layout(**tight_layout_kwargs)
+    if legend_placed_outside:
+        fig.tight_layout(**tight_layout_kwargs)
+
+
 def _resolve_error_column(df, column_name):
     """Best-effort lookup of an optional error column.
 
@@ -1049,24 +1083,19 @@ class ChartEditorWidget(PWidget):
                     config.get("legend_custom_y", 0.5),
                     config.get("legend_custom_anchor", "center left"),
                 )
-                legend = self.chart_canvas.axes.legend(
-                    handles, labels,
-                    facecolor=config.get("legend_bg_color", "#ffffff"),
-                    frameon=config.get("legend_show_frame", True),
-                    ncol=config.get("legend_columns", 1),
-                    framealpha=config.get("legend_bg_alpha", 1.0),
-                    # `fontsize=` is silently ignored by Matplotlib whenever
-                    # `prop=` is also passed -- the size must be merged into
-                    # `prop` itself, or the legend text falls back to
-                    # rcParams["legend.fontsize"] regardless of what's
-                    # configured here.
-                    prop={
-                        "family": config.get("legend_font_family", "DejaVu Sans"),
-                        "size": config.get("legend_font_size", 10),
-                    },
-                    **placement_kwargs)
+                legend = build_legend(
+                    self.chart_canvas.axes, handles, labels,
+                    config.get("legend_font_family", "DejaVu Sans"),
+                    config.get("legend_font_size", 10),
+                    config.get("legend_bg_color", "#ffffff"),
+                    config.get("legend_show_frame", True),
+                    config.get("legend_columns", 1),
+                    config.get("legend_bg_alpha", 1.0),
+                    placement_kwargs,
+                )
             else:
                 legend = None
+                placement_kwargs = {}
 
             tight_layout_kwargs = dict(
                 pad=config.get("chart_padding", 2.0),
@@ -1076,16 +1105,10 @@ class ChartEditorWidget(PWidget):
             )
             # Reserve room for the secondary axis label/ticks so they aren't
             # clipped at the right edge of the figure.
-            self.chart_canvas.fig.tight_layout(**tight_layout_kwargs)
-
-            if legend is not None and placement_kwargs.get("bbox_to_anchor") is not None:
-                # The legend was placed outside the axes (Outside Right/Top/
-                # Bottom or Custom -- see resolve_legend_placement). The
-                # tight_layout() call above ran before Matplotlib had a
-                # chance to account for this out-of-axes legend's extent in
-                # its first pass, so re-run it now that the legend exists;
-                # otherwise the legend gets clipped by the figure boundary.
-                self.chart_canvas.fig.tight_layout(**tight_layout_kwargs)
+            apply_layout_with_legend(
+                self.chart_canvas.fig, tight_layout_kwargs,
+                legend is not None and placement_kwargs.get("bbox_to_anchor") is not None,
+            )
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
