@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import FitEvents, UIEvents
+from pandaplot.models.events import FitEvents, ChartEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
@@ -267,24 +267,15 @@ class FitPanel(PWidget):
         """Create the data source selection section."""
         data_group = QGroupBox("Data Source")
         data_layout = QGridLayout(data_group)
-        
-        data_layout.addWidget(QLabel("Dataset:"), 0, 0)
-        self.dataset_combo = QComboBox()
-        data_layout.addWidget(self.dataset_combo, 0, 1)
-        
-        data_layout.addWidget(QLabel("X Column:"), 1, 0)
-        self.x_column_combo = QComboBox()
-        data_layout.addWidget(self.x_column_combo, 1, 1)
-        
-        data_layout.addWidget(QLabel("Y Column:"), 2, 0)
-        self.y_column_combo = QComboBox()
-        data_layout.addWidget(self.y_column_combo, 2, 1)
-        
-        # Data preview
-        data_layout.addWidget(QLabel("Data Points:"), 3, 0)
+
+        data_layout.addWidget(QLabel("Chart Series:"), 0, 0)
+
+        self.series_combo = QComboBox()
+        data_layout.addWidget(self.series_combo, 0, 1)
+
+        data_layout.addWidget(QLabel("Data Points:"), 1, 0)
         self.data_points_label = QLabel("No data selected")
-        self.data_points_label.setStyleSheet("color: #666; font-style: italic;")
-        data_layout.addWidget(self.data_points_label, 3, 1)
+        data_layout.addWidget(self.data_points_label, 1, 1)
         
         layout.addWidget(data_group)
     
@@ -411,15 +402,15 @@ class FitPanel(PWidget):
     
     def _connect_signals(self):
         """Connect widget signals."""
-        self.dataset_combo.currentTextChanged.connect(self._on_dataset_changed)
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
+        self.series_combo.currentIndexChanged.connect(self._on_series_changed)
         self.fit_button.clicked.connect(self.fit_command.perform_fit)
         self.apply_button.clicked.connect(self._apply_fit)
         self.clear_button.clicked.connect(self._clear_results)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
-        self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
+        self.subscribe_to_event(ChartEvents.CHART_UPDATED, self._on_chart_updated)
 
     def _show_scipy_warning(self):
         """Show warning if scipy is not available."""
@@ -433,73 +424,36 @@ class FitPanel(PWidget):
     def set_project(self, project):
         """Set the current project."""
         self.current_project = project
-        self._update_datasets()
-    
-    def _update_datasets(self):
-        """Update the available datasets."""
-        self.dataset_combo.clear()
-        self.datasets = []
-        
-        if self.current_project:
-            for item in self.current_project.get_all_items():
-                if isinstance(item, Dataset):
-                    self.dataset_combo.addItem(item.name, item.id)
-                    self.datasets.append(item)
-    
-    def _on_dataset_changed(self):
-        """Handle dataset selection change."""
-        dataset_id = self.dataset_combo.currentData()
-        if dataset_id and self.current_project:
-            dataset = self.current_project.find_item(dataset_id)
-            if isinstance(dataset, Dataset) and dataset.data is not None:
-                columns = list(dataset.data.columns)
-
-                # Update column combos
-                self.x_column_combo.clear()
-                self.y_column_combo.clear()
-
-                for column in columns:
-                    self.x_column_combo.addItem(column)
-                    self.y_column_combo.addItem(column)
-
-                # Set defaults if possible
-                if len(columns) >= 2:
-                    self.x_column_combo.setCurrentIndex(0)
-                    self.y_column_combo.setCurrentIndex(1)
-                elif len(columns) == 1:
-                    self.x_column_combo.setCurrentIndex(0)
-
-                # Update data points display
-                self.update_data_points_display()
 
     def get_current_data(self):
-        """Get the currently selected data."""
-        dataset_id = self.dataset_combo.currentData()
-        x_column = self.x_column_combo.currentText()
-        y_column = self.y_column_combo.currentText()
-
-        if not all([dataset_id, x_column, y_column]):
-            self.logger.warning("Missing dataset or columns")
+        """Get data from selected chart series."""
+        series = self.series_combo.currentData()
+        if not self.current_project:
             return None
 
-        if self.current_project:
-            dataset = self.current_project.find_item(dataset_id)
-            if isinstance(dataset, Dataset) and dataset.data is not None:
-                df = dataset.data
-                if x_column in df.columns and y_column in df.columns:
-                    # Remove any NaN values
-                    mask = ~(pd.isna(df[x_column]) | pd.isna(df[y_column]))
-                    x_data = df[x_column][mask].values
-                    y_data = df[y_column][mask].values
+        dataset = self.current_project.find_item(series.dataset_id)
 
-                    if not self.current_chart or not self.current_chart.data_series:
-                        self.logger.warning("No active chart or data series available")
-                        return None
+        if not isinstance(dataset, Dataset):
+            self.logger.warning("Dataset not found")
+            return None
 
-                    # Chart contains single data series
-                    series = self.current_chart.data_series[0]
-                    return df, mask, x_data, y_data, series
-        return None
+        if dataset.data is None:
+            self.logger.warning("Dataset contains no data")
+            return None
+
+        df = dataset.data
+
+        x_column = series.x_column
+        y_column = series.y_column
+
+        if x_column not in df.columns or y_column not in df.columns:
+            return None
+
+        mask = ~(pd.isna(df[x_column]) | pd.isna(df[y_column]))
+        x_data = df[x_column][mask].values
+        y_data = df[y_column][mask].values
+
+        return df, mask, x_data, y_data, series
 
     def _on_tab_changed(self, event_data):
         """Handle tab change events to update context."""
@@ -585,17 +539,21 @@ class FitPanel(PWidget):
         results_text += f"Fit points: {len(results.x_fit)}"
         
         self.results_text.setPlainText(results_text)
-    
-    
-    
+
     def _apply_fit(self):
         """Apply the fit to the current chart."""
         if self.fit_command.fit_results:
-            # Get the current dataset name and info
-            dataset_name = self.dataset_combo.currentText()
-            dataset_id = self.dataset_combo.currentData()
-            x_column = self.x_column_combo.currentText()
-            y_column = self.y_column_combo.currentText()
+            series = self.series_combo.currentData()
+
+            if series is None:
+                self.logger.warning("No selected series for applying fit")
+                return
+
+            dataset_id = series.dataset_id
+            x_column = series.x_column
+            y_column = series.y_column
+
+            dataset_name = str(series.label)
             
             # Add source dataset info to fit results
             enhanced_fit_results = replace(
@@ -620,30 +578,39 @@ class FitPanel(PWidget):
         self.results_text.clear()
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
-    
+
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
         self.current_chart = chart
-        
-        if chart and chart.data_series:
-            # Auto-select dataset and columns from first series
-            first_series = chart.data_series[0]
-            
-            # Set dataset
-            for i in range(self.dataset_combo.count()):
-                if self.dataset_combo.itemData(i) == first_series.dataset_id:
-                    self.dataset_combo.setCurrentIndex(i)
-                    break
-            
-            # Set columns
-            x_index = self.x_column_combo.findText(first_series.x_column)
-            if x_index >= 0:
-                self.x_column_combo.setCurrentIndex(x_index)
-            
-            y_index = self.y_column_combo.findText(first_series.y_column)
-            if y_index >= 0:
-                self.y_column_combo.setCurrentIndex(y_index)
-            
-            # Update data points display
-            self.update_data_points_display()
+        self.series_combo.clear()
 
+        if chart is None:
+            return
+
+        self.current_project = self.app_context.app_state.current_project
+
+        for series in chart.data_series:
+            label = series.label or f"{series.y_column} vs {series.x_column}"
+            self.series_combo.addItem(label, series)
+
+        if self.series_combo.count() > 0:
+            self.series_combo.setCurrentIndex(0)
+
+    def _on_series_changed(self):
+        series = self.series_combo.currentData()
+        if series is None:
+            return
+        self.update_data_points_display()
+
+    def _on_chart_updated(self, event_data):
+        chart = event_data.get("chart")
+
+        if not chart:
+            return
+
+        if self.current_chart and chart.id != self.current_chart.id:
+            return
+
+        self.current_project = self.app_context.app_state.current_project
+
+        self.load_chart_object(chart)
