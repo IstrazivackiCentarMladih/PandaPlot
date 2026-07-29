@@ -14,10 +14,12 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
+from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
+from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.models.chart.chart_configuration import LegendPosition
 
 
@@ -90,6 +92,10 @@ class LegendTab(QWidget):
         self.legend_columns_control = SegmentedControl([("1", 1), ("2", 2), ("3", 3)])
         legend_layout.addWidget(self.legend_columns_control, 3, 1)
 
+        legend_layout.addWidget(QLabel("Font family:"), 4, 0)
+        self.legend_font_family_combo = ValueComboBox(list_available_font_families())
+        legend_layout.addWidget(self.legend_font_family_combo, 4, 1)
+
         layout.addWidget(legend_group)
 
         frame_card = Card()
@@ -114,6 +120,7 @@ class LegendTab(QWidget):
         self.legend_custom_anchor_combo.currentIndexChanged.connect(self._on_field_changed)
         self.legend_font_size_spin.valueChanged.connect(self._on_field_changed)
         self.legend_columns_control.currentValueChanged.connect(self._on_field_changed)
+        self.legend_font_family_combo.currentValueChanged.connect(self._on_field_changed)
         self.legend_show_frame_toggle.toggled.connect(self._on_field_changed)
         self.legend_bg_color_row.colorChanged.connect(self._on_field_changed)
         self.legend_bg_opacity_slider.valueChanged.connect(self._on_field_changed)
@@ -136,6 +143,7 @@ class LegendTab(QWidget):
             self.legend_custom_anchor_combo,
             self.legend_font_size_spin,
             self.legend_columns_control,
+            self.legend_font_family_combo,
             self.legend_show_frame_toggle,
             self.legend_bg_color_row,
             self.legend_bg_opacity_slider,
@@ -151,6 +159,7 @@ class LegendTab(QWidget):
             config["legend_position"] = self.legend_position_combo.currentData()
         config["legend_font_size"] = self.legend_font_size_spin.value()
         config["legend_columns"] = self.legend_columns_control.currentValue()
+        config["legend_font_family"] = self.legend_font_family_combo.currentValue()
         config["legend_show_frame"] = self.legend_show_frame_toggle.isChecked()
         config["legend_bg_color"] = self.legend_bg_color_row.currentColor()
         config["legend_bg_alpha"] = self.legend_bg_opacity_slider.value()
@@ -176,6 +185,7 @@ class LegendTab(QWidget):
             self.legend_custom_row.setVisible(legend_position_value == "custom")
             self.legend_font_size_spin.setValue(config.get("legend_font_size", 10))
             self.legend_columns_control.setCurrentValue(config.get("legend_columns", 1))
+            self.legend_font_family_combo.setCurrentValue(config.get("legend_font_family", "DejaVu Sans"))
             self.legend_show_frame_toggle.setChecked(config.get("legend_show_frame", True))
             self.legend_bg_color_row.setCurrentColor(config.get("legend_bg_color", "#ffffff"))
             self.legend_bg_opacity_slider.setValue(config.get("legend_bg_alpha", 1.0))
@@ -189,6 +199,7 @@ class LegendTab(QWidget):
             chart.config["legend_position"] = self.legend_position_combo.currentData()
         chart.config["legend_font_size"] = self.legend_font_size_spin.value()
         chart.config["legend_columns"] = self.legend_columns_control.currentValue()
+        chart.config["legend_font_family"] = self.legend_font_family_combo.currentValue()
         chart.config["legend_show_frame"] = self.legend_show_frame_toggle.isChecked()
         chart.config["legend_bg_color"] = self.legend_bg_color_row.currentColor()
         chart.config["legend_bg_alpha"] = self.legend_bg_opacity_slider.value()
@@ -203,6 +214,7 @@ class LegendTab(QWidget):
         try:
             self.show_legend_toggle.setChecked(True)
             self.legend_columns_control.setCurrentValue(1)
+            self.legend_font_family_combo.setCurrentValue("DejaVu Sans")
             self.legend_show_frame_toggle.setChecked(True)
             self.legend_bg_color_row.setCurrentColor("#ffffff")
             self.legend_bg_opacity_slider.setValue(1.0)

@@ -1056,6 +1056,7 @@ class ChartEditorWidget(PWidget):
                     frameon=config.get("legend_show_frame", True),
                     ncol=config.get("legend_columns", 1),
                     framealpha=config.get("legend_bg_alpha", 1.0),
+                    prop={"family": config.get("legend_font_family", "DejaVu Sans")},
                     **placement_kwargs)
 
             if self.chart_canvas.axes2 is not None:

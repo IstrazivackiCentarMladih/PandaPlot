@@ -653,3 +653,16 @@ def test_tick_label_style_fields_round_trip_through_serialization():
     assert restored.config["y_tick_label_font_family"] == "Georgia"
     assert restored.config["y_tick_label_bold"] is True
     assert restored.config["y_tick_label_italic"] is True
+
+
+def test_legend_font_family_defaults_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("legend_font_family", "DejaVu Sans") == "DejaVu Sans"
+
+
+def test_legend_font_family_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["legend_font_family"] = "Georgia"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["legend_font_family"] == "Georgia"
