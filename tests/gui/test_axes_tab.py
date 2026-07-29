@@ -19,7 +19,8 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AxesTab
-from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.project.items.chart import Chart, DataSeries
+from pandaplot.models.project.items.dataset import Dataset
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -28,13 +29,31 @@ def qapp():
     yield app
 
 
-def _make_app_context():
+def _make_app_context(project=None):
     """Minimal stand-in exposing the one attribute AxesTab reads:
     `app_context.app_state.current_project` (consulted by
     `_refresh_range_display`). None here means `compute_axis_data_range`
     can't resolve any series and falls back to (0.0, 1.0), which is fine
     since these tests don't assert on the Range card's min/max values."""
-    return types.SimpleNamespace(app_state=types.SimpleNamespace(current_project=None))
+    return types.SimpleNamespace(app_state=types.SimpleNamespace(current_project=project))
+
+
+class _FakeProject:
+    """Minimal stand-in for a project, exposing only the `find_item` lookup
+    `compute_axis_data_range` -> `resolve_series_data` needs."""
+
+    def __init__(self, datasets):
+        self._datasets = {d.id: d for d in datasets}
+
+    def find_item(self, item_id):
+        return self._datasets.get(item_id)
+
+
+def _make_dataset(id_, x, y):
+    import pandas as pd
+    ds = Dataset(id=id_, name=id_)
+    ds.data = pd.DataFrame({"x": x, "y": y})
+    return ds
 
 
 def test_load_preserves_custom_y_colors_when_not_matching_x():
@@ -187,3 +206,79 @@ def test_load_selects_custom_for_non_preset_log_base_and_populates_spin():
     assert y_form["log_base_custom_spin"].value() == 3.5
     assert y_form["log_base_custom_spin"].isHidden() is False
     assert y_form["log_base_row"].isHidden() is False
+
+
+def test_load_manual_axis_shows_saved_range_not_recomputed_data_range():
+    """A Manual-mode axis's displayed min/max on load must be exactly what
+    was saved in chart.config, even when the chart's series data would
+    compute to a completely different range. Loading/reopening a chart is
+    NOT an Auto->Manual toggle, so it must never recompute-and-overwrite a
+    Manual axis's value (the bug this test guards against: `load()` used to
+    call `_refresh_range_display` unconditionally for every axis, silently
+    clobbering the saved manual range with the live data range)."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[100, 200, 300])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({
+        "y_auto_limits": False,
+        "y_min": 5.0,
+        "y_max": 50.0,
+    })
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["auto_toggle"].isChecked() is False
+    assert y_form["min_spin"].value() == 5.0
+    assert y_form["max_spin"].value() == 50.0
+    assert y_form["min_spin"].isEnabled() is True
+    assert y_form["max_spin"].isEnabled() is True
+
+
+def test_load_auto_axis_shows_recomputed_data_range_disabled():
+    """Regression check: an Auto-mode axis must still show the freshly
+    recomputed data range on load, disabled -- the Auto path is unaffected
+    by the Manual-mode fix above."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[100, 200, 300])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({"y_auto_limits": True})
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["auto_toggle"].isChecked() is True
+    assert y_form["min_spin"].value() == 100.0
+    assert y_form["max_spin"].value() == 300.0
+    assert y_form["min_spin"].isEnabled() is False
+    assert y_form["max_spin"].isEnabled() is False
+
+
+def test_toggling_auto_to_manual_recomputes_fresh_from_data():
+    """Regression check: an explicit Auto->Manual toggle is the one case
+    that SHOULD still recompute-and-overwrite -- it must ignore whatever
+    stale value happened to be sitting in the spin boxes and show the
+    current data range instead."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[100, 200, 300])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({"y_auto_limits": True})
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["min_spin"].value() == 100.0
+    assert y_form["max_spin"].value() == 300.0
+
+    y_form["auto_toggle"].setChecked(False)
+
+    assert y_form["min_spin"].value() == 100.0
+    assert y_form["max_spin"].value() == 300.0
+    assert y_form["min_spin"].isEnabled() is True
+    assert y_form["max_spin"].isEnabled() is True

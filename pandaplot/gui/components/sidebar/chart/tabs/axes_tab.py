@@ -631,6 +631,16 @@ class AxesTab(QWidget):
 
         auto_limits = config.get(f"{prefix}_auto_limits", True)
         form["auto_toggle"].setChecked(auto_limits)
+        # Auto mode's displayed min/max is owned by `_refresh_range_display`
+        # (recomputed from live data whenever it's called). Manual mode has
+        # no such recompute on load -- per spec, a Manual axis's value only
+        # ever changes via an explicit Auto->Manual toggle or the user
+        # typing, never merely by loading/reopening a chart -- so it must be
+        # restored here from the actual saved config.
+        form["min_spin"].setValue(config.get(f"{prefix}_min", 0.0))
+        form["max_spin"].setValue(config.get(f"{prefix}_max", 1.0))
+        form["min_spin"].setEnabled(not auto_limits)
+        form["max_spin"].setEnabled(not auto_limits)
 
         tick_mode = config.get(f"{prefix}_tick_mode", "auto")
         form["mode_control"].setCurrentValue(tick_mode)
@@ -721,7 +731,14 @@ class AxesTab(QWidget):
         try:
             for prefix in ("x", "y", "y2"):
                 self._read_axis_config(prefix, chart.config)
-                self._refresh_range_display(prefix)
+                # Only Auto axes get their range recomputed from live data on
+                # load -- `_read_axis_config` just restored a Manual axis's
+                # actually-saved min/max above, and merely loading/reopening
+                # a chart must not overwrite it (only an explicit
+                # Auto->Manual toggle should recompute; see
+                # _on_axis_auto_limits_toggled).
+                if self.axes_forms[prefix]["auto_toggle"].isChecked():
+                    self._refresh_range_display(prefix)
             self.refresh_axis_chips(chart)
             self._show_axis_form("x")
             self.axis_chips.setCurrentValue("x")
