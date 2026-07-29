@@ -610,3 +610,25 @@ def test_axis_title_style_fields_round_trip_through_serialization():
     assert restored.config["y_font_family"] == "Georgia"
     assert restored.config["y_title_bold"] is True
     assert restored.config["y_title_italic"] is True
+
+
+def test_tick_label_style_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_tick_label_font_size", 10) == 10
+    assert chart.config.get("x_tick_label_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("x_tick_label_bold", False) is False
+    assert chart.config.get("x_tick_label_italic", False) is False
+
+
+def test_tick_label_style_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["y_tick_label_font_size"] = 14
+    chart.config["y_tick_label_font_family"] = "Georgia"
+    chart.config["y_tick_label_bold"] = True
+    chart.config["y_tick_label_italic"] = True
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["y_tick_label_font_size"] == 14
+    assert restored.config["y_tick_label_font_family"] == "Georgia"
+    assert restored.config["y_tick_label_bold"] is True
+    assert restored.config["y_tick_label_italic"] is True

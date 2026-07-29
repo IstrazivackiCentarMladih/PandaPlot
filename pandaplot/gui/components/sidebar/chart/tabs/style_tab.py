@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -620,12 +621,86 @@ class StyleTab(QWidget):
 
         form_layout.addWidget(title_card)
 
+        ticks_card = Card()
+        ticks_layout = QGridLayout(ticks_card)
+        ticks_layout.addWidget(SectionHeader("Tick values"), 0, 0, 1, 2)
+
+        ticks_layout.addWidget(QLabel("Font size:"), 1, 0)
+        tick_font_size_spin = QSpinBox()
+        tick_font_size_spin.setRange(6, 32)
+        tick_font_size_spin.setValue(10)
+        ticks_layout.addWidget(tick_font_size_spin, 1, 1)
+
+        ticks_layout.addWidget(QLabel("Font family:"), 2, 0)
+        tick_font_family_combo = ValueComboBox(list_available_font_families())
+        ticks_layout.addWidget(tick_font_family_combo, 2, 1)
+
+        tick_bold_check, tick_italic_check = _make_bold_italic_checks_standalone()
+        tick_bold_italic_row = QHBoxLayout()
+        tick_bold_italic_row.setContentsMargins(0, 0, 0, 0)
+        tick_bold_italic_row.addWidget(tick_bold_check)
+        tick_bold_italic_row.addWidget(tick_italic_check)
+        tick_bold_italic_row.addStretch(1)
+        tick_bold_italic_widget = QWidget()
+        tick_bold_italic_widget.setLayout(tick_bold_italic_row)
+        ticks_layout.addWidget(tick_bold_italic_widget, 3, 1)
+
+        ticks_layout.addWidget(QLabel("Color:"), 4, 0)
+        tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        ticks_layout.addWidget(tick_color_row, 4, 1)
+
+        form_layout.addWidget(ticks_card)
+
+        colors_card = Card()
+        colors_layout = QGridLayout(colors_card)
+        colors_layout.addWidget(SectionHeader("Colors"), 0, 0, 1, 2)
+
+        colors_layout.addWidget(QLabel("Spine:"), 1, 0)
+        spine_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(spine_color_row, 1, 1)
+
+        colors_layout.addWidget(QLabel("Major ticks:"), 2, 0)
+        major_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(major_tick_color_row, 2, 1)
+
+        minor_tick_color_label = QLabel("Minor ticks:")
+        colors_layout.addWidget(minor_tick_color_label, 3, 0)
+        minor_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(minor_tick_color_row, 3, 1)
+
+        match_x_colors_toggle = None
+        if prefix in ("y", "y2"):
+            match_x_colors_toggle = ToggleSwitch(checked=True)
+            colors_layout.addWidget(QLabel("Match X:"), 4, 0)
+            colors_layout.addWidget(match_x_colors_toggle, 4, 1)
+
+        form_layout.addWidget(colors_card)
+
+        copy_button = None
+        if prefix in ("y", "y2"):
+            copy_button = QPushButton("Copy style to Y axis")
+            copy_button.setFlat(True)
+            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
+            form_layout.addWidget(copy_button)
+
         self.axes_style_forms[prefix] = {
             "widget": form_widget, "title_card": title_card,
             "font_size_spin": font_size_spin, "font_family_combo": font_family_combo,
             "bold_check": bold_check, "italic_check": italic_check,
             "color_row": color_row, "color_label": color_label,
             "match_x_toggle": match_x_toggle,
+            "ticks_card": ticks_card,
+            "tick_font_size_spin": tick_font_size_spin,
+            "tick_font_family_combo": tick_font_family_combo,
+            "tick_bold_check": tick_bold_check, "tick_italic_check": tick_italic_check,
+            "tick_color_row": tick_color_row,
+            "colors_card": colors_card,
+            "spine_color_row": spine_color_row,
+            "major_tick_color_row": major_tick_color_row,
+            "minor_tick_color_row": minor_tick_color_row,
+            "minor_tick_color_label": minor_tick_color_label,
+            "match_x_colors_toggle": match_x_colors_toggle,
+            "copy_button": copy_button,
         }
 
         font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -635,6 +710,18 @@ class StyleTab(QWidget):
         color_row.colorChanged.connect(self._on_chart_style_field_changed)
         if match_x_toggle is not None:
             match_x_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked))
+
+        tick_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        tick_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
+        tick_bold_check.toggled.connect(self._on_chart_style_field_changed)
+        tick_italic_check.toggled.connect(self._on_chart_style_field_changed)
+        tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        spine_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        major_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        minor_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        if match_x_colors_toggle is not None:
+            match_x_colors_toggle.toggled.connect(
+                lambda checked, p=prefix: self._on_axis_style_match_x_colors_toggled(p, checked))
 
         form_widget.setVisible(False)
         self._axes_style_form_container_layout.addWidget(form_widget)
@@ -652,6 +739,71 @@ class StyleTab(QWidget):
             form["color_row"].setCurrentColor(self.axes_style_forms["x"]["color_row"].currentColor())
         form["color_label"].setVisible(not checked)
         form["color_row"].setVisible(not checked)
+        self._on_chart_style_field_changed()
+
+    def _on_axis_style_match_x_colors_toggled(self, prefix: str, checked: bool):
+        """Mirrors AxesTab._on_match_x_colors_toggled, for the Style tab's
+        Colors card (spine/major/minor tick colors).
+
+        Unlike AxesTab's equivalent, minor-tick-color visibility here is
+        gated only by the Match-X toggle, not additionally by "are minor
+        ticks enabled" -- that state lives in the Axes tab, not this form;
+        showing the minor-tick-color picker here even when minor ticks
+        happen to be off is harmless, since it just sets a color that has
+        no effect until minor ticks are turned on elsewhere.
+        """
+        form = self.axes_style_forms[prefix]
+        x_form = self.axes_style_forms["x"]
+        if not checked and not self._updating_controls:
+            form["spine_color_row"].setCurrentColor(x_form["spine_color_row"].currentColor())
+            form["major_tick_color_row"].setCurrentColor(x_form["major_tick_color_row"].currentColor())
+            form["minor_tick_color_row"].setCurrentColor(x_form["minor_tick_color_row"].currentColor())
+            form["tick_color_row"].setCurrentColor(x_form["tick_color_row"].currentColor())
+        for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row"):
+            form[widget_key].setVisible(not checked)
+        form["minor_tick_color_row"].setVisible(not checked)
+        form["minor_tick_color_label"].setVisible(not checked)
+        self._on_chart_style_field_changed()
+
+    def _on_copy_axis_style(self, prefix: str):
+        """Copy the shown Y axis's appearance fields (font/color, tick
+        font/color, spine/tick colors) to the other Y axis. Mirrors
+        AxesTab._on_copy_axis_settings, scoped to this tab's own fields."""
+        other = "y2" if prefix == "y" else "y"
+        source = self.axes_style_forms[prefix]
+        target = self.axes_style_forms[other]
+
+        target["font_size_spin"].setValue(source["font_size_spin"].value())
+        target["font_family_combo"].setCurrentValue(source["font_family_combo"].currentValue())
+        target["bold_check"].setChecked(source["bold_check"].isChecked())
+        target["italic_check"].setChecked(source["italic_check"].isChecked())
+        target["tick_font_size_spin"].setValue(source["tick_font_size_spin"].value())
+        target["tick_font_family_combo"].setCurrentValue(source["tick_font_family_combo"].currentValue())
+        target["tick_bold_check"].setChecked(source["tick_bold_check"].isChecked())
+        target["tick_italic_check"].setChecked(source["tick_italic_check"].isChecked())
+
+        # Match-X toggles MUST be set before the color swatches they gate
+        # (see AxesTab._on_copy_axis_settings for why: setChecked fires
+        # toggled unconditionally, and the handler pre-fills from X's
+        # *current* color whenever set to "not matching").
+        if source["match_x_toggle"] is not None and target["match_x_toggle"] is not None:
+            target["match_x_toggle"].setChecked(source["match_x_toggle"].isChecked())
+        if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
+            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+
+        target["color_row"].setCurrentColor(source["color_row"].currentColor())
+        target["tick_color_row"].setCurrentColor(source["tick_color_row"].currentColor())
+        target["spine_color_row"].setCurrentColor(source["spine_color_row"].currentColor())
+        target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
+        target["minor_tick_color_row"].setCurrentColor(source["minor_tick_color_row"].currentColor())
+
+        target["color_label"].setVisible(not target["match_x_toggle"].isChecked())
+        target["color_row"].setVisible(not target["match_x_toggle"].isChecked())
+        matching_colors = target["match_x_colors_toggle"].isChecked()
+        for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row", "minor_tick_color_row"):
+            target[widget_key].setVisible(not matching_colors)
+        target["minor_tick_color_label"].setVisible(not matching_colors)
+
         self._on_chart_style_field_changed()
 
     def refresh_axis_style_selector(self, chart):
@@ -1080,6 +1232,27 @@ class StyleTab(QWidget):
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["color_label"].setVisible(not match)
                     axis_form["color_row"].setVisible(not match)
+
+                axis_form["tick_font_size_spin"].setValue(chart.config.get(f"{prefix}_tick_label_font_size", 10))
+                axis_form["tick_font_family_combo"].setCurrentValue(
+                    chart.config.get(f"{prefix}_tick_label_font_family", "DejaVu Sans"))
+                axis_form["tick_bold_check"].setChecked(chart.config.get(f"{prefix}_tick_label_bold", False))
+                axis_form["tick_italic_check"].setChecked(chart.config.get(f"{prefix}_tick_label_italic", False))
+                axis_form["tick_color_row"].setCurrentColor(chart.config.get(f"{prefix}_tick_label_color", "#000000"))
+                match_colors = True
+                if axis_form["match_x_colors_toggle"] is not None:
+                    match_colors = chart.config.get(f"{prefix}_match_x_colors", True)
+                    axis_form["match_x_colors_toggle"].setChecked(match_colors)
+                axis_form["spine_color_row"].setCurrentColor(chart.config.get(f"{prefix}_spine_color", "#000000"))
+                axis_form["major_tick_color_row"].setCurrentColor(
+                    chart.config.get(f"{prefix}_major_tick_color", "#000000"))
+                axis_form["minor_tick_color_row"].setCurrentColor(
+                    chart.config.get(f"{prefix}_minor_tick_color", "#000000"))
+                if axis_form["match_x_colors_toggle"] is not None:
+                    for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row",
+                                       "minor_tick_color_row"):
+                        axis_form[widget_key].setVisible(not match_colors)
+                    axis_form["minor_tick_color_label"].setVisible(not match_colors)
             self.refresh_axis_style_selector(chart)
             self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
         finally:
@@ -1123,6 +1296,16 @@ class StyleTab(QWidget):
             chart.config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 chart.config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            chart.config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
+            chart.config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
+            chart.config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
+            chart.config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
+            chart.config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            chart.config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
+            chart.config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
+            chart.config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
+            if axis_form["match_x_colors_toggle"] is not None:
+                chart.config[f"{prefix}_match_x_colors"] = axis_form["match_x_colors_toggle"].isChecked()
 
     def clear_chart_style(self):
         self._chart = None
@@ -1170,6 +1353,16 @@ class StyleTab(QWidget):
                 axis_form["color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["match_x_toggle"].setChecked(True)
+                axis_form["tick_font_size_spin"].setValue(10)
+                axis_form["tick_font_family_combo"].setCurrentValue("DejaVu Sans")
+                axis_form["tick_bold_check"].setChecked(False)
+                axis_form["tick_italic_check"].setChecked(False)
+                axis_form["tick_color_row"].setCurrentColor("#000000")
+                axis_form["spine_color_row"].setCurrentColor("#000000")
+                axis_form["major_tick_color_row"].setCurrentColor("#000000")
+                axis_form["minor_tick_color_row"].setCurrentColor("#000000")
+                if axis_form["match_x_colors_toggle"] is not None:
+                    axis_form["match_x_colors_toggle"].setChecked(True)
             self.refresh_axis_style_selector(None)
         finally:
             self._updating_controls = previous_guard
@@ -1286,6 +1479,16 @@ class StyleTab(QWidget):
             config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
+            config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
+            config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
+            config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
+            config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
+            config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
+            config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
+            if axis_form["match_x_colors_toggle"] is not None:
+                config[f"{prefix}_match_x_colors"] = axis_form["match_x_colors_toggle"].isChecked()
         self.configChanged.emit()
 
     # -- Theme ----------------------------------------------------------------
@@ -1323,3 +1526,11 @@ class StyleTab(QWidget):
             form["color_row"].set_tokens(tokens)
             if form["match_x_toggle"] is not None:
                 form["match_x_toggle"].set_tokens(tokens)
+            form["ticks_card"].set_tokens(tokens)
+            form["tick_color_row"].set_tokens(tokens)
+            form["colors_card"].set_tokens(tokens)
+            form["spine_color_row"].set_tokens(tokens)
+            form["major_tick_color_row"].set_tokens(tokens)
+            form["minor_tick_color_row"].set_tokens(tokens)
+            if form["match_x_colors_toggle"] is not None:
+                form["match_x_colors_toggle"].set_tokens(tokens)
