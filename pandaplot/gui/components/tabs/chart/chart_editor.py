@@ -1049,30 +1049,43 @@ class ChartEditorWidget(PWidget):
                     config.get("legend_custom_y", 0.5),
                     config.get("legend_custom_anchor", "center left"),
                 )
-                self.chart_canvas.axes.legend(
+                legend = self.chart_canvas.axes.legend(
                     handles, labels,
-                    fontsize=config.get("legend_font_size", 10),
                     facecolor=config.get("legend_bg_color", "#ffffff"),
                     frameon=config.get("legend_show_frame", True),
                     ncol=config.get("legend_columns", 1),
                     framealpha=config.get("legend_bg_alpha", 1.0),
-                    prop={"family": config.get("legend_font_family", "DejaVu Sans")},
+                    # `fontsize=` is silently ignored by Matplotlib whenever
+                    # `prop=` is also passed -- the size must be merged into
+                    # `prop` itself, or the legend text falls back to
+                    # rcParams["legend.fontsize"] regardless of what's
+                    # configured here.
+                    prop={
+                        "family": config.get("legend_font_family", "DejaVu Sans"),
+                        "size": config.get("legend_font_size", 10),
+                    },
                     **placement_kwargs)
+            else:
+                legend = None
 
-            if self.chart_canvas.axes2 is not None:
-                # Reserve room for the secondary axis label/ticks so they
-                # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout(
-                    pad=config.get("chart_padding", 2.0),
-                    w_pad=config.get("chart_padding_w", 2.0),
-                    h_pad=config.get("chart_padding_h", 2.0),
-                    rect=(0, 0, 1, config.get("top_margin", 1.0)),
-                )
+            tight_layout_kwargs = dict(
+                pad=config.get("chart_padding", 2.0),
+                w_pad=config.get("chart_padding_w", 2.0),
+                h_pad=config.get("chart_padding_h", 2.0),
+                rect=(0, 0, 1, config.get("top_margin", 1.0)),
+            )
+            # Reserve room for the secondary axis label/ticks so they aren't
+            # clipped at the right edge of the figure.
+            self.chart_canvas.fig.tight_layout(**tight_layout_kwargs)
 
-            if self.chart_canvas.axes2 is not None:
-                # Reserve room for the secondary axis label/ticks so they
-                # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout()
+            if legend is not None and placement_kwargs.get("bbox_to_anchor") is not None:
+                # The legend was placed outside the axes (Outside Right/Top/
+                # Bottom or Custom -- see resolve_legend_placement). The
+                # tight_layout() call above ran before Matplotlib had a
+                # chance to account for this out-of-axes legend's extent in
+                # its first pass, so re-run it now that the legend exists;
+                # otherwise the legend gets clipped by the figure boundary.
+                self.chart_canvas.fig.tight_layout(**tight_layout_kwargs)
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
