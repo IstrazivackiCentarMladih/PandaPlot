@@ -111,9 +111,16 @@ class AxesTab(QWidget):
         range_layout.addWidget(auto_toggle, 0, 2)
         min_spin = QDoubleSpinBox()
         min_spin.setRange(-1e9, 1e9)
+        # Task 4 made these boxes display machine-computed data ranges (not
+        # just user-typed values); Qt's default of 2 decimal places silently
+        # rounds away small-magnitude data (e.g. 0.001-0.009 -> 0.00/0.01),
+        # which can then write degenerate limits into config on an
+        # Auto->Manual toggle.
+        min_spin.setDecimals(6)
         min_spin.setEnabled(False)
         max_spin = QDoubleSpinBox()
         max_spin.setRange(-1e9, 1e9)
+        max_spin.setDecimals(6)
         max_spin.setValue(1.0)
         max_spin.setEnabled(False)
         range_layout.addWidget(QLabel("Min:"), 1, 0)
@@ -312,10 +319,16 @@ class AxesTab(QWidget):
         self._on_field_changed()
 
     def _on_scale_changed(self, prefix: str):
-        """Show the Base row only for Log scale."""
+        """Show the Base row only for Log scale, and -- for an Auto axis --
+        refresh the displayed range so the positive-only filtering
+        `_refresh_range_display` applies for Log scale takes effect
+        immediately (matches the guard `load()` uses around the same call:
+        a Manual axis's displayed value must not be recomputed here)."""
         form = self.axes_forms[prefix]
         is_log = form["scale_control"].currentValue() == ScaleType.LOG
         form["log_base_row"].setVisible(is_log)
+        if form["auto_toggle"].isChecked():
+            self._refresh_range_display(prefix)
         self._on_field_changed()
 
     def _on_log_base_combo_changed(self, prefix: str):

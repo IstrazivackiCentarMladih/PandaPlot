@@ -11,6 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AxesTab
+from pandaplot.models.chart.chart_configuration import ScaleType
 from pandaplot.models.project.items.chart import Chart, DataSeries
 from pandaplot.models.project.items.dataset import Dataset
 
@@ -220,3 +221,58 @@ def test_toggling_auto_to_manual_recomputes_fresh_from_data():
     assert y_form["max_spin"].value() == 300.0
     assert y_form["min_spin"].isEnabled() is True
     assert y_form["max_spin"].isEnabled() is True
+
+
+def test_range_spin_boxes_do_not_round_away_small_magnitude_data():
+    """The Range card's min/max spin boxes must not silently round a
+    small-magnitude computed data range to 0.00/0.01 (Qt's default of 2
+    decimal places) -- Task 4 made these boxes display machine-computed
+    ranges, and a rounded-to-zero min on a subsequent Auto->Manual toggle
+    would write a degenerate (or, on a log axis, invalid) limit into
+    config."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[0.001, 0.005, 0.009])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({"y_auto_limits": True})
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["min_spin"].value() == pytest.approx(0.001)
+    assert y_form["max_spin"].value() == pytest.approx(0.009)
+    assert y_form["min_spin"].decimals() >= 6
+    assert y_form["max_spin"].decimals() >= 6
+
+
+def test_switching_linear_to_log_refreshes_auto_range_to_positive_only():
+    """Switching an Auto axis's Scale from Linear to Log must immediately
+    refresh the displayed range to the positive-only-filtered range (Task
+    4's `positive_only` filtering only takes effect through
+    `_refresh_range_display`) -- not leave the pre-switch linear range
+    (which may include a non-positive min invalid for a log axis) on
+    display."""
+    ds = _make_dataset("ds1", x=[1, 2, 3], y=[-5, 10, 20])
+    project = _FakeProject([ds])
+    chart = Chart(name="Test Chart")
+    chart.update_config({"y_auto_limits": True, "y_scale": "linear"})
+    chart.add_data_series(dataset_id="ds1", x_column="x", y_column="y")
+
+    tab = AxesTab(_make_app_context(project))
+    tab.load(chart)
+
+    y_form = tab.axes_forms["y"]
+    assert y_form["min_spin"].value() == -5.0
+    assert y_form["max_spin"].value() == 20.0
+
+    # SegmentedControl.setCurrentValue() is a silent programmatic setter (no
+    # currentValueChanged emitted) -- only a real button click fires the
+    # signal that drives _on_scale_changed, so click the "Log" segment
+    # rather than calling setCurrentValue() directly.
+    log_index = y_form["scale_control"]._values.index(ScaleType.LOG)
+    y_form["scale_control"]._buttons[log_index].click()
+
+    assert y_form["scale_control"].currentValue() == ScaleType.LOG
+    assert y_form["min_spin"].value() == 10.0
+    assert y_form["max_spin"].value() == 20.0
