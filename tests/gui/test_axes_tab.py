@@ -2,11 +2,11 @@
 
 1. `_read_axis_config` used to set match-toggle checked state AFTER
    loading swatch colors from `chart.config`. `ToggleSwitch.setChecked`
-   emits `toggled` unconditionally, and the toggled handlers
-   (`_on_match_x_label_toggled`/`_on_match_x_colors_toggled`) pre-fill
-   their swatches from X's *current* color whenever the new state is "not
-   matching" -- silently clobbering a saved custom color the moment a
-   chart with `y_match_x_colors=False` loaded.
+   emits `toggled` unconditionally, and the toggled handler
+   (`_on_match_x_colors_toggled`) pre-fills its swatches from X's
+   *current* color whenever the new state is "not matching" -- silently
+   clobbering a saved custom color the moment a chart with
+   `y_match_x_colors=False` loaded.
 
 2. `_on_copy_axis_settings` had the same ordering bug: it copied the
    source axis's colors into the target BEFORE setting the target's match
@@ -66,14 +66,11 @@ def test_load_preserves_custom_y_colors_when_not_matching_x():
         "x_major_tick_color": "#111111",
         "x_minor_tick_color": "#111111",
         "x_tick_label_color": "#111111",
-        "x_label_color": "#111111",
         "y_match_x_colors": False,
         "y_spine_color": "#abcdef",
         "y_major_tick_color": "#abcdef",
         "y_minor_tick_color": "#abcdef",
         "y_tick_label_color": "#abcdef",
-        "y_match_x_label_color": False,
-        "y_label_color": "#fedcba",
     })
 
     tab = AxesTab(_make_app_context())
@@ -85,8 +82,6 @@ def test_load_preserves_custom_y_colors_when_not_matching_x():
     assert y_form["major_tick_color_row"].currentColor() == "#abcdef"
     assert y_form["minor_tick_color_row"].currentColor() == "#abcdef"
     assert y_form["tick_label_color_row"].currentColor() == "#abcdef"
-    assert y_form["match_x_label_toggle"].isChecked() is False
-    assert y_form["label_color_row"].currentColor() == "#fedcba"
 
 
 def test_copy_axis_settings_copies_source_colors_not_x_colors():
@@ -98,14 +93,11 @@ def test_copy_axis_settings_copies_source_colors_not_x_colors():
         "x_major_tick_color": "#111111",
         "x_minor_tick_color": "#111111",
         "x_tick_label_color": "#111111",
-        "x_label_color": "#111111",
         "y2_match_x_colors": False,
         "y2_spine_color": "#00ff00",
         "y2_major_tick_color": "#00ff00",
         "y2_minor_tick_color": "#00ff00",
         "y2_tick_label_color": "#00ff00",
-        "y2_match_x_label_color": False,
-        "y2_label_color": "#00aa00",
         # Y starts out matching X (default), which is the state being
         # flipped away from during the copy.
     })
@@ -125,8 +117,6 @@ def test_copy_axis_settings_copies_source_colors_not_x_colors():
     assert y_form["major_tick_color_row"].currentColor() == "#00ff00"
     assert y_form["minor_tick_color_row"].currentColor() == "#00ff00"
     assert y_form["tick_label_color_row"].currentColor() == "#00ff00"
-    assert y_form["match_x_label_toggle"].isChecked() is False
-    assert y_form["label_color_row"].currentColor() == "#00aa00"
 
 
 def test_selecting_custom_log_base_reveals_spin_and_round_trips_into_config():

@@ -591,3 +591,22 @@ def test_log_base_round_trips_through_serialization():
     assert restored.config["x_log_base"] == 2.0
     assert restored.config["y_log_base"] == 2.0
     assert restored.config["y2_log_base"] == math.e
+
+
+def test_axis_title_style_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("x_title_bold", False) is False
+    assert chart.config.get("x_title_italic", False) is False
+
+
+def test_axis_title_style_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["y_font_family"] = "Georgia"
+    chart.config["y_title_bold"] = True
+    chart.config["y_title_italic"] = True
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["y_font_family"] == "Georgia"
+    assert restored.config["y_title_bold"] is True
+    assert restored.config["y_title_italic"] is True
