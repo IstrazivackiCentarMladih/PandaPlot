@@ -246,6 +246,27 @@ def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
         axes2.spines["right"].set_color(y2_color)
 
 
+_OUTSIDE_LEGEND_PLACEMENTS = {
+    "outside_right": ("center left", (1.02, 0.5)),
+    "outside_top": ("lower center", (0.5, 1.02)),
+    "outside_bottom": ("upper center", (0.5, -0.08)),
+}
+
+
+def resolve_legend_placement(position: str, custom_x: float, custom_y: float, custom_anchor: str) -> dict:
+    """Map a `legend_position` config value to matplotlib Legend kwargs.
+    Existing inside positions (matplotlib `loc` strings, e.g. "upper
+    right") pass through as `loc` only, unchanged. The three outside
+    presets use a fixed `loc`/`bbox_to_anchor` pair. "custom" uses the
+    user-supplied anchor corner and x/y (both 0-1, relative to the axes)."""
+    if position in _OUTSIDE_LEGEND_PLACEMENTS:
+        loc, bbox_to_anchor = _OUTSIDE_LEGEND_PLACEMENTS[position]
+        return {"loc": loc, "bbox_to_anchor": bbox_to_anchor}
+    if position == "custom":
+        return {"loc": custom_anchor, "bbox_to_anchor": (custom_x, custom_y)}
+    return {"loc": position}
+
+
 def _resolve_error_column(df, column_name):
     """Best-effort lookup of an optional error column.
 
@@ -1022,14 +1043,20 @@ class ChartEditorWidget(PWidget):
                     handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
                     handles += handles2
                     labels += labels2
+                placement_kwargs = resolve_legend_placement(
+                    config.get("legend_position", "upper right"),
+                    config.get("legend_custom_x", 1.02),
+                    config.get("legend_custom_y", 0.5),
+                    config.get("legend_custom_anchor", "center left"),
+                )
                 self.chart_canvas.axes.legend(
                     handles, labels,
-                    loc=config.get("legend_position", "upper right"),
                     fontsize=config.get("legend_font_size", 10),
                     facecolor=config.get("legend_bg_color", "#ffffff"),
                     frameon=config.get("legend_show_frame", True),
                     ncol=config.get("legend_columns", 1),
-                    framealpha=config.get("legend_bg_alpha", 1.0))
+                    framealpha=config.get("legend_bg_alpha", 1.0),
+                    **placement_kwargs)
 
             if self.chart_canvas.axes2 is not None:
                 # Reserve room for the secondary axis label/ticks so they

@@ -620,6 +620,27 @@ def test_tick_label_style_fields_default_when_missing():
     assert chart.config.get("x_tick_label_italic", False) is False
 
 
+def test_legend_custom_placement_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("legend_custom_x", 1.02) == 1.02
+    assert chart.config.get("legend_custom_y", 0.5) == 0.5
+    assert chart.config.get("legend_custom_anchor", "center left") == "center left"
+
+
+def test_legend_custom_placement_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["legend_position"] = "custom"
+    chart.config["legend_custom_x"] = 0.25
+    chart.config["legend_custom_y"] = 0.75
+    chart.config["legend_custom_anchor"] = "upper left"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["legend_position"] == "custom"
+    assert restored.config["legend_custom_x"] == 0.25
+    assert restored.config["legend_custom_y"] == 0.75
+    assert restored.config["legend_custom_anchor"] == "upper left"
+
+
 def test_tick_label_style_fields_round_trip_through_serialization():
     chart = Chart(name="Test Chart")
     chart.config["y_tick_label_font_size"] = 14
