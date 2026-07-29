@@ -352,7 +352,7 @@ class DataTab(QWidget):
 
         row.addWidget(self._make_swatch(series.color, tokens))
 
-        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         row.addWidget(name_label, 1)
 
@@ -419,7 +419,7 @@ class DataTab(QWidget):
 
         header = QHBoxLayout()
         header.addWidget(self._make_swatch(series.color, tokens))
-        name_label = QLabel(series.label or f"{series.dataset_id}:{series.y_column}")
+        name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         header.addWidget(name_label, 1)
         header.addWidget(self._build_y_axis_badge(series.y_axis, tokens))
@@ -429,8 +429,8 @@ class DataTab(QWidget):
 
         outer.addLayout(self._build_detail_field_grid(tokens, (
             ("Dataset:", self._dataset_display_name(series.dataset_id)),
-            ("X Column:", series.x_column),
-            ("Y Column:", series.y_column),
+            ("X Column:", self._column_display_name(series.dataset_id, series.x_column_id, series.x_column)),
+            ("Y Column:", self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)),
         )))
 
         return card
@@ -455,8 +455,8 @@ class DataTab(QWidget):
         outer.addLayout(self._build_detail_field_grid(tokens, (
             ("Dataset:", self._dataset_display_name(fit.source_dataset_id)),
             ("Fit Type:", fit.fit_type),
-            ("X Column:", fit.source_x_column),
-            ("Y Column:", fit.source_y_column),
+            ("X Column:", self._column_display_name(fit.source_dataset_id, fit.source_x_column_id, fit.source_x_column)),
+            ("Y Column:", self._column_display_name(fit.source_dataset_id, fit.source_y_column_id, fit.source_y_column)),
         )))
 
         return card
@@ -543,20 +543,22 @@ class DataTab(QWidget):
         if not self.current_chart:
             return
 
-        # Create a new series with default values
+        # Create a new series with default values. Combos carry the column id
+        # as itemData; currentText() is only used to build the display label.
         dataset_id = self.dataset_combo.currentData() if self.dataset_combo.count() > 0 else ""
         dataset_name = self.dataset_combo.currentText() if self.dataset_combo.count() > 0 else ""
-        x_column = self.x_column_combo.currentText() if self.x_column_combo.count() > 0 else ""
-        y_column = self.y_column_combo.currentText() if self.y_column_combo.count() > 0 else ""
+        x_column_id = self.x_column_combo.currentData() if self.x_column_combo.count() > 0 else ""
+        y_column_id = self.y_column_combo.currentData() if self.y_column_combo.count() > 0 else ""
+        y_column_name = self.y_column_combo.currentText() if self.y_column_combo.count() > 0 else ""
 
-        if dataset_id and x_column and y_column:
+        if dataset_id and x_column_id and y_column_id:
             command = AddSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
                 dataset_id=dataset_id,
-                x_column=x_column,
-                y_column=y_column,
-                label=f"{dataset_name}:{y_column}",
+                x_column_id=x_column_id,
+                y_column_id=y_column_id,
+                label=f"{dataset_name}:{y_column_name}",
                 color=self._get_next_series_color(),
             )
             self.command_executor.execute_command(command)
@@ -636,13 +638,14 @@ class DataTab(QWidget):
             series = self.current_chart.data_series[current_row]
             if self.dataset_combo.currentData():
                 series.dataset_id = self.dataset_combo.currentData()
-            series.x_column = self.x_column_combo.currentText()
-            series.y_column = self.y_column_combo.currentText()
+            # Combos carry the stable column id as itemData; store ids directly.
+            series.x_column_id = self.x_column_combo.currentData() or ""
+            series.y_column_id = self.y_column_combo.currentData() or ""
             series.y_axis = self.series_y_axis_control.currentValue()
-            series.x_error_column = self.x_error_column_combo.currentData() or ""
-            series.y_error_column = self.y_error_column_combo.currentData() or ""
-            series.x_error_minus_column = self.x_error_minus_column_combo.currentData() or ""
-            series.y_error_minus_column = self.y_error_minus_column_combo.currentData() or ""
+            series.x_error_column_id = self.x_error_column_combo.currentData() or ""
+            series.y_error_column_id = self.y_error_column_combo.currentData() or ""
+            series.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
+            series.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
             series.error_symmetric = not self.error_asymmetric_check.isChecked()
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
@@ -651,6 +654,14 @@ class DataTab(QWidget):
             # SegmentedControl (not this tab's card list), so it's safe to
             # request from here.
             self.axesRefreshRequested.emit()
+
+            # Re-emit `seriesSelected` for the still-selected series: the
+            # panel wires this to `StyleTab.set_selected`, which re-checks
+            # whether the Error Bars card should show now that an error
+            # column may have just been added/cleared here. (The Style tab
+            # lives on a different tab and has no other way to learn about
+            # this edit.)
+            self.seriesSelected.emit("series", series)
 
             # Update the expanded card's own Y1/Y2 badge in place too.
             # Deliberately NOT calling `_rebuild_series_cards()` from this
@@ -733,12 +744,12 @@ class DataTab(QWidget):
             self._populate_column_combos(series.dataset_id)
             self._populate_error_column_combos(series.dataset_id)
 
-            # Set columns
-            x_index = self.x_column_combo.findText(series.x_column)
+            # Set columns by stable id (combos carry the id as itemData)
+            x_index = self.x_column_combo.findData(series.x_column_id)
             if x_index >= 0:
                 self.x_column_combo.setCurrentIndex(x_index)
 
-            y_index = self.y_column_combo.findText(series.y_column)
+            y_index = self.y_column_combo.findData(series.y_column_id)
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
 
@@ -746,15 +757,15 @@ class DataTab(QWidget):
             # doesn't emit currentValueChanged, so no signal-blocking needed.
             self.series_y_axis_control.setCurrentValue(series.y_axis)
 
-            # Set error columns (block signals while populating)
-            for combo, column in (
-                (self.x_error_column_combo, series.x_error_column),
-                (self.y_error_column_combo, series.y_error_column),
-                (self.x_error_minus_column_combo, series.x_error_minus_column),
-                (self.y_error_minus_column_combo, series.y_error_minus_column),
+            # Set error columns by id (block signals while populating)
+            for combo, column_id in (
+                (self.x_error_column_combo, series.x_error_column_id),
+                (self.y_error_column_combo, series.y_error_column_id),
+                (self.x_error_minus_column_combo, series.x_error_minus_column_id),
+                (self.y_error_minus_column_combo, series.y_error_minus_column_id),
             ):
                 combo.blockSignals(True)
-                index = combo.findData(column)
+                index = combo.findData(column_id)
                 combo.setCurrentIndex(index if index >= 0 else 0)
                 combo.blockSignals(False)
 
@@ -795,8 +806,24 @@ class DataTab(QWidget):
             self._updating_controls = previous_guard
 
     def _on_label_typing(self, text: str):
-        """Buffer label text while user is typing without mutating the model."""
+        """Buffer label text while user is typing without mutating the model.
+
+        Also marks the panel dirty immediately (not deferred to
+        editingFinished like the model write itself): the footer's Apply
+        button starts out disabled, and a *disabled* QPushButton doesn't
+        accept mouse clicks at all -- so if dirty-marking waited for
+        editingFinished, clicking Apply directly after typing would never
+        blur the field (a disabled button can't steal focus), meaning
+        editingFinished never fires, the label never commits, and Apply
+        stays disabled forever. The user would have to click some other
+        widget first just to force the blur. Marking dirty on every
+        keystroke (safe here: blockSignals during programmatic population
+        means this only ever fires for genuine user edits) breaks that
+        deadlock by enabling Apply before the user ever tries to click it.
+        """
         self._pending_label = text
+        if not self._updating_controls and self.current_chart:
+            self.dirtyOnly.emit()
 
     def _on_label_committed(self):
         """Persist buffered label to model after editing finishes.
@@ -813,14 +840,28 @@ class DataTab(QWidget):
             return
         total_series = len(self.current_chart.data_series)
         new_label = self._pending_label or self.series_label_edit.text()
+        changed = False
         if current_row < total_series:
             if current_row < len(self.current_chart.data_series):
-                self.current_chart.data_series[current_row].label = new_label
+                entry = self.current_chart.data_series[current_row]
+                changed = entry.label != new_label
+                entry.label = new_label
         else:
             fit_index = current_row - total_series
             if 0 <= fit_index < len(self.current_chart.fit_data):
-                self.current_chart.fit_data[fit_index].label = new_label
+                entry = self.current_chart.fit_data[fit_index]
+                changed = entry.label != new_label
+                entry.label = new_label
         self._pending_label = new_label
+        if changed:
+            # Mirrors _on_series_config_changed: mark the panel dirty so the
+            # footer's Apply button enables. Without this, a label-only edit
+            # left Apply disabled (the model was already updated directly,
+            # but silently -- no undo entry, no "unsaved changes" indicator,
+            # and clicking the disabled Apply button did nothing), which is
+            # why editing anything else afterwards was needed to make Apply
+            # start doing something again.
+            self.dirtyOnly.emit()
 
     def _reset_controls_for_series(self):
         """Reset controls for editing regular data series."""
@@ -850,19 +891,46 @@ class DataTab(QWidget):
         self._update_datasets()
 
     def _update_datasets(self):
-        """Update the available datasets."""
-        self.dataset_combo.clear()
-        self.datasets = []
+        """Update the available datasets.
 
-        if self.current_project:
-            # Iterate through all items in the project to find datasets
-            for item in self.current_project.get_all_items():
-                if isinstance(item, Dataset):
-                    self.dataset_combo.addItem(item.name, item.id)
-                    self.datasets.append(item)
+        Signals are blocked while clearing/populating: unlike
+        `_populate_column_combos`/`_populate_error_column_combos`, this used
+        to fire `dataset_combo.currentTextChanged` live -- `set_project` (and
+        so this) runs on every chart-tab switch (`ChartPropertiesPanel.
+        _on_tab_changed`), well after a chart may already be loaded and a
+        series selected here, so an unblocked fire of `_on_dataset_changed`
+        -> `_on_series_config_changed` silently overwrote the currently
+        selected series' `dataset_id`/`x_column_id`/`y_column_id` with
+        whatever dataset happened to land at the freshly-rebuilt combo's
+        index 0/1 -- corrupting a series having nothing to do with the tab
+        switch that triggered it.
+        """
+        self.dataset_combo.blockSignals(True)
+        try:
+            self.dataset_combo.clear()
+            self.datasets = []
+
+            if self.current_project:
+                # Iterate through all items in the project to find datasets
+                for item in self.current_project.get_all_items():
+                    if isinstance(item, Dataset):
+                        self.dataset_combo.addItem(item.name, item.id)
+                        self.datasets.append(item)
+        finally:
+            self.dataset_combo.blockSignals(False)
+
+    def _column_display_name(self, dataset_id, column_id, fallback_name=""):
+        """Resolve a column id to its current name for display, falling back to
+        a stored legacy name (empty -> empty string)."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = self.current_project.find_item(dataset_id) if self.current_project else None
+        return resolve_series_column(dataset, column_id, fallback_name) or ""
 
     def _populate_column_combos(self, dataset_id):
         """Fill the x/y column combos with the columns of the given dataset.
+
+        Each item's display text is the column name and its itemData is the
+        stable column id, so callers read the selected id via currentData().
 
         Signals are blocked while clearing/populating so this can safely be
         called from contexts that don't want side effects from
@@ -881,8 +949,9 @@ class DataTab(QWidget):
                 self.x_column_combo.clear()
                 self.y_column_combo.clear()
                 for column in columns:
-                    self.x_column_combo.addItem(column)
-                    self.y_column_combo.addItem(column)
+                    column_id = dataset.column_id(column) or ""
+                    self.x_column_combo.addItem(column, column_id)
+                    self.y_column_combo.addItem(column, column_id)
             finally:
                 self.x_column_combo.blockSignals(False)
                 self.y_column_combo.blockSignals(False)
@@ -894,7 +963,7 @@ class DataTab(QWidget):
         followed by the columns of the given dataset.
 
         Signals are blocked while clearing/populating, same as
-        _populate_column_combos. Item data is the column name (or "" for
+        _populate_column_combos. Item data is the column id (or "" for
         "None"), since "None" is itself a valid display label and can't be
         distinguished from a real column via currentText().
         """
@@ -913,8 +982,9 @@ class DataTab(QWidget):
                 dataset = self.current_project.find_item(dataset_id)
                 if isinstance(dataset, Dataset) and dataset.data is not None:
                     for column in dataset.data.columns:
+                        column_id = dataset.column_id(column) or ""
                         for combo in combos:
-                            combo.addItem(column, column)
+                            combo.addItem(column, column_id)
         finally:
             for combo in combos:
                 combo.blockSignals(False)
@@ -942,18 +1012,34 @@ class DataTab(QWidget):
     def load(self, chart):
         """Load a Chart object's series/fit list into this tab.
 
+        Reloading the *same* chart object (e.g. the full-panel refresh that
+        follows every Apply, via `ChartPropertiesPanel._on_chart_updated`'s
+        "chart" branch) preserves the current selection instead of jumping
+        back to the first entry -- otherwise, editing/renaming any series
+        other than the first one and clicking Apply silently moves the live
+        form to series 0, so a second edit on the entry the user thinks is
+        still selected actually edits the wrong one. A different chart
+        object (switching to another chart tab, or the first-ever load)
+        still starts at index 0.
+
         Args:
             chart: Chart object to load, or None to clear.
         """
+        same_chart = chart is not None and chart is self.current_chart
         self.current_chart = chart
         if chart:
             previous_guard = self._updating_controls
             self._updating_controls = True
             try:
-                # Expand the first series/fit entry and rebuild the card list
-                # (this also (re)loads it into the config form controls).
-                self._expanded_series_index = 0
-                self._expanded_card_indices = {0}
+                total_items = len(chart.data_series) + len(chart.fit_data)
+                if same_chart and total_items:
+                    self._expanded_series_index = max(
+                        0, min(self._expanded_series_index, total_items - 1)
+                    )
+                    self._expanded_card_indices.add(self._expanded_series_index)
+                else:
+                    self._expanded_series_index = 0
+                    self._expanded_card_indices = {0}
                 self._rebuild_series_cards()
             finally:
                 self._updating_controls = previous_guard
@@ -976,19 +1062,20 @@ class DataTab(QWidget):
         if not chart.data_series:
             dataset_id = self.dataset_combo.currentData()
             dataset_name = self.dataset_combo.currentText()
-            x_column = self.x_column_combo.currentText()
-            y_column = self.y_column_combo.currentText()
-            if dataset_id and x_column and y_column:
+            x_column_id = self.x_column_combo.currentData()
+            y_column_id = self.y_column_combo.currentData()
+            y_column_name = self.y_column_combo.currentText()
+            if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
-                    dataset_id=dataset_id,
-                    x_column=x_column,
-                    y_column=y_column,
-                    label=f"{dataset_name}:{y_column}",
+                    dataset_id,
+                    x_column_id=x_column_id,
+                    y_column_id=y_column_id,
+                    label=f"{dataset_name}:{y_column_name}",
                     y_axis=self.series_y_axis_control.currentValue(),
-                    x_error_column=self.x_error_column_combo.currentData() or "",
-                    y_error_column=self.y_error_column_combo.currentData() or "",
-                    x_error_minus_column=self.x_error_minus_column_combo.currentData() or "",
-                    y_error_minus_column=self.y_error_minus_column_combo.currentData() or "",
+                    x_error_column_id=self.x_error_column_combo.currentData() or "",
+                    y_error_column_id=self.y_error_column_combo.currentData() or "",
+                    x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
+                    y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
                     error_symmetric=not self.error_asymmetric_check.isChecked(),
                 )
 

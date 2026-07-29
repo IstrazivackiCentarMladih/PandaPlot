@@ -10,6 +10,7 @@ from pandaplot.commands.project.dataset.delete_columns_command import DeleteColu
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items.chart import resolve_series_column
 
 
 @pytest.fixture
@@ -20,15 +21,20 @@ def env():
     project.add_item(dataset)
     project.add_item(other)
 
+    # Series/fits reference columns by stable id (the caller resolves names).
     chart = Chart(name="c")
-    chart.add_data_series(dataset.id, "a", "b", label="s1")
-    chart.add_data_series(other.id, "a", "a", label="s2")  # other dataset: must not be touched
-    chart.add_fit_data(dataset.id, "a", "b", "Linear",
-                       np.array([1.0]), np.array([2.0]))
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("a"),
+                          y_column_id=dataset.column_id("b"), label="s1")
+    chart.add_data_series(other.id, x_column_id=other.column_id("a"),  # other dataset: must not be touched
+                          y_column_id=other.column_id("a"), label="s2")
+    chart.add_fit_data(dataset.id, "Linear", np.array([1.0]), np.array([2.0]),
+                       source_x_column_id=dataset.column_id("a"),
+                       source_y_column_id=dataset.column_id("b"))
     project.add_item(chart)
 
     untouched_chart = Chart(name="c2")
-    untouched_chart.add_data_series(dataset.id, "c", "c", label="s3")  # unrelated column: unaffected
+    untouched_chart.add_data_series(dataset.id, x_column_id=dataset.column_id("c"),  # unrelated column: unaffected
+                                    y_column_id=dataset.column_id("c"), label="s3")
     project.add_item(untouched_chart)
 
     app_state = Mock()
@@ -59,7 +65,8 @@ def test_delete_removes_column_and_cascades_referencing_series_and_fits(env):
     assert chart.data_series[0].label == "s2"
     assert chart.fit_data == []
     # unrelated-column chart is untouched
-    assert untouched_chart.data_series[0].x_column == "c"
+    s3 = untouched_chart.data_series[0]
+    assert resolve_series_column(dataset, s3.x_column_id, s3.x_column) == "c"
 
 
 def test_delete_with_no_chart_references_skips_confirmation(env):
@@ -69,7 +76,8 @@ def test_delete_with_no_chart_references_skips_confirmation(env):
 
     assert command.execute() is True
     ui_controller.show_confirmation.assert_not_called()
-    assert untouched_chart.data_series[0].x_column == "c"  # unaffected
+    s3 = untouched_chart.data_series[0]  # unaffected
+    assert resolve_series_column(dataset, s3.x_column_id, s3.x_column) == "c"
 
 
 def test_delete_declined_confirmation_aborts(env):
@@ -91,7 +99,9 @@ def test_undo_restores_data_and_chart_references(env):
     assert command.undo() is True
     assert list(dataset.data.columns) == ["a", "b", "c", "d"]
     assert len(chart.data_series) == 2
-    assert chart.data_series[0].x_column == "a"
+    # After undo, the restored column keeps its id so the series resolves again.
+    s1 = chart.data_series[0]
+    assert resolve_series_column(dataset, s1.x_column_id, s1.x_column) == "a"
     assert len(chart.fit_data) == 1
 
 

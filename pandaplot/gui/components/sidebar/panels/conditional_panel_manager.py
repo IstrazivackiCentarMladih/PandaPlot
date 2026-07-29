@@ -39,9 +39,9 @@ class ConditionalPanelManager(QObject):
     
     def _connect_tab_events(self):
         """Connect to tab container events."""
-        if hasattr(self.tab_container, "tab_widget"):
-            self.tab_container.tab_widget.currentChanged.connect(self._on_tab_index_changed)
-    
+        if hasattr(self.tab_container, "active_tab_changed"):
+            self.tab_container.active_tab_changed.connect(self.on_tab_changed)
+
     def register_conditional_panel(self, panel_name: str, condition_func: Callable[[QWidget], bool], priority: int = 0):
         """
         Register a panel with its visibility condition and priority.
@@ -66,35 +66,13 @@ class ConditionalPanelManager(QObject):
         
         self.logger.debug("Registered panel '%s' priority=%s", panel_name, priority)
     
-    def _on_tab_index_changed(self, index: int):
-        """
-        Handle tab index change event.
-        
-        Args:
-            index: The new tab index
-        """
-        if index >= 0:
-            current_widget = self.tab_container.tab_widget.widget(index)
-            self.on_tab_changed(current_widget)
-        else:
-            # No tab selected
-            self.on_tab_changed(None)
-    
     def on_tab_changed(self, current_tab_widget):
         """
         Called when active tab changes - evaluate all panel conditions.
-        
+
         Args:
-            current_tab_widget: The currently active tab widget (or None or int for tab index)
+            current_tab_widget: The currently active tab widget, or None
         """
-        # Handle case where int (tab index) is passed instead of widget
-        if isinstance(current_tab_widget, int):
-            self.logger.debug("Received tab index %s -> converting to widget", current_tab_widget)
-            if current_tab_widget >= 0:
-                current_tab_widget = self.tab_container.tab_widget.widget(current_tab_widget)
-            else:
-                current_tab_widget = None
-        
         self.current_tab_widget = current_tab_widget
         tab_class_name = type(current_tab_widget).__name__ if current_tab_widget else "None"
         self.logger.debug("Tab changed to %s", tab_class_name)

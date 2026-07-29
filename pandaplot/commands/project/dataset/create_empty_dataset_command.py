@@ -6,9 +6,11 @@ import uuid
 from typing import Optional, override
 
 import pandas as pd
+from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.gui.dialogs.dataset.new_dataset_dialog import NewDatasetDialog
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext, AppState
@@ -32,6 +34,12 @@ class CreateEmptyDatasetCommand(Command):
         self.dataset_id: Optional[str] = None
         self.project = None
 
+        # Store the dataset shape/fill so redo() reuses the values chosen on
+        # the first execute() instead of re-deriving (or re-prompting for) them.
+        self.rows: Optional[int] = None
+        self.cols: Optional[int] = None
+        self.fill_value = None
+
     @override
     def execute(self) -> bool:
         """Execute the create empty dataset command."""
@@ -49,22 +57,31 @@ class CreateEmptyDatasetCommand(Command):
             if not self.project:
                 return False
 
-            # Get dataset name from user if not provided
+            # Get dataset shape/name from the dialog if not provided programmatically
             if self.dataset_name is None:
-                self.dataset_name = self.ui_controller.get_text_input(
-                    "Create New Dataset",
-                    "Enter dataset name:",
-                    "New Dataset"
-                )
+                dialog = NewDatasetDialog(self.ui_controller.parent_widget)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return False  # User cancelled
+
+                self.dataset_name = dialog.get_dataset_name()
+                self.rows = dialog.get_rows()
+                self.cols = dialog.get_columns()
+                self.fill_value = dialog.get_fill_value()
+            elif self.rows is None:
+                # First execute() with a programmatically-provided dataset_name (no dialog).
+                self.rows, self.cols, self.fill_value = 1, 3, ""
+            # else: this is a redo() -- self.rows/self.cols/self.fill_value already hold
+            # the values chosen the first time this command ran; reuse them as-is.
 
             if not self.dataset_name:
                 return False  # User cancelled
 
-            # Create empty DataFrame with basic structure
+            assert self.rows is not None and self.cols is not None
+            rows, cols = self.rows, self.cols
+
+            # Create empty DataFrame with the chosen shape and fill value
             empty_data = pd.DataFrame({
-                "Column1": [""],
-                "Column2": [""],
-                "Column3": [""]
+                f"Column{i + 1}": [self.fill_value] * rows for i in range(cols)
             })
 
             # Create dataset ID

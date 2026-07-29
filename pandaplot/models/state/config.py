@@ -52,12 +52,15 @@ class AppearanceConfig:
 	accent_color: str = "#4A56C6"  # Handoff indigo default
 	interface_font_size: int = 12
 	editor_font_size: int = 12
+	sidebar_position: str = "left"  # Which side the sidebar is docked on ("left"/"right")
 
 	def validate(self) -> None:
 		if self.interface_font_size < 8:
 			self.interface_font_size = 8
 		if self.editor_font_size < 8:
 			self.editor_font_size = 8
+		if self.sidebar_position not in ("left", "right"):
+			self.sidebar_position = "left"
 
 
 @dataclass(slots=True)
@@ -140,8 +143,13 @@ class ApplicationConfig:
 	# ----- session persistence ---------------------------------------------------
 	# Remembers what was open so it can be restored on the next launch.
 	last_project_path: str | None = None
-	last_open_tabs: list[str] = field(default_factory=list)
+	# One entry per tab pane (index 0 = primary/left, index 1 = secondary/right if
+	# the tab area was split), each an ordered list of item ids.
+	last_tab_panes: list[list[str]] = field(default_factory=list)
 	last_active_tab_id: str | None = None
+	# QSplitter.sizes() for the tab panes, best-effort (ignored if its length
+	# doesn't match the restored pane count).
+	last_splitter_sizes: list[int] = field(default_factory=list)
 
 	# ----- construction helpers -------------------------------------------------
 	@classmethod
@@ -167,8 +175,9 @@ class ApplicationConfig:
 			"chart_display": asdict(self.chart_display),
 			"recent_projects": list(self.recent_projects),
 			"last_project_path": self.last_project_path,
-			"last_open_tabs": list(self.last_open_tabs),
+			"last_tab_panes": [list(pane) for pane in self.last_tab_panes],
 			"last_active_tab_id": self.last_active_tab_id,
+			"last_splitter_sizes": list(self.last_splitter_sizes),
 		}
 
 	def to_json(self, *, indent: int | None = 2) -> str:
@@ -219,12 +228,29 @@ class ApplicationConfig:
 			value = data["last_project_path"]
 			self.last_project_path = value if isinstance(value, str) and value else None
 
-		if isinstance(data.get("last_open_tabs"), list):
-			self.last_open_tabs = [t for t in data["last_open_tabs"] if isinstance(t, str) and t]
+		if isinstance(data.get("last_tab_panes"), list):
+			panes: list[list[str]] = []
+			for pane in data["last_tab_panes"]:
+				if isinstance(pane, list):
+					panes.append([t for t in pane if isinstance(t, str) and t])
+			self.last_tab_panes = panes
+		elif isinstance(data.get("last_open_tabs"), list):
+			# Migrate an older, pre-split-view config: a single flat tab list
+			# becomes the sole (primary) pane instead of being silently dropped.
+			old_tabs = [t for t in data["last_open_tabs"] if isinstance(t, str) and t]
+			if old_tabs:
+				self.last_tab_panes = [old_tabs]
 
 		if "last_active_tab_id" in data:
 			value = data["last_active_tab_id"]
 			self.last_active_tab_id = value if isinstance(value, str) and value else None
+
+		if isinstance(data.get("last_splitter_sizes"), list):
+			sizes: list[int] = []
+			for s in data["last_splitter_sizes"]:
+				if isinstance(s, int) and not isinstance(s, bool):
+					sizes.append(s)
+			self.last_splitter_sizes = sizes
 
 		for key, value in data.items():
 			if key == "version":

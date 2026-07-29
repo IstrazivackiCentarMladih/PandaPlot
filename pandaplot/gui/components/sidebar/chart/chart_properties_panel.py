@@ -315,11 +315,13 @@ class ChartPropertiesPanel(PWidget):
             # series, fit added): the model changed outside this panel's live
             # edits, so re-sync all controls and re-capture the Cancel/Apply
             # baseline to match the new command boundary.
-            # TODO: this branch always fires first (add/remove series and
-            # fit-added events include both "chart" and "update_type"), so it
-            # resets the expanded card back to index 0 via load_chart_object,
-            # making the update_type branch below unreachable. Consider
-            # preserving the selected row here too.
+            # This branch always fires first (add/remove series and
+            # fit-added events include both "chart" and "update_type"), making
+            # the update_type branch below unreachable for those. That's fine
+            # now that DataTab.load preserves the selected row for a reload of
+            # the same chart object (only add/remove -- which can invalidate
+            # the previous index -- clamp it; a genuinely different chart
+            # still resets to 0).
             self.load_chart_object(self.current_chart)
             self.logger.debug("Chart properties panel reloaded for command-originated update")
             return

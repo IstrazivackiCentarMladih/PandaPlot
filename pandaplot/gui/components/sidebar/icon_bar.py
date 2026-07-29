@@ -1,7 +1,15 @@
-from typing import override
+from typing import Optional, override
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QPushButton, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QContextMenuEvent, QMouseEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QMenu,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.state.app_context import AppContext
@@ -13,13 +21,123 @@ class IconBar(PWidget):
 
     panel_requested = Signal(str)  # Signal emitted when a panel is requested
     settings_requested = Signal()  # Signal emitted when settings button is clicked
+    # Emitted when the user requests to dock the sidebar on a side ("left"/"right")
+    position_change_requested = Signal(str)
 
     def __init__(self, app_context: AppContext, parent: QWidget, width: int = 40):
         super().__init__(app_context=app_context, parent=parent)
         self.icon_width = width
         self.panels = {}  # Store panel names and their buttons
+        self.current_position = "left"  # Side the sidebar is currently docked on
+
+        # Drag-to-dock state. The empty area of the icon bar acts as a drag
+        # handle: dragging it toward an edge re-docks the sidebar on that side.
+        self._press_pos: Optional[QPoint] = None
+        self._dragging: bool = False
+        self._drop_overlay: Optional[QWidget] = None
 
         self._initialize()
+
+    # ------------------------------------------------------------------
+    # Drag-to-dock
+    # ------------------------------------------------------------------
+    @override
+    def mousePressEvent(self, event: QMouseEvent):
+        """Begin tracking a potential drag from the icon bar handle."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._press_pos = event.position().toPoint()
+            self._dragging = False
+        super().mousePressEvent(event)
+
+    @override
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """Start/continue a drag once the cursor moves past the threshold."""
+        if self._press_pos is not None and (event.buttons() & Qt.MouseButton.LeftButton):
+            moved = (event.position().toPoint() - self._press_pos).manhattanLength()
+            if not self._dragging and moved >= QApplication.startDragDistance():
+                self._dragging = True
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            if self._dragging:
+                self._update_drop_overlay(event.globalPosition().toPoint())
+        super().mouseMoveEvent(event)
+
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """Drop the sidebar onto whichever half the cursor was released over."""
+        if self._dragging:
+            side = self._side_for_global_pos(event.globalPosition().toPoint())
+            self._end_drag()
+            self.position_change_requested.emit(side)
+        self._press_pos = None
+        super().mouseReleaseEvent(event)
+
+    def _side_for_global_pos(self, global_pos: QPoint) -> str:
+        """Return 'left'/'right' based on which window half the point is in."""
+        window = self.window()
+        center = window.mapToGlobal(window.rect().center())
+        return "left" if global_pos.x() < center.x() else "right"
+
+    def _update_drop_overlay(self, global_pos: QPoint):
+        """Highlight the window half the sidebar would dock to on release."""
+        window = self.window()
+        if self._drop_overlay is None:
+            self._drop_overlay = QWidget(window)
+            self._drop_overlay.setAttribute(
+                Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+        side = self._side_for_global_pos(global_pos)
+        rect = window.rect()
+        half = max(1, rect.width() // 2)
+        if side == "left":
+            geometry = QRect(0, 0, half, rect.height())
+        else:
+            geometry = QRect(rect.width() - half, 0, half, rect.height())
+        self._drop_overlay.setGeometry(geometry)
+
+        r, g, b = self._accent_rgb()
+        self._drop_overlay.setStyleSheet(
+            f"background-color: rgba({r}, {g}, {b}, 45);"
+            f"border: 2px solid rgba({r}, {g}, {b}, 200);"
+        )
+        self._drop_overlay.show()
+        self._drop_overlay.raise_()
+
+    def _end_drag(self):
+        """Clear drag state and remove the drop overlay."""
+        self._dragging = False
+        self.unsetCursor()
+        if self._drop_overlay is not None:
+            self._drop_overlay.hide()
+            self._drop_overlay.deleteLater()
+            self._drop_overlay = None
+
+    def _accent_rgb(self) -> tuple[int, int, int]:
+        """Resolve the theme accent color as an (r, g, b) tuple for overlays."""
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+        hex_color = palette.get("accent", "#4A90E2").lstrip("#")
+        if len(hex_color) == 3:
+            hex_color = "".join(c * 2 for c in hex_color)
+        try:
+            return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+        except ValueError:
+            return (74, 144, 226)
+
+    @override
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        """Show a context menu to move the sidebar to the left or right."""
+        menu = QMenu(self)
+        left_action = menu.addAction("Dock sidebar left")
+        right_action = menu.addAction("Dock sidebar right")
+        for action, side in ((left_action, "left"), (right_action, "right")):
+            action.setCheckable(True)
+            action.setChecked(self.current_position == side)
+            action.setEnabled(self.current_position != side)
+        left_action.triggered.connect(
+            lambda: self.position_change_requested.emit("left"))
+        right_action.triggered.connect(
+            lambda: self.position_change_requested.emit("right"))
+        menu.exec(event.globalPos())
 
     @override
     def _init_ui(self):

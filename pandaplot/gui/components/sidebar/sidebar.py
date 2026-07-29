@@ -1,6 +1,6 @@
 from typing import Optional, override
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QWidget
 
 from pandaplot.gui.components.sidebar.icon_bar import IconBar
@@ -14,7 +14,10 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 class CollapsibleSidebar(PWidget):
     """A collapsible sidebar that contains an icon bar and panel area."""
 
-    def __init__(self, app_context: AppContext, parent: QWidget, width: int = 400, collapsed_width: int = 40):
+    # Emitted after the sidebar is docked on a different side ("left"/"right")
+    position_changed = Signal(str)
+
+    def __init__(self, app_context: AppContext, parent: QWidget, width: int = 400, collapsed_width: int = 40, position: str = "left"):
         super().__init__(app_context=app_context, parent=parent)
         self.default_width = width
         self.collapsed_width = collapsed_width
@@ -23,6 +26,7 @@ class CollapsibleSidebar(PWidget):
         self.last_width: int = width
         self.auto_collapse_threshold: int = 100
         self.auto_expand_threshold: int = 60
+        self.position: str = position if position in ("left", "right") else "left"
 
         # Set initial size but allow resizing
         self.setMinimumWidth(self.collapsed_width)
@@ -45,14 +49,40 @@ class CollapsibleSidebar(PWidget):
 
         # Create icon bar
         self.icon_bar = IconBar(app_context=self.app_context, parent=self, width=self.collapsed_width)
+        self.icon_bar.current_position = self.position
         self.icon_bar.panel_requested.connect(self.show_panel)
         self.icon_bar.settings_requested.connect(
             self.show_settings_dialog)
-        main_layout.addWidget(self.icon_bar, 0)
+        self.icon_bar.position_change_requested.connect(self.set_position)
 
         # Create panel area
         self.panel_area = PanelArea(parent=self)
-        main_layout.addWidget(self.panel_area, 1)
+
+        # Add widgets in the order dictated by the current dock side. When docked
+        # on the right the icon bar sits on the outer (right) edge, mirroring the
+        # left layout so the panel content is always adjacent to the main area.
+        self._apply_widget_order()
+
+    def _apply_widget_order(self):
+        """(Re)insert the icon bar and panel area to match the dock side."""
+        main_layout = self.layout()
+        main_layout.removeWidget(self.icon_bar)
+        main_layout.removeWidget(self.panel_area)
+        if self.position == "right":
+            main_layout.addWidget(self.panel_area, 1)
+            main_layout.addWidget(self.icon_bar, 0)
+        else:
+            main_layout.addWidget(self.icon_bar, 0)
+            main_layout.addWidget(self.panel_area, 1)
+
+    def set_position(self, position: str):
+        """Dock the sidebar on the given side ("left"/"right")."""
+        if position not in ("left", "right") or position == self.position:
+            return
+        self.position = position
+        self.icon_bar.current_position = position
+        self._apply_widget_order()
+        self.position_changed.emit(position)
 
     def add_panel(self, name: str, icon, content_widget):
         """

@@ -26,7 +26,7 @@ from pandaplot.models.chart.chart_configuration import (
     LineStyleType,
     MarkerType,
 )
-from pandaplot.models.project.items.chart import ErrorDirection
+from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -150,6 +150,24 @@ class StyleTab(QWidget):
             _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
         )
 
+        # -- Title/subtitle color (rows 5-7, appended after the existing
+        # title/subtitle font-size/bold/italic rows above to avoid
+        # renumbering them) --
+        self.title_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        font_size_layout.addWidget(QLabel("Title color:"), 5, 0)
+        font_size_layout.addWidget(self.title_color_row, 5, 1)
+
+        self.subtitle_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        self.subtitle_match_title_toggle = ToggleSwitch(checked=True)
+        font_size_layout.addWidget(QLabel("Subtitle color:"), 6, 0)
+        font_size_layout.addWidget(self.subtitle_color_row, 6, 1)
+        font_size_layout.addWidget(QLabel("Match title:"), 7, 0)
+        font_size_layout.addWidget(self.subtitle_match_title_toggle, 7, 1)
+        # Hidden by default: subtitle_match_title_toggle starts checked, so
+        # the subtitle color swatch (which would otherwise be redundant with
+        # the title's) stays hidden until the user opts out of matching.
+        self.subtitle_color_row.setVisible(False)
+
         layout.addWidget(self.font_size_card)
 
         # -- Padding card --
@@ -270,6 +288,28 @@ class StyleTab(QWidget):
 
         layout.addWidget(self.dpi_card)
 
+        # -- Background card --
+        self.background_card = Card()
+        self.chart_style_cards.append(self.background_card)
+        bg_layout = QGridLayout(self.background_card)
+        bg_layout.addWidget(SectionHeader("Background"), 0, 0, 1, 4)
+
+        bg_layout.addWidget(QLabel("Figure:"), 1, 0)
+        self.figure_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.figure_bg_color_row, 1, 1)
+        bg_layout.addWidget(QLabel("Transparent:"), 2, 1)
+        self.figure_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.figure_bg_transparent_toggle, 2, 2)
+
+        bg_layout.addWidget(QLabel("Plot area:"), 3, 0)
+        self.axes_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        bg_layout.addWidget(self.axes_bg_color_row, 3, 1)
+        bg_layout.addWidget(QLabel("Transparent:"), 4, 1)
+        self.axes_bg_transparent_toggle = ToggleSwitch()
+        bg_layout.addWidget(self.axes_bg_transparent_toggle, 4, 2)
+
+        layout.addWidget(self.background_card)
+
         # LINE group
         self.line_card = Card()
         line_card = self.line_card
@@ -349,7 +389,8 @@ class StyleTab(QWidget):
         self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_color_row, 4, 1)
 
-        marker_layout.addWidget(QLabel("Match line:"), 5, 0)
+        self.marker_match_line_label = QLabel("Match line:")
+        marker_layout.addWidget(self.marker_match_line_label, 5, 0)
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
         marker_layout.addWidget(self.marker_match_line_toggle, 5, 1)
 
@@ -427,11 +468,18 @@ class StyleTab(QWidget):
         self.title_italic_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_bold_check.toggled.connect(self._on_chart_style_field_changed)
         self.subtitle_italic_check.toggled.connect(self._on_chart_style_field_changed)
+        self.title_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_match_title_toggle.toggled.connect(self._on_subtitle_match_title_toggled)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
         self.chart_width_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_height_spin.valueChanged.connect(self._on_chart_style_field_changed)
         self.chart_dpi_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.figure_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
+        self.axes_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.axes_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
 
     # -- Chip selection / target routing -----------------------------------
 
@@ -451,25 +499,58 @@ class StyleTab(QWidget):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
         Style-tab chip is currently selected.
 
-        The Line card is additionally hidden for Scatter charts: a scatter
-        plot draws independent markers with no connecting line (unlike
-        Line's ordered, connected points), so line color/style/width/opacity
-        have nothing to apply to there.
+        The Line card is hidden for a selected *series* on Scatter charts: a
+        scatter plot draws independent markers with no connecting line
+        (unlike Line's ordered, connected points), so line color/style/
+        width/opacity have nothing to apply to there. A selected *fit* entry
+        is unaffected by that -- a fit is always rendered as a line
+        (chart_editor.py plots it unconditionally), regardless of the
+        chart's own type -- so the Line card stays visible for fit even on
+        Scatter charts.
+
+        The Marker card only applies to a series: fit data has no marker
+        concept at all (see load_fit_style/apply_fit_style_to), so it's
+        hidden whenever a fit entry is selected, not just for "chart".
         """
-        kind, _obj = self._current_target
+        kind, obj = self._current_target
         is_chart = kind == "chart"
         for card in self.chart_style_cards:
             card.setVisible(is_chart)
         is_scatter = self._chart_type == ChartType.SCATTER
-        self.line_card.setVisible(not is_chart and not is_scatter)
-        self.marker_card.setVisible(not is_chart)
-        # Fit data has no error-bar fields (DataSeries-only), so the Error
-        # Bars card only applies to a selected series.
-        self.error_bars_card.setVisible(kind == "series")
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        self.marker_card.setVisible(kind == "series")
+        # Fit data has no error-bar fields at all (DataSeries-only), and even
+        # for a series there's nothing to style unless an error column is
+        # actually configured (on the Data tab) -- otherwise the card's
+        # controls (direction/color/cap size) have no error bars to apply to.
+        self.error_bars_card.setVisible(
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+        )
+        # Re-evaluate "Match line" visibility: it depends on both kind and
+        # chart type (see _is_scatter_series_target), either of which may
+        # have just changed.
+        self._update_marker_controls_enabled()
+
+    def _is_scatter_series_target(self) -> bool:
+        """Whether the current target is a data series on a Scatter chart --
+        i.e. there is no drawn line at all (Line card is hidden; see
+        _update_target_cards_visibility), so "match line" has nothing to
+        refer to and marker colors must always be set explicitly."""
+        kind, _obj = self._current_target
+        return kind == "series" and self._chart_type == ChartType.SCATTER
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
+
+    def _series_y_name(self, series) -> str:
+        """Resolve a series' Y column id to its current name for a fallback
+        chip label (used only when the series has no explicit label)."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        app_state = self.app_context.get_app_state()
+        project = app_state.current_project if app_state.has_project else None
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
 
     def set_series_list(self, data_series, fit_data, selected_index: int = 0):
         """Sync `style_series_chips` with the same series+fit list the Data
@@ -505,7 +586,7 @@ class StyleTab(QWidget):
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart")]
         for index, series in enumerate(data_series):
-            label = series.label or f"{series.dataset_id}:{series.y_column}"
+            label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
         total_series = len(data_series)
         for fit_offset, fit in enumerate(fit_data):
@@ -557,6 +638,17 @@ class StyleTab(QWidget):
             self._updating_controls = previous_guard
         self._update_target_cards_visibility()
 
+    def _on_subtitle_match_title_toggled(self, checked: bool):
+        """Handle the 'Match title' toggle for subtitle color: hides the
+        subtitle color swatch while matching (mirrors
+        _update_marker_controls_enabled's hide-not-disable convention), and
+        seeds it with the title's current color on every uncheck."""
+        if not checked:
+            self.subtitle_color_row.setCurrentColor(self.title_color_row.currentColor())
+        self.subtitle_color_row.setVisible(not checked)
+        if self._chart is not None:
+            self._on_chart_style_field_changed()
+
     # -- Marker enable/match-line toggles ------------------------------------
 
     def _on_markers_enabled_toggled(self, _checked: bool):
@@ -580,15 +672,25 @@ class StyleTab(QWidget):
         track `series.color` until unchecked. Edge width is a separate
         concern (line thickness, not color) and stays visible/enabled
         whenever markers are on, regardless of the match-line state.
+
+        For a scatter-chart series there is no drawn line at all (the Line
+        card is hidden -- see _update_target_cards_visibility), so "Match
+        line" is meaningless: the row is hidden outright and the color
+        pickers always show, regardless of the toggle's stored (but now
+        irrelevant) checked state.
         """
+        is_scatter_series = self._is_scatter_series_target()
         markers_enabled = self.markers_enabled_toggle.isChecked()
         self.marker_shape_control.setEnabled(markers_enabled)
         self.marker_size_slider.setEnabled(markers_enabled)
-        self.marker_match_line_toggle.setEnabled(markers_enabled)
+        self.marker_match_line_toggle.setEnabled(markers_enabled and not is_scatter_series)
+        self.marker_match_line_label.setVisible(not is_scatter_series)
+        self.marker_match_line_toggle.setVisible(not is_scatter_series)
         self.marker_edge_width_label.setVisible(markers_enabled)
         self.marker_edge_width_slider.setVisible(markers_enabled)
 
-        show_colors = markers_enabled and not self.marker_match_line_toggle.isChecked()
+        matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
+        show_colors = markers_enabled and not matching_line
         for widget in (
             self.marker_color_label, self.marker_color_row,
             self.marker_edge_color_label, self.marker_edge_color_row,
@@ -608,6 +710,16 @@ class StyleTab(QWidget):
         show_color = not self.error_match_line_toggle.isChecked()
         self.error_color_label.setVisible(show_color)
         self.error_color_row.setVisible(show_color)
+
+    # -- Background transparent toggles ----------------------------------
+
+    def _on_bg_transparent_toggled(self, _checked: bool):
+        """Grey out the paired color swatch while its 'Transparent' toggle
+        is on; the swatch keeps its last color underneath so re-enabling
+        restores it (mirrors _update_marker_controls_enabled's convention)."""
+        self.figure_bg_color_row.setEnabled(not self.figure_bg_transparent_toggle.isChecked())
+        self.axes_bg_color_row.setEnabled(not self.axes_bg_transparent_toggle.isChecked())
+        self._on_chart_style_field_changed()
 
     # -- Series/fit style: load / apply --------------------------------------
 
@@ -637,7 +749,7 @@ class StyleTab(QWidget):
         if self.markers_enabled_toggle.isChecked():
             series.marker_style = self.marker_shape_control.currentValue().value
             series.marker_size = self.marker_size_slider.value()
-            match_line = self.marker_match_line_toggle.isChecked()
+            match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
             series.marker_color = "" if match_line else self.marker_color_row.currentColor()
             series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
             series.marker_edge_width = self.marker_edge_width_slider.value()
@@ -655,6 +767,7 @@ class StyleTab(QWidget):
         fit.color = self.line_color_row.currentColor()
         fit.line_style = self.line_style_control.currentValue().value
         fit.line_width = self.line_width_slider.value()
+        fit.alpha = self.line_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
@@ -714,14 +827,14 @@ class StyleTab(QWidget):
 
     def load_fit_style(self, fit):
         """Populate the Line/Marker cards from a fit-data entry's style
-        fields. Fit data has no marker/opacity concept, so markers are
-        forced off and locked."""
+        fields. Fit data has no marker concept, so markers are forced off
+        and locked; opacity, however, does apply to the fit line itself."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             self.line_color_row.setCurrentColor(fit.color)
             self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(1.0)
+            self.line_opacity_slider.setValue(fit.alpha)
             try:
                 self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
             except ValueError:
@@ -754,6 +867,24 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(chart.config.get("title_italic", False))
             self.subtitle_bold_check.setChecked(chart.config.get("subtitle_bold", False))
             self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
+            self.title_color_row.setCurrentColor(chart.config.get("title_color", "#000000"))
+            match_title = chart.config.get("subtitle_match_title_color", True)
+            self.subtitle_match_title_toggle.setChecked(match_title)
+            self.subtitle_color_row.setCurrentColor(
+                chart.config.get("title_color", "#000000") if match_title
+                else chart.config.get("subtitle_color", "#000000")
+            )
+            self.subtitle_color_row.setVisible(not match_title)
+
+            fig_bg = chart.style.get("figure_background_color", "#ffffff")
+            self.figure_bg_transparent_toggle.setChecked(fig_bg is None)
+            self.figure_bg_color_row.setCurrentColor(fig_bg or "#ffffff")
+            self.figure_bg_color_row.setEnabled(fig_bg is not None)
+
+            axes_bg = chart.style.get("axes_background_color", "#ffffff")
+            self.axes_bg_transparent_toggle.setChecked(axes_bg is None)
+            self.axes_bg_color_row.setCurrentColor(axes_bg or "#ffffff")
+            self.axes_bg_color_row.setEnabled(axes_bg is not None)
 
             # QComboBox.findData() is unreliable for tuple-valued itemData
             # (Qt's QVariant comparison doesn't match Python tuple equality
@@ -803,6 +934,17 @@ class StyleTab(QWidget):
         chart.config["title_italic"] = self.title_italic_check.isChecked()
         chart.config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         chart.config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        chart.config["title_color"] = self.title_color_row.currentColor()
+        chart.config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        chart.config["subtitle_color"] = self.subtitle_color_row.currentColor()
+        chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
 
@@ -823,6 +965,16 @@ class StyleTab(QWidget):
             self.title_italic_check.setChecked(False)
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
+            self.title_color_row.setCurrentColor("#000000")
+            self.subtitle_match_title_toggle.setChecked(True)
+            self.subtitle_color_row.setCurrentColor("#000000")
+            self.subtitle_color_row.setVisible(False)
+            self.figure_bg_transparent_toggle.setChecked(False)
+            self.figure_bg_color_row.setCurrentColor("#ffffff")
+            self.figure_bg_color_row.setEnabled(True)
+            self.axes_bg_transparent_toggle.setChecked(False)
+            self.axes_bg_color_row.setCurrentColor("#ffffff")
+            self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
             self.chart_width_spin.setValue(20.0)
             self.chart_height_spin.setValue(15.0)
@@ -920,6 +1072,17 @@ class StyleTab(QWidget):
         config["title_italic"] = self.title_italic_check.isChecked()
         config["subtitle_bold"] = self.subtitle_bold_check.isChecked()
         config["subtitle_italic"] = self.subtitle_italic_check.isChecked()
+        config["title_color"] = self.title_color_row.currentColor()
+        config["subtitle_match_title_color"] = self.subtitle_match_title_toggle.isChecked()
+        config["subtitle_color"] = self.subtitle_color_row.currentColor()
+        self._chart.style["figure_background_color"] = (
+            None if self.figure_bg_transparent_toggle.isChecked()
+            else self.figure_bg_color_row.currentColor()
+        )
+        self._chart.style["axes_background_color"] = (
+            None if self.axes_bg_transparent_toggle.isChecked()
+            else self.axes_bg_color_row.currentColor()
+        )
         config["width_cm"], config["height_cm"] = self._size_from_controls()
         config["dpi"] = self._dpi_from_controls()
         self.configChanged.emit()
@@ -927,6 +1090,9 @@ class StyleTab(QWidget):
     # -- Theme ----------------------------------------------------------------
 
     def apply_theme(self, tokens: dict):
+        self.title_color_row.set_tokens(tokens)
+        self.subtitle_color_row.set_tokens(tokens)
+        self.subtitle_match_title_toggle.set_tokens(tokens)
         self.style_series_chips.set_tokens(tokens)
         self.line_color_row.set_tokens(tokens)
         self.line_style_control.set_tokens(tokens)
@@ -946,3 +1112,7 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.figure_bg_color_row.set_tokens(tokens)
+        self.figure_bg_transparent_toggle.set_tokens(tokens)
+        self.axes_bg_color_row.set_tokens(tokens)
+        self.axes_bg_transparent_toggle.set_tokens(tokens)

@@ -635,12 +635,18 @@ class FitPanel(PWidget):
                     self.dataset_combo.setCurrentIndex(i)
                     break
             
-            # Set columns
-            x_index = self.x_column_combo.findText(first_series.x_column)
+            # Set columns. Series reference columns by stable id; resolve to the
+            # current names (this combo's items are keyed by display text).
+            from pandaplot.models.project.items.chart import resolve_series_column
+            dataset = self.current_project.find_item(first_series.dataset_id) if self.current_project else None
+            x_name = resolve_series_column(dataset, first_series.x_column_id, first_series.x_column)
+            y_name = resolve_series_column(dataset, first_series.y_column_id, first_series.y_column)
+
+            x_index = self.x_column_combo.findText(x_name) if x_name else -1
             if x_index >= 0:
                 self.x_column_combo.setCurrentIndex(x_index)
-            
-            y_index = self.y_column_combo.findText(first_series.y_column)
+
+            y_index = self.y_column_combo.findText(y_name) if y_name else -1
             if y_index >= 0:
                 self.y_column_combo.setCurrentIndex(y_index)
             

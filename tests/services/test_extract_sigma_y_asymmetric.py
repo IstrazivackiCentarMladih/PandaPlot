@@ -4,10 +4,14 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.project import Project
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import DataSeries
 from pandaplot.services.fit.fit_service import FitService
 
+
 def test_extract_sigma_y_asymmetric():
-    """Extract asymmetric y uncertainties as averaged magnitudes."""
+    """Extract asymmetric y uncertainties as averaged magnitudes (by id)."""
 
     df = pd.DataFrame({
         "x": [0, 1, 2],
@@ -15,14 +19,23 @@ def test_extract_sigma_y_asymmetric():
         "error_plus": [0.2, 0.4, 0.6],
         "error_minus": [0.1, 0.2, 0.3]})
 
+    dataset = Dataset(name="ds", data=df)
+    project = Project("P")
+    project.add_item(dataset)
+
     mask = np.array([True, True, True])
 
-    series = Mock()
-    series.y_error_column = "error_plus"
-    series.y_error_minus_column = "error_minus"
+    series = DataSeries(
+        dataset_id=dataset.id,
+        y_error_column_id=dataset.column_id("error_plus"),
+        y_error_minus_column_id=dataset.column_id("error_minus"),
+    )
 
-    service = FitService(Mock())
-    sigma = service._extract_sigma_y(df, mask, series)
+    fit_panel = Mock()
+    fit_panel.current_project = project
+    service = FitService(fit_panel)
+
+    sigma = service._extract_sigma_y(dataset.data, mask, series)
     expected = np.array([0.15, 0.30, 0.45])
 
     np.testing.assert_allclose(sigma, expected)
