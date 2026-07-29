@@ -825,6 +825,13 @@ class StyleTab(QWidget):
         restore_index = self.axes_style_selector.findData(current) if current else -1
         self.axes_style_selector.setCurrentIndex(restore_index if restore_index >= 0 else 0)
         self.axes_style_selector.blockSignals(False)
+        # setCurrentIndex() above ran with signals blocked (so rebuilding the
+        # combo's items doesn't spuriously emit currentValueChanged), which
+        # means _show_axis_style_form never fires if the selection was just
+        # forced back to "X" (e.g. the last Y2 series was removed while Y2
+        # was selected) -- the Y2 form would stay visible while the combo now
+        # reads "X". Drive it explicitly so the visible form always matches.
+        self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
 
     def _is_scatter_series_target(self) -> bool:
         """Whether the current target is a data series on a Scatter chart --
