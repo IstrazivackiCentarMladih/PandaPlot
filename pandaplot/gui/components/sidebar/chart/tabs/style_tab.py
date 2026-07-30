@@ -105,7 +105,7 @@ class StyleTab(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.style_series_chips = ValueComboBox([("Chart", "chart")])
+        self.style_series_chips = ValueComboBox([("Chart", "chart"), ("Axes", "axes")])
         self.style_series_chips.currentValueChanged.connect(self._on_chip_selected)
         layout.addWidget(self.style_series_chips)
 
@@ -456,18 +456,19 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
-        # -- Axes (appearance) section: chart-level, shown only when the
-        # "Chart" chip is selected (same scope as the Font Size/Padding/
-        # Size/DPI cards above) -- axis appearance is a chart-wide concern,
-        # not a per-series one.
+        # -- Axes (appearance) section: its own top-level selection in
+        # style_series_chips (sibling to "Chart"/series/fit), not nested
+        # under "Chart" -- axis appearance is a chart-wide concern like the
+        # Font Size/Padding/Size/DPI cards above, but gets its own entry in
+        # the selector rather than being folded into "Chart"'s cards.
         self.axes_style_selector = ValueComboBox([("X", "x"), ("Y₁", "y")])
-        self.chart_style_cards.append(self.axes_style_selector)
+        self.axes_style_widgets: list[QWidget] = [self.axes_style_selector]
         layout.addWidget(self.axes_style_selector)
 
         self._axes_style_form_container = QWidget()
         self._axes_style_form_container_layout = QVBoxLayout(self._axes_style_form_container)
         self._axes_style_form_container_layout.setContentsMargins(0, 0, 0, 0)
-        self.chart_style_cards.append(self._axes_style_form_container)
+        self.axes_style_widgets.append(self._axes_style_form_container)
         layout.addWidget(self._axes_style_form_container)
 
         self.axes_style_forms = {}
@@ -479,6 +480,8 @@ class StyleTab(QWidget):
         layout.addStretch()
         for card in self.chart_style_cards:
             card.setVisible(False)
+        for widget in self.axes_style_widgets:
+            widget.setVisible(False)
 
         # Series/fit style field connections.
         self.line_color_row.colorChanged.connect(self._on_field_changed)
@@ -531,6 +534,9 @@ class StyleTab(QWidget):
         if value == "chart":
             self._current_target = ("chart", None)
             self._update_target_cards_visibility()
+        elif value == "axes":
+            self._current_target = ("axes", None)
+            self._update_target_cards_visibility()
         elif value is not None:
             # The panel (until Task 5) or DataTab (after Task 5) is the
             # source of truth for series/fit selection -- this tab does not
@@ -560,6 +566,9 @@ class StyleTab(QWidget):
         is_chart = kind == "chart"
         for card in self.chart_style_cards:
             card.setVisible(is_chart)
+        is_axes = kind == "axes"
+        for widget in self.axes_style_widgets:
+            widget.setVisible(is_axes)
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
         self.marker_card.setVisible(kind == "series")
@@ -886,7 +895,7 @@ class StyleTab(QWidget):
         reflexive reassignments correctly.
         """
         previous_value = self.style_series_chips.currentValue()
-        chip_items = [("Chart", "chart")]
+        chip_items = [("Chart", "chart"), ("Axes", "axes")]
         for index, series in enumerate(data_series):
             label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
@@ -911,8 +920,8 @@ class StyleTab(QWidget):
         # from, so it must not count as "initialized" either, or it would
         # make the *next* call's placeholder "chart" look like a genuine
         # prior selection).
-        if self._series_list_initialized and previous_value == "chart":
-            self.style_series_chips.setCurrentValue("chart")
+        if self._series_list_initialized and previous_value in ("chart", "axes"):
+            self.style_series_chips.setCurrentValue(previous_value)
         else:
             self.style_series_chips.setCurrentValue(selected_index)
         if data_series or fit_data:
@@ -921,6 +930,9 @@ class StyleTab(QWidget):
         final_value = self.style_series_chips.currentValue()
         if final_value == "chart":
             self._current_target = ("chart", None)
+            self._update_target_cards_visibility()
+        elif final_value == "axes":
+            self._current_target = ("axes", None)
             self._update_target_cards_visibility()
         elif final_value < len(data_series):
             self.set_selected("series", data_series[final_value])
