@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import FitEvents, ChartEvents
+from pandaplot.models.events import FitEvents, ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
@@ -410,6 +410,7 @@ class FitPanel(PWidget):
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
+        self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
         self.subscribe_to_event(ChartEvents.CHART_UPDATED, self._on_chart_updated)
 
     def _show_scipy_warning(self):
@@ -595,6 +596,7 @@ class FitPanel(PWidget):
 
         if self.series_combo.count() > 0:
             self.series_combo.setCurrentIndex(0)
+            self._on_series_changed()
 
     def _on_series_changed(self):
         series = self.series_combo.currentData()
