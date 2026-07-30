@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -16,17 +17,19 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
+from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
+from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AXES_SWATCH_PALETTE
 from pandaplot.models.chart.chart_configuration import (
     ChartType,
     LineStyleType,
     MarkerType,
 )
-from pandaplot.models.project.items.chart import ErrorDirection
+from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -37,6 +40,19 @@ from pandaplot.services.config.config_manager import ConfigManager
 
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+
+
+def _make_bold_italic_checks_standalone() -> tuple[QCheckBox, QCheckBox]:
+    """Same as the local closure `_make_bold_italic_checks` defined inside
+    StyleTab.__init__ for the chart-level title/subtitle cards -- extracted
+    as a module-level function so `_build_axis_style_form` (a regular
+    method, outside that closure's scope) can reuse it without
+    duplicating the two-line QCheckBox styling."""
+    bold_check = QCheckBox("Bold")
+    bold_check.setStyleSheet("QCheckBox { font-weight: bold; }")
+    italic_check = QCheckBox("Italic")
+    italic_check.setStyleSheet("QCheckBox { font-style: italic; }")
+    return bold_check, italic_check
 
 
 class StyleTab(QWidget):
@@ -89,7 +105,7 @@ class StyleTab(QWidget):
 
         layout = QVBoxLayout(self)
 
-        self.style_series_chips = ValueComboBox([("Chart", "chart")])
+        self.style_series_chips = ValueComboBox([("Chart", "chart"), ("Axes", "axes")])
         self.style_series_chips.currentValueChanged.connect(self._on_chip_selected)
         layout.addWidget(self.style_series_chips)
 
@@ -141,28 +157,34 @@ class StyleTab(QWidget):
             _bold_italic_widget(self.title_bold_check, self.title_italic_check), 2, 1,
         )
 
+        self.title_font_family_combo = ValueComboBox(list_available_font_families())
+        _field_row(font_size_layout, 3, "Title font", self.title_font_family_combo)
+
         self.subtitle_font_size_spin = QSpinBox()
         self.subtitle_font_size_spin.setRange(8, 32)
         self.subtitle_font_size_spin.setValue(12)
-        _field_row(font_size_layout, 3, "Subtitle", self.subtitle_font_size_spin)
+        _field_row(font_size_layout, 4, "Subtitle", self.subtitle_font_size_spin)
         self.subtitle_bold_check, self.subtitle_italic_check = _make_bold_italic_checks()
         font_size_layout.addWidget(
-            _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 4, 1,
+            _bold_italic_widget(self.subtitle_bold_check, self.subtitle_italic_check), 5, 1,
         )
 
-        # -- Title/subtitle color (rows 5-7, appended after the existing
-        # title/subtitle font-size/bold/italic rows above to avoid
-        # renumbering them) --
+        self.subtitle_font_family_combo = ValueComboBox(list_available_font_families())
+        _field_row(font_size_layout, 6, "Subtitle font", self.subtitle_font_family_combo)
+
+        # -- Title/subtitle color (rows 7-9, appended after the existing
+        # title/subtitle font-size/bold/italic/font-family rows above to
+        # avoid renumbering them) --
         self.title_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        font_size_layout.addWidget(QLabel("Title color:"), 5, 0)
-        font_size_layout.addWidget(self.title_color_row, 5, 1)
+        font_size_layout.addWidget(QLabel("Title color:"), 7, 0)
+        font_size_layout.addWidget(self.title_color_row, 7, 1)
 
         self.subtitle_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         self.subtitle_match_title_toggle = ToggleSwitch(checked=True)
-        font_size_layout.addWidget(QLabel("Subtitle color:"), 6, 0)
-        font_size_layout.addWidget(self.subtitle_color_row, 6, 1)
-        font_size_layout.addWidget(QLabel("Match title:"), 7, 0)
-        font_size_layout.addWidget(self.subtitle_match_title_toggle, 7, 1)
+        font_size_layout.addWidget(QLabel("Subtitle color:"), 8, 0)
+        font_size_layout.addWidget(self.subtitle_color_row, 8, 1)
+        font_size_layout.addWidget(QLabel("Match title:"), 9, 0)
+        font_size_layout.addWidget(self.subtitle_match_title_toggle, 9, 1)
         # Hidden by default: subtitle_match_title_toggle starts checked, so
         # the subtitle color swatch (which would otherwise be redundant with
         # the title's) stays hidden until the user opts out of matching.
@@ -389,7 +411,8 @@ class StyleTab(QWidget):
         self.marker_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         marker_layout.addWidget(self.marker_color_row, 4, 1)
 
-        marker_layout.addWidget(QLabel("Match line:"), 5, 0)
+        self.marker_match_line_label = QLabel("Match line:")
+        marker_layout.addWidget(self.marker_match_line_label, 5, 0)
         self.marker_match_line_toggle = ToggleSwitch(checked=True)
         marker_layout.addWidget(self.marker_match_line_toggle, 5, 1)
 
@@ -433,9 +456,32 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
+        # -- Axes (appearance) section: its own top-level selection in
+        # style_series_chips (sibling to "Chart"/series/fit), not nested
+        # under "Chart" -- axis appearance is a chart-wide concern like the
+        # Font Size/Padding/Size/DPI cards above, but gets its own entry in
+        # the selector rather than being folded into "Chart"'s cards.
+        self.axes_style_selector = ValueComboBox([("X", "x"), ("Y₁", "y")])
+        self.axes_style_widgets: list[QWidget] = [self.axes_style_selector]
+        layout.addWidget(self.axes_style_selector)
+
+        self._axes_style_form_container = QWidget()
+        self._axes_style_form_container_layout = QVBoxLayout(self._axes_style_form_container)
+        self._axes_style_form_container_layout.setContentsMargins(0, 0, 0, 0)
+        self.axes_style_widgets.append(self._axes_style_form_container)
+        layout.addWidget(self._axes_style_form_container)
+
+        self.axes_style_forms = {}
+        for prefix in ("x", "y", "y2"):
+            self._build_axis_style_form(prefix)
+        self._show_axis_style_form("x")
+        self.axes_style_selector.currentValueChanged.connect(self._show_axis_style_form)
+
         layout.addStretch()
         for card in self.chart_style_cards:
             card.setVisible(False)
+        for widget in self.axes_style_widgets:
+            widget.setVisible(False)
 
         # Series/fit style field connections.
         self.line_color_row.colorChanged.connect(self._on_field_changed)
@@ -469,6 +515,8 @@ class StyleTab(QWidget):
         self.subtitle_italic_check.toggled.connect(self._on_chart_style_field_changed)
         self.title_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         self.subtitle_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        self.title_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
+        self.subtitle_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
         self.subtitle_match_title_toggle.toggled.connect(self._on_subtitle_match_title_toggled)
         self.chart_size_combo.currentIndexChanged.connect(self._on_chart_size_combo_changed)
         self.chart_dpi_combo.currentIndexChanged.connect(self._on_chart_dpi_combo_changed)
@@ -486,6 +534,9 @@ class StyleTab(QWidget):
         if value == "chart":
             self._current_target = ("chart", None)
             self._update_target_cards_visibility()
+        elif value == "axes":
+            self._current_target = ("axes", None)
+            self._update_target_cards_visibility()
         elif value is not None:
             # The panel (until Task 5) or DataTab (after Task 5) is the
             # source of truth for series/fit selection -- this tab does not
@@ -498,25 +549,319 @@ class StyleTab(QWidget):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
         Style-tab chip is currently selected.
 
-        The Line card is additionally hidden for Scatter charts: a scatter
-        plot draws independent markers with no connecting line (unlike
-        Line's ordered, connected points), so line color/style/width/opacity
-        have nothing to apply to there.
+        The Line card is hidden for a selected *series* on Scatter charts: a
+        scatter plot draws independent markers with no connecting line
+        (unlike Line's ordered, connected points), so line color/style/
+        width/opacity have nothing to apply to there. A selected *fit* entry
+        is unaffected by that -- a fit is always rendered as a line
+        (chart_editor.py plots it unconditionally), regardless of the
+        chart's own type -- so the Line card stays visible for fit even on
+        Scatter charts.
+
+        The Marker card only applies to a series: fit data has no marker
+        concept at all (see load_fit_style/apply_fit_style_to), so it's
+        hidden whenever a fit entry is selected, not just for "chart".
         """
-        kind, _obj = self._current_target
+        kind, obj = self._current_target
         is_chart = kind == "chart"
         for card in self.chart_style_cards:
             card.setVisible(is_chart)
+        is_axes = kind == "axes"
+        for widget in self.axes_style_widgets:
+            widget.setVisible(is_axes)
         is_scatter = self._chart_type == ChartType.SCATTER
-        self.line_card.setVisible(not is_chart and not is_scatter)
-        self.marker_card.setVisible(not is_chart)
-        # Fit data has no error-bar fields (DataSeries-only), so the Error
-        # Bars card only applies to a selected series.
-        self.error_bars_card.setVisible(kind == "series")
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        self.marker_card.setVisible(kind == "series")
+        # Fit data has no error-bar fields at all (DataSeries-only), and even
+        # for a series there's nothing to style unless an error column is
+        # actually configured (on the Data tab) -- otherwise the card's
+        # controls (direction/color/cap size) have no error bars to apply to.
+        self.error_bars_card.setVisible(
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+        )
+        # Re-evaluate "Match line" visibility: it depends on both kind and
+        # chart type (see _is_scatter_series_target), either of which may
+        # have just changed.
+        self._update_marker_controls_enabled()
+
+    def _build_axis_style_form(self, prefix: str):
+        """Build one axis's appearance form (title font/color, tick-value
+        font/color [Task 6], spine/tick colors [Task 6]) and register it in
+        `self.axes_style_forms[prefix]`."""
+        form_widget = QWidget()
+        form_layout = QVBoxLayout(form_widget)
+        form_layout.setContentsMargins(0, 0, 0, 0)
+
+        title_card = Card()
+        title_layout = QGridLayout(title_card)
+        title_layout.addWidget(SectionHeader("Axis title"), 0, 0, 1, 2)
+
+        title_layout.addWidget(QLabel("Font size:"), 1, 0)
+        font_size_spin = QSpinBox()
+        font_size_spin.setRange(6, 32)
+        font_size_spin.setValue(12)
+        title_layout.addWidget(font_size_spin, 1, 1)
+
+        title_layout.addWidget(QLabel("Font family:"), 2, 0)
+        font_family_combo = ValueComboBox(list_available_font_families())
+        title_layout.addWidget(font_family_combo, 2, 1)
+
+        bold_check, italic_check = _make_bold_italic_checks_standalone()
+        bold_italic_row = QHBoxLayout()
+        bold_italic_row.setContentsMargins(0, 0, 0, 0)
+        bold_italic_row.addWidget(bold_check)
+        bold_italic_row.addWidget(italic_check)
+        bold_italic_row.addStretch(1)
+        bold_italic_widget = QWidget()
+        bold_italic_widget.setLayout(bold_italic_row)
+        title_layout.addWidget(bold_italic_widget, 3, 1)
+
+        color_label = QLabel("Color:")
+        title_layout.addWidget(color_label, 4, 0)
+        color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        title_layout.addWidget(color_row, 4, 1)
+        match_x_toggle = None
+        if prefix in ("y", "y2"):
+            match_x_toggle = ToggleSwitch(checked=True)
+            title_layout.addWidget(QLabel("Match X:"), 4, 2)
+            title_layout.addWidget(match_x_toggle, 4, 3)
+            color_label.setVisible(False)
+            color_row.setVisible(False)
+
+        form_layout.addWidget(title_card)
+
+        ticks_card = Card()
+        ticks_layout = QGridLayout(ticks_card)
+        ticks_layout.addWidget(SectionHeader("Tick values"), 0, 0, 1, 2)
+
+        ticks_layout.addWidget(QLabel("Font size:"), 1, 0)
+        tick_font_size_spin = QSpinBox()
+        tick_font_size_spin.setRange(6, 32)
+        tick_font_size_spin.setValue(10)
+        ticks_layout.addWidget(tick_font_size_spin, 1, 1)
+
+        ticks_layout.addWidget(QLabel("Font family:"), 2, 0)
+        tick_font_family_combo = ValueComboBox(list_available_font_families())
+        ticks_layout.addWidget(tick_font_family_combo, 2, 1)
+
+        tick_bold_check, tick_italic_check = _make_bold_italic_checks_standalone()
+        tick_bold_italic_row = QHBoxLayout()
+        tick_bold_italic_row.setContentsMargins(0, 0, 0, 0)
+        tick_bold_italic_row.addWidget(tick_bold_check)
+        tick_bold_italic_row.addWidget(tick_italic_check)
+        tick_bold_italic_row.addStretch(1)
+        tick_bold_italic_widget = QWidget()
+        tick_bold_italic_widget.setLayout(tick_bold_italic_row)
+        ticks_layout.addWidget(tick_bold_italic_widget, 3, 1)
+
+        ticks_layout.addWidget(QLabel("Color:"), 4, 0)
+        tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        ticks_layout.addWidget(tick_color_row, 4, 1)
+
+        form_layout.addWidget(ticks_card)
+
+        colors_card = Card()
+        colors_layout = QGridLayout(colors_card)
+        colors_layout.addWidget(SectionHeader("Colors"), 0, 0, 1, 2)
+
+        colors_layout.addWidget(QLabel("Spine:"), 1, 0)
+        spine_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(spine_color_row, 1, 1)
+
+        colors_layout.addWidget(QLabel("Major ticks:"), 2, 0)
+        major_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(major_tick_color_row, 2, 1)
+
+        minor_tick_color_label = QLabel("Minor ticks:")
+        colors_layout.addWidget(minor_tick_color_label, 3, 0)
+        minor_tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
+        colors_layout.addWidget(minor_tick_color_row, 3, 1)
+
+        match_x_colors_toggle = None
+        if prefix in ("y", "y2"):
+            match_x_colors_toggle = ToggleSwitch(checked=True)
+            colors_layout.addWidget(QLabel("Match X:"), 4, 0)
+            colors_layout.addWidget(match_x_colors_toggle, 4, 1)
+
+        form_layout.addWidget(colors_card)
+
+        copy_button = None
+        if prefix in ("y", "y2"):
+            copy_button = QPushButton("Copy style to Y axis")
+            copy_button.setFlat(True)
+            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
+            form_layout.addWidget(copy_button)
+
+        self.axes_style_forms[prefix] = {
+            "widget": form_widget, "title_card": title_card,
+            "font_size_spin": font_size_spin, "font_family_combo": font_family_combo,
+            "bold_check": bold_check, "italic_check": italic_check,
+            "color_row": color_row, "color_label": color_label,
+            "match_x_toggle": match_x_toggle,
+            "ticks_card": ticks_card,
+            "tick_font_size_spin": tick_font_size_spin,
+            "tick_font_family_combo": tick_font_family_combo,
+            "tick_bold_check": tick_bold_check, "tick_italic_check": tick_italic_check,
+            "tick_color_row": tick_color_row,
+            "colors_card": colors_card,
+            "spine_color_row": spine_color_row,
+            "major_tick_color_row": major_tick_color_row,
+            "minor_tick_color_row": minor_tick_color_row,
+            "minor_tick_color_label": minor_tick_color_label,
+            "match_x_colors_toggle": match_x_colors_toggle,
+            "copy_button": copy_button,
+        }
+
+        font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
+        bold_check.toggled.connect(self._on_chart_style_field_changed)
+        italic_check.toggled.connect(self._on_chart_style_field_changed)
+        color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        if match_x_toggle is not None:
+            match_x_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked))
+
+        tick_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
+        tick_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
+        tick_bold_check.toggled.connect(self._on_chart_style_field_changed)
+        tick_italic_check.toggled.connect(self._on_chart_style_field_changed)
+        tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        spine_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        major_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        minor_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        if match_x_colors_toggle is not None:
+            match_x_colors_toggle.toggled.connect(
+                lambda checked, p=prefix: self._on_axis_style_match_x_colors_toggled(p, checked))
+
+        form_widget.setVisible(False)
+        self._axes_style_form_container_layout.addWidget(form_widget)
+
+    def _show_axis_style_form(self, prefix: str):
+        for key, form in self.axes_style_forms.items():
+            form["widget"].setVisible(key == prefix)
+
+    def _on_axis_style_match_x_toggled(self, prefix: str, checked: bool):
+        """Hide the axis-title color swatch while matching X; pre-fill from
+        X's current color the first time it's revealed (mirrors
+        AxesTab._on_match_x_label_toggled)."""
+        form = self.axes_style_forms[prefix]
+        if not checked and not self._updating_controls:
+            form["color_row"].setCurrentColor(self.axes_style_forms["x"]["color_row"].currentColor())
+        form["color_label"].setVisible(not checked)
+        form["color_row"].setVisible(not checked)
+        self._on_chart_style_field_changed()
+
+    def _on_axis_style_match_x_colors_toggled(self, prefix: str, checked: bool):
+        """Mirrors AxesTab._on_match_x_colors_toggled, for the Style tab's
+        Colors card (spine/major/minor tick colors).
+
+        Unlike AxesTab's equivalent, minor-tick-color visibility here is
+        gated only by the Match-X toggle, not additionally by "are minor
+        ticks enabled" -- that state lives in the Axes tab, not this form;
+        showing the minor-tick-color picker here even when minor ticks
+        happen to be off is harmless, since it just sets a color that has
+        no effect until minor ticks are turned on elsewhere.
+        """
+        form = self.axes_style_forms[prefix]
+        x_form = self.axes_style_forms["x"]
+        if not checked and not self._updating_controls:
+            form["spine_color_row"].setCurrentColor(x_form["spine_color_row"].currentColor())
+            form["major_tick_color_row"].setCurrentColor(x_form["major_tick_color_row"].currentColor())
+            form["minor_tick_color_row"].setCurrentColor(x_form["minor_tick_color_row"].currentColor())
+            form["tick_color_row"].setCurrentColor(x_form["tick_color_row"].currentColor())
+        for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row"):
+            form[widget_key].setVisible(not checked)
+        form["minor_tick_color_row"].setVisible(not checked)
+        form["minor_tick_color_label"].setVisible(not checked)
+        self._on_chart_style_field_changed()
+
+    def _on_copy_axis_style(self, prefix: str):
+        """Copy the shown Y axis's appearance fields (font/color, tick
+        font/color, spine/tick colors) to the other Y axis. Mirrors
+        AxesTab._on_copy_axis_settings, scoped to this tab's own fields."""
+        other = "y2" if prefix == "y" else "y"
+        source = self.axes_style_forms[prefix]
+        target = self.axes_style_forms[other]
+
+        target["font_size_spin"].setValue(source["font_size_spin"].value())
+        target["font_family_combo"].setCurrentValue(source["font_family_combo"].currentValue())
+        target["bold_check"].setChecked(source["bold_check"].isChecked())
+        target["italic_check"].setChecked(source["italic_check"].isChecked())
+        target["tick_font_size_spin"].setValue(source["tick_font_size_spin"].value())
+        target["tick_font_family_combo"].setCurrentValue(source["tick_font_family_combo"].currentValue())
+        target["tick_bold_check"].setChecked(source["tick_bold_check"].isChecked())
+        target["tick_italic_check"].setChecked(source["tick_italic_check"].isChecked())
+
+        # Match-X toggles MUST be set before the color swatches they gate
+        # (see AxesTab._on_copy_axis_settings for why: setChecked fires
+        # toggled unconditionally, and the handler pre-fills from X's
+        # *current* color whenever set to "not matching").
+        if source["match_x_toggle"] is not None and target["match_x_toggle"] is not None:
+            target["match_x_toggle"].setChecked(source["match_x_toggle"].isChecked())
+        if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
+            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+
+        target["color_row"].setCurrentColor(source["color_row"].currentColor())
+        target["tick_color_row"].setCurrentColor(source["tick_color_row"].currentColor())
+        target["spine_color_row"].setCurrentColor(source["spine_color_row"].currentColor())
+        target["major_tick_color_row"].setCurrentColor(source["major_tick_color_row"].currentColor())
+        target["minor_tick_color_row"].setCurrentColor(source["minor_tick_color_row"].currentColor())
+
+        target["color_label"].setVisible(not target["match_x_toggle"].isChecked())
+        target["color_row"].setVisible(not target["match_x_toggle"].isChecked())
+        matching_colors = target["match_x_colors_toggle"].isChecked()
+        for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row", "minor_tick_color_row"):
+            target[widget_key].setVisible(not matching_colors)
+        target["minor_tick_color_label"].setVisible(not matching_colors)
+
+        self._on_chart_style_field_changed()
+
+    def refresh_axis_style_selector(self, chart):
+        """Sync `axes_style_selector`'s Y₂ item with whether any series
+        currently uses the secondary Y axis (mirrors
+        AxesTab.refresh_axis_chips). Safe to call whenever the chart or its
+        series may have changed."""
+        from pandaplot.models.project.items.chart import YAxis
+        has_secondary = bool(chart) and any(
+            series.y_axis == YAxis.SECONDARY for series in chart.data_series
+        )
+        current = self.axes_style_selector.currentValue()
+        self.axes_style_selector.blockSignals(True)
+        self.axes_style_selector.clear()
+        self.axes_style_selector.addItem("X", "x")
+        self.axes_style_selector.addItem("Y₁", "y")
+        if has_secondary:
+            self.axes_style_selector.addItem("Y₂", "y2")
+        restore_index = self.axes_style_selector.findData(current) if current else -1
+        self.axes_style_selector.setCurrentIndex(restore_index if restore_index >= 0 else 0)
+        self.axes_style_selector.blockSignals(False)
+        # setCurrentIndex() above ran with signals blocked (so rebuilding the
+        # combo's items doesn't spuriously emit currentValueChanged), which
+        # means _show_axis_style_form never fires if the selection was just
+        # forced back to "X" (e.g. the last Y2 series was removed while Y2
+        # was selected) -- the Y2 form would stay visible while the combo now
+        # reads "X". Drive it explicitly so the visible form always matches.
+        self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
+
+    def _is_scatter_series_target(self) -> bool:
+        """Whether the current target is a data series on a Scatter chart --
+        i.e. there is no drawn line at all (Line card is hidden; see
+        _update_target_cards_visibility), so "match line" has nothing to
+        refer to and marker colors must always be set explicitly."""
+        kind, _obj = self._current_target
+        return kind == "series" and self._chart_type == ChartType.SCATTER
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
+
+    def _series_y_name(self, series) -> str:
+        """Resolve a series' Y column id to its current name for a fallback
+        chip label (used only when the series has no explicit label)."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        app_state = self.app_context.get_app_state()
+        project = app_state.current_project if app_state.has_project else None
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
 
     def set_series_list(self, data_series, fit_data, selected_index: int = 0):
         """Sync `style_series_chips` with the same series+fit list the Data
@@ -550,9 +895,9 @@ class StyleTab(QWidget):
         reflexive reassignments correctly.
         """
         previous_value = self.style_series_chips.currentValue()
-        chip_items = [("Chart", "chart")]
+        chip_items = [("Chart", "chart"), ("Axes", "axes")]
         for index, series in enumerate(data_series):
-            label = series.label or f"{series.dataset_id}:{series.y_column}"
+            label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
         total_series = len(data_series)
         for fit_offset, fit in enumerate(fit_data):
@@ -575,8 +920,8 @@ class StyleTab(QWidget):
         # from, so it must not count as "initialized" either, or it would
         # make the *next* call's placeholder "chart" look like a genuine
         # prior selection).
-        if self._series_list_initialized and previous_value == "chart":
-            self.style_series_chips.setCurrentValue("chart")
+        if self._series_list_initialized and previous_value in ("chart", "axes"):
+            self.style_series_chips.setCurrentValue(previous_value)
         else:
             self.style_series_chips.setCurrentValue(selected_index)
         if data_series or fit_data:
@@ -585,6 +930,9 @@ class StyleTab(QWidget):
         final_value = self.style_series_chips.currentValue()
         if final_value == "chart":
             self._current_target = ("chart", None)
+            self._update_target_cards_visibility()
+        elif final_value == "axes":
+            self._current_target = ("axes", None)
             self._update_target_cards_visibility()
         elif final_value < len(data_series):
             self.set_selected("series", data_series[final_value])
@@ -638,15 +986,25 @@ class StyleTab(QWidget):
         track `series.color` until unchecked. Edge width is a separate
         concern (line thickness, not color) and stays visible/enabled
         whenever markers are on, regardless of the match-line state.
+
+        For a scatter-chart series there is no drawn line at all (the Line
+        card is hidden -- see _update_target_cards_visibility), so "Match
+        line" is meaningless: the row is hidden outright and the color
+        pickers always show, regardless of the toggle's stored (but now
+        irrelevant) checked state.
         """
+        is_scatter_series = self._is_scatter_series_target()
         markers_enabled = self.markers_enabled_toggle.isChecked()
         self.marker_shape_control.setEnabled(markers_enabled)
         self.marker_size_slider.setEnabled(markers_enabled)
-        self.marker_match_line_toggle.setEnabled(markers_enabled)
+        self.marker_match_line_toggle.setEnabled(markers_enabled and not is_scatter_series)
+        self.marker_match_line_label.setVisible(not is_scatter_series)
+        self.marker_match_line_toggle.setVisible(not is_scatter_series)
         self.marker_edge_width_label.setVisible(markers_enabled)
         self.marker_edge_width_slider.setVisible(markers_enabled)
 
-        show_colors = markers_enabled and not self.marker_match_line_toggle.isChecked()
+        matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
+        show_colors = markers_enabled and not matching_line
         for widget in (
             self.marker_color_label, self.marker_color_row,
             self.marker_edge_color_label, self.marker_edge_color_row,
@@ -705,7 +1063,7 @@ class StyleTab(QWidget):
         if self.markers_enabled_toggle.isChecked():
             series.marker_style = self.marker_shape_control.currentValue().value
             series.marker_size = self.marker_size_slider.value()
-            match_line = self.marker_match_line_toggle.isChecked()
+            match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
             series.marker_color = "" if match_line else self.marker_color_row.currentColor()
             series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
             series.marker_edge_width = self.marker_edge_width_slider.value()
@@ -723,6 +1081,7 @@ class StyleTab(QWidget):
         fit.color = self.line_color_row.currentColor()
         fit.line_style = self.line_style_control.currentValue().value
         fit.line_width = self.line_width_slider.value()
+        fit.alpha = self.line_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
@@ -782,14 +1141,14 @@ class StyleTab(QWidget):
 
     def load_fit_style(self, fit):
         """Populate the Line/Marker cards from a fit-data entry's style
-        fields. Fit data has no marker/opacity concept, so markers are
-        forced off and locked."""
+        fields. Fit data has no marker concept, so markers are forced off
+        and locked; opacity, however, does apply to the fit line itself."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             self.line_color_row.setCurrentColor(fit.color)
             self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(1.0)
+            self.line_opacity_slider.setValue(fit.alpha)
             try:
                 self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
             except ValueError:
@@ -812,6 +1171,10 @@ class StyleTab(QWidget):
         try:
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
+            self.title_font_family_combo.setCurrentValue(chart.config.get("title_font_family", "DejaVu Sans"))
+            self.subtitle_font_family_combo.setCurrentValue(
+                chart.config.get("subtitle_font_family", "DejaVu Sans")
+            )
             self.chart_padding_spin.setValue(chart.config.get("chart_padding", 2.0))
             self.chart_padding_w_spin.setValue(chart.config.get("chart_padding_w", 2.0))
             self.chart_padding_h_spin.setValue(chart.config.get("chart_padding_h", 2.0))
@@ -873,12 +1236,52 @@ class StyleTab(QWidget):
                 self._custom_dpi_prefilled = True
             else:
                 self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
+
+            for prefix in ("x", "y", "y2"):
+                axis_form = self.axes_style_forms[prefix]
+                axis_form["font_size_spin"].setValue(chart.config.get(f"{prefix}_font_size", 12))
+                axis_form["font_family_combo"].setCurrentValue(chart.config.get(f"{prefix}_font_family", "DejaVu Sans"))
+                axis_form["bold_check"].setChecked(chart.config.get(f"{prefix}_title_bold", False))
+                axis_form["italic_check"].setChecked(chart.config.get(f"{prefix}_title_italic", False))
+                match = True
+                if axis_form["match_x_toggle"] is not None:
+                    match = chart.config.get(f"{prefix}_match_x_label_color", True)
+                    axis_form["match_x_toggle"].setChecked(match)
+                axis_form["color_row"].setCurrentColor(chart.config.get(f"{prefix}_label_color", "#000000"))
+                if axis_form["match_x_toggle"] is not None:
+                    axis_form["color_label"].setVisible(not match)
+                    axis_form["color_row"].setVisible(not match)
+
+                axis_form["tick_font_size_spin"].setValue(chart.config.get(f"{prefix}_tick_label_font_size", 10))
+                axis_form["tick_font_family_combo"].setCurrentValue(
+                    chart.config.get(f"{prefix}_tick_label_font_family", "DejaVu Sans"))
+                axis_form["tick_bold_check"].setChecked(chart.config.get(f"{prefix}_tick_label_bold", False))
+                axis_form["tick_italic_check"].setChecked(chart.config.get(f"{prefix}_tick_label_italic", False))
+                axis_form["tick_color_row"].setCurrentColor(chart.config.get(f"{prefix}_tick_label_color", "#000000"))
+                match_colors = True
+                if axis_form["match_x_colors_toggle"] is not None:
+                    match_colors = chart.config.get(f"{prefix}_match_x_colors", True)
+                    axis_form["match_x_colors_toggle"].setChecked(match_colors)
+                axis_form["spine_color_row"].setCurrentColor(chart.config.get(f"{prefix}_spine_color", "#000000"))
+                axis_form["major_tick_color_row"].setCurrentColor(
+                    chart.config.get(f"{prefix}_major_tick_color", "#000000"))
+                axis_form["minor_tick_color_row"].setCurrentColor(
+                    chart.config.get(f"{prefix}_minor_tick_color", "#000000"))
+                if axis_form["match_x_colors_toggle"] is not None:
+                    for widget_key in ("spine_color_row", "major_tick_color_row", "tick_color_row",
+                                       "minor_tick_color_row"):
+                        axis_form[widget_key].setVisible(not match_colors)
+                    axis_form["minor_tick_color_label"].setVisible(not match_colors)
+            self.refresh_axis_style_selector(chart)
+            self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
         finally:
             self._updating_controls = previous_guard
 
     def apply_chart_style_to(self, chart):
         chart.config["title_font_size"] = self.title_font_size_spin.value()
         chart.config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        chart.config["title_font_family"] = self.title_font_family_combo.currentValue()
+        chart.config["subtitle_font_family"] = self.subtitle_font_family_combo.currentValue()
         chart.config["chart_padding"] = self.chart_padding_spin.value()
         chart.config["chart_padding_w"] = self.chart_padding_w_spin.value()
         chart.config["chart_padding_h"] = self.chart_padding_h_spin.value()
@@ -903,6 +1306,26 @@ class StyleTab(QWidget):
         chart.config["width_cm"], chart.config["height_cm"] = self._size_from_controls()
         chart.config["dpi"] = self._dpi_from_controls()
 
+        for prefix in ("x", "y", "y2"):
+            axis_form = self.axes_style_forms[prefix]
+            chart.config[f"{prefix}_font_size"] = axis_form["font_size_spin"].value()
+            chart.config[f"{prefix}_font_family"] = axis_form["font_family_combo"].currentValue()
+            chart.config[f"{prefix}_title_bold"] = axis_form["bold_check"].isChecked()
+            chart.config[f"{prefix}_title_italic"] = axis_form["italic_check"].isChecked()
+            chart.config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
+            if axis_form["match_x_toggle"] is not None:
+                chart.config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            chart.config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
+            chart.config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
+            chart.config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
+            chart.config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
+            chart.config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            chart.config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
+            chart.config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
+            chart.config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
+            if axis_form["match_x_colors_toggle"] is not None:
+                chart.config[f"{prefix}_match_x_colors"] = axis_form["match_x_colors_toggle"].isChecked()
+
     def clear_chart_style(self):
         self._chart = None
         previous_guard = self._updating_controls
@@ -910,6 +1333,8 @@ class StyleTab(QWidget):
         try:
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
+            self.title_font_family_combo.setCurrentValue("DejaVu Sans")
+            self.subtitle_font_family_combo.setCurrentValue("DejaVu Sans")
             self.chart_padding_spin.setValue(2.0)
             self.chart_padding_w_spin.setValue(2.0)
             self.chart_padding_h_spin.setValue(2.0)
@@ -937,6 +1362,27 @@ class StyleTab(QWidget):
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.chart_dpi_spin.setValue(100)
             self._custom_dpi_prefilled = False
+
+            for prefix in ("x", "y", "y2"):
+                axis_form = self.axes_style_forms[prefix]
+                axis_form["font_size_spin"].setValue(12)
+                axis_form["font_family_combo"].setCurrentValue("DejaVu Sans")
+                axis_form["bold_check"].setChecked(False)
+                axis_form["italic_check"].setChecked(False)
+                axis_form["color_row"].setCurrentColor("#000000")
+                if axis_form["match_x_toggle"] is not None:
+                    axis_form["match_x_toggle"].setChecked(True)
+                axis_form["tick_font_size_spin"].setValue(10)
+                axis_form["tick_font_family_combo"].setCurrentValue("DejaVu Sans")
+                axis_form["tick_bold_check"].setChecked(False)
+                axis_form["tick_italic_check"].setChecked(False)
+                axis_form["tick_color_row"].setCurrentColor("#000000")
+                axis_form["spine_color_row"].setCurrentColor("#000000")
+                axis_form["major_tick_color_row"].setCurrentColor("#000000")
+                axis_form["minor_tick_color_row"].setCurrentColor("#000000")
+                if axis_form["match_x_colors_toggle"] is not None:
+                    axis_form["match_x_colors_toggle"].setChecked(True)
+            self.refresh_axis_style_selector(None)
         finally:
             self._updating_controls = previous_guard
 
@@ -1017,6 +1463,8 @@ class StyleTab(QWidget):
         config = self._chart.config
         config["title_font_size"] = self.title_font_size_spin.value()
         config["subtitle_font_size"] = self.subtitle_font_size_spin.value()
+        config["title_font_family"] = self.title_font_family_combo.currentValue()
+        config["subtitle_font_family"] = self.subtitle_font_family_combo.currentValue()
         config["chart_padding"] = self.chart_padding_spin.value()
         config["chart_padding_w"] = self.chart_padding_w_spin.value()
         config["chart_padding_h"] = self.chart_padding_h_spin.value()
@@ -1040,6 +1488,26 @@ class StyleTab(QWidget):
         )
         config["width_cm"], config["height_cm"] = self._size_from_controls()
         config["dpi"] = self._dpi_from_controls()
+
+        for prefix in ("x", "y", "y2"):
+            axis_form = self.axes_style_forms[prefix]
+            config[f"{prefix}_font_size"] = axis_form["font_size_spin"].value()
+            config[f"{prefix}_font_family"] = axis_form["font_family_combo"].currentValue()
+            config[f"{prefix}_title_bold"] = axis_form["bold_check"].isChecked()
+            config[f"{prefix}_title_italic"] = axis_form["italic_check"].isChecked()
+            config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
+            if axis_form["match_x_toggle"] is not None:
+                config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
+            config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
+            config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
+            config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
+            config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
+            config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
+            config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
+            if axis_form["match_x_colors_toggle"] is not None:
+                config[f"{prefix}_match_x_colors"] = axis_form["match_x_colors_toggle"].isChecked()
         self.configChanged.emit()
 
     # -- Theme ----------------------------------------------------------------
@@ -1071,3 +1539,17 @@ class StyleTab(QWidget):
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)
         self.axes_bg_transparent_toggle.set_tokens(tokens)
+        self.axes_style_selector.set_tokens(tokens)
+        for form in self.axes_style_forms.values():
+            form["title_card"].set_tokens(tokens)
+            form["color_row"].set_tokens(tokens)
+            if form["match_x_toggle"] is not None:
+                form["match_x_toggle"].set_tokens(tokens)
+            form["ticks_card"].set_tokens(tokens)
+            form["tick_color_row"].set_tokens(tokens)
+            form["colors_card"].set_tokens(tokens)
+            form["spine_color_row"].set_tokens(tokens)
+            form["major_tick_color_row"].set_tokens(tokens)
+            form["minor_tick_color_row"].set_tokens(tokens)
+            if form["match_x_colors_toggle"] is not None:
+                form["match_x_colors_toggle"].set_tokens(tokens)

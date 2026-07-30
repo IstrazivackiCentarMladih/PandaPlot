@@ -28,10 +28,26 @@ class ErrorDirection(StrEnum):
 
 @dataclass
 class DataSeries:
-    """Represents a single data series in a chart."""
+    """Represents a single data series in a chart.
+
+    Columns are referenced by their stable id (``*_column_id``); the
+    ``*_column`` name fields are a resolution fallback for legacy/externally
+    edited data and a display hint, never the authoritative reference. A
+    column rename updates the dataset registry only — the ids here are
+    untouched, so nothing has to cascade into series. Resolve a live name with
+    :func:`pandaplot.models.project.items.chart.resolve_series_column`.
+    """
     dataset_id: str
-    x_column: str
-    y_column: str
+    x_column_id: str = ""
+    y_column_id: str = ""
+    x_error_column_id: str = ""
+    y_error_column_id: str = ""
+    x_error_minus_column_id: str = ""
+    y_error_minus_column_id: str = ""
+    # Legacy/fallback column names — populated only by loading old projects
+    # (see resolve_series_column). New series reference columns by id.
+    x_column: str = ""
+    y_column: str = ""
     label: str = ""
     color: str = "#1f77b4"
     marker_color: str = ""
@@ -60,20 +76,39 @@ class DataSeries:
             except ValueError:
                 self.y_axis = YAxis.PRIMARY
 
+    @property
+    def has_error_data(self) -> bool:
+        """Whether any error-bar column is configured for this series, by
+        stable id (current data) or legacy name (old projects loaded before
+        stable column ids)."""
+        return bool(
+            self.x_error_column_id or self.y_error_column_id
+            or self.x_error_column or self.y_error_column
+        )
+
 
 @dataclass
 class FitData:
-    """Represents fitted curve data."""
+    """Represents fitted curve data.
+
+    Source columns are referenced by stable id (``source_*_column_id``); the
+    ``source_*_column`` name fields are a legacy/fallback populated only when
+    loading old projects. The fit line itself renders from ``x_data``/``y_data``,
+    so the source columns are metadata (display + series↔fit matching).
+    """
     source_dataset_id: str
-    source_x_column: str
-    source_y_column: str
     fit_type: str
     x_data: np.ndarray
     y_data: np.ndarray
     label: str
+    source_x_column_id: str = ""
+    source_y_column_id: str = ""
+    source_x_column: str = ""
+    source_y_column: str = ""
     color: str = "#ff7f0e"
     line_style: str = "dashed"
     line_width: float = 2.0
+    alpha: float = 1.0
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
@@ -199,14 +234,21 @@ class Chart(Item):
         self.chart_type = chart_type
         self.update_modified_time()
     
-    def add_data_series(self, dataset_id: str, x_column: str, y_column: str, 
-                       label: str = "", **kwargs) -> DataSeries:
-        """Add a new data series to the chart."""
+    def add_data_series(self, dataset_id: str, x_column_id: str = "",
+                       y_column_id: str = "", label: str = "", **kwargs) -> DataSeries:
+        """Add a new data series to the chart.
+
+        Columns are referenced by their stable ids (``x_column_id`` /
+        ``y_column_id`` and the error-column ids via ``kwargs``). The caller
+        resolves names to ids against the dataset; this model holds no
+        :class:`Dataset` reference — the renderer resolves ids back to live
+        names with :func:`resolve_series_column`.
+        """
         series = DataSeries(
             dataset_id=dataset_id,
-            x_column=x_column,
-            y_column=y_column,
-            label=label or f"{dataset_id}:{y_column}",
+            x_column_id=x_column_id,
+            y_column_id=y_column_id,
+            label=label,
             **kwargs
         )
         self.data_series.append(series)
@@ -242,17 +284,24 @@ class Chart(Item):
         """Get all unique dataset IDs used in this chart."""
         return list(set(series.dataset_id for series in self.data_series))
     
-    def add_fit_data(self, source_dataset_id: str, source_x_column: str, 
-                    source_y_column: str, fit_type: str, x_data: np.ndarray, 
-                    y_data: np.ndarray, label: str = "", **kwargs) -> FitData:
-        """Add fit data to the chart."""
+    def add_fit_data(self, source_dataset_id: str, fit_type: str,
+                    x_data: np.ndarray, y_data: np.ndarray,
+                    source_x_column_id: str = "", source_y_column_id: str = "",
+                    label: str = "", **kwargs) -> FitData:
+        """Add fit data to the chart.
+
+        Source columns are referenced by their stable ids
+        (``source_x_column_id`` / ``source_y_column_id``); the caller resolves
+        names to ids against the dataset. This model holds no :class:`Dataset`
+        reference (see :meth:`add_data_series`).
+        """
         if not label:
-            label = f"{fit_type.title()} Fit for {source_dataset_id}:{source_y_column}"
-        
+            label = f"{fit_type.title()} Fit"
+
         fit = FitData(
             source_dataset_id=source_dataset_id,
-            source_x_column=source_x_column,
-            source_y_column=source_y_column,
+            source_x_column_id=source_x_column_id,
+            source_y_column_id=source_y_column_id,
             fit_type=fit_type,
             x_data=x_data,
             y_data=y_data,
@@ -328,27 +377,36 @@ class Chart(Item):
             "has_grid": self.config.get("show_grid_x", True) or self.config.get("show_grid_y", True)
         }
     
-    def search_chart(self, query: str) -> bool:
-        """Search for a query string in the chart name or configuration."""
+    def search_chart(self, query: str, project: Any = None) -> bool:
+        """Search for a query string in the chart name or configuration.
+
+        Series columns are referenced by id; pass ``project`` to resolve each
+        series' column ids to their current names so the search matches on live
+        column names (falls back to any stored legacy name when ``project`` is
+        omitted or a column can't be resolved).
+        """
         query_lower = query.lower()
-        
+
         # Search in name and title
-        if (query_lower in self.name.lower() or 
+        if (query_lower in self.name.lower() or
             query_lower in self.config.get("title", "").lower()):
             return True
-        
+
         # Search in chart type
         if query_lower in self.chart_type.lower():
             return True
-        
+
         # Search in data series columns and labels
         for series in self.data_series:
-            if (query_lower in series.x_column.lower() or
-                query_lower in series.y_column.lower() or
+            dataset = project.find_item(series.dataset_id) if project else None
+            x_name = resolve_series_column(dataset, series.x_column_id, series.x_column) or ""
+            y_name = resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
+            if (query_lower in x_name.lower() or
+                query_lower in y_name.lower() or
                 query_lower in series.label.lower() or
                 query_lower in series.dataset_id.lower()):
                 return True
-        
+
         return False
     
     def to_dict(self) -> Dict[str, Any]:
@@ -361,6 +419,12 @@ class Chart(Item):
                     "dataset_id": series.dataset_id,
                     "x_column": series.x_column,
                     "y_column": series.y_column,
+                    "x_column_id": series.x_column_id,
+                    "y_column_id": series.y_column_id,
+                    "x_error_column_id": series.x_error_column_id,
+                    "y_error_column_id": series.y_error_column_id,
+                    "x_error_minus_column_id": series.x_error_minus_column_id,
+                    "y_error_minus_column_id": series.y_error_minus_column_id,
                     "label": series.label,
                     "color": series.color,
                     "marker_color": series.marker_color,
@@ -388,6 +452,8 @@ class Chart(Item):
                     "source_dataset_id": fit.source_dataset_id,
                     "source_x_column": fit.source_x_column,
                     "source_y_column": fit.source_y_column,
+                    "source_x_column_id": fit.source_x_column_id,
+                    "source_y_column_id": fit.source_y_column_id,
                     "fit_type": fit.fit_type,
                     "x_data": fit.x_data.tolist(),
                     "y_data": fit.y_data.tolist(),
@@ -395,6 +461,7 @@ class Chart(Item):
                     "color": fit.color,
                     "line_style": fit.line_style,
                     "line_width": fit.line_width,
+                    "alpha": fit.alpha,
                     "visible": fit.visible,
                     "fit_params": fit.fit_params,
                     "fit_stats": fit.fit_stats
@@ -432,6 +499,12 @@ class Chart(Item):
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
                 y_column=series_dict["y_column"],
+                x_column_id=series_dict.get("x_column_id", ""),
+                y_column_id=series_dict.get("y_column_id", ""),
+                x_error_column_id=series_dict.get("x_error_column_id", ""),
+                y_error_column_id=series_dict.get("y_error_column_id", ""),
+                x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
+                y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
                 label=series_dict.get("label", ""),
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
@@ -462,6 +535,8 @@ class Chart(Item):
                 source_dataset_id=fit_dict["source_dataset_id"],
                 source_x_column=fit_dict["source_x_column"],
                 source_y_column=fit_dict["source_y_column"],
+                source_x_column_id=fit_dict.get("source_x_column_id", ""),
+                source_y_column_id=fit_dict.get("source_y_column_id", ""),
                 fit_type=fit_dict["fit_type"],
                 x_data=np.array(fit_dict["x_data"]),
                 y_data=np.array(fit_dict["y_data"]),
@@ -469,6 +544,7 @@ class Chart(Item):
                 color=fit_dict.get("color", "#ff7f0e"),
                 line_style=fit_dict.get("line_style", "dashed"),
                 line_width=fit_dict.get("line_width", 2.0),
+                alpha=fit_dict.get("alpha", 1.0),
                 visible=fit_dict.get("visible", True),
                 fit_params=fit_dict.get("fit_params", {}),
                 fit_stats=fit_dict.get("fit_stats", {})
@@ -480,6 +556,61 @@ class Chart(Item):
             chart._init_default_config()
 
         return chart
+
+
+def resolve_series_column(dataset: Any, column_id: str,
+                          fallback_name: str) -> Optional[str]:
+    """Resolve a column reference to its current DataFrame name.
+
+    Prefers the stable ``column_id`` (via the dataset's id->name registry) so a
+    renamed column keeps resolving without any series update; falls back to the
+    stored name for legacy files or data edited outside the app. Returns None
+    when neither resolves (a genuinely missing column). An empty ``fallback_name``
+    stays empty (e.g. "no x column" means plot against the index).
+    """
+    if dataset is not None and column_id:
+        name = dataset.column_name(column_id)
+        if name is not None:
+            return name
+    return fallback_name or None
+
+
+def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
+    """Fill a series' ``*_column_id`` fields from its name fields via ``dataset``.
+
+    Called at series write sites and during legacy-chart migration. A name that
+    resolves to a column gets that column's id; an unresolved name leaves the
+    existing id untouched (resolution falls back to the stored name).
+    """
+    if dataset is None:
+        return
+    pairs = (
+        ("x_column", "x_column_id"),
+        ("y_column", "y_column_id"),
+        ("x_error_column", "x_error_column_id"),
+        ("y_error_column", "y_error_column_id"),
+        ("x_error_minus_column", "x_error_minus_column_id"),
+        ("y_error_minus_column", "y_error_minus_column_id"),
+    )
+    for name_field, id_field in pairs:
+        name = getattr(series, name_field, "")
+        if name:
+            cid = dataset.column_id(name)
+            if cid is not None:
+                setattr(series, id_field, cid)
+
+
+def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
+    """Fill a fit's source ``*_column_id`` fields from its name fields."""
+    if dataset is None:
+        return
+    for name_field, id_field in (("source_x_column", "source_x_column_id"),
+                                 ("source_y_column", "source_y_column_id")):
+        name = getattr(fit, name_field, "")
+        if name:
+            cid = dataset.column_id(name)
+            if cid is not None:
+                setattr(fit, id_field, cid)
 
 
 def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
@@ -496,7 +627,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "name": chart.name,
         "data_series": [asdict(s) for s in chart.data_series],
         "fit_data_styles": [
-            {"color": f.color, "line_width": f.line_width}
+            {"color": f.color, "line_width": f.line_width, "alpha": f.alpha}
             for f in chart.fit_data
         ],
     }
@@ -513,5 +644,6 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
         if i < len(chart.fit_data):
             chart.fit_data[i].color = fit_style["color"]
             chart.fit_data[i].line_width = fit_style["line_width"]
+            chart.fit_data[i].alpha = fit_style.get("alpha", 1.0)
     chart.update_modified_time()
 

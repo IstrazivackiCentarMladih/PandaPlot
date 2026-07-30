@@ -282,6 +282,39 @@ class TabContainer(PWidget):
         except RuntimeError:
             del self.tabs[item_id]
 
+    def _open_tab_into_pane(self, item_id: str, target_pane: CustomTabWidget) -> bool:
+        """Create the tab widget for `item_id` and add it into `target_pane`.
+
+        Shared tail used both by interactive opens (`open_tab`) and session restore
+        (`restore_tab_session`). Returns True if a tab was created.
+        """
+        if item_id in self.tabs:
+            return False
+
+        if not self.app_context.get_app_state().has_project:
+            self.logger.warning("Cannot open item: No project loaded")
+            return False
+
+        project = self.app_context.get_app_state().current_project
+        if not project:
+            self.logger.warning("Cannot open item: No project loaded")
+            return False
+
+        item = project.find_item(item_id)
+        if item is None:
+            self.logger.warning("Cannot open item: Item %s not found", item_id)
+            return False
+
+        try:
+            new_tab = self._create_tab(item)
+            tab_index = target_pane.addTab(new_tab, new_tab.get_tab_title())
+            self.tabs[item_id] = new_tab
+            target_pane.setCurrentIndex(tab_index)
+            return True
+        except Exception as e:
+            self.logger.error("Failed to open tab for item %s: %s", item_id, str(e))
+            return False
+
     def open_tab(self, item_id):
         if not self.app_context:
             self.logger.warning("Cannot open tab: No app context provided")
@@ -309,45 +342,25 @@ class TabContainer(PWidget):
             self.logger.warning("Cannot open note: No project loaded")
             return
 
-        project = self.app_context.get_app_state().current_project
-        if not project:
-            self.logger.warning("Cannot open item: No project loaded")
-            return
-
-        # Find the note item in the project hierarchy
-        item = project.find_item(item_id)
-        if item is None:
-            self.logger.warning("Cannot open item: Item %s not found", item_id)
-            return
-
-
-        try:
-            new_tab = self._create_tab(item)
-
-            target_pane = self._active_pane or self.panes[0]
-
-            # Add tab
-            tab_index = target_pane.addTab(new_tab, new_tab.get_tab_title())
-
-            # Track the tab
-            self.tabs[item_id] = new_tab
-
-            # Switch to the new tab
-            target_pane.setCurrentIndex(tab_index)
+        target_pane = self._active_pane or self.panes[0]
+        if self._open_tab_into_pane(item_id, target_pane):
             self._activate_pane(target_pane)
-
             self._persist_tab_session()
-        except Exception as e:
-            self.logger.error("Failed to open tab for item %s: %s", item_id, str(e))
 
-    def restore_tab_session(self, item_ids: list[str], active_item_id: str | None):
-        """Reopen tabs remembered from the previous session, in order.
+    def restore_tab_session(
+        self,
+        panes_data: list[list[str]],
+        active_item_id: str | None,
+        splitter_sizes: list[int] | None = None,
+    ):
+        """Reopen tabs (and the pane layout) remembered from the previous session.
 
         Called once the project a session was saved against has finished
         loading (see pandaplot/app.py's startup restore hook). Restoration always
         happens into a single pane - split layouts are not persisted across restarts.
         """
-        if not item_ids:
+        panes_data = [list(ids) for ids in panes_data if ids]
+        if not panes_data:
             return
 
         # Drop the placeholder Welcome tab created before the project finished loading
@@ -356,8 +369,23 @@ class TabContainer(PWidget):
                 if isinstance(pane.widget(index), WelcomeTab):
                     pane.removeTab(index)
 
-        for item_id in item_ids:
-            self.open_tab(item_id)
+        # Pre-create enough panes (max 2) so tabs can be opened directly into the
+        # right one, instead of always landing in the active pane.
+        while len(self.panes) < min(len(panes_data), 2):
+            new_pane = self._create_pane()
+            self.splitter.addWidget(new_pane)
+            self.panes.append(new_pane)
+        self._update_split_capabilities()
+
+        for pane_index, item_ids in enumerate(panes_data[:2]):
+            target_pane = self.panes[pane_index]
+            for item_id in item_ids:
+                self._open_tab_into_pane(item_id, target_pane)
+
+        # A recorded pane that ended up with nothing restorable in it shouldn't
+        # linger as an empty split.
+        for pane in list(self.panes):
+            self._maybe_collapse_pane(pane)
 
         if active_item_id and active_item_id in self.tabs:
             active_widget = self.tabs[active_item_id]
@@ -367,9 +395,15 @@ class TabContainer(PWidget):
                 if index >= 0:
                     pane.setCurrentIndex(index)
                     self._activate_pane(pane)
+        elif self.panes:
+            self._activate_pane(self.panes[0])
+
+        if splitter_sizes and len(splitter_sizes) == len(self.panes):
+            self.splitter.setSizes(splitter_sizes)
 
     def _persist_tab_session(self):
-        """Remember which tabs are open (and which is active) for next launch.
+        """Remember which tabs are open in which pane (and which is active) for
+        next launch.
 
         No-op when no project is loaded: the placeholder Welcome tab created
         before a project loads (or after one closes) is not a real session and
@@ -379,13 +413,25 @@ class TabContainer(PWidget):
             return
         try:
             session_manager = self.app_context.get_manager(SessionPersistenceManager)
+
+            widget_to_id = {widget: item_id for item_id, widget in self.tabs.items()}
+            panes_data: list[list[str]] = []
+            for pane in self.panes:
+                ids = []
+                for i in range(pane.count()):
+                    item_id = widget_to_id.get(pane.widget(i))
+                    if item_id is not None:
+                        ids.append(item_id)
+                panes_data.append(ids)
+
             active_widget = self._active_pane.currentWidget() if self._active_pane else None
             active_id = None
             if active_widget is not None:
                 data = self.get_tab_data(active_widget)
                 if data.get("type") != "other":
                     active_id = data.get("id")
-            session_manager.update_tabs(list(self.tabs.keys()), active_id)
+
+            session_manager.update_tabs(panes_data, active_id, self.splitter.sizes())
         except Exception as e:  # noqa: BLE001
             self.logger.warning("Failed to persist tab session: %s", e)
 

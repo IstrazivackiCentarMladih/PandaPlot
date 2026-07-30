@@ -24,11 +24,12 @@ def _qapp():
 
 def _chart_with_one_fit(project, dataset):
     chart = Chart(name="Fit Chart", chart_type="scatter")
-    chart.add_data_series(dataset.id, "x", "y", label="Series A")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"),
+                          y_column_id=dataset.column_id("y"), label="Series A")
     chart.add_fit_data(
         source_dataset_id=dataset.id,
-        source_x_column="x",
-        source_y_column="y",
+        source_x_column_id=dataset.column_id("x"),
+        source_y_column_id=dataset.column_id("y"),
         fit_type="linear",
         x_data=np.array([1.0, 2.0, 3.0]),
         y_data=np.array([1.0, 2.0, 3.0]),
@@ -66,11 +67,13 @@ def test_confidence_band_for_a_secondary_axis_fit_is_drawn_on_that_axis():
     app_context.app_state.load_project(project)
 
     chart = Chart(name="Secondary Fit Chart", chart_type="line")
-    chart.add_data_series(dataset.id, "x", "y", label="Series A", y_axis="secondary")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"),
+                          y_column_id=dataset.column_id("y"), label="Series A",
+                          y_axis="secondary")
     chart.add_fit_data(
         source_dataset_id=dataset.id,
-        source_x_column="x",
-        source_y_column="y",
+        source_x_column_id=dataset.column_id("x"),
+        source_y_column_id=dataset.column_id("y"),
         fit_type="linear",
         x_data=np.array([1.0, 2.0, 3.0]),
         y_data=np.array([1.0, 2.0, 3.0]),
@@ -91,3 +94,38 @@ def test_confidence_band_for_a_secondary_axis_fit_is_drawn_on_that_axis():
     assert len(editor.chart_canvas.axes.collections) == 0, (
         "confidence band leaked onto the primary axis"
     )
+
+
+def test_fit_line_alpha_is_rendered():
+    """Regression: FitData.alpha must reach the plotted line -- it used to
+    be hardcoded to 1.0 in chart_editor.py regardless of the model value."""
+    _qapp()
+    app_context = build_app_context()
+    project = Project(name="Fit Alpha Project")
+    df = pd.DataFrame({"x": [1, 2, 3], "y": [1, 4, 9]})
+    dataset = Dataset(name="ds1", data=df)
+    project.add_item(dataset)
+    app_context.app_state.load_project(project)
+
+    chart = Chart(name="Fit Alpha Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"),
+                          y_column_id=dataset.column_id("y"), label="Series A")
+    chart.add_fit_data(
+        source_dataset_id=dataset.id,
+        source_x_column_id=dataset.column_id("x"),
+        source_y_column_id=dataset.column_id("y"),
+        fit_type="linear",
+        x_data=np.array([1.0, 2.0, 3.0]),
+        y_data=np.array([1.0, 2.0, 3.0]),
+        label="Linear Fit",
+        color="#ff0000",
+        alpha=0.4,
+    )
+    project.add_item(chart)
+
+    editor = ChartEditorWidget(app_context=app_context, chart=chart, parent=None)
+    editor.update_chart()
+
+    fit_lines = [line for line in editor.chart_canvas.axes.get_lines() if line.get_color() == "#ff0000"]
+    assert len(fit_lines) == 1
+    assert fit_lines[0].get_alpha() == 0.4

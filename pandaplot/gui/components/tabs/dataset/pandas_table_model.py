@@ -8,6 +8,7 @@ interfaces with pandas DataFrames for high-performance data display and editing.
 import logging
 from typing import Any, override
 
+import pandas as pd
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pandaplot.commands.project.dataset.edit_command import EditCommand
@@ -52,7 +53,7 @@ class PandasTableModel(QAbstractTableModel):
             return None
         value = self._dataset.data.iloc[index.row(), index.column()]
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.EditRole):
-            return str(value) if value is not None else ""        
+            return "" if pd.isna(value) else str(value)
         return None
     
     def on_dataset_changed(self, event):
