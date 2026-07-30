@@ -9,6 +9,7 @@ column selection live. Calling `_finish()` (wired to the bar's "Done"
 button) restores the wizard's modal state and hands the picked column ids
 back to the caller.
 """
+import logging
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from pandaplot.gui.components.tabs.tab_container import TabContainer
 from pandaplot.models.state.app_context import AppContext
+
+logger = logging.getLogger(__name__)
 
 
 class DatasetColumnPicker(QWidget):
@@ -39,6 +42,10 @@ class DatasetColumnPicker(QWidget):
     def start(self, wizard: QDialog, dataset_id: str, role_label: str,
               on_done: Callable[[list[str]], None]) -> None:
         """Arm picking for `role_label` on `dataset_id`, borrowing the main window."""
+        if self._table_view is not None:
+            self._table_view.selectionModel().selectionChanged.disconnect(self._on_selection_changed)
+            self._table_view = None
+
         self._wizard = wizard
         self._role_label = role_label
         self._on_done = on_done
@@ -78,8 +85,17 @@ class DatasetColumnPicker(QWidget):
         if self._table_view is None:
             return []
         dataset = self._table_view.model()._dataset
-        ids = (dataset.column_id(name) for name in self._selected_column_names())
-        return [column_id for column_id in ids if column_id]
+        ids: list[str] = []
+        for name in self._selected_column_names():
+            column_id = dataset.column_id(name)
+            if column_id:
+                ids.append(column_id)
+            else:
+                logger.warning(
+                    "Selected column %r did not resolve to a stable column id; excluding it from the picker result.",
+                    name,
+                )
+        return ids
 
     def _finish(self) -> None:
         if self._table_view is not None:

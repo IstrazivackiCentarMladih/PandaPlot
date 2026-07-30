@@ -95,3 +95,50 @@ def test_done_with_no_selection_reports_empty_list():
     picker._finish()
 
     assert received == [[]]
+
+
+def test_start_called_again_disconnects_previous_session_before_reconnecting():
+    first_tab = _fake_dataset_tab(selected_columns=[])
+    second_tab = _fake_dataset_tab(selected_columns=[])
+    app_context = Mock()
+    tab_container = Mock()
+    tab_container.get_tab_widget.side_effect = [first_tab, second_tab]
+    app_context.get_manager.return_value = tab_container
+    picker = DatasetColumnPicker(app_context)
+    wizard1 = QDialog()
+    wizard2 = QDialog()
+
+    picker.start(wizard1, "ds-1", "Y column", on_done=lambda ids: None)
+    first_selection_model = first_tab.table_view.selectionModel()
+    first_selection_model.selectionChanged.disconnect.assert_not_called()
+
+    picker.start(wizard2, "ds-2", "X column", on_done=lambda ids: None)
+
+    first_selection_model.selectionChanged.disconnect.assert_called_once_with(
+        picker._on_selection_changed
+    )
+    second_selection_model = second_tab.table_view.selectionModel()
+    second_selection_model.selectionChanged.connect.assert_called_once_with(
+        picker._on_selection_changed
+    )
+    second_selection_model.selectionChanged.disconnect.assert_not_called()
+
+
+def test_unresolved_column_id_is_excluded_and_logged(caplog):
+    dataset_tab = _fake_dataset_tab(selected_columns=[0, 1])
+    dataset = dataset_tab.table_view.model()._dataset
+    dataset.column_id.side_effect = lambda name: {"Date": None, "Revenue": "col-rev"}[name]
+    app_context, _ = _fake_app_context(dataset_tab)
+    picker = DatasetColumnPicker(app_context)
+    wizard = QDialog()
+    received = []
+
+    with caplog.at_level("WARNING"):
+        picker.start(wizard, "ds-1", "Y column", on_done=received.append)
+        picker._finish()
+
+    assert received == [["col-rev"]]
+    assert any(
+        record.levelname == "WARNING" and "Date" in record.getMessage()
+        for record in caplog.records
+    )
