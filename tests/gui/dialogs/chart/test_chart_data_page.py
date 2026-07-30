@@ -96,3 +96,42 @@ def test_changing_chart_type_resets_to_a_single_card_of_the_new_type():
 
     assert len(page.cards) == 1
     assert page.cards[0].error_bars_check is None
+
+
+def test_pick_requested_starts_the_picker_with_the_cards_dataset_and_role():
+    page = _make_page()
+    page._picker.start = Mock()
+    card = page.cards[0]
+
+    card.pickRequested.emit("y")
+
+    page._picker.start.assert_called_once()
+    args, kwargs = page._picker.start.call_args
+    assert args[0] is page.wizard()
+    assert args[1] == "ds-1"
+    assert args[2] == "y"
+    assert "on_done" in kwargs
+
+
+def test_on_done_callback_applies_picked_columns_to_the_originating_card():
+    page = _make_page()
+    page._picker.start = Mock()
+    card = page.cards[0]
+
+    card.pickRequested.emit("y")
+
+    on_done = page._picker.start.call_args.kwargs["on_done"]
+    on_done(["col-rev"])
+
+    assert card.y_column_combo.currentData() == "col-rev"
+
+
+def test_pick_requested_without_a_selected_dataset_does_not_start_the_picker():
+    page = _make_page()
+    page._picker.start = Mock()
+    card = page.cards[0]
+    card.dataset_combo.setCurrentIndex(-1)
+
+    card.pickRequested.emit("y")
+
+    page._picker.start.assert_not_called()
