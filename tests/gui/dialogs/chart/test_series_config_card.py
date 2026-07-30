@@ -99,3 +99,34 @@ def test_remove_button_emits_remove_requested():
     card.remove_button.click()
 
     assert received == [True]
+
+
+def test_histogram_values_role_maps_to_y_column_id():
+    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card.set_datasets([("ds-1", "Sales")])
+    card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
+    card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))
+
+    config = card.get_series_config()
+
+    assert config["y_column_id"] == "col-rev"
+    assert "values_column_id" not in config
+
+
+def test_switching_dataset_resets_column_selections():
+    card = _line_card()
+    card.y_column_combo.setCurrentIndex(card.y_column_combo.findData("col-rev"))
+    assert card.y_column_combo.currentData() == "col-rev"
+
+    card.set_datasets([("ds-1", "Sales"), ("ds-2", "Marketing")])
+    card.dataset_combo.setCurrentIndex(card.dataset_combo.findData("ds-2"))
+    card.set_dataset_columns("ds-2", [("col-cost", "Cost"), ("col-clicks", "Clicks")])
+
+    assert card.dataset_combo.currentData() == "ds-2"
+    assert card.y_column_combo.currentData() == ""
+    assert card.x_column_combo.currentData() == ""
+    assert [card.y_column_combo.itemData(i) for i in range(card.y_column_combo.count())] == [
+        "",
+        "col-cost",
+        "col-clicks",
+    ]
