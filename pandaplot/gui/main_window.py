@@ -84,6 +84,7 @@ class PandaMainWindow(PMainWindow):
         # Create main content area with tab container
         self.tab_container = TabContainer(
             app_context=self.app_context, parent=self.main_splitter)
+        self.app_context.register_manager(self.tab_container)
 
         # Order the panes so the sidebar sits on its configured side
         if sidebar_position == "right":

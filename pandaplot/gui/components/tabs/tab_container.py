@@ -1,4 +1,4 @@
-from typing import override
+from typing import Optional, override
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
@@ -314,6 +314,10 @@ class TabContainer(PWidget):
         except Exception as e:
             self.logger.error("Failed to open tab for item %s: %s", item_id, str(e))
             return False
+
+    def get_tab_widget(self, item_id: str) -> Optional[QWidget]:
+        """Return the live tab widget for `item_id` if it's currently open, else None."""
+        return self.tabs.get(item_id)
 
     def open_tab(self, item_id):
         if not self.app_context:
