@@ -3,7 +3,7 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QInputDialog
 
-from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
+from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.dataset import ImportDataCommand
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
@@ -89,10 +89,13 @@ class ProjectPanelCommandManager:
 
         dataset_id = item_data.get("id")
         dataset_obj: Dataset = item_data.get("data")
-        dataset_name = dataset_obj.name if dataset_obj else "Dataset"
-        chart_name = f"Chart from {dataset_name}"
 
-        command = CreateChartCommand(self.app_context, dataset_id, chart_name, dataset_obj.parent_id)
+        command = CreateChartFromWizardCommand(
+            self.app_context,
+            dataset_id=dataset_id,
+            preselected_column_ids=[],
+            parent_id=dataset_obj.parent_id,
+        )
         self.app_context.get_command_executor().execute_command(command)
 
     def rename_selected_item(self):

@@ -3,7 +3,7 @@ from typing import Optional, override
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
-from pandaplot.commands.project.chart import CreateChartCommand
+from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
@@ -522,9 +522,8 @@ class TabContainer(PWidget):
         target_pane.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab
 
-    def create_chart_from_dataset(self, dataset_id: str, chart_name: str):
-        """Create a new chart from a dataset and open it in a tab."""
-        # TODO: remove, needs update on dataset tab
+    def create_chart_from_dataset(self, dataset_id: str, chart_name: str, preselected_column_ids: Optional[list[str]] = None):
+        """Open the chart creation wizard for a dataset and open the resulting tab."""
         if not self.app_context:
             self.logger.warning("Cannot create chart: No app context provided")
             return
@@ -535,8 +534,6 @@ class TabContainer(PWidget):
             return
 
         project = app_state.current_project
-
-        # Verify dataset exists
         if project is None:
             self.logger.warning("Cannot create chart: No project loaded")
             return
@@ -545,7 +542,12 @@ class TabContainer(PWidget):
             self.logger.warning("Cannot create chart: Dataset %s not found", dataset_id)
             return
 
-        command = CreateChartCommand(self.app_context, dataset_id, chart_name, dataset_item.parent_id)
+        command = CreateChartFromWizardCommand(
+            self.app_context,
+            dataset_id=dataset_id,
+            preselected_column_ids=preselected_column_ids or [],
+            parent_id=dataset_item.parent_id,
+        )
         self.app_context.get_command_executor().execute_command(command)
 
         chart_id = command.created_chart_id
