@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import STAT_TESTS, InputMode, StatTestResult, StatTestType
 from pandaplot.commands.project.dataset.statistical_test_command import StatisticalTestCommand
+from pandaplot.gui.components.sidebar.statistics.test_info_dialog import TestInfoDialog
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
@@ -88,7 +89,17 @@ class StatisticsPanel(PWidget):
         for test_type, info in STAT_TESTS.items():
             self.test_type_combo.addItem(info.label, test_type)
         self.test_type_combo.currentIndexChanged.connect(self._on_test_type_changed)
-        form.addRow("Test:", self.test_type_combo)
+
+        # Combo + an info button that opens a learner-friendly explanation.
+        selector_row = QHBoxLayout()
+        selector_row.setContentsMargins(0, 0, 0, 0)
+        selector_row.addWidget(self.test_type_combo, 1)
+        self.info_btn = QPushButton("ℹ️")
+        self.info_btn.setFixedWidth(32)
+        self.info_btn.setToolTip("Learn about this test: explanation, formula and an example")
+        self.info_btn.clicked.connect(self._show_test_info)
+        selector_row.addWidget(self.info_btn)
+        form.addRow("Test:", selector_row)
         group_layout.addLayout(form)
 
         self.description_label = QLabel()
@@ -151,6 +162,14 @@ class StatisticsPanel(PWidget):
 
     def _current_test_type(self) -> StatTestType:
         return self.test_type_combo.currentData()
+
+    def _show_test_info(self):
+        """Open the educational dialog for the currently selected test."""
+        test_type = self._current_test_type()
+        if test_type is None:
+            return
+        dialog = TestInfoDialog(self.app_context, STAT_TESTS[test_type], parent=self)
+        dialog.exec()
 
     def _on_test_type_changed(self):
         test_type = self._current_test_type()
@@ -466,6 +485,16 @@ class StatisticsPanel(PWidget):
                 font-weight: bold;
             }
             QPushButton:hover { background-color: #2980b9; }
+        """)
+
+        self.info_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+            QPushButton:hover {{ background-color: {card_hover}; }}
         """)
 
         self.add_btn.setStyleSheet(f"""
