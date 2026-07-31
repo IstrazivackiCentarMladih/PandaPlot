@@ -7,7 +7,6 @@ from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
-from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
 from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
@@ -43,6 +42,8 @@ class CreateChartFromWizardCommand(Command):
 
     @override
     def execute(self) -> bool:
+        from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
+
         if not self.app_state.has_project or not self.app_state.current_project:
             self.ui_controller.show_error_message("Create Chart Error", "No project is currently loaded")
             return False

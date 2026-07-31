@@ -37,7 +37,7 @@ def _fake_wizard(chart_type="line", is_empty=False, series_configs=None):
     return wizard
 
 
-@patch("pandaplot.commands.project.chart.create_chart_from_wizard_command.ChartWizard")
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_cancelled_wizard_creates_nothing(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     wizard = Mock()
@@ -50,7 +50,7 @@ def test_cancelled_wizard_creates_nothing(mock_wizard_cls, app_context_with_proj
     project.add_item.assert_not_called()
 
 
-@patch("pandaplot.commands.project.chart.create_chart_from_wizard_command.ChartWizard")
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_empty_path_creates_a_line_chart_with_no_series(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
@@ -63,7 +63,7 @@ def test_empty_path_creates_a_line_chart_with_no_series(mock_wizard_cls, app_con
     assert created_chart.data_series == []
 
 
-@patch("pandaplot.commands.project.chart.create_chart_from_wizard_command.ChartWizard")
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     series_configs = [{
@@ -87,7 +87,7 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
     assert created_chart.data_series[0].y_column_id == "col-rev"
 
 
-@patch("pandaplot.commands.project.chart.create_chart_from_wizard_command.ChartWizard")
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_redo_readds_the_same_chart_instance(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
