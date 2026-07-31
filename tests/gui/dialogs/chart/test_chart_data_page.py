@@ -126,6 +126,23 @@ def test_on_done_callback_applies_picked_columns_to_the_originating_card():
     assert card.y_column_combo.currentData() == "col-rev"
 
 
+def test_pick_requested_on_second_card_applies_to_that_card_only():
+    page = _make_page()
+    page.add_series_button.click()
+    assert len(page.cards) == 2
+    for card in page.cards:
+        card.dataset_combo.setCurrentIndex(card.dataset_combo.findData("ds-1"))
+    page._picker.start = Mock()
+
+    page.cards[1].pickRequested.emit("y")
+
+    on_done = page._picker.start.call_args.kwargs["on_done"]
+    on_done(["col-rev"])
+
+    assert page.cards[1].y_column_combo.currentData() == "col-rev"
+    assert page.cards[0].y_column_combo.currentData() != "col-rev"
+
+
 def test_pick_requested_without_a_selected_dataset_does_not_start_the_picker():
     page = _make_page()
     page._picker.start = Mock()
