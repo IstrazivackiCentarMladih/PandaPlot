@@ -5,6 +5,7 @@ from pandaplot.gui.core.widget_extension import PWizard
 from pandaplot.gui.dialogs.chart.chart_data_page import ChartDataPage
 from pandaplot.gui.dialogs.chart.chart_type_page import ChartTypePage
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 class ChartWizard(PWizard):
@@ -47,7 +48,100 @@ class ChartWizard(PWizard):
         self.restart()
 
     def _apply_theme(self):
-        pass
+        # Qt stylesheets cascade to descendants by default, so setting this on
+        # the wizard itself themes both pages (ChartTypePage's type list,
+        # ChartDataPage's SeriesConfigCard combos/buttons/checkboxes) without
+        # needing per-page stylesheets.
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+
+        card_bg = palette.get("card_bg", "#f8f9fa")
+        card_border = palette.get("card_border", "#dee2e6")
+        base_fg = palette.get("base_fg", "#000000")
+        secondary_fg = palette.get("secondary_fg", "#555555")
+        accent = palette.get("accent", "#4A90E2")
+        # Inputs sit one shade off the surface so fields read as distinct wells.
+        input_bg = palette.get("card_hover", "#e9ecef")
+
+        self.setStyleSheet(f"""
+            QWizard, QDialog {{
+                background-color: {card_bg};
+                color: {base_fg};
+            }}
+            QWizardPage {{
+                background-color: {card_bg};
+                color: {base_fg};
+            }}
+            QLabel, QCheckBox {{
+                color: {base_fg};
+            }}
+            QCheckBox::indicator {{
+                width: 14px;
+                height: 14px;
+                border: 1px solid {card_border};
+                border-radius: 3px;
+                background-color: {input_bg};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {accent};
+                border-color: {accent};
+            }}
+            QLineEdit, QSpinBox, QComboBox {{
+                background-color: {input_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-height: 22px;
+                color: {base_fg};
+            }}
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
+                border-color: {accent};
+            }}
+            QLineEdit:hover, QSpinBox:hover, QComboBox:hover {{
+                border-color: {accent};
+            }}
+            QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {{
+                color: {secondary_fg};
+                background-color: {card_bg};
+                border-color: {card_border};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {input_bg};
+                color: {base_fg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                outline: none;
+                padding: 2px;
+                selection-background-color: {accent};
+                selection-color: white;
+            }}
+            QPushButton {{
+                background-color: {accent};
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 7px 18px;
+                font-weight: bold;
+            }}
+            QPushButton:disabled {{
+                background-color: {card_border};
+                color: {secondary_fg};
+            }}
+            QListWidget {{
+                background-color: {input_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                color: {base_fg};
+                outline: none;
+            }}
+            QListWidget::item {{
+                padding: 4px 6px;
+            }}
+            QListWidget::item:selected {{
+                background-color: {accent};
+                color: white;
+            }}
+        """)
 
     def _on_page_changed(self, page_id: int) -> None:
         if page_id == self._data_page_id:

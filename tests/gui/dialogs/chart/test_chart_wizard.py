@@ -5,6 +5,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QWizard
 
 from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -13,9 +14,30 @@ def qapp():
     yield app
 
 
+_FAKE_PALETTE = {
+    "card_bg": "#111111",
+    "card_hover": "#222222",
+    "card_pressed": "#333333",
+    "card_border": "#444444",
+    "base_fg": "#eeeeee",
+    "secondary_fg": "#aaaaaa",
+    "accent": "#ff00ff",
+}
+
+
 def _fake_app_context():
     app_context = Mock()
     app_context.event_bus = Mock()
+
+    theme_manager = Mock()
+    theme_manager.get_surface_palette.return_value = dict(_FAKE_PALETTE)
+
+    def _get_manager(manager_type, *args, **kwargs):
+        if manager_type is ThemeManager:
+            return theme_manager
+        return Mock()
+
+    app_context.get_manager.side_effect = _get_manager
     return app_context
 
 
@@ -82,3 +104,13 @@ def test_single_preselected_column_fills_y_only():
     configs = wizard.get_series_configs()
     assert configs[0]["x_column_id"] == ""
     assert configs[0]["y_column_id"] == "col-rev"
+
+
+def test_wizard_picks_up_the_application_theme():
+    wizard = _make_wizard()
+
+    stylesheet = wizard.styleSheet()
+
+    assert stylesheet.strip() != ""
+    assert _FAKE_PALETTE["accent"] in stylesheet
+    assert _FAKE_PALETTE["card_bg"] in stylesheet
