@@ -130,3 +130,44 @@ def test_switching_dataset_resets_column_selections():
         "col-cost",
         "col-clicks",
     ]
+
+
+def test_display_names_empty_when_nothing_selected():
+    card = _line_card()
+
+    assert card.get_display_names() == {}
+
+
+def test_display_names_includes_only_selected_roles():
+    card = _line_card()
+    card.y_column_combo.setCurrentIndex(card.y_column_combo.findData("col-rev"))
+
+    assert card.get_display_names() == {"y": "Revenue"}
+
+
+def test_display_names_uses_display_text_not_column_id():
+    card = _line_card()
+    card.x_column_combo.setCurrentIndex(card.x_column_combo.findData("col-date"))
+    card.y_column_combo.setCurrentIndex(card.y_column_combo.findData("col-rev"))
+
+    names = card.get_display_names()
+    assert names == {"x": "Date", "y": "Revenue"}
+    assert "col-date" not in names.values()
+    assert "col-rev" not in names.values()
+
+
+def test_display_names_for_histogram_uses_the_values_role():
+    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card.set_datasets([("ds-1", "Sales")])
+    card.set_dataset_columns("ds-1", [("col-rev", "Revenue")])
+    card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))
+
+    assert card.get_display_names() == {"values": "Revenue"}
+
+
+def test_display_names_never_includes_error_roles():
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+    card.y_error_column_combo.setCurrentIndex(card.y_error_column_combo.findData("col-rev"))
+
+    assert "y_error" not in card.get_display_names()

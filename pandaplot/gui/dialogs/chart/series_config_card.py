@@ -154,6 +154,21 @@ class SeriesConfigCard(QWidget):
             config["y_error_column_id"] = self._role_combos["y_error"].currentData() or ""
         return config
 
+    def get_display_names(self) -> dict[str, str]:
+        """Display names (not ids) for roles that currently have a selection.
+
+        Mirrors `get_series_config()`'s role handling but returns the combo's
+        current text instead of its id -- used only to seed human-readable
+        defaults (e.g. axis-label suggestions in the wizard's Labels step),
+        never as a source of truth for a persisted column reference.
+        """
+        names: dict[str, str] = {}
+        for role in self._role_spec.roles:
+            combo = self._role_combos[role]
+            if combo.currentData():
+                names[role] = combo.currentText()
+        return names
+
     def is_complete(self) -> bool:
         if not self.dataset_combo.currentData():
             return False
