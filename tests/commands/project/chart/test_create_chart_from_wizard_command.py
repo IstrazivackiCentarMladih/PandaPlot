@@ -5,6 +5,8 @@ The wizard is opened non-blocking (`show()` + `finished` signal), so
 These unit tests therefore drive that slot directly instead of relying on a
 return value from `dialog.exec()`.
 """
+import gc
+from types import MethodType
 from unittest.mock import Mock, patch
 
 import pytest
@@ -64,10 +66,86 @@ def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_
     assert command.execute() is True
     wizard.show.assert_called_once_with()
     wizard.exec.assert_not_called()
-    wizard.finished.connect.assert_called_once_with(command._on_wizard_finished)
+    wizard.finished.connect.assert_called_once()
     # `exec()` made the wizard application-modal implicitly; `show()` does not,
     # so the command must ask for it explicitly.
     wizard.setModal.assert_called_once_with(True)
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_finished_is_connected_to_a_closure_not_a_bound_method(mock_wizard_cls, app_context_with_project):
+    """The connection must keep the command alive while the wizard is open.
+
+    PySide gives bound-method connections weak-reference-like treatment for the
+    receiver, so `connect(self._on_wizard_finished)` does *not* keep the command
+    alive. Nothing else holds a lasting reference to it either -- the
+    CommandExecutor's undo stack drops entries past `max_undo_levels` (10) --
+    so with a bound method, 10 unrelated commands run while the wizard sits open
+    would collect the command and silently break Finish. A lambda closure holds
+    a real strong reference instead.
+    """
+    app_context, _ = app_context_with_project
+    wizard = _fake_wizard()
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+
+    callback = wizard.finished.connect.call_args[0][0]
+    assert not isinstance(callback, MethodType), (
+        "`finished` must not be connected to a bound method -- PySide would then "
+        "hold the command only weakly"
+    )
+    assert callback is not command._on_wizard_finished
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_the_connected_callback_still_works_after_the_command_is_dropped(
+        mock_wizard_cls, app_context_with_project):
+    """Maximum-fidelity version of the lifetime guard.
+
+    Drop every local reference to the command, force a full collection, then
+    fire the callable the command handed to `finished.connect`: it must still
+    create the chart, proving the connection itself keeps the command alive.
+    """
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    callback = wizard.finished.connect.call_args[0][0]
+
+    del command
+    gc.collect()
+
+    callback(QDialog.DialogCode.Accepted)
+
+    project.add_item.assert_called_once()
+    assert project.add_item.call_args[0][0].chart_type == "line"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_the_connected_callback_uses_its_own_wizard(mock_wizard_cls, app_context_with_project):
+    """A finishing wizard must build from *its* state, not `self._dialog`'s.
+
+    Belt-and-braces against any future path that replaces `self._dialog` while
+    an older wizard is still pending.
+    """
+    app_context, project = app_context_with_project
+    first = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = first
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    first_callback = first.finished.connect.call_args[0][0]
+
+    # Simulate `self._dialog` having been replaced by a newer wizard.
+    command._dialog = _fake_wizard(chart_type="scatter", is_empty=True)
+
+    first_callback(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args[0][0].chart_type == "line"
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -258,3 +336,59 @@ def test_redo_readds_the_same_chart_instance(mock_wizard_cls, app_context_with_p
     redo_chart = project.add_item.call_args[0][0]
     assert redo_chart is first_chart
     assert command.created_chart_id == first_id
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_redo_does_not_open_a_second_wizard_while_one_is_pending(
+        mock_wizard_cls, app_context_with_project):
+    """Undo-then-Redo with the wizard still open must not re-open it.
+
+    `created_chart is None` is the normal state while the wizard is open, so the
+    old `redo()` treated it as "execute failed, retry" and opened a *second*
+    wizard, overwriting `self._dialog` -- finishing the first, now-orphaned
+    wizard then built a chart from the second wizard's state.
+    """
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    assert command._dialog is wizard
+    assert command.created_chart is None
+
+    command.undo()  # no-op, nothing was created yet
+    command.redo()
+
+    assert mock_wizard_cls.call_count == 1
+    assert command._dialog is wizard
+    project.add_item.assert_not_called()
+
+    # The still-pending wizard remains fully functional afterwards.
+    wizard.finished.connect.call_args[0][0](QDialog.DialogCode.Accepted)
+    project.add_item.assert_called_once()
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_redo_retries_when_the_wizard_never_opened(mock_wizard_cls, app_context_with_project):
+    """The case the original `redo()` branch existed for still works.
+
+    `execute()` failed outright (no project), so no wizard was ever opened and
+    `redo()` must retry it.
+    """
+    app_context, _ = app_context_with_project
+    app_state = app_context.get_app_state.return_value
+    app_state.has_project = False
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is False
+    assert command._dialog is None
+    mock_wizard_cls.assert_not_called()
+
+    app_state.has_project = True
+    command.redo()
+
+    mock_wizard_cls.assert_called_once()
+    assert command._dialog is not None

@@ -84,10 +84,24 @@ class CreateChartFromWizardCommand(Command):
                 columns_provider=self._columns_provider(project),
             )
             # Keep a strong reference so the dialog isn't garbage-collected while
-            # open -- `self` stays alive for as long as the command sits on the
-            # CommandExecutor's undo stack, which outlives this call.
+            # open.
             self._dialog = dialog
-            dialog.finished.connect(self._on_wizard_finished)
+            # Connect a lambda closure, *not* the bound method
+            # `self._on_wizard_finished`: PySide gives bound-method connections
+            # weak-reference-like treatment for the receiver, so a bound method
+            # would not keep this command alive. The command is only referenced
+            # by CommandExecutor's undo stack, which drops entries past
+            # `max_undo_levels` -- 10 unrelated commands while the wizard sits
+            # open (the wizard deliberately unblocks the main window during a
+            # pick session) would collect the command and silently break Finish.
+            # The closure holds a genuine strong reference to `self` and to
+            # `dialog`, and the dialog owns the connection, so
+            # `self <-> dialog <-> closure` keeps everything alive for as long
+            # as the wizard is open. The dialog is also captured explicitly
+            # rather than re-read from `self._dialog` at emit time, so a stale
+            # or replaced `self._dialog` can never make the wrong wizard's state
+            # build the chart.
+            dialog.finished.connect(lambda result: self._on_wizard_finished(result, dialog))
             # `exec()` used to make the wizard application-modal implicitly;
             # `show()` does not, so set it explicitly to keep the project from
             # being edited underneath a half-configured wizard. This is also
@@ -105,7 +119,7 @@ class CreateChartFromWizardCommand(Command):
             self.ui_controller.show_error_message("Create Chart Error", error_msg)
             return False
 
-    def _on_wizard_finished(self, result: int) -> None:
+    def _on_wizard_finished(self, result: int, dialog: Optional[QDialog] = None) -> None:
         """Runs once the user actually finishes the wizard (Finish or Cancel).
 
         `execute()` returning True now only means "the wizard opened
@@ -114,9 +128,18 @@ class CreateChartFromWizardCommand(Command):
         emits `QDialog.DialogCode.Accepted`, so it simply never creates a chart
         (no error, matching the old blocking behaviour's early return on
         `Rejected`).
+
+        `dialog` is the wizard that actually emitted the signal, captured by the
+        connected closure in `execute()`; it is preferred over `self._dialog`,
+        which could in principle point at a different (newer) wizard.
         """
-        dialog = self._dialog
+        dialog = dialog if dialog is not None else self._dialog
         if dialog is None or result != QDialog.DialogCode.Accepted:
+            self._dialog = None
+            return
+        if self.created_chart is not None:
+            # A chart was already created for this command instance; guard
+            # against a stray double-fire of `finished` creating a duplicate.
             return
 
         try:
@@ -148,6 +171,10 @@ class CreateChartFromWizardCommand(Command):
             error_msg = f"Failed to create chart: {str(e)}"
             self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
             self.ui_controller.show_error_message("Create Chart Error", error_msg)
+        finally:
+            # Don't keep the finished wizard alive for the command's whole
+            # remaining lifetime on the undo stack.
+            self._dialog = None
 
     @override
     def undo(self):
@@ -168,7 +195,13 @@ class CreateChartFromWizardCommand(Command):
     @override
     def redo(self):
         if self.created_chart is None:
-            self.execute()
+            # `created_chart is None` is the normal state for as long as the
+            # wizard is still open, so only re-open it if a wizard was never
+            # successfully opened at all (i.e. `execute()` failed outright).
+            # Otherwise redo() is a no-op: there is nothing to redo until the
+            # user finishes the pending wizard.
+            if self._dialog is None:
+                self.execute()
             return
         if not self.app_state.has_project or not self.app_state.current_project:
             return
