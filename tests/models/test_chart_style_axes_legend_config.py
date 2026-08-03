@@ -4,6 +4,8 @@ Style/Axes/Legend sidebar tabs (per-axis grid, scale, font size,
 axis limits, tick configuration, legend styling, series alpha).
 """
 
+import math
+
 import pytest
 from matplotlib.figure import Figure
 from PySide6.QtWidgets import QApplication
@@ -542,6 +544,22 @@ def test_show_minor_grid_defaults_to_false_for_all_axes():
         assert axis.get_tick_params(which="minor")["gridOn"] is False
 
 
+def test_title_and_subtitle_font_family_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("title_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("subtitle_font_family", "DejaVu Sans") == "DejaVu Sans"
+
+
+def test_title_font_family_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["title_font_family"] = "Georgia"
+    chart.config["subtitle_font_family"] = "Verdana"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["title_font_family"] == "Georgia"
+    assert restored.config["subtitle_font_family"] == "Verdana"
+
+
 def test_show_minor_grid_round_trips_through_serialization():
     chart = Chart(name="Test Chart")
     chart.update_config({
@@ -554,3 +572,97 @@ def test_show_minor_grid_round_trips_through_serialization():
     assert restored.config["x_show_minor_grid"] is True
     assert restored.config["y_show_minor_grid"] is True
     assert restored.config["y2_show_minor_grid"] is False
+
+
+def test_log_base_defaults_to_ten_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_log_base", 10.0) == 10.0
+
+
+def test_log_base_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.update_config({
+        "x_log_base": 2.0,
+        "y_log_base": 2.0,
+        "y2_log_base": math.e,
+    })
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_log_base"] == 2.0
+    assert restored.config["y_log_base"] == 2.0
+    assert restored.config["y2_log_base"] == math.e
+
+
+def test_axis_title_style_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("x_title_bold", False) is False
+    assert chart.config.get("x_title_italic", False) is False
+
+
+def test_axis_title_style_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["y_font_family"] = "Georgia"
+    chart.config["y_title_bold"] = True
+    chart.config["y_title_italic"] = True
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["y_font_family"] == "Georgia"
+    assert restored.config["y_title_bold"] is True
+    assert restored.config["y_title_italic"] is True
+
+
+def test_tick_label_style_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("x_tick_label_font_size", 10) == 10
+    assert chart.config.get("x_tick_label_font_family", "DejaVu Sans") == "DejaVu Sans"
+    assert chart.config.get("x_tick_label_bold", False) is False
+    assert chart.config.get("x_tick_label_italic", False) is False
+
+
+def test_legend_custom_placement_fields_default_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("legend_custom_x", 1.02) == 1.02
+    assert chart.config.get("legend_custom_y", 0.5) == 0.5
+    assert chart.config.get("legend_custom_anchor", "center left") == "center left"
+
+
+def test_legend_custom_placement_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["legend_position"] = "custom"
+    chart.config["legend_custom_x"] = 0.25
+    chart.config["legend_custom_y"] = 0.75
+    chart.config["legend_custom_anchor"] = "upper left"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["legend_position"] == "custom"
+    assert restored.config["legend_custom_x"] == 0.25
+    assert restored.config["legend_custom_y"] == 0.75
+    assert restored.config["legend_custom_anchor"] == "upper left"
+
+
+def test_tick_label_style_fields_round_trip_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["y_tick_label_font_size"] = 14
+    chart.config["y_tick_label_font_family"] = "Georgia"
+    chart.config["y_tick_label_bold"] = True
+    chart.config["y_tick_label_italic"] = True
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["y_tick_label_font_size"] == 14
+    assert restored.config["y_tick_label_font_family"] == "Georgia"
+    assert restored.config["y_tick_label_bold"] is True
+    assert restored.config["y_tick_label_italic"] is True
+
+
+def test_legend_font_family_defaults_when_missing():
+    chart = Chart(name="Test Chart")
+    assert chart.config.get("legend_font_family", "DejaVu Sans") == "DejaVu Sans"
+
+
+def test_legend_font_family_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["legend_font_family"] = "Georgia"
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["legend_font_family"] == "Georgia"

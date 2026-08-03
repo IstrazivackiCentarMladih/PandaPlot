@@ -20,6 +20,7 @@ class CustomTabWidget(PTabWidget):
     split_requested = Signal(int)
     move_to_other_pane_requested = Signal(int)
     close_split_requested = Signal()
+    tab_popout_requested = Signal(int)
     bar_drop_requested = Signal(object, int, int)  # source_pane_id, source_index, drop_index
     edge_drop_requested = Signal(object, int)  # source_pane_id, source_index
 
@@ -48,6 +49,7 @@ class CustomTabWidget(PTabWidget):
         self.custom_tab_bar.split_requested.connect(self.split_requested.emit)
         self.custom_tab_bar.move_to_other_pane_requested.connect(self.move_to_other_pane_requested.emit)
         self.custom_tab_bar.close_split_requested.connect(self.close_split_requested.emit)
+        self.custom_tab_bar.tab_popout_requested.connect(self.tab_popout_requested.emit)
         self.custom_tab_bar.bar_drop_requested.connect(self.bar_drop_requested.emit)
 
     def set_split_capable(self, can_split: bool):

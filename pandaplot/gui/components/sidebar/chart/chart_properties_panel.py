@@ -84,7 +84,7 @@ class ChartPropertiesPanel(PWidget):
         # widget after Style, below) because building the Data tab's series
         # cards calls `_rebuild_series_cards`, which calls
         # `self.axes_tab.refresh_axis_chips` to sync the Y2 chip.
-        self.axes_tab = AxesTab(self)
+        self.axes_tab = AxesTab(self.app_context, self)
         self.axes_tab.configChanged.connect(self._on_any_tab_config_changed)
 
         # Data tab: series list + per-series dataset/X/Y/label configuration
@@ -95,7 +95,7 @@ class ChartPropertiesPanel(PWidget):
         self.data_tab.seriesListChanged.connect(
             lambda ds, fd: self.style_tab.set_series_list(ds, fd, self.data_tab.selected_index)
         )
-        self.data_tab.axesRefreshRequested.connect(lambda: self.axes_tab.refresh_axis_chips(self.current_chart))
+        self.data_tab.axesRefreshRequested.connect(self._on_axes_refresh_requested)
         self.style_tab.seriesChipSelected.connect(self.data_tab._expand_series)
         self.tab_widget.addTab(self._wrap_in_scroll_area(self.data_tab), "Data")
 
@@ -330,6 +330,13 @@ class ChartPropertiesPanel(PWidget):
         if update_type in ["fit_added", "series_added", "series_removed"]:
             self.data_tab._rebuild_series_cards()
             self.logger.debug("Chart properties panel refreshed for update: %s", update_type)
+
+    def _on_axes_refresh_requested(self):
+        """Sync both the Axes tab's chip row and the Style tab's axis-style
+        selector with whether any series currently uses the secondary Y
+        axis (see AxesTab.refresh_axis_chips / StyleTab.refresh_axis_style_selector)."""
+        self.axes_tab.refresh_axis_chips(self.current_chart)
+        self.style_tab.refresh_axis_style_selector(self.current_chart)
 
     def _on_any_tab_config_changed(self):
         if not self.current_chart:

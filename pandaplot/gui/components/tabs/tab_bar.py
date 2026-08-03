@@ -17,13 +17,19 @@ class TabHeaderContextMenu(QMenu):
         split_requested: SignalInstance,
         move_to_other_pane_requested: SignalInstance,
         close_split_requested: SignalInstance,
+        tab_popout_requested: SignalInstance,
     ):
         super().__init__(parent)
         self.tab_close_requested = tab_close_requested
+        self.tab_popout_requested = tab_popout_requested
         self.tab_count = tab_count
         self.tab_index = tab_index
 
         self.setup_ui()
+
+        popout_action = QAction("Open in New Window", self)
+        popout_action.triggered.connect(lambda: self.tab_popout_requested.emit(self.tab_index))
+        self.addAction(popout_action)
 
         if can_split:
             split_action = QAction("Split Right", self)
@@ -74,6 +80,7 @@ class CustomTabBar(QTabBar):
     split_requested = Signal(int)
     move_to_other_pane_requested = Signal(int)
     close_split_requested = Signal()
+    tab_popout_requested = Signal(int)
     bar_drop_requested = Signal(object, int, int)  # source_pane_id, source_index, drop_index
 
     def __init__(self, parent: QWidget):
@@ -111,6 +118,7 @@ class CustomTabBar(QTabBar):
                 self.split_requested,
                 self.move_to_other_pane_requested,
                 self.close_split_requested,
+                self.tab_popout_requested,
             )
             menu.exec(self.mapToGlobal(position))
 

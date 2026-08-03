@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Optional, override
 
+import numpy as np
 from matplotlib.ticker import (
     AutoLocator,
     AutoMinorLocator,
@@ -55,6 +56,8 @@ def apply_chart_title(
     subtitle_italic: bool = False,
     title_color: str = "#000000",
     subtitle_color: str = "#000000",
+    title_font_family: str = "DejaVu Sans",
+    subtitle_font_family: str = "DejaVu Sans",
 ) -> None:
     """Render the title (figure-level) and subtitle (axes-level) as two
     independent Matplotlib Text artists so each can have its own font size
@@ -89,6 +92,7 @@ def apply_chart_title(
             fontweight="bold" if title_bold else "normal",
             fontstyle="italic" if title_italic else "normal",
             color=title_color,
+            fontfamily=title_font_family,
         )
     elif fig._suptitle is not None:
         fig._suptitle.set_text("")
@@ -98,6 +102,7 @@ def apply_chart_title(
         fontweight="bold" if subtitle_bold else "normal",
         fontstyle="italic" if subtitle_italic else "normal",
         color=subtitle_color,
+        fontfamily=subtitle_font_family,
     )
 
 
@@ -171,6 +176,21 @@ def apply_axis_ticks(
     )
 
 
+def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False):
+    """Set font size/family/weight/style on every major and minor tick-value
+    label of a matplotlib Axis. `Axis.set_tick_params` (used by
+    `apply_axis_ticks` for color/direction) has no font-family/weight/style
+    knobs of its own, so those three must be set directly on each tick
+    label's Text artist instead."""
+    fontweight = "bold" if bold else "normal"
+    fontstyle = "italic" if italic else "normal"
+    for label in axis.get_ticklabels() + axis.get_ticklabels(minor=True):
+        label.set_fontsize(font_size)
+        label.set_fontfamily(font_family)
+        label.set_fontweight(fontweight)
+        label.set_fontstyle(fontstyle)
+
+
 def resolve_axis_color(prefix, own_color, match_enabled, x_color):
     """Resolve the effective color for a Y/Y2 axis element (label, tick
     marks, tick values, or spine): X's color when this axis is matching X
@@ -184,6 +204,25 @@ def resolve_axis_color(prefix, own_color, match_enabled, x_color):
     make that obvious at a glance.
     """
     return x_color if match_enabled else own_color
+
+
+def resolve_scale_kwargs(scale: str, log_base: float) -> dict:
+    """Build the extra kwargs for Axes.set_xscale/set_yscale: a log axis
+    needs an explicit `base` (matplotlib requires base > 0 and base != 1,
+    which also covers custom bases between 0 and 1); a linear axis's scale
+    class doesn't accept a `base` kwarg at all, so it must be omitted
+    entirely rather than passed as None/default.
+
+    Validated defensively here (not just in the GUI's write path) because
+    `log_base` may come from a hand-edited or corrupted project file: an
+    invalid value (<= 0 or exactly 1.0) would otherwise reach
+    Axes.set_xscale/set_yscale unfiltered and raise an unhandled
+    ValueError, crashing rendering. Falls back to base 10 instead."""
+    if scale != "log":
+        return {}
+    if log_base <= 0 or log_base == 1.0:
+        log_base = 10.0
+    return {"base": log_base}
 
 
 def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
@@ -205,6 +244,61 @@ def apply_spine_colors(axes, axes2, x_color, y_color, y2_color):
         axes2.spines["top"].set_color(x_color)
         axes2.spines["left"].set_color(y_color)
         axes2.spines["right"].set_color(y2_color)
+
+
+_OUTSIDE_LEGEND_PLACEMENTS = {
+    "outside_right": ("center left", (1.02, 0.5)),
+    "outside_top": ("lower center", (0.5, 1.02)),
+    "outside_bottom": ("upper center", (0.5, -0.08)),
+}
+
+
+def resolve_legend_placement(position: str, custom_x: float, custom_y: float, custom_anchor: str) -> dict:
+    """Map a `legend_position` config value to matplotlib Legend kwargs.
+    Existing inside positions (matplotlib `loc` strings, e.g. "upper
+    right") pass through as `loc` only, unchanged. The three outside
+    presets use a fixed `loc`/`bbox_to_anchor` pair. "custom" uses the
+    user-supplied anchor corner and x/y (both 0-1, relative to the axes)."""
+    if position in _OUTSIDE_LEGEND_PLACEMENTS:
+        loc, bbox_to_anchor = _OUTSIDE_LEGEND_PLACEMENTS[position]
+        return {"loc": loc, "bbox_to_anchor": bbox_to_anchor}
+    if position == "custom":
+        return {"loc": custom_anchor, "bbox_to_anchor": (custom_x, custom_y)}
+    return {"loc": position}
+
+
+def build_legend(
+    axes, handles, labels,
+    font_family: str, font_size,
+    bg_color: str, show_frame: bool, columns: int, bg_alpha: float,
+    placement_kwargs: dict,
+):
+    """Add a legend to `axes`, merging `font_size` into `prop` alongside
+    `font_family`. Matplotlib silently ignores a `fontsize=` kwarg whenever
+    `prop=` is also passed -- the legend text falls back to
+    rcParams["legend.fontsize"] regardless of what's configured, unless the
+    size is merged into `prop` itself, as done here."""
+    return axes.legend(
+        handles, labels,
+        facecolor=bg_color,
+        frameon=show_frame,
+        ncol=columns,
+        framealpha=bg_alpha,
+        prop={"family": font_family, "size": font_size},
+        **placement_kwargs,
+    )
+
+
+def apply_layout_with_legend(fig, tight_layout_kwargs: dict, legend_placed_outside: bool) -> None:
+    """Run Figure.tight_layout(), re-running it once more when the legend was
+    placed outside the axes (`bbox_to_anchor` set -- Outside Right/Top/Bottom
+    or Custom, see resolve_legend_placement). The first tight_layout() pass
+    runs before Matplotlib can account for an out-of-axes legend's extent,
+    so without the second pass such a legend gets clipped by the figure
+    boundary."""
+    fig.tight_layout(**tight_layout_kwargs)
+    if legend_placed_outside:
+        fig.tight_layout(**tight_layout_kwargs)
 
 
 def _resolve_error_column(df, column_name):
@@ -274,6 +368,45 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
     return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+
+
+def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
+    """Compute (min, max) across every series plotted against the given
+    axis (`prefix` in "x", "y", "y2"). All series contribute to "x"
+    regardless of which y-axis they use; "y"/"y2" are filtered by
+    `series.y_axis`. Returns None if no series have resolvable data for
+    this axis (no series yet, or every reference is broken) -- callers
+    fall back to a fixed default range in that case.
+
+    `positive_only` should be True when the axis is Log-scaled: matplotlib's
+    own autoscale ignores non-positive data points when computing log-scale
+    view limits (a <= 0 limit is invalid on a log axis and gets silently
+    rejected), so we match that behavior here rather than letting zero/
+    negative values leak into the Range card or into set_xlim/set_ylim."""
+    from pandaplot.models.project.items.chart import YAxis
+
+    ranges: list[tuple[float, float]] = []
+    for series in data_series:
+        if prefix in ("y", "y2"):
+            wants_secondary = prefix == "y2"
+            if (series.y_axis == YAxis.SECONDARY) != wants_secondary:
+                continue
+        data = resolve_series_data(project, series)
+        if data.error:
+            continue
+        arr = data.x_data if prefix == "x" else data.y_data
+        if arr is None:
+            continue
+        values = np.asarray(arr, dtype=float)
+        values = values[np.isfinite(values)]
+        if positive_only:
+            values = values[values > 0]
+        if values.size:
+            ranges.append((float(values.min()), float(values.max())))
+
+    if not ranges:
+        return None
+    return (min(r[0] for r in ranges), max(r[1] for r in ranges))
 
 
 class ChartEditorWidget(PWidget):
@@ -745,6 +878,8 @@ class ChartEditorWidget(PWidget):
                     if config.get("subtitle_match_title_color", True)
                     else config.get("subtitle_color", "#000000")
                 ),
+                title_font_family=config.get("title_font_family", "DejaVu Sans"),
+                subtitle_font_family=config.get("subtitle_font_family", "DejaVu Sans"),
             )
 
             chart_padding = config.get("chart_padding", 2.0)
@@ -763,10 +898,22 @@ class ChartEditorWidget(PWidget):
             y_match_label = config.get("y_match_x_label_color", True)
             y_label_color = resolve_axis_color(
                 "y", config.get("y_label_color", "#000000"), y_match_label, x_label_color)
-            self.chart_canvas.axes.set_xlabel(config.get("x_label", ""), color=x_label_color)
-            self.chart_canvas.axes.set_ylabel(config.get("y_label", ""), color=y_label_color)
-            self.chart_canvas.axes.set_xscale(config.get("x_scale", "linear"))
-            self.chart_canvas.axes.set_yscale(config.get("y_scale", "linear"))
+            self.chart_canvas.axes.set_xlabel(
+                config.get("x_label", ""), color=x_label_color,
+                fontfamily=config.get("x_font_family", "DejaVu Sans"),
+                fontweight="bold" if config.get("x_title_bold", False) else "normal",
+                fontstyle="italic" if config.get("x_title_italic", False) else "normal",
+            )
+            self.chart_canvas.axes.set_ylabel(
+                config.get("y_label", ""), color=y_label_color,
+                fontfamily=config.get("y_font_family", "DejaVu Sans"),
+                fontweight="bold" if config.get("y_title_bold", False) else "normal",
+                fontstyle="italic" if config.get("y_title_italic", False) else "normal",
+            )
+            x_scale = config.get("x_scale", "linear")
+            y_scale = config.get("y_scale", "linear")
+            self.chart_canvas.axes.set_xscale(x_scale, **resolve_scale_kwargs(x_scale, config.get("x_log_base", 10.0)))
+            self.chart_canvas.axes.set_yscale(y_scale, **resolve_scale_kwargs(y_scale, config.get("y_log_base", 10.0)))
             self.chart_canvas.axes.xaxis.label.set_size(config.get("x_font_size", 12))
             self.chart_canvas.axes.yaxis.label.set_size(config.get("y_font_size", 12))
             if config.get("y_side", "left") == "right":
@@ -780,8 +927,15 @@ class ChartEditorWidget(PWidget):
                 y2_match_label = config.get("y2_match_x_label_color", True)
                 y2_label_color = resolve_axis_color(
                     "y2", config.get("y2_label_color", "#000000"), y2_match_label, x_label_color)
-                self.chart_canvas.axes2.set_ylabel(config.get("y2_label", ""), color=y2_label_color)
-                self.chart_canvas.axes2.set_yscale(config.get("y2_scale", "linear"))
+                self.chart_canvas.axes2.set_ylabel(
+                    config.get("y2_label", ""), color=y2_label_color,
+                    fontfamily=config.get("y2_font_family", "DejaVu Sans"),
+                    fontweight="bold" if config.get("y2_title_bold", False) else "normal",
+                    fontstyle="italic" if config.get("y2_title_italic", False) else "normal",
+                )
+                y2_scale = config.get("y2_scale", "linear")
+                self.chart_canvas.axes2.set_yscale(
+                    y2_scale, **resolve_scale_kwargs(y2_scale, config.get("y2_log_base", 10.0)))
                 self.chart_canvas.axes2.yaxis.label.set_size(config.get("y2_font_size", 12))
                 if config.get("y2_side", "right") == "left":
                     self.chart_canvas.axes2.yaxis.tick_left()
@@ -815,6 +969,14 @@ class ChartEditorWidget(PWidget):
                         config.get("y2_match_x_colors", True),
                         config.get("x_tick_label_color", "#000000")))
 
+                apply_tick_label_font(
+                    self.chart_canvas.axes2.yaxis,
+                    config.get("y2_tick_label_font_size", 10),
+                    config.get("y2_tick_label_font_family", "DejaVu Sans"),
+                    bold=config.get("y2_tick_label_bold", False),
+                    italic=config.get("y2_tick_label_italic", False),
+                )
+
                 if config.get("show_grid_y2", True):
                     self.chart_canvas.axes2.grid(True, axis="y", alpha=config.get("grid_alpha", 0.3))
                 else:
@@ -841,6 +1003,13 @@ class ChartEditorWidget(PWidget):
                 major_color=config.get("x_major_tick_color", "#000000"),
                 minor_color=config.get("x_minor_tick_color", "#000000"),
                 labelcolor=config.get("x_tick_label_color", "#000000"))
+            apply_tick_label_font(
+                self.chart_canvas.axes.xaxis,
+                config.get("x_tick_label_font_size", 10),
+                config.get("x_tick_label_font_family", "DejaVu Sans"),
+                bold=config.get("x_tick_label_bold", False),
+                italic=config.get("x_tick_label_italic", False),
+            )
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
                 config.get("y_tick_mode", "auto"), config.get("y_tick_count", 5),
@@ -861,6 +1030,13 @@ class ChartEditorWidget(PWidget):
                     "y", config.get("y_tick_label_color", "#000000"),
                     config.get("y_match_x_colors", True),
                     config.get("x_tick_label_color", "#000000")))
+            apply_tick_label_font(
+                self.chart_canvas.axes.yaxis,
+                config.get("y_tick_label_font_size", 10),
+                config.get("y_tick_label_font_family", "DejaVu Sans"),
+                bold=config.get("y_tick_label_bold", False),
+                italic=config.get("y_tick_label_italic", False),
+            )
 
             apply_spine_colors(
                 self.chart_canvas.axes, self.chart_canvas.axes2,
@@ -901,29 +1077,38 @@ class ChartEditorWidget(PWidget):
                     handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
                     handles += handles2
                     labels += labels2
-                self.chart_canvas.axes.legend(
-                    handles, labels,
-                    loc=config.get("legend_position", "upper right"),
-                    fontsize=config.get("legend_font_size", 10),
-                    facecolor=config.get("legend_bg_color", "#ffffff"),
-                    frameon=config.get("legend_show_frame", True),
-                    ncol=config.get("legend_columns", 1),
-                    framealpha=config.get("legend_bg_alpha", 1.0))
-
-            if self.chart_canvas.axes2 is not None:
-                # Reserve room for the secondary axis label/ticks so they
-                # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout(
-                    pad=config.get("chart_padding", 2.0),
-                    w_pad=config.get("chart_padding_w", 2.0),
-                    h_pad=config.get("chart_padding_h", 2.0),
-                    rect=(0, 0, 1, config.get("top_margin", 1.0)),
+                placement_kwargs = resolve_legend_placement(
+                    config.get("legend_position", "upper right"),
+                    config.get("legend_custom_x", 1.02),
+                    config.get("legend_custom_y", 0.5),
+                    config.get("legend_custom_anchor", "center left"),
                 )
+                legend = build_legend(
+                    self.chart_canvas.axes, handles, labels,
+                    config.get("legend_font_family", "DejaVu Sans"),
+                    config.get("legend_font_size", 10),
+                    config.get("legend_bg_color", "#ffffff"),
+                    config.get("legend_show_frame", True),
+                    config.get("legend_columns", 1),
+                    config.get("legend_bg_alpha", 1.0),
+                    placement_kwargs,
+                )
+            else:
+                legend = None
+                placement_kwargs = {}
 
-            if self.chart_canvas.axes2 is not None:
-                # Reserve room for the secondary axis label/ticks so they
-                # aren't clipped at the right edge of the figure.
-                self.chart_canvas.fig.tight_layout()
+            tight_layout_kwargs = dict(
+                pad=config.get("chart_padding", 2.0),
+                w_pad=config.get("chart_padding_w", 2.0),
+                h_pad=config.get("chart_padding_h", 2.0),
+                rect=(0, 0, 1, config.get("top_margin", 1.0)),
+            )
+            # Reserve room for the secondary axis label/ticks so they aren't
+            # clipped at the right edge of the figure.
+            apply_layout_with_legend(
+                self.chart_canvas.fig, tight_layout_kwargs,
+                legend is not None and placement_kwargs.get("bbox_to_anchor") is not None,
+            )
 
             # Store original limits for zoom reset functionality
             self.chart_canvas.store_original_limits()
