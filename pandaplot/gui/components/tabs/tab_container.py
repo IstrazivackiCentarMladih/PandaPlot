@@ -523,7 +523,12 @@ class TabContainer(PWidget):
         return welcome_tab
 
     def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):
-        """Open the chart creation wizard for a dataset and open the resulting tab."""
+        """Open the chart creation wizard for a dataset.
+
+        The wizard is non-blocking, so no chart exists when this returns. The
+        resulting chart's tab is opened by this container's
+        `ChartEvents.CHART_CREATED` subscription once the user finishes.
+        """
         if not self.app_context:
             self.logger.warning("Cannot create chart: No app context provided")
             return
@@ -549,12 +554,6 @@ class TabContainer(PWidget):
             parent_id=dataset_item.parent_id,
         )
         self.app_context.get_command_executor().execute_command(command)
-
-        chart_id = command.created_chart_id
-
-        if chart_id:
-            # TODO: this should be handled on tab container level by listening on new item creation
-            return self.open_tab(chart_id)
 
     def on_project_closed(self):
         """Called when a project is closed - close all project-related tabs and show welcome tab if no tabs are open."""

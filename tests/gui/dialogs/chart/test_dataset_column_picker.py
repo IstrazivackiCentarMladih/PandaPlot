@@ -15,6 +15,19 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def no_leaked_modal_windows(qapp):
+    """Hide every top-level widget after each test.
+
+    Several tests leave a visible application-modal `QDialog` behind, which
+    stays registered in `QApplication.modalWindow()` and would otherwise make
+    the modal-registration assertions below see a stale blocker.
+    """
+    yield
+    for widget in QApplication.topLevelWidgets():
+        widget.hide()
+
+
 _COLUMN_IDS = {"Date": "col-date", "Revenue": "col-rev"}
 
 
@@ -172,109 +185,164 @@ def test_unresolved_column_id_is_excluded():
     assert received == [["col-rev"]]
 
 
-# --- Regression guards for the "picking silently cancels the wizard" bug -----
+# --- Regression guards for "the main window never actually unblocks" --------
 #
-# `QWizard` is a `QDialog`; `QDialog.setVisible(False)` exits the modal event
-# loop `dialog.exec()` is blocked in inside CreateChartFromWizardCommand. If the
-# picker hides the wizard, `exec()` returns Rejected and the whole wizard result
-# is silently discarded. The picker must therefore only resize/reposition it.
+# Qt only updates a window's modal-blocking registration on show()/hide();
+# `setWindowModality()` on an already-visible window is a documented no-op
+# until the next hide/show cycle. So the picker MUST hide -> change modality ->
+# show the wizard, otherwise the main window stays input-blocked and dataset
+# column-header clicks are swallowed. This is safe because
+# `CreateChartFromWizardCommand` opens the wizard with `show()` and reacts to
+# its `finished` signal -- there is no blocking `exec()` loop to tear down.
 
-def test_start_never_hides_the_visible_wizard():
+def _record_visibility(widget) -> list[bool]:
+    """Record every setVisible() call on `widget`, still applying it for real."""
+    calls: list[bool] = []
+    original_set_visible = widget.setVisible
+
+    def _recording_set_visible(visible):
+        calls.append(visible)
+        original_set_visible(visible)
+
+    widget.setVisible = _recording_set_visible
+    return calls
+
+
+def test_start_performs_a_real_hide_then_show_cycle_on_the_wizard():
     dataset_tab = _fake_dataset_tab(selected_columns=[])
     app_context, _ = _fake_app_context(dataset_tab)
     picker = DatasetColumnPicker(app_context)
 
     wizard = QDialog()
-    wizard.show()  # show(), not exec() -- tests cannot block on a modal loop
+    wizard.setWindowModality(Qt.WindowModality.ApplicationModal)
+    wizard.show()
     assert wizard.isVisible()
 
-    visibility_during_start = []
-    original_set_visible = wizard.setVisible
-
-    def _recording_set_visible(visible):
-        visibility_during_start.append(visible)
-        original_set_visible(visible)
-
-    wizard.setVisible = _recording_set_visible
+    visibility_calls = _record_visibility(wizard)
 
     picker.start(wizard, "ds-1", "Y column", on_done=lambda ids: None)
 
-    assert False not in visibility_during_start, (
-        "picker.start() hid the wizard -- this exits QDialog.exec()'s modal loop "
-        "and silently cancels chart creation"
+    assert visibility_calls == [False, True], (
+        "start() must hide then re-show the wizard -- Qt ignores a modality "
+        "change made while the window is visible, leaving the main window "
+        "blocked so dataset column clicks do nothing"
     )
+    assert wizard.windowModality() == Qt.WindowModality.NonModal
     assert wizard.isVisible()
 
 
-def test_finish_never_hides_the_wizard_and_restores_its_geometry():
+def test_start_changes_modality_between_the_hide_and_the_show():
+    """Ordering matters: the modality change must land while hidden."""
+    dataset_tab = _fake_dataset_tab(selected_columns=[])
+    app_context, _ = _fake_app_context(dataset_tab)
+    picker = DatasetColumnPicker(app_context)
+
+    wizard = QDialog()
+    wizard.setWindowModality(Qt.WindowModality.ApplicationModal)
+    wizard.show()
+
+    events: list[str] = []
+    original_set_visible = wizard.setVisible
+    original_set_modality = wizard.setWindowModality
+
+    def _recording_set_visible(visible):
+        events.append("show" if visible else "hide")
+        original_set_visible(visible)
+
+    def _recording_set_modality(modality):
+        events.append(f"modality:{modality.name}")
+        original_set_modality(modality)
+
+    wizard.setVisible = _recording_set_visible
+    wizard.setWindowModality = _recording_set_modality
+
+    picker.start(wizard, "ds-1", "Y column", on_done=lambda ids: None)
+
+    assert events == ["hide", "modality:NonModal", "show"]
+
+
+def test_finish_restores_modality_with_a_hide_show_cycle_and_the_geometry():
     dataset_tab = _fake_dataset_tab(selected_columns=[1])
     app_context, _ = _fake_app_context(dataset_tab)
     picker = DatasetColumnPicker(app_context)
 
     wizard = QDialog()
+    wizard.setWindowModality(Qt.WindowModality.ApplicationModal)
     wizard.setGeometry(30, 40, 640, 480)
     wizard.show()
     original_geometry = wizard.geometry()
 
-    hide_calls = []
-    original_set_visible = wizard.setVisible
-    wizard.setVisible = lambda visible: (hide_calls.append(visible), original_set_visible(visible))[1]
-
     picker.start(wizard, "ds-1", "Y column", on_done=lambda ids: None)
-    # Shrunk in place, as the design spec asks -- but still visible.
+    # Shrunk to a small floating bar for the pick session, and still visible.
     assert wizard.isVisible()
     assert wizard.size().width() < original_geometry.width()
 
+    visibility_calls = _record_visibility(wizard)
+
     picker._finish()
 
-    assert False not in hide_calls
+    assert visibility_calls == [False, True], (
+        "_finish() must hide then re-show the wizard so Qt re-registers it as "
+        "application-modal; otherwise it stays blocking-but-nonmodal forever"
+    )
+    assert wizard.windowModality() == Qt.WindowModality.ApplicationModal
     assert wizard.isVisible()
     assert wizard.geometry() == original_geometry
 
 
-def test_wizard_exec_would_not_return_early_during_a_pick_session():
-    """Integration-style guard: drive a real exec() loop across a pick session.
+def test_the_main_window_is_really_unblocked_and_reblocked_by_a_pick_session():
+    """The strongest form of the guard: ask Qt itself, not just the property.
 
-    `exec()` is entered, the pick session is started and finished from inside
-    that loop, and only an explicit `accept()` is allowed to end it. If any
-    part of the picker path hid the dialog, `exec()` would return Rejected
-    before `accept()` ever ran.
-
-    faulthandler is muted around the nested loop: on Windows, running a modal
-    loop under pytest raises a benign COM condition
-    (0x8001010d / RPC_E_CANTCALLOUT_ININPUTSYNCCALL) that faulthandler dumps as
-    a scary — but harmless and non-failing — traceback.
+    `QApplication.modalWindow()` is Qt's own view of what is blocking input.
+    Pre-fix it stayed pointed at the wizard for the whole pick session (because
+    `setWindowModality()` on a visible window is a no-op), which is exactly why
+    clicking dataset column headers did nothing.
     """
-    import faulthandler
-
-    from PySide6.QtCore import QTimer
-
     dataset_tab = _fake_dataset_tab(selected_columns=[1])
     app_context, _ = _fake_app_context(dataset_tab)
     picker = DatasetColumnPicker(app_context)
 
     wizard = QDialog()
+    wizard.setModal(True)
+    wizard.show()
+    assert QApplication.modalWindow() is wizard.windowHandle()
+
+    picker.start(wizard, "ds-1", "Y column", on_done=lambda ids: None)
+    assert QApplication.modalWindow() is None, (
+        "the main window is still input-blocked during the pick session"
+    )
+
+    picker._finish()
+    assert QApplication.modalWindow() is wizard.windowHandle(), (
+        "the wizard was not re-registered as the modal window after picking"
+    )
+
+    wizard.hide()  # don't leak a modal window into sibling tests
+
+
+def test_a_full_pick_session_leaves_the_wizard_visible_and_modal_again():
+    """End-to-end invariant: no residual blocking-but-nonmodal state.
+
+    The pre-fix failure mode was a wizard left registered as blocking while
+    non-modal, freezing all application input until restart. After a complete
+    start -> finish round trip the wizard must be back exactly as it was.
+    """
+    dataset_tab = _fake_dataset_tab(selected_columns=[1])
+    app_context, _ = _fake_app_context(dataset_tab)
+    picker = DatasetColumnPicker(app_context)
+
+    wizard = QDialog()
+    wizard.setWindowModality(Qt.WindowModality.ApplicationModal)
+    wizard.setGeometry(30, 40, 640, 480)
+    wizard.show()
     received = []
-    accepted = []
 
-    def _run_pick_session():
-        picker.start(wizard, "ds-1", "Y column", on_done=received.append)
-        QTimer.singleShot(0, _accept)
+    picker.start(wizard, "ds-1", "Y column", on_done=received.append)
+    assert wizard.windowModality() == Qt.WindowModality.NonModal
 
-    def _accept():
-        picker._finish()
-        accepted.append(True)
-        wizard.accept()
+    picker._finish()
 
-    QTimer.singleShot(0, _run_pick_session)
-    faulthandler_was_enabled = faulthandler.is_enabled()
-    faulthandler.disable()
-    try:
-        result = wizard.exec()
-    finally:
-        if faulthandler_was_enabled:
-            faulthandler.enable()
-
-    assert accepted == [True], "exec() returned before accept() -- the pick path cancelled the wizard"
-    assert result == QDialog.DialogCode.Accepted
     assert received == [["col-rev"]]
+    assert wizard.windowModality() == Qt.WindowModality.ApplicationModal
+    assert wizard.isVisible()
+    assert not picker.isVisible()

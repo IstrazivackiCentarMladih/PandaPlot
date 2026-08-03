@@ -1,4 +1,10 @@
-"""Tests for CreateChartFromWizardCommand."""
+"""Tests for CreateChartFromWizardCommand.
+
+The wizard is opened non-blocking (`show()` + `finished` signal), so
+`execute()` only opens it; the chart is built later in `_on_wizard_finished`.
+These unit tests therefore drive that slot directly instead of relying on a
+return value from `dialog.exec()`.
+"""
 from unittest.mock import Mock, patch
 
 import pytest
@@ -32,8 +38,9 @@ def app_context_with_project():
 
 
 def _fake_wizard(chart_type="line", is_empty=False, series_configs=None):
+    """A stand-in for `ChartWizard` with a mockable `finished` signal."""
     wizard = Mock()
-    wizard.exec.return_value = QDialog.DialogCode.Accepted
+    wizard.finished = Mock()
     wizard.get_chart_type.return_value = chart_type
     wizard.is_empty.return_value = is_empty
     wizard.get_series_configs.return_value = series_configs or []
@@ -41,16 +48,67 @@ def _fake_wizard(chart_type="line", is_empty=False, series_configs=None):
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
-def test_cancelled_wizard_creates_nothing(mock_wizard_cls, app_context_with_project):
-    app_context, project = app_context_with_project
-    wizard = Mock()
-    wizard.exec.return_value = QDialog.DialogCode.Rejected
+def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_with_project):
+    """`execute()` must `show()` the wizard, never `exec()` it.
+
+    A blocking `exec()` loop is what made the pick-from-dataset modality
+    handoff impossible (the wizard can't be hidden/re-shown without killing
+    the loop), so this is a regression guard on the core fix.
+    """
+    app_context, _ = app_context_with_project
+    wizard = _fake_wizard()
     mock_wizard_cls.return_value = wizard
 
     command = CreateChartFromWizardCommand(app_context)
 
-    assert command.execute() is False
+    assert command.execute() is True
+    wizard.show.assert_called_once_with()
+    wizard.exec.assert_not_called()
+    wizard.finished.connect.assert_called_once_with(command._on_wizard_finished)
+    # `exec()` made the wizard application-modal implicitly; `show()` does not,
+    # so the command must ask for it explicitly.
+    wizard.setModal.assert_called_once_with(True)
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_execute_succeeds_before_the_wizard_has_finished(mock_wizard_cls, app_context_with_project):
+    """Opening the wizard is itself success, whatever the user does next."""
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
     project.add_item.assert_not_called()
+    assert command.created_chart_id is None
+    assert command.created_chart is None
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project):
+    app_context, _ = app_context_with_project
+    app_context.get_app_state.return_value.has_project = False
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is False
+    mock_wizard_cls.assert_not_called()
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_cancelled_wizard_creates_nothing(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    # Opening the wizard succeeded even though the user then cancelled it.
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Rejected)
+
+    project.add_item.assert_not_called()
+    assert command.created_chart_id is None
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -61,6 +119,8 @@ def test_empty_path_creates_a_line_chart_with_no_series(mock_wizard_cls, app_con
     command = CreateChartFromWizardCommand(app_context)
 
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.chart_type == "line"
     assert created_chart.data_series == []
@@ -82,6 +142,8 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
     command = CreateChartFromWizardCommand(app_context)
 
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.chart_type == "hist"
     assert len(created_chart.data_series) == 1
@@ -103,6 +165,8 @@ def test_chart_is_named_after_its_dataset_at_construction_time(mock_wizard_cls, 
     command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
 
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.name == "Chart from ds"
     assert created_chart.config["title"] == "Chart from ds"
@@ -116,6 +180,8 @@ def test_chart_without_an_originating_dataset_falls_back_to_new_chart(mock_wizar
     command = CreateChartFromWizardCommand(app_context)
 
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.name == "New Chart"
     assert created_chart.config["title"] == "New Chart"
@@ -130,6 +196,20 @@ def test_an_exception_is_reported_and_does_not_propagate(mock_wizard_cls, app_co
 
     command = CreateChartFromWizardCommand(app_context)
 
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)  # must not raise
+
+    project.add_item.assert_not_called()
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_a_failure_to_open_the_wizard_is_reported(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.side_effect = RuntimeError("boom")
+
+    command = CreateChartFromWizardCommand(app_context)
+
     assert command.execute() is False
     project.add_item.assert_not_called()
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
@@ -141,10 +221,23 @@ def test_undo_swallows_and_logs_exceptions(mock_wizard_cls, app_context_with_pro
     mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
     command = CreateChartFromWizardCommand(app_context)
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
 
     project.remove_item_by_id.side_effect = RuntimeError("boom")
 
     command.undo()  # must not raise
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_undo_of_a_never_finished_wizard_is_a_no_op(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+
+    command.undo()
+
+    project.remove_item_by_id.assert_not_called()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -154,6 +247,7 @@ def test_redo_readds_the_same_chart_instance(mock_wizard_cls, app_context_with_p
     command = CreateChartFromWizardCommand(app_context)
 
     assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
     first_id = command.created_chart_id
     first_chart = project.add_item.call_args[0][0]
 

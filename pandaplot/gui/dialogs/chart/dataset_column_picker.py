@@ -9,13 +9,17 @@ via `TabContainer`, and tracks that tab's column selection live. Calling
 `_finish()` (wired to the bar's "Done" button) restores the wizard's modal
 state and geometry and hands the picked column ids back to the caller.
 
-IMPORTANT: `start()`/`_finish()` must never call `hide()`/`show()` on the
-wizard. `QWizard` is a `QDialog`, and `QDialog.setVisible(False)` exits the
-modal event loop that `dialog.exec()` is blocked in inside
-`CreateChartFromWizardCommand.execute()` — hiding the wizard makes `exec()`
-return `Rejected` and silently discards everything the user configured.
-The wizard therefore stays visible for the whole pick session; it is only
-resized and repositioned.
+IMPORTANT: `start()`/`_finish()` must perform a real
+hide -> setWindowModality() -> show cycle on the wizard. Qt only updates a
+window's modal-blocking registration on `show()`/`hide()`; calling
+`setWindowModality()` on an already-visible window is a documented no-op until
+the next hide/show cycle. Without the cycle the main window stays blocked and
+dataset column clicks are swallowed — and a wizard closed mid-session stays
+registered as blocking-but-nonmodal, freezing all input.
+
+This is safe because `CreateChartFromWizardCommand` opens the wizard with
+`show()` (non-blocking) and reacts to its `finished(int)` signal — there is no
+`exec()` event loop for `hide()` to tear down.
 """
 from typing import Callable, Optional
 
@@ -67,11 +71,17 @@ class DatasetColumnPicker(QWidget):
             self._table_view.selectionModel().selectionChanged.connect(self._on_selection_changed)
 
         self._update_label()
-        # Non-modal so the main window's dataset table stays clickable. The
-        # wizard is shrunk in place (never hidden — see module docstring).
-        wizard.setWindowModality(Qt.WindowModality.NonModal)
+        # A real hide -> change modality -> show cycle: Qt only updates a
+        # window's modal-blocking registration on show()/hide(), so this is the
+        # only way `NonModal` actually takes effect and unblocks the main
+        # window's input. Safe now because the wizard is shown via `show()`
+        # (see CreateChartFromWizardCommand), not a blocking `exec()` call --
+        # hiding it here does not tear down any event loop.
         top_left = self._wizard_previous_geometry.topLeft()
+        wizard.hide()
+        wizard.setWindowModality(Qt.WindowModality.NonModal)
         wizard.setGeometry(top_left.x(), top_left.y(), 420, 90)
+        wizard.show()
         self.move(top_left.x(), top_left.y() + 100)
         self.show()
         self.raise_()
@@ -111,13 +121,15 @@ class DatasetColumnPicker(QWidget):
         if self._table_view is not None:
             self._table_view.selectionModel().selectionChanged.disconnect(self._on_selection_changed)
             self._table_view = None
-        # Hiding the PICKER bar is fine — it is a plain QWidget, not the modal
-        # QDialog whose exec() loop must stay alive.
         self.hide()
         if self._wizard is not None:
+            # Mirror of start(): hide -> restore modality -> show, so Qt
+            # re-registers the wizard as application-modal again.
+            self._wizard.hide()
             self._wizard.setWindowModality(self._wizard_previous_modality)
             if self._wizard_previous_geometry is not None:
                 self._wizard.setGeometry(self._wizard_previous_geometry)
+            self._wizard.show()
             self._wizard.raise_()
         if self._on_done is not None:
             self._on_done(column_ids)

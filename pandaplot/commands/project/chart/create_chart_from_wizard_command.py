@@ -1,5 +1,14 @@
 """Command that opens the chart creation wizard and builds the resulting
-Chart item — the single path every chart-creation entry point uses."""
+Chart item — the single path every chart-creation entry point uses.
+
+The wizard is opened non-blocking (`show()`, not `exec()`): `execute()` returns
+as soon as the wizard is on screen, and the chart is built later in
+`_on_wizard_finished`, driven by the wizard's `finished(int)` signal. This is
+required for the pick-from-dataset flow — `DatasetColumnPicker` needs a real
+hide -> change-modality -> show cycle on the wizard (the only sequence Qt
+honours when updating a window's modal-blocking registration), which would tear
+down a blocking `exec()` loop.
+"""
 
 from typing import Optional, override
 
@@ -14,7 +23,7 @@ from pandaplot.models.state import AppContext, AppState
 
 
 class CreateChartFromWizardCommand(Command):
-    """Opens `ChartWizard`; on acceptance, builds a `Chart` from its result."""
+    """Opens `ChartWizard` non-blocking; on acceptance builds a `Chart` from it."""
 
     def __init__(self, app_context: AppContext, dataset_id: Optional[str] = None,
                  preselected_column_ids: Optional[list[str]] = None, parent_id: Optional[str] = None):
@@ -28,6 +37,7 @@ class CreateChartFromWizardCommand(Command):
         self.dataset_id: Optional[str] = dataset_id
         self.preselected_column_ids: list[str] = preselected_column_ids or []
         self.parent_id: Optional[str] = parent_id
+        self._dialog: Optional[QDialog] = None
 
     def _dataset_options(self, project) -> list[tuple[str, str]]:
         return [(item.id, item.name) for item in project.get_all_items() if isinstance(item, Dataset)]
@@ -73,8 +83,46 @@ class CreateChartFromWizardCommand(Command):
                 datasets=self._dataset_options(project),
                 columns_provider=self._columns_provider(project),
             )
-            if dialog.exec() != QDialog.DialogCode.Accepted:
-                return False
+            # Keep a strong reference so the dialog isn't garbage-collected while
+            # open -- `self` stays alive for as long as the command sits on the
+            # CommandExecutor's undo stack, which outlives this call.
+            self._dialog = dialog
+            dialog.finished.connect(self._on_wizard_finished)
+            # `exec()` used to make the wizard application-modal implicitly;
+            # `show()` does not, so set it explicitly to keep the project from
+            # being edited underneath a half-configured wizard. This is also
+            # the modality `DatasetColumnPicker` temporarily drops (and later
+            # restores) to hand the dataset table back to the user.
+            dialog.setModal(True)
+            dialog.show()
+            dialog.raise_()
+            dialog.activateWindow()
+            return True
+
+        except Exception as e:
+            error_msg = f"Failed to open chart wizard: {str(e)}"
+            self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
+            self.ui_controller.show_error_message("Create Chart Error", error_msg)
+            return False
+
+    def _on_wizard_finished(self, result: int) -> None:
+        """Runs once the user actually finishes the wizard (Finish or Cancel).
+
+        `execute()` returning True now only means "the wizard opened
+        successfully" -- the chart itself is created here, asynchronously, once
+        the wizard's `finished` signal fires. A cancelled/closed wizard never
+        emits `QDialog.DialogCode.Accepted`, so it simply never creates a chart
+        (no error, matching the old blocking behaviour's early return on
+        `Rejected`).
+        """
+        dialog = self._dialog
+        if dialog is None or result != QDialog.DialogCode.Accepted:
+            return
+
+        try:
+            if not self.app_state.has_project or not self.app_state.current_project:
+                return
+            project = self.app_state.current_project
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
             if not dialog.is_empty():
@@ -96,13 +144,10 @@ class CreateChartFromWizardCommand(Command):
                 chart_id=chart.id
             ).to_dict())
             self.logger.info("CreateChartFromWizardCommand: created chart '%s'", chart.id)
-            return True
-
         except Exception as e:
             error_msg = f"Failed to create chart: {str(e)}"
             self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
             self.ui_controller.show_error_message("Create Chart Error", error_msg)
-            return False
 
     @override
     def undo(self):
