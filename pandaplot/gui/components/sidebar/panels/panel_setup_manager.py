@@ -18,6 +18,7 @@ from pandaplot.gui.components.sidebar.panels.panel_conditions import (
 from pandaplot.gui.components.sidebar.project.project_view_panel import ProjectViewPanel
 from pandaplot.gui.components.sidebar.statistics.statistics_panel import StatisticsPanel
 from pandaplot.gui.components.sidebar.transform.transform_panel import TransformPanel
+from pandaplot.gui.components.sidebar.preprocessing.preprocessing_panel import PreprocessingPanel
 from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
 from pandaplot.models.state.app_context import AppContext
 
@@ -34,6 +35,7 @@ class PanelSetupManager:
         # distributed panel registration
         self.register_panel(ProjectViewPanel(app_context=self.app_context), "explorer", "📁", lambda _: True)
         self.register_panel(TransformPanel(self.app_context), "transform", "🔧", is_dataset_tab_active)
+        self.register_panel(PreprocessingPanel(self.app_context), "preprocessing", "⚖️", is_dataset_tab_active)
 
         self.register_panel(AnalysisPanel(self.app_context), "analysis", "📊", is_dataset_tab_active)
         self.register_panel(StatisticsPanel(self.app_context), "statistics", "🧪", is_dataset_tab_active)
