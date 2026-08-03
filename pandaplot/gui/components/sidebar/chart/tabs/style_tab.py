@@ -96,6 +96,10 @@ class StyleTab(QWidget):
         # "Chart" as the sticky previously-selected target.
         self._series_list_initialized: bool = False
         self._chart_type = None
+        # Latest data_series list (kept in sync by set_series_list) so the
+        # Fill card's "Fill to" selector can offer the other series to fill
+        # between. Indices into this list are what fill_to_index stores.
+        self._data_series: list = []
         # Whether the Custom size/DPI fields have already been pre-filled
         # for the currently loaded chart (reset on every load_chart_style/
         # clear_chart_style call). Prevents re-filling with defaults if the
@@ -367,6 +371,50 @@ class StyleTab(QWidget):
 
         layout.addWidget(line_card)
 
+        # FILL group -- shade the area under the curve (down to a baseline) or
+        # between this series and another series in the same chart.
+        self.fill_card = Card()
+        fill_card = self.fill_card
+        fill_layout = QGridLayout(fill_card)
+
+        fill_header_row = QHBoxLayout()
+        fill_header_row.addWidget(SectionHeader("Fill"))
+        fill_header_row.addStretch(1)
+        self.fill_enabled_toggle = ToggleSwitch()
+        fill_header_row.addWidget(self.fill_enabled_toggle)
+        fill_layout.addLayout(fill_header_row, 0, 0, 1, 2)
+
+        # "Fill to" is repopulated per selected series (see load_series_style):
+        # a "Baseline" entry (value -1) plus every *other* series in the chart
+        # (value = its index in data_series). Seeded with just Baseline so the
+        # ValueComboBox has a non-empty initial item list.
+        fill_layout.addWidget(QLabel("Fill to:"), 1, 0)
+        self.fill_to_control = ValueComboBox([("Baseline", -1)])
+        fill_layout.addWidget(self.fill_to_control, 1, 1)
+
+        self.fill_base_label = QLabel("Baseline:")
+        fill_layout.addWidget(self.fill_base_label, 2, 0)
+        self.fill_base_spin = QDoubleSpinBox()
+        self.fill_base_spin.setRange(-1e9, 1e9)
+        self.fill_base_spin.setDecimals(3)
+        fill_layout.addWidget(self.fill_base_spin, 2, 1)
+
+        self.fill_color_label = QLabel("Color:")
+        fill_layout.addWidget(self.fill_color_label, 3, 0)
+        self.fill_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        fill_layout.addWidget(self.fill_color_row, 3, 1)
+
+        self.fill_match_line_label = QLabel("Match line:")
+        fill_layout.addWidget(self.fill_match_line_label, 4, 0)
+        self.fill_match_line_toggle = ToggleSwitch(checked=True)
+        fill_layout.addWidget(self.fill_match_line_toggle, 4, 1)
+
+        fill_layout.addWidget(QLabel("Opacity:"), 5, 0)
+        self.fill_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        fill_layout.addWidget(self.fill_opacity_slider, 5, 1)
+
+        layout.addWidget(fill_card)
+
         # MARKERS group
         self.marker_card = Card()
         marker_card = self.marker_card
@@ -488,6 +536,12 @@ class StyleTab(QWidget):
         self.line_style_control.currentValueChanged.connect(self._on_field_changed)
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
+        self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
+        self.fill_to_control.currentValueChanged.connect(self._on_fill_to_changed)
+        self.fill_base_spin.valueChanged.connect(self._on_field_changed)
+        self.fill_color_row.colorChanged.connect(self._on_field_changed)
+        self.fill_match_line_toggle.toggled.connect(self._on_fill_match_line_toggled)
+        self.fill_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.markers_enabled_toggle.toggled.connect(self._on_markers_enabled_toggled)
         self.marker_shape_control.currentValueChanged.connect(self._on_field_changed)
         self.marker_size_slider.valueChanged.connect(self._on_field_changed)
@@ -571,6 +625,9 @@ class StyleTab(QWidget):
             widget.setVisible(is_axes)
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        # Area fill is only drawn for line charts (see chart_editor.py's "line"
+        # branch), so the Fill card is a series-on-line-chart concern.
+        self.fill_card.setVisible(kind == "series" and self._chart_type == ChartType.LINE)
         self.marker_card.setVisible(kind == "series")
         # Fit data has no error-bar fields at all (DataSeries-only), and even
         # for a series there's nothing to style unless an error column is
@@ -894,6 +951,7 @@ class StyleTab(QWidget):
         this method's own prior conclusion -- so it survives those
         reflexive reassignments correctly.
         """
+        self._data_series = list(data_series)
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart"), ("Axes", "axes")]
         for index, series in enumerate(data_series):
@@ -1025,6 +1083,70 @@ class StyleTab(QWidget):
         self.error_color_label.setVisible(show_color)
         self.error_color_row.setVisible(show_color)
 
+    # -- Area fill controls ------------------------------------------------
+
+    def _populate_fill_to_options(self, series):
+        """Rebuild the 'Fill to' selector: a 'Baseline' entry (value -1) plus
+        every other series in the chart (value = its index in data_series), so
+        the user can fill the area between this curve and another one. Called
+        while `_updating_controls` is set, so the resulting value change won't
+        write back through `_on_field_changed`."""
+        current_index = None
+        for idx, other in enumerate(self._data_series):
+            if other is series:
+                current_index = idx
+                break
+        items = [("Baseline", -1)]
+        for idx, other in enumerate(self._data_series):
+            if idx == current_index:
+                continue
+            label = other.label or f"Series {idx + 1}"
+            items.append((f"↕ {label}", idx))
+        self.fill_to_control.blockSignals(True)
+        self.fill_to_control.clear()
+        for label, value in items:
+            self.fill_to_control.addItem(label, value)
+        self.fill_to_control.blockSignals(False)
+
+    def _on_fill_enabled_toggled(self, _checked: bool):
+        """Handle the Fill section's on/off toggle."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _on_fill_to_changed(self, _value):
+        """Handle a change of the 'Fill to' target (baseline vs. other series):
+        the baseline value field only applies when filling to the baseline."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _on_fill_match_line_toggled(self, _checked: bool):
+        """Handle the Fill 'Match line' toggle for fill color."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _update_fill_controls_visibility(self):
+        """Enable the fill sub-controls only while fill is on, hide the color
+        picker while it matches the line color, and hide the constant-baseline
+        field when filling between two curves instead of to a baseline (same
+        hide-not-disable convention as _update_marker_controls_enabled)."""
+        enabled = self.fill_enabled_toggle.isChecked()
+        to_baseline = self.fill_to_control.currentValue() == -1
+        for widget in (
+            self.fill_to_control, self.fill_match_line_toggle,
+            self.fill_opacity_slider,
+        ):
+            widget.setEnabled(enabled)
+
+        show_baseline = enabled and to_baseline
+        self.fill_base_label.setVisible(show_baseline)
+        self.fill_base_spin.setVisible(show_baseline)
+
+        show_color = enabled and not self.fill_match_line_toggle.isChecked()
+        self.fill_color_label.setVisible(show_color)
+        self.fill_color_row.setVisible(show_color)
+        self.fill_match_line_label.setVisible(enabled)
+        self.fill_match_line_toggle.setVisible(enabled)
+
     # -- Background transparent toggles ----------------------------------
 
     def _on_bg_transparent_toggled(self, _checked: bool):
@@ -1076,6 +1198,18 @@ class StyleTab(QWidget):
             else self.error_color_row.currentColor()
         )
         series.error_cap_size = self.error_cap_size_slider.value()
+
+        # Area fill. "Match line" reuses the "" == inherit-series.color
+        # convention. fill_to_index is -1 (fill down to the constant baseline)
+        # or the index of another series to fill between.
+        series.fill_enabled = self.fill_enabled_toggle.isChecked()
+        series.fill_to_index = self.fill_to_control.currentValue()
+        series.fill_base = self.fill_base_spin.value()
+        series.fill_color = (
+            "" if self.fill_match_line_toggle.isChecked()
+            else self.fill_color_row.currentColor()
+        )
+        series.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
@@ -1136,6 +1270,19 @@ class StyleTab(QWidget):
             self.error_match_line_toggle.blockSignals(False)
             self._update_error_controls_visibility()
             self.error_cap_size_slider.setValue(series.error_cap_size)
+
+            self._populate_fill_to_options(series)
+            self.fill_enabled_toggle.blockSignals(True)
+            self.fill_enabled_toggle.setChecked(series.fill_enabled)
+            self.fill_enabled_toggle.blockSignals(False)
+            self.fill_to_control.setCurrentValue(series.fill_to_index)
+            self.fill_base_spin.setValue(series.fill_base)
+            self.fill_color_row.setCurrentColor(series.fill_color or series.color)
+            self.fill_match_line_toggle.blockSignals(True)
+            self.fill_match_line_toggle.setChecked(series.fill_color == "")
+            self.fill_match_line_toggle.blockSignals(False)
+            self.fill_opacity_slider.setValue(series.fill_alpha)
+            self._update_fill_controls_visibility()
         finally:
             self._updating_controls = previous_guard
 

@@ -686,6 +686,30 @@ class ChartEditorWidget(PWidget):
         # No configuration UI to load since it's now in the side panel
         pass
 
+    def _resolve_fill_baseline(self, project, series, series_index, x_data):
+        """Resolve the lower bound for a series' area fill.
+
+        Returns either the constant ``series.fill_base`` (fill under the curve
+        down to a horizontal baseline) or, when ``series.fill_to_index`` points
+        at another series in the chart, that series' y-values interpolated onto
+        this series' x grid (fill *between* the two curves). The interpolation
+        makes ``fill_between`` well-defined even when the two series don't share
+        the same x sampling; it falls back to the constant baseline if the
+        referenced series is missing or fails to resolve.
+        """
+        idx = series.fill_to_index
+        if idx is None or idx < 0 or idx == series_index or idx >= len(self.chart.data_series):
+            return series.fill_base
+        other = self.chart.data_series[idx]
+        other_data = resolve_series_data(project, other, self.chart.chart_type)
+        if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
+            return series.fill_base
+        # np.interp requires the reference x-coordinates to be increasing.
+        xp = np.asarray(other_data.x_data, dtype=float)
+        fp = np.asarray(other_data.y_data, dtype=float)
+        order = np.argsort(xp)
+        return np.interp(np.asarray(x_data, dtype=float), xp[order], fp[order])
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -763,6 +787,17 @@ class ChartEditorWidget(PWidget):
                                          markeredgewidth=series.marker_edge_width,
                                          label=series.label,
                                          alpha=alpha)
+                        # Fill the area under this curve (or between it and
+                        # another series) when enabled.
+                        if series.fill_enabled:
+                            fill_color = series.fill_color or series.color
+                            baseline = self._resolve_fill_baseline(
+                                project, series, i, x_data)
+                            fill_alpha = series.fill_alpha if series.visible else 0.3 * series.fill_alpha
+                            target_axes.fill_between(
+                                x_data, y_data, baseline,
+                                color=fill_color,
+                                alpha=fill_alpha)
                     elif self.chart.chart_type == "scatter":
                         mfc = series.marker_color or series.color
                         mec = series.marker_edge_color or series.color

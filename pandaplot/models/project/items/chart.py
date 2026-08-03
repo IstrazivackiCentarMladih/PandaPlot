@@ -68,6 +68,16 @@ class DataSeries:
     error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
     error_color: str = ""  # "" => inherit series.color
     error_cap_size: float = 3.0
+    # Area fill under/between curves (line charts). When fill_enabled, the
+    # region between this series' curve and a baseline is shaded. The baseline
+    # is a constant y (fill_base) unless fill_to_index points at another series
+    # in the same chart, in which case the region *between* the two curves is
+    # filled.
+    fill_enabled: bool = False
+    fill_color: str = ""  # "" => inherit series.color
+    fill_alpha: float = 0.3
+    fill_base: float = 0.0  # constant baseline y, used when fill_to_index < 0
+    fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -444,7 +454,12 @@ class Chart(Item):
                     "error_symmetric": series.error_symmetric,
                     "error_direction": series.error_direction,
                     "error_color": series.error_color,
-                    "error_cap_size": series.error_cap_size
+                    "error_cap_size": series.error_cap_size,
+                    "fill_enabled": series.fill_enabled,
+                    "fill_color": series.fill_color,
+                    "fill_alpha": series.fill_alpha,
+                    "fill_base": series.fill_base,
+                    "fill_to_index": series.fill_to_index
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -524,7 +539,12 @@ class Chart(Item):
                 error_symmetric=series_dict.get("error_symmetric", True),
                 error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
                 error_color=series_dict.get("error_color", ""),
-                error_cap_size=series_dict.get("error_cap_size", 3.0)
+                error_cap_size=series_dict.get("error_cap_size", 3.0),
+                fill_enabled=series_dict.get("fill_enabled", False),
+                fill_color=series_dict.get("fill_color", ""),
+                fill_alpha=series_dict.get("fill_alpha", 0.3),
+                fill_base=series_dict.get("fill_base", 0.0),
+                fill_to_index=series_dict.get("fill_to_index", -1)
             )
             chart.data_series.append(series)
         
