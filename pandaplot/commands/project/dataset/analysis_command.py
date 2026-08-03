@@ -8,6 +8,7 @@ import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.dataset.column_change_events import emit_columns_changed
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 
@@ -84,27 +85,33 @@ class AnalysisCommand(Command):
             # Add result column to dataset
             df_copy = df.copy()
 
-            # Handle result data alignment
-            result_data_length = len(result.result_data)
-            df_length = len(df)
-            self.logger.info(
-                f"Comparing lengths: result_data={result_data_length}, df={df_length}")
-
-            if result_data_length == df_length:
-                # Direct assignment if lengths match
-                df_copy[self.new_column_name] = result.result_data
+            result_series = result.result_data
+            if isinstance(result_series, pd.Series) and result_series.index.isin(df_copy.index).all():
+                # Index-aligned assignment: for segment analyses (derivative /
+                # integral / arc length over a sub-range) the result carries the
+                # original row index, so pandas places each value on its source
+                # row and leaves the rest of the column as NaN.
+                df_copy[self.new_column_name] = result_series
                 self.logger.info(
-                    f"Direct assignment: new column '{self.new_column_name}' added, shape now: {df_copy.shape}")
+                    "Index-aligned assignment: column '%s' set on %d of %d rows",
+                    self.new_column_name, len(result_series), len(df_copy))
             else:
-                # Handle cases where result data is shorter (e.g., derivatives, arc length)
+                # Result does not map onto existing rows (e.g. interpolation
+                # resamples to a new grid): fill from the top, best effort.
                 df_copy[self.new_column_name] = pd.NA
-                df_copy.iloc[:len(result.result_data), df_copy.columns.get_loc(
-                    self.new_column_name)] = result.result_data
+                df_copy.iloc[:len(result_series), df_copy.columns.get_loc(
+                    self.new_column_name)] = list(result_series)
                 self.logger.info(
-                    f"Partial assignment: new column '{self.new_column_name}' added, shape now: {df_copy.shape}")
+                    "Positional assignment: column '%s' added, shape now: %s",
+                    self.new_column_name, df_copy.shape)
 
-            # Update dataset
+            # Update dataset and refresh the data tab / column-source selectors.
             self.dataset.set_data(df_copy)
+            emit_columns_changed(
+                self.app_context, self.dataset_id, self.dataset.data,
+                added_columns=[] if self.column_existed_before else [self.new_column_name],
+                replaced_columns=[self.new_column_name] if self.column_existed_before else [],
+            )
             return True
 
         except Exception as e:
@@ -123,16 +130,43 @@ class AnalysisCommand(Command):
                 self.logger.warning("Undo failed: No data in dataset")
                 return False
 
+            from pandaplot.models.events.event_data import (
+                DatasetColumnsRemovedData,
+                DatasetDataChangedData,
+            )
+            from pandaplot.models.events.event_types import (
+                DatasetEvents,
+                DatasetOperationEvents,
+            )
+            event_bus = self.app_context.get_app_state().event_bus
+
             if self.column_existed_before and self.original_data is not None:
                 # Restore original column data
                 df_copy = df.copy()
                 df_copy[self.new_column_name] = self.original_data
                 self.dataset.set_data(df_copy)
+                col = int(df_copy.columns.get_loc(self.new_column_name))
+                event_bus.emit(
+                    DatasetEvents.DATASET_DATA_CHANGED,
+                    DatasetDataChangedData(
+                        dataset_id=self.dataset_id,
+                        start_index=(0, col),
+                        end_index=(max(len(df_copy) - 1, 0), col),
+                    ).to_dict(),
+                )
             elif not self.column_existed_before and self.new_column_name in df.columns:
                 # Remove the column we added
                 df_copy = df.copy()
+                removed_pos = int(df_copy.columns.get_loc(self.new_column_name))
                 df_copy = df_copy.drop(columns=[self.new_column_name])
                 self.dataset.set_data(df_copy)
+                event_bus.emit(
+                    DatasetOperationEvents.DATASET_COLUMN_REMOVED,
+                    DatasetColumnsRemovedData(
+                        dataset_id=self.dataset_id,
+                        column_positions=[removed_pos],
+                    ).to_dict(),
+                )
 
             self.logger.info(
                 f"Analysis undone successfully: {self.new_column_name}")

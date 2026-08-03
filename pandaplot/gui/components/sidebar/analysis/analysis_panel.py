@@ -552,22 +552,16 @@ class AnalysisPanel(PWidget):
                 execution_result = self.app_context.get_command_executor().execute_command(command)
                 
                 if execution_result:
-                    # Publish analysis completion event
+                    # Publish analysis completion event. The command itself emits
+                    # the structured column-added / data-changed events that refresh
+                    # the data tab and column-source selectors.
                     self.publish_event(AnalysisEvents.ANALYSIS_COMPLETED, {
                         "dataset_id": self.current_dataset_id,
                         "new_column_name": config["new_column_name"],
                         "analysis_type": config["analysis_type"],
                         "analysis_config": config
                     })
-                    
-                    # Also publish dataset column added event for UI updates
-                    self.publish_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, {
-                        "dataset_id": self.current_dataset_id,
-                        "column_name": config["new_column_name"],
-                        "operation": "analysis",
-                        "source": "analysis_panel"
-                    })
-                    
+
                     self.preview_text.setText(f"✅ Analysis applied successfully!\nColumn '{config['new_column_name']}' added to dataset.")
                 else:
                     self.logger.error("Command execution failed for dataset %s", self.current_dataset_id)

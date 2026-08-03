@@ -229,12 +229,11 @@ class TransformController(QObject):
                 "replace_existing": replace_existing
             }
             
-            # Create and execute command
+            # Create and execute command through the executor so the transform
+            # is undoable and participates in the undo/redo stack.
             command = TransformColumnCommand(self.app_context, dataset_id, transform_config)
-            
-            # TODO: Execute through app context command executor when available
-            # For now, execute directly
-            if command.execute():
+
+            if self.app_context.get_command_executor().execute_command(command):
                 self.transform_completed.emit(dataset_id, new_column_name, None)
                 return True
             else:

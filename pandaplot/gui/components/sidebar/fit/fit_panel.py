@@ -22,8 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.analysis import AnalysisType
+from pandaplot.commands.project.chart.analyze_fit_command import AnalyzeFitCommand
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import FitEvents, ChartEvents, UIEvents
+from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
@@ -88,7 +90,10 @@ class FitPanel(PWidget):
         
         # Results section
         self._create_results_section(content_layout)
-        
+
+        # Analyze a fitted curve (derivative / integral / arc length)
+        self._create_analyze_fit_section(content_layout)
+
         # Action buttons
         self._create_action_buttons(content_layout)
         
@@ -382,7 +387,101 @@ class FitPanel(PWidget):
         results_layout.addLayout(equation_layout)
         
         layout.addWidget(results_group)
-    
+
+    def _create_analyze_fit_section(self, layout):
+        """Create the 'Analyze Fit' section (derivative / integral / arc length)."""
+        group = QGroupBox("Analyze Fit")
+        group_layout = QVBoxLayout(group)
+
+        form = QGridLayout()
+
+        form.addWidget(QLabel("Fit:"), 0, 0)
+        self.analyze_fit_combo = QComboBox()
+        form.addWidget(self.analyze_fit_combo, 0, 1)
+
+        form.addWidget(QLabel("Operation:"), 1, 0)
+        self.analyze_op_combo = QComboBox()
+        # Data carries the AnalysisType so we don't map strings by hand.
+        self.analyze_op_combo.addItem("Derivative", AnalysisType.DERIVATIVE)
+        self.analyze_op_combo.addItem("Integral", AnalysisType.INTEGRAL)
+        self.analyze_op_combo.addItem("Arc length (line length)", AnalysisType.ARC_LENGTH)
+        form.addWidget(self.analyze_op_combo, 1, 1)
+
+        # Optional segment: restrict the operation to an index range of the curve.
+        form.addWidget(QLabel("Start index:"), 2, 0)
+        self.analyze_start_index = QSpinBox()
+        self.analyze_start_index.setMinimum(0)
+        self.analyze_start_index.setMaximum(0)
+        form.addWidget(self.analyze_start_index, 2, 1)
+
+        form.addWidget(QLabel("End index:"), 3, 0)
+        self.analyze_end_index = QSpinBox()
+        self.analyze_end_index.setMinimum(-1)
+        self.analyze_end_index.setMaximum(0)
+        self.analyze_end_index.setValue(-1)
+        self.analyze_end_index.setSpecialValueText("End")
+        form.addWidget(self.analyze_end_index, 3, 1)
+
+        group_layout.addLayout(form)
+
+        self.analyze_hint = QLabel(
+            "Runs on the fitted curve and adds the result as a new dataset."
+        )
+        self.analyze_hint.setWordWrap(True)
+        group_layout.addWidget(self.analyze_hint)
+
+        self.analyze_fit_button = QPushButton("Analyze → New Dataset")
+        self.analyze_fit_button.setEnabled(False)
+        group_layout.addWidget(self.analyze_fit_button)
+
+        layout.addWidget(group)
+
+    def _refresh_analyze_fits(self):
+        """Repopulate the fit selector from the current chart's fits."""
+        self.analyze_fit_combo.clear()
+        fits = getattr(self.current_chart, "fit_data", None) or []
+        for index, fit in enumerate(fits):
+            self.analyze_fit_combo.addItem(fit.label or f"Fit {index + 1}", index)
+        has_fits = self.analyze_fit_combo.count() > 0
+        self.analyze_fit_button.setEnabled(has_fits)
+        self._update_analyze_index_bounds()
+
+    def _update_analyze_index_bounds(self):
+        """Match the segment spinbox ranges to the selected fit's length."""
+        fit_index = self.analyze_fit_combo.currentData()
+        fits = getattr(self.current_chart, "fit_data", None) or []
+        if fit_index is None or not (0 <= fit_index < len(fits)):
+            self.analyze_start_index.setMaximum(0)
+            self.analyze_end_index.setMaximum(0)
+            return
+        n = len(fits[fit_index].x_data)
+        self.analyze_start_index.setMaximum(max(n - 1, 0))
+        self.analyze_end_index.setMaximum(n)
+
+    def _analyze_fit(self):
+        """Run the selected analysis on the selected fit, creating a dataset."""
+        fit_index = self.analyze_fit_combo.currentData()
+        if fit_index is None or self.current_chart is None:
+            return
+        analysis_type = self.analyze_op_combo.currentData()
+
+        command = AnalyzeFitCommand(
+            self.app_context,
+            chart_id=self.current_chart.id,
+            fit_index=int(fit_index),
+            analysis_type=analysis_type,
+            start_index=self.analyze_start_index.value(),
+            end_index=self.analyze_end_index.value(),
+        )
+        if self.app_context.get_command_executor().execute_command(command):
+            self.analyze_hint.setText(
+                f"✅ Created dataset from {self.analyze_op_combo.currentText().lower()} of the fit."
+            )
+        else:
+            self.analyze_hint.setText(
+                "❌ Could not analyze the fit. See the log for details."
+            )
+
     def _create_action_buttons(self, layout):
         """Create action buttons."""
         button_layout = QHBoxLayout()
@@ -407,6 +506,8 @@ class FitPanel(PWidget):
         self.fit_button.clicked.connect(self.fit_command.perform_fit)
         self.apply_button.clicked.connect(self._apply_fit)
         self.clear_button.clicked.connect(self._clear_results)
+        self.analyze_fit_button.clicked.connect(self._analyze_fit)
+        self.analyze_fit_combo.currentIndexChanged.connect(self._update_analyze_index_bounds)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -586,6 +687,7 @@ class FitPanel(PWidget):
         self.series_combo.clear()
 
         if chart is None:
+            self._refresh_analyze_fits()
             return
 
         self.current_project = self.app_context.app_state.current_project
@@ -597,6 +699,9 @@ class FitPanel(PWidget):
         if self.series_combo.count() > 0:
             self.series_combo.setCurrentIndex(0)
             self._on_series_changed()
+
+        # Keep the 'Analyze Fit' selector in sync with the chart's fits.
+        self._refresh_analyze_fits()
 
     def _on_series_changed(self):
         series = self.series_combo.currentData()

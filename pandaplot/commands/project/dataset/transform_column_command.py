@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, override
 import pandas as pd
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.dataset.column_change_events import emit_columns_changed
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 
@@ -90,6 +91,13 @@ class TransformColumnCommand(Command):
             # Update dataset using proper method
             self.dataset.set_data(df)
 
+            # Refresh the data tab and column-source selectors.
+            emit_columns_changed(
+                self.app_context, self.dataset_id, self.dataset.data,
+                added_columns=[] if self.column_existed_before else [self.new_column_name],
+                replaced_columns=[self.new_column_name] if self.column_existed_before else [],
+            )
+
             self.logger.info(
                 f"Transform applied: '{self.new_column_name}' created from {self.source_columns}")
             return True
@@ -110,15 +118,44 @@ class TransformColumnCommand(Command):
 
             df = self.dataset.data.copy()
 
+            from pandaplot.models.events.event_data import (
+                DatasetColumnsRemovedData,
+                DatasetDataChangedData,
+            )
+            from pandaplot.models.events.event_types import (
+                DatasetEvents,
+                DatasetOperationEvents,
+            )
+            event_bus = self.app_context.get_app_state().event_bus
+
             if self.column_existed_before and self.original_data is not None:
                 # Restore original column data
                 df[self.new_column_name] = self.original_data
-            elif self.new_column_name in df.columns:
-                # Remove the new column
-                df = df.drop(columns=[self.new_column_name])
-
-            # Update dataset
-            self.dataset.set_data(df)
+                self.dataset.set_data(df)
+                col = int(df.columns.get_loc(self.new_column_name))
+                event_bus.emit(
+                    DatasetEvents.DATASET_DATA_CHANGED,
+                    DatasetDataChangedData(
+                        dataset_id=self.dataset_id,
+                        start_index=(0, col),
+                        end_index=(max(len(df) - 1, 0), col),
+                    ).to_dict(),
+                )
+            else:
+                removed_pos = None
+                if self.new_column_name in df.columns:
+                    # Remove the new column
+                    removed_pos = int(df.columns.get_loc(self.new_column_name))
+                    df = df.drop(columns=[self.new_column_name])
+                self.dataset.set_data(df)
+                if removed_pos is not None:
+                    event_bus.emit(
+                        DatasetOperationEvents.DATASET_COLUMN_REMOVED,
+                        DatasetColumnsRemovedData(
+                            dataset_id=self.dataset_id,
+                            column_positions=[removed_pos],
+                        ).to_dict(),
+                    )
 
             self.logger.info(f"Transform undone: '{self.new_column_name}' reverted")
             return True
