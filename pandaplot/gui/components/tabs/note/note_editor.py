@@ -3,10 +3,10 @@ Note tab widget for displaying and editing notes in the main tab container.
 """
 from typing import override
 
-from markdown import markdown
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence
 from PySide6.QtWidgets import (
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -25,7 +25,15 @@ from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import NoteEvents
 from pandaplot.models.project.items import Note
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.note_render.latex_markdown_renderer import (
+    render_body_html,
+    wrap_document,
+)
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+# Point size used both for the editor font and for rasterising equations so
+# the math visually matches the surrounding text.
+_NOTE_FONT_SIZE = 11
     
 
 class NoteEditorWidget(PWidget):
@@ -135,6 +143,11 @@ class NoteEditorWidget(PWidget):
         # Update status label with current status
         self._update_status_label_style()
 
+        # Re-render the preview so equation image colours track the new theme
+        # (equations are rasterised with the foreground colour baked in).
+        if getattr(self, "preview", None) is not None and self.stack.currentIndex() != 0:
+            self.update_preview()
+
     def create_content_section(self, layout: QLayout):
         """Create the main content editing section."""
         # Content frame
@@ -151,7 +164,7 @@ class NoteEditorWidget(PWidget):
 
         # Create main editor and preview widgets
         self.text_edit = QTextEdit()
-        font = QFont("Segoe UI", 11)
+        font = QFont("Segoe UI", _NOTE_FONT_SIZE)
         self.text_edit.setFont(font)
 
         self.preview = QTextBrowser()
@@ -224,10 +237,60 @@ class NoteEditorWidget(PWidget):
             self.preview_connected = False
 
     def update_preview(self):
-        """Render Markdown into preview panel."""
-        md_text = self.text_edit.toPlainText()
-        html = markdown(md_text, extensions=["tables", "fenced_code"])
+        """Render Markdown + LaTeX into the preview panel using theme colours."""
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+        color = palette.get("base_fg", "#000000")
+        background = palette.get("card_bg", "#ffffff")
+        border = palette.get("card_border", "#dddddd")
+
+        source = self.text_edit.toPlainText()
+        body = render_body_html(source, color=color, fontsize=_NOTE_FONT_SIZE)
+        html = wrap_document(
+            body, color=color, background=background, border=border, fontsize=_NOTE_FONT_SIZE
+        )
         self.preview.setHtml(html)
+
+    def export_pdf(self):
+        """Export the rendered note (Markdown + LaTeX) to a PDF file."""
+        from PySide6.QtCore import QMarginsF
+        from PySide6.QtGui import QPageLayout, QPageSize, QPdfWriter, QTextDocument
+
+        default_name = f"{self.note.name or 'note'}.pdf"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Note to PDF", default_name, "PDF Files (*.pdf)"
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".pdf"):
+            file_path += ".pdf"
+
+        try:
+            # Render for print: black text on a white page, independent of the
+            # current UI theme.
+            source = self.text_edit.toPlainText()
+            body = render_body_html(source, color="#000000", fontsize=_NOTE_FONT_SIZE)
+            html = wrap_document(
+                body,
+                color="#000000",
+                background="#ffffff",
+                border="#cccccc",
+                fontsize=_NOTE_FONT_SIZE,
+            )
+
+            document = QTextDocument()
+            document.setHtml(html)
+
+            writer = QPdfWriter(file_path)
+            writer.setPageSize(QPageSize(QPageSize.PageSizeId.A4))
+            writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout.Unit.Millimeter)
+            document.print_(writer)
+
+            self.update_status("PDF exported ✓")
+            QTimer.singleShot(2000, lambda: self.update_status("Ready"))
+        except Exception as e:
+            self.logger.error("Failed to export note to PDF: %s", e, exc_info=True)
+            self.update_status(f"Error: {str(e)}")
 
     def create_toolbar_actions(self, toolbar: QToolBar):
         """Create toolbar actions for text formatting."""
@@ -242,6 +305,11 @@ class NoteEditorWidget(PWidget):
         clear_action = QAction("🗑 Clear", self)
         clear_action.triggered.connect(self.clear_content)
         toolbar.addAction(clear_action)
+
+        # Export to PDF action (renders the same HTML shown in preview).
+        export_pdf_action = QAction("📄 Export PDF", self)
+        export_pdf_action.triggered.connect(self.export_pdf)
+        toolbar.addAction(export_pdf_action)
 
         toolbar.addSeparator()
         self.edit_mode_action = QAction("✍ Edit", self)
