@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
 from pandaplot.commands.project.chart import CreateChartCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
+from pandaplot.gui.components.tabs.floating_tab_window import FloatingTabWindow
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
 from pandaplot.gui.core.widget_extension import PWidget
@@ -39,6 +40,10 @@ class TabContainer(PWidget):
         self._pane_registry: dict[int, CustomTabWidget] = {}
         self._active_pane: CustomTabWidget | None = None
         self._last_emitted_widget = _UNSET
+        # item_id -> FloatingTabWindow for tabs popped out into their own window.
+        # Popped-out tabs stay tracked in self.tabs too, so lookups by item id
+        # keep working while a tab lives outside the panes.
+        self.floating_windows: dict[str, FloatingTabWindow] = {}
 
         self._initialize()
         self.create_default_tabs()
@@ -82,6 +87,7 @@ class TabContainer(PWidget):
         pane.split_requested.connect(lambda index, p=pane: self._handle_split(p, index))
         pane.move_to_other_pane_requested.connect(lambda index, p=pane: self._handle_move_to_other(p, index))
         pane.close_split_requested.connect(self._handle_close_split)
+        pane.tab_popout_requested.connect(lambda index, p=pane: self.popout_tab(p, index))
         pane.bar_drop_requested.connect(
             lambda src_id, src_idx, drop_idx, p=pane: self._handle_bar_drop(p, src_id, src_idx, drop_idx)
         )
@@ -269,6 +275,13 @@ class TabContainer(PWidget):
 
     def close_tab_by_item_id(self, item_id: str):
         """Close a tab by its associated item ID, if open."""
+        # Popped-out tabs live in their own window; close it without re-docking.
+        if item_id in self.floating_windows:
+            window = self.floating_windows.pop(item_id)
+            self.tabs.pop(item_id, None)
+            window.close_without_redock()
+            self._persist_tab_session()
+            return
         if item_id not in self.tabs:
             return
         tab_widget = self.tabs[item_id]
@@ -281,6 +294,73 @@ class TabContainer(PWidget):
                 del self.tabs[item_id]
         except RuntimeError:
             del self.tabs[item_id]
+
+    def popout_tab(self, pane: CustomTabWidget, index: int):
+        """Detach the tab at ``index`` of ``pane`` into its own floating window.
+
+        The tab widget is reparented (not recreated) so it keeps all of its
+        state; it stays tracked in ``self.tabs`` so lookups by item id still
+        resolve while it lives in the floating window.
+        """
+        if index < 0 or index >= pane.count():
+            return
+
+        widget = pane.widget(index)
+
+        # Only item-backed tabs (chart/dataset/note) can be popped out.
+        item_id = None
+        for curr_item_id, curr_tab in self.tabs.items():
+            if curr_tab is widget:
+                item_id = curr_item_id
+                break
+        if item_id is None:
+            self.logger.debug("Cannot pop out a tab without an associated item")
+            return
+
+        title = pane.tabText(index)
+        # Detach from the pane without deleting the widget.
+        pane.removeTab(index)
+
+        window = FloatingTabWindow(self.app_context, item_id, widget, title)
+        window.redock_requested.connect(self.redock_tab)
+        self.floating_windows[item_id] = window
+        window.show()
+        window.raise_()
+        window.activateWindow()
+
+        # A pane emptied by the popout should collapse back.
+        self._maybe_collapse_pane(pane)
+        self._persist_tab_session()
+
+    def redock_tab(self, item_id: str):
+        """Return a popped-out tab to the active pane of the main container."""
+        window = self.floating_windows.pop(item_id, None)
+        if window is None:
+            return
+
+        content = window.take_content()
+        if content is None:
+            return
+
+        target_pane = self._active_pane or (self.panes[0] if self.panes else None)
+        if target_pane is None:
+            return
+
+        self._remove_welcome_placeholder(target_pane)
+
+        title = content.get_tab_title() if hasattr(content, "get_tab_title") else item_id
+        index = target_pane.addTab(content, title)
+        self.tabs[item_id] = content
+        target_pane.setCurrentIndex(index)
+        self._activate_pane(target_pane)
+
+        self._persist_tab_session()
+
+    def _remove_welcome_placeholder(self, pane: CustomTabWidget):
+        """Drop the placeholder Welcome tab from ``pane``, if present."""
+        for index in range(pane.count() - 1, -1, -1):
+            if isinstance(pane.widget(index), WelcomeTab):
+                pane.removeTab(index)
 
     def _open_tab_into_pane(self, item_id: str, target_pane: CustomTabWidget) -> bool:
         """Create the tab widget for `item_id` and add it into `target_pane`.
@@ -318,6 +398,13 @@ class TabContainer(PWidget):
     def open_tab(self, item_id):
         if not self.app_context:
             self.logger.warning("Cannot open tab: No app context provided")
+            return
+
+        # If this tab is popped out, bring its window to the front.
+        if item_id in self.floating_windows:
+            window = self.floating_windows[item_id]
+            window.raise_()
+            window.activateWindow()
             return
 
          # Check if the tab is already open
@@ -553,6 +640,12 @@ class TabContainer(PWidget):
     def on_project_closed(self):
         """Called when a project is closed - close all project-related tabs and show welcome tab if no tabs are open."""
         self.logger.info("Closing all project-related tabs")
+
+        # Close any popped-out tabs (their windows aren't inside the panes).
+        for item_id in list(self.floating_windows.keys()):
+            window = self.floating_windows.pop(item_id)
+            self.tabs.pop(item_id, None)
+            window.close_without_redock()
 
         # Close all project-related tabs (tracked in self.tabs dictionary)
         # We need to collect tabs to close first to avoid modifying dictionary during iteration
