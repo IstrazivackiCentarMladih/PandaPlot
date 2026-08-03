@@ -3,6 +3,7 @@ from typing import Callable, Optional
 
 from pandaplot.gui.core.widget_extension import PWizard
 from pandaplot.gui.dialogs.chart.chart_data_page import ChartDataPage
+from pandaplot.gui.dialogs.chart.chart_labels_page import ChartLabelsPage
 from pandaplot.gui.dialogs.chart.chart_type_page import ChartTypePage
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -15,14 +16,17 @@ class ChartWizard(PWizard):
         parent=None,
         initial_dataset_id: Optional[str] = None,
         initial_column_ids: Optional[list[str]] = None,
+        initial_title: Optional[str] = None,
         datasets: Optional[list[tuple[str, str]]] = None,
         columns_provider: Optional[Callable[[str], list[tuple[str, str]]]] = None,
     ):
         self._initial_dataset_id = initial_dataset_id
         self._initial_column_ids = initial_column_ids or []
+        self._initial_title = initial_title or ""
         self._datasets = datasets or []
         self._columns_provider = columns_provider or (lambda _dataset_id: [])
         self._is_empty = False
+        self._labels_seeded = False
         super().__init__(app_context=app_context, parent=parent)
         self._initialize()
 
@@ -38,6 +42,9 @@ class ChartWizard(PWizard):
         self.data_page.set_datasets(self._datasets)
         self.data_page.set_dataset_columns_provider(self._columns_provider)
         self._data_page_id = self.addPage(self.data_page)
+
+        self.labels_page = ChartLabelsPage(app_context=self.app_context)
+        self._labels_page_id = self.addPage(self.labels_page)
 
         self.currentIdChanged.connect(self._on_page_changed)
         # QWizard only assigns a currentId (and instantiates page state) once it
@@ -151,6 +158,25 @@ class ChartWizard(PWizard):
             # type must leave whatever the user configured untouched.
             if rebuilt:
                 self._apply_initial_selection()
+                self._labels_seeded = False
+        elif page_id == self._labels_page_id:
+            if not self._labels_seeded:
+                self._seed_labels_defaults()
+                self._labels_seeded = True
+
+    def _seed_labels_defaults(self) -> None:
+        x_label = ""
+        y_label = ""
+        if self.data_page.cards:
+            names = self.data_page.cards[0].get_display_names()
+            if self.get_chart_type() == "hist":
+                # A histogram plots the binned "Values" column along X; Y is
+                # frequency/count, which nothing here can suggest a name for.
+                x_label = names.get("values", "")
+            else:
+                x_label = names.get("x", "")
+                y_label = names.get("y", "")
+        self.labels_page.set_defaults(self._initial_title, x_label, y_label)
 
     def _apply_initial_selection(self) -> None:
         if not self._initial_dataset_id or not self.data_page.cards:
@@ -185,3 +211,18 @@ class ChartWizard(PWizard):
         if self._is_empty:
             return []
         return self.data_page.series_configs()
+
+    def get_title(self) -> str:
+        if self._is_empty:
+            return ""
+        return self.labels_page.get_title()
+
+    def get_x_label(self) -> str:
+        if self._is_empty:
+            return ""
+        return self.labels_page.get_x_label()
+
+    def get_y_label(self) -> str:
+        if self._is_empty:
+            return ""
+        return self.labels_page.get_y_label()

@@ -157,3 +157,81 @@ def test_wizard_picks_up_the_application_theme():
     assert stylesheet.strip() != ""
     assert _FAKE_PALETTE["accent"] in stylesheet
     assert _FAKE_PALETTE["card_bg"] in stylesheet
+
+
+def test_labels_default_to_blank_with_no_series():
+    wizard = _make_wizard()
+    wizard.next()  # Type -> Data
+    wizard.next()  # Data -> Labels (default line card has no columns picked yet)
+
+    assert wizard.get_x_label() == ""
+    assert wizard.get_y_label() == ""
+
+
+def test_labels_seeded_from_the_initial_title_and_first_series_columns():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()  # Type -> Data: pre-selection applies Date/Revenue to card 1
+    wizard.next()  # Data -> Labels
+
+    assert wizard.get_title() == "Chart from Sales"
+    assert wizard.get_x_label() == "Date"
+    assert wizard.get_y_label() == "Revenue"
+
+
+def test_histogram_seeds_x_label_only_never_y():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-rev"])
+    histogram_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "hist"
+    )
+    wizard.type_page.type_list.setCurrentRow(histogram_row)
+    wizard.next()  # Type -> Data: pre-selection fills the Values column
+    wizard.next()  # Data -> Labels
+
+    assert wizard.get_x_label() == "Revenue"
+    assert wizard.get_y_label() == ""
+
+
+def test_editing_labels_then_revisiting_without_a_rebuild_keeps_the_edit():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()
+    wizard.next()
+    wizard.labels_page.title_edit.setText("My custom title")
+
+    wizard.back()  # Labels -> Data
+    wizard.next()  # Data -> Labels again, same chart type: no rebuild, no reseed
+
+    assert wizard.get_title() == "My custom title"
+
+
+def test_changing_chart_type_reseeds_the_labels():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()
+    wizard.next()
+    wizard.labels_page.x_label_edit.setText("something the user typed")
+
+    wizard.back()  # Labels -> Data
+    wizard.back()  # Data -> Type
+    bar_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    wizard.type_page.type_list.setCurrentRow(bar_row)
+    wizard.next()  # Type -> Data: cards rebuilt for "bar"
+    wizard.next()  # Data -> Labels: fresh cards -> reseed
+
+    assert wizard.get_x_label() == "Date"  # back to the derived default, not the stale edit
+
+
+def test_get_labels_return_blank_on_the_empty_path():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.type_page.emptyRequested.emit()
+
+    assert wizard.get_title() == ""
+    assert wizard.get_x_label() == ""
+    assert wizard.get_y_label() == ""
