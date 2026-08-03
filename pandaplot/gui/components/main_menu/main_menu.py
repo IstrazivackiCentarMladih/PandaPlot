@@ -234,6 +234,7 @@ class MainMenu(PMenuBar):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_create_chart_action_enabled())
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_create_chart_action_enabled())
         self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_create_chart_action_enabled())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_create_chart_action_enabled())
 
     def show_settings_dialog(self):
         """Show the settings dialog."""

@@ -5,6 +5,7 @@ import pytest
 from PySide6.QtWidgets import QApplication, QWidget
 
 from pandaplot.gui.components.main_menu.main_menu import MainMenu
+from pandaplot.models.events import ProjectEvents
 from pandaplot.models.project.items import Dataset
 
 
@@ -52,3 +53,25 @@ def test_create_new_action_enabled_with_a_dataset():
     menu = MainMenu(parent=parent, app_context=_fake_app_context(datasets=[dataset]))
 
     assert menu.create_chart_action.isEnabled() is True
+
+
+def test_create_new_action_is_refreshed_when_the_project_is_closed():
+    """Closing a project must disable 'Create New' (it stayed enabled before)."""
+    dataset = Mock(spec=Dataset)
+    app_context = _fake_app_context(datasets=[dataset])
+    parent = QWidget()
+    menu = MainMenu(parent=parent, app_context=app_context)
+    assert menu.create_chart_action.isEnabled() is True
+
+    subscribed = {
+        event_type: handler
+        for event_type, handler in (call.args for call in app_context.event_bus.subscribe.call_args_list)
+    }
+    assert ProjectEvents.PROJECT_CLOSED in subscribed
+
+    app_state = app_context.get_app_state.return_value
+    app_state.has_project = False
+    app_state.current_project = None
+    subscribed[ProjectEvents.PROJECT_CLOSED]({})
+
+    assert menu.create_chart_action.isEnabled() is False

@@ -286,7 +286,6 @@ class DatasetTab(PWidget):
         if not self.app_context:
             return
 
-        chart_name = f"Chart from {self.dataset.name}"
         self.logger.info(
             "Requesting chart creation from dataset %s", self.dataset.id)
 
@@ -300,7 +299,7 @@ class DatasetTab(PWidget):
                     parent_widget, "create_chart_from_dataset", None)
                 if callable(create_method):
                     create_method(
-                        self.dataset.id, chart_name,
+                        self.dataset.id,
                         preselected_column_ids=self._selected_column_ids(),
                     )
                 else:
@@ -315,12 +314,7 @@ class DatasetTab(PWidget):
 
     def _selected_column_ids(self) -> list[str]:
         """Column ids currently selected in this tab's table view, in column order."""
-        columns = list(self.table_view.model()._dataset.data.columns)
-        selected = self.table_view.selectionModel().selectedColumns()
-        indices = sorted(index.column() for index in selected)
-        names = [columns[i] for i in indices if i < len(columns)]
-        ids = (self.dataset.column_id(name) for name in names)
-        return [column_id for column_id in ids if column_id]
+        return self.table_view.get_selected_column_ids()
 
     def export_data(self):
         """Export the dataset to a file."""

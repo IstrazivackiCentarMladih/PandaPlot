@@ -522,7 +522,7 @@ class TabContainer(PWidget):
         target_pane.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab
 
-    def create_chart_from_dataset(self, dataset_id: str, chart_name: str, preselected_column_ids: Optional[list[str]] = None):
+    def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):
         """Open the chart creation wizard for a dataset and open the resulting tab."""
         if not self.app_context:
             self.logger.warning("Cannot create chart: No app context provided")

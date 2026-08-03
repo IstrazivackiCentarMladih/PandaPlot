@@ -5,13 +5,16 @@ import pytest
 from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.project.chart import CreateChartFromWizardCommand
+from pandaplot.models.project.items import Dataset
 
 
 @pytest.fixture
 def app_context_with_project():
-    dataset = Mock()
+    dataset = Mock(spec=Dataset)
+    dataset.id = "ds-1"
     dataset.name = "ds"
     dataset.parent_id = None
+    dataset.data = None
 
     project = Mock()
     project.find_item.return_value = dataset
@@ -85,6 +88,63 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
     assert created_chart.data_series[0].dataset_id == "ds-1"
     assert created_chart.data_series[0].x_column_id == "col-date"
     assert created_chart.data_series[0].y_column_id == "col-rev"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_chart_is_named_after_its_dataset_at_construction_time(mock_wizard_cls, app_context_with_project):
+    """The name must be passed to `Chart(...)`, not patched on afterwards.
+
+    `Chart.__init__` snapshots `config["title"] = self.name`, so a name set
+    after construction leaves the rendered title permanently empty.
+    """
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
+
+    assert command.execute() is True
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.name == "Chart from ds"
+    assert created_chart.config["title"] == "Chart from ds"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_chart_without_an_originating_dataset_falls_back_to_new_chart(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.name == "New Chart"
+    assert created_chart.config["title"] == "New Chart"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_an_exception_is_reported_and_does_not_propagate(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line")
+    wizard.get_series_configs.side_effect = KeyError("y_column_id")
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is False
+    project.add_item.assert_not_called()
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_undo_swallows_and_logs_exceptions(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+
+    project.remove_item_by_id.side_effect = RuntimeError("boom")
+
+    command.undo()  # must not raise
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

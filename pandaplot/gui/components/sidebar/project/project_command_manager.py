@@ -76,6 +76,31 @@ class ProjectPanelCommandManager:
             self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
 
+    def _preselected_column_ids(self, dataset_id) -> list[str]:
+        """Columns already selected in that dataset's table view, if its tab is open.
+
+        The dataset tab commonly is *not* open when charting from the project
+        tree; that simply means there is no selection to honour, so an empty
+        list is the expected result rather than an error.
+        """
+        from pandaplot.gui.components.tabs.tab_container import TabContainer
+
+        if not dataset_id:
+            return []
+        try:
+            tab_container = self.app_context.get_manager(TabContainer)
+            dataset_tab = tab_container.get_tab_widget(dataset_id)
+            if dataset_tab is None:
+                return []
+            table_view = getattr(dataset_tab, "table_view", None)
+            if table_view is None:
+                return []
+            return table_view.get_selected_column_ids()
+        except Exception as e:
+            self.logger.warning(
+                "Could not read the current column selection for dataset %s: %s", dataset_id, e)
+            return []
+
     def create_chart_from_dataset(self):
         """Create a chart from the selected dataset."""
         selected_item = self.get_current_item()
@@ -93,7 +118,7 @@ class ProjectPanelCommandManager:
         command = CreateChartFromWizardCommand(
             self.app_context,
             dataset_id=dataset_id,
-            preselected_column_ids=[],
+            preselected_column_ids=self._preselected_column_ids(dataset_id),
             parent_id=dataset_obj.parent_id if dataset_obj else None,
         )
         self.app_context.get_command_executor().execute_command(command)

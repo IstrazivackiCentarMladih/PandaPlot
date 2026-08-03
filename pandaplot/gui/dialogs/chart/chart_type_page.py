@@ -7,8 +7,8 @@ matplotlib (see tests/gui/test_main_menu_lazy_imports.py).
 """
 from typing import Optional
 
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
-from PySide6.QtCore import Signal
 
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
@@ -33,7 +33,7 @@ class ChartTypePage(PWizardPage):
         self.type_list = QListWidget()
         for chart_type, spec in CHART_ROLE_SPECS.items():
             item = QListWidgetItem(spec.display_name)
-            item.setData(1, chart_type)
+            item.setData(Qt.ItemDataRole.UserRole, chart_type)
             self.type_list.addItem(item)
         self.type_list.currentItemChanged.connect(self._on_type_changed)
         layout.addWidget(self.type_list, 0)
@@ -56,7 +56,7 @@ class ChartTypePage(PWizardPage):
     def _on_type_changed(self, current: Optional[QListWidgetItem], _previous):
         if current is None:
             return
-        self._render_preview(current.data(1))
+        self._render_preview(current.data(Qt.ItemDataRole.UserRole))
         self.completeChanged.emit()
 
     def _render_preview(self, chart_type: str):
@@ -84,7 +84,7 @@ class ChartTypePage(PWizardPage):
 
     def selected_chart_type(self) -> Optional[str]:
         item = self.type_list.currentItem()
-        return item.data(1) if item is not None else None
+        return item.data(Qt.ItemDataRole.UserRole) if item is not None else None
 
     def isComplete(self) -> bool:
         return self.selected_chart_type() is not None

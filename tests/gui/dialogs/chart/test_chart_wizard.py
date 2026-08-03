@@ -2,7 +2,8 @@
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtWidgets import QApplication, QWizard
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -75,7 +76,7 @@ def test_empty_requested_on_data_page_finishes_empty_with_chosen_type():
     wizard = _make_wizard()
     histogram_row = next(
         row for row in range(wizard.type_page.type_list.count())
-        if wizard.type_page.type_list.item(row).data(1) == "hist"
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "hist"
     )
     wizard.type_page.type_list.setCurrentRow(histogram_row)
 
@@ -104,6 +105,48 @@ def test_single_preselected_column_fills_y_only():
     configs = wizard.get_series_configs()
     assert configs[0]["x_column_id"] == ""
     assert configs[0]["y_column_id"] == "col-rev"
+
+
+def test_preselection_survives_back_then_a_chart_type_change():
+    """Regression: Back → change chart type → Next must keep the pre-selection.
+
+    `ChartDataPage.set_chart_type` rebuilds every card when the type actually
+    changes, so the fresh card used to default to the project's first dataset
+    instead of the dataset the user actually came from.
+    """
+    wizard = _make_wizard(initial_dataset_id="ds-1", initial_column_ids=["col-date", "col-rev"])
+
+    wizard.next()   # Type page -> Data page: pre-selection applied to card 1
+    wizard.back()   # back to the Type page
+
+    bar_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    wizard.type_page.type_list.setCurrentRow(bar_row)
+
+    wizard.next()   # forward again: cards are rebuilt for the new type
+
+    assert wizard.get_chart_type() == "bar"
+    configs = wizard.get_series_configs()
+    assert configs[0]["dataset_id"] == "ds-1"
+    assert configs[0]["x_column_id"] == "col-date"
+    assert configs[0]["y_column_id"] == "col-rev"
+
+
+def test_revisiting_the_data_page_without_a_type_change_keeps_user_edits():
+    """The pre-selection must not be re-applied over what the user configured."""
+    wizard = _make_wizard(initial_dataset_id="ds-1", initial_column_ids=["col-date", "col-rev"])
+
+    wizard.next()
+    card = wizard.data_page.cards[0]
+    card.apply_picked_columns("y", ["col-date"])  # user overrides Y by hand
+
+    wizard.back()
+    wizard.next()  # same chart type -> no rebuild -> no re-apply
+
+    assert wizard.data_page.cards[0] is card
+    assert wizard.get_series_configs()[0]["y_column_id"] == "col-date"
 
 
 def test_wizard_picks_up_the_application_theme():

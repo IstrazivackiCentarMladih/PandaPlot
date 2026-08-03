@@ -2,6 +2,7 @@
 from unittest.mock import Mock
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.dialogs.chart.chart_type_page import ChartTypePage
@@ -30,7 +31,7 @@ def test_selecting_histogram_updates_selected_chart_type():
     page = ChartTypePage(app_context=_fake_app_context())
     histogram_row = next(
         row for row in range(page.type_list.count())
-        if page.type_list.item(row).data(1) == "hist"
+        if page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "hist"
     )
 
     page.type_list.setCurrentRow(histogram_row)

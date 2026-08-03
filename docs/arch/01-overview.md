@@ -45,7 +45,8 @@ app.py::main()
    TabContainer        ← receives dataset.created   → opens DatasetTab
 
 5. CHART CREATION
-   CreateChartCommand(dataset_id, x_col, y_col).execute()
+   CreateChartFromWizardCommand(dataset_id, preselected_column_ids).execute()
+   ├── ChartWizard collects the chart type and one DataSeries per configured card
    ├── Chart item created with DataSeries referencing dataset columns
    ├── project.add_item(chart)
    └── EventBus.emit(ChartEvents.CHART_CREATED, {...})

@@ -80,7 +80,7 @@ Every `execute()`, `undo()`, and `redo()` is expected to emit the appropriate `E
 
 | Command | Description |
 |---------|-------------|
-| `CreateChartCommand` | Creates a new Chart item |
+| `CreateChartFromWizardCommand` | Opens `ChartWizard` and creates a new Chart item from its result |
 | `AddSeriesCommand` | Adds a DataSeries to a Chart |
 | `RemoveSeriesCommand` | Removes a DataSeries from a Chart |
 | `ApplyChartPropertiesCommand` | Updates ChartConfiguration (title, labels, grid…) |

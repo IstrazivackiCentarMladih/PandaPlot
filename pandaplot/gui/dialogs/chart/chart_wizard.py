@@ -145,8 +145,12 @@ class ChartWizard(PWizard):
 
     def _on_page_changed(self, page_id: int) -> None:
         if page_id == self._data_page_id:
-            self.data_page.set_chart_type(self.type_page.selected_chart_type() or "line")
-            self._apply_initial_selection()
+            rebuilt = self.data_page.set_chart_type(self.type_page.selected_chart_type() or "line")
+            # Only re-apply on a genuine rebuild: a fresh card set has no user
+            # edits to clobber, whereas revisiting the page with the same chart
+            # type must leave whatever the user configured untouched.
+            if rebuilt:
+                self._apply_initial_selection()
 
     def _apply_initial_selection(self) -> None:
         if not self._initial_dataset_id or not self.data_page.cards:
@@ -163,8 +167,9 @@ class ChartWizard(PWizard):
         else:
             for role, column_id in zip(roles, column_ids):
                 card.apply_picked_columns(role, [column_id])
-        self._initial_dataset_id = None
-        self._initial_column_ids = []
+        # The initial selection stays available for the wizard's lifetime so it
+        # can be re-applied whenever a fresh card set is built (e.g. the user
+        # goes Back, changes the chart type, and comes forward again).
 
     def _finish_empty(self) -> None:
         self._is_empty = True

@@ -43,13 +43,20 @@ class ChartDataPage(PWizardPage):
     def _apply_theme(self):
         pass
 
-    def set_chart_type(self, chart_type: str) -> None:
+    def set_chart_type(self, chart_type: str) -> bool:
+        """Point the page at `chart_type`, rebuilding the cards if it changed.
+
+        Returns True when the cards were actually rebuilt (so the caller knows
+        a fresh, untouched card set exists and any initial selection should be
+        re-applied), False when the existing cards were left alone.
+        """
         if chart_type == self._chart_type and self.cards:
-            return
+            return False
         self._chart_type = chart_type
         for card in list(self.cards):
             self._remove_card(card)
         self._add_card()
+        return True
 
     def set_datasets(self, datasets: list[tuple[str, str]]) -> None:
         self._datasets = datasets
