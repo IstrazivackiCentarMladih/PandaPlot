@@ -75,6 +75,12 @@ class DescriptiveStatsCommand(Command):
 
             self.result = self.compute()
 
+            # Place the results alongside the source dataset unless a folder was
+            # explicitly requested.
+            if self.folder_id is None:
+                source = self._get_source_dataset()
+                self.folder_id = source.parent_id if source else None
+
             # Stats table dataset.
             name = self.result_name or self.result.result_name()
             self.result_dataset_id = str(uuid.uuid4())
