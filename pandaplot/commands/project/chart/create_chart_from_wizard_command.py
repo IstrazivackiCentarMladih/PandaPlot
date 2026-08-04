@@ -34,6 +34,7 @@ class CreateChartFromWizardCommand(Command):
 
         self.created_chart_id: Optional[str] = None
         self.created_chart: Optional[Chart] = None
+        self._resolved_parent_id: Optional[str] = None
         self.dataset_id: Optional[str] = dataset_id
         self.preselected_column_ids: list[str] = preselected_column_ids or []
         self._dialog: Optional[QDialog] = None
@@ -209,7 +210,8 @@ class CreateChartFromWizardCommand(Command):
                         label=self._default_series_label(project, series_config),
                     )
 
-            project.add_item(chart, parent_id=self._resolve_parent_id(project, series_configs))
+            self._resolved_parent_id = self._resolve_parent_id(project, series_configs)
+            project.add_item(chart, parent_id=self._resolved_parent_id)
             self.created_chart_id = chart.id
             self.created_chart = chart
 
@@ -256,7 +258,7 @@ class CreateChartFromWizardCommand(Command):
         if not self.app_state.has_project or not self.app_state.current_project:
             return
         project = self.app_state.current_project
-        project.add_item(self.created_chart, parent_id=self.created_chart.parent_id)
+        project.add_item(self.created_chart, parent_id=self._resolved_parent_id)
         self.created_chart_id = self.created_chart.id
         self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
             chart_id=self.created_chart.id

@@ -27,10 +27,24 @@ def app_context_with_project():
     project = Mock()
     project.find_item.return_value = dataset
     project.get_all_items.return_value = [dataset]
-    # Mirror Project.add_item's real side effect (see
-    # ItemCollection.add_item) so tests can assert on the inserted item's
-    # own `.parent_id` afterward, the same way `redo()` will rely on it.
-    project.add_item.side_effect = lambda item, parent_id=None: setattr(item, "parent_id", parent_id)
+    # Mirror both halves of Project's real behaviour (see
+    # ItemCollection.add_item / ItemCollection.remove_item): `add_item` sets
+    # the inserted item's own `.parent_id`, and `remove_item_by_id` clears it
+    # back to `None`. Tracking inserted items here is what makes that
+    # removal side effect possible without a static id->item mapping.
+    inserted_items = {}
+
+    def _add_item(item, parent_id=None):
+        item.parent_id = parent_id
+        inserted_items[item.id] = item
+
+    def _remove_item_by_id(item_id):
+        item = inserted_items.pop(item_id, None)
+        if item is not None:
+            item.parent_id = None
+
+    project.add_item.side_effect = _add_item
+    project.remove_item_by_id.side_effect = _remove_item_by_id
 
     app_state = Mock()
     app_state.has_project = True

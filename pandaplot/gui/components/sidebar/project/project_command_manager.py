@@ -14,7 +14,6 @@ from pandaplot.commands.project.note import CreateNoteCommand
 from pandaplot.commands.project.project import RenameProjectCommand
 from pandaplot.models.events.event_data import TabOpenRequestedData
 from pandaplot.models.events.event_types import UIEvents
-from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 
 
@@ -113,7 +112,6 @@ class ProjectPanelCommandManager:
             return
 
         dataset_id = item_data.get("id")
-        dataset_obj: Dataset = item_data.get("data")
 
         command = CreateChartFromWizardCommand(
             self.app_context,
