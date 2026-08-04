@@ -310,6 +310,47 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_series_gets_a_default_label_from_dataset_and_y_column(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    dataset = project.find_item("ds-1")
+    dataset.name = "Sales"
+    dataset.column_name.return_value = "Revenue"
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.data_series[0].label == "Sales:Revenue"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_series_label_falls_back_to_dataset_name_when_y_column_unresolved(
+        mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    dataset = project.find_item("ds-1")
+    dataset.name = "Sales"
+    dataset.column_name.return_value = None
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.data_series[0].label == "Sales"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_chart_is_named_after_its_dataset_at_construction_time(mock_wizard_cls, app_context_with_project):
     """The name must be passed to `Chart(...)`, not patched on afterwards.
 

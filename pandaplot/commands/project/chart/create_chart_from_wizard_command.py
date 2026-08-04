@@ -50,6 +50,26 @@ class CreateChartFromWizardCommand(Command):
             return [(dataset.column_id(name) or "", name) for name in dataset.data.columns]
         return provider
 
+    def _default_series_label(self, project, series_config: dict) -> str:
+        """Default label for a wizard-created series: "{dataset name}:{Y column name}".
+
+        Matches the convention already used elsewhere in the app (e.g. the
+        dataset properties panel). Histogram series need no special case:
+        their picked "Values" column already lands in `y_column_id` via the
+        wizard's own role mapping. Falls back to just the dataset name if the
+        Y column can't be resolved (shouldn't normally happen for a complete
+        series).
+        """
+        dataset = project.find_item(series_config["dataset_id"])
+        dataset_name = dataset.name if isinstance(dataset, Dataset) else series_config["dataset_id"]
+        y_column_name = ""
+        y_column_id = series_config["y_column_id"]
+        if isinstance(dataset, Dataset) and y_column_id:
+            y_column_name = dataset.column_name(y_column_id) or ""
+        if y_column_name:
+            return f"{dataset_name}:{y_column_name}"
+        return dataset_name
+
     def _default_chart_name(self, project) -> str:
         """Name for the new chart, derived from the originating dataset.
 
@@ -163,6 +183,7 @@ class CreateChartFromWizardCommand(Command):
                         x_error_column_id=series_config["x_error_column_id"],
                         y_error_column_id=series_config["y_error_column_id"],
                         error_symmetric=series_config["error_symmetric"],
+                        label=self._default_series_label(project, series_config),
                     )
 
             project.add_item(chart, parent_id=self.parent_id)
