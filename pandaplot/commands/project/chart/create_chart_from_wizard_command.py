@@ -26,7 +26,7 @@ class CreateChartFromWizardCommand(Command):
     """Opens `ChartWizard` non-blocking; on acceptance builds a `Chart` from it."""
 
     def __init__(self, app_context: AppContext, dataset_id: Optional[str] = None,
-                 preselected_column_ids: Optional[list[str]] = None, parent_id: Optional[str] = None):
+                 preselected_column_ids: Optional[list[str]] = None):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
@@ -36,7 +36,6 @@ class CreateChartFromWizardCommand(Command):
         self.created_chart: Optional[Chart] = None
         self.dataset_id: Optional[str] = dataset_id
         self.preselected_column_ids: list[str] = preselected_column_ids or []
-        self.parent_id: Optional[str] = parent_id
         self._dialog: Optional[QDialog] = None
 
     def _dataset_options(self, project) -> list[tuple[str, str]]:
@@ -69,6 +68,29 @@ class CreateChartFromWizardCommand(Command):
         if y_column_name:
             return f"{dataset_name}:{y_column_name}"
         return dataset_name
+
+    def _resolve_parent_id(self, project, series_configs: list[dict]) -> Optional[str]:
+        """Folder for the new chart: the shared folder of every dataset its
+        series use, or the project root if they don't share one.
+
+        An empty-plot chart has no series to derive this from, so it falls
+        back to `self.dataset_id` (the entry point's originating dataset, if
+        any) -- e.g. "Create empty plot" from a dataset's own context menu
+        still places the chart in that dataset's folder.
+        """
+        dataset_ids = {config["dataset_id"] for config in series_configs if config.get("dataset_id")}
+        if not dataset_ids and self.dataset_id:
+            dataset_ids = {self.dataset_id}
+
+        parent_ids = set()
+        for dataset_id in dataset_ids:
+            dataset = project.find_item(dataset_id)
+            if dataset is not None:
+                parent_ids.add(dataset.parent_id)
+
+        if len(parent_ids) == 1:
+            return next(iter(parent_ids))
+        return None
 
     def _default_chart_name(self, project) -> str:
         """Name for the new chart, derived from the originating dataset.
@@ -169,13 +191,14 @@ class CreateChartFromWizardCommand(Command):
             project = self.app_state.current_project
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
+            series_configs = [] if dialog.is_empty() else dialog.get_series_configs()
             if not dialog.is_empty():
                 chart.set_labels(
                     title=dialog.get_title() or None,
                     x_label=dialog.get_x_label() or None,
                     y_label=dialog.get_y_label() or None,
                 )
-                for series_config in dialog.get_series_configs():
+                for series_config in series_configs:
                     chart.add_data_series(
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
@@ -186,7 +209,7 @@ class CreateChartFromWizardCommand(Command):
                         label=self._default_series_label(project, series_config),
                     )
 
-            project.add_item(chart, parent_id=self.parent_id)
+            project.add_item(chart, parent_id=self._resolve_parent_id(project, series_configs))
             self.created_chart_id = chart.id
             self.created_chart = chart
 
@@ -233,7 +256,7 @@ class CreateChartFromWizardCommand(Command):
         if not self.app_state.has_project or not self.app_state.current_project:
             return
         project = self.app_state.current_project
-        project.add_item(self.created_chart, parent_id=self.parent_id)
+        project.add_item(self.created_chart, parent_id=self.created_chart.parent_id)
         self.created_chart_id = self.created_chart.id
         self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
             chart_id=self.created_chart.id

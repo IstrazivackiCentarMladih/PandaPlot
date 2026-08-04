@@ -119,7 +119,6 @@ class ProjectPanelCommandManager:
             self.app_context,
             dataset_id=dataset_id,
             preselected_column_ids=self._preselected_column_ids(dataset_id),
-            parent_id=dataset_obj.parent_id if dataset_obj else None,
         )
         self.app_context.get_command_executor().execute_command(command)
 

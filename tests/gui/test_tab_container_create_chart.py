@@ -30,5 +30,5 @@ def test_create_chart_from_dataset_builds_the_wizard_command(mock_command_cls):
     container.create_chart_from_dataset("ds-1", preselected_column_ids=["col-rev"])
 
     mock_command_cls.assert_called_once_with(
-        app_context, dataset_id="ds-1", preselected_column_ids=["col-rev"], parent_id="folder-1"
+        app_context, dataset_id="ds-1", preselected_column_ids=["col-rev"]
     )

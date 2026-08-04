@@ -551,7 +551,6 @@ class TabContainer(PWidget):
             self.app_context,
             dataset_id=dataset_id,
             preselected_column_ids=preselected_column_ids or [],
-            parent_id=dataset_item.parent_id,
         )
         self.app_context.get_command_executor().execute_command(command)
 

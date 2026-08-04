@@ -27,6 +27,10 @@ def app_context_with_project():
     project = Mock()
     project.find_item.return_value = dataset
     project.get_all_items.return_value = [dataset]
+    # Mirror Project.add_item's real side effect (see
+    # ItemCollection.add_item) so tests can assert on the inserted item's
+    # own `.parent_id` afterward, the same way `redo()` will rely on it.
+    project.add_item.side_effect = lambda item, parent_id=None: setattr(item, "parent_id", parent_id)
 
     app_state = Mock()
     app_state.has_project = True
@@ -37,6 +41,16 @@ def app_context_with_project():
     app_context.get_ui_controller.return_value = Mock()
     app_context.event_bus = Mock()
     return app_context, project
+
+
+def _dataset(dataset_id, name, parent_id):
+    dataset = Mock(spec=Dataset)
+    dataset.id = dataset_id
+    dataset.name = name
+    dataset.parent_id = parent_id
+    dataset.data = None
+    dataset.column_name.return_value = None
+    return dataset
 
 
 def _fake_wizard(chart_type="line", is_empty=False, series_configs=None,
@@ -512,3 +526,106 @@ def test_redo_retries_when_the_wizard_never_opened(mock_wizard_cls, app_context_
 
     mock_wizard_cls.assert_called_once()
     assert command._dialog is not None
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_chart_goes_in_its_single_datasets_folder(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    ds1 = _dataset("ds-1", "Sales", "folder-1")
+    project.find_item.side_effect = lambda did: {"ds-1": ds1}.get(did)
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_chart_goes_in_the_shared_folder_of_multiple_datasets(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    ds1 = _dataset("ds-1", "Sales", "folder-1")
+    ds2 = _dataset("ds-2", "Costs", "folder-1")
+    project.find_item.side_effect = lambda did: {"ds-1": ds1, "ds-2": ds2}.get(did)
+    series_configs = [
+        {"dataset_id": "ds-1", "x_column_id": "", "y_column_id": "col-rev",
+         "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True},
+        {"dataset_id": "ds-2", "x_column_id": "", "y_column_id": "col-cost",
+         "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True},
+    ]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_chart_goes_to_root_when_datasets_are_in_different_folders(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    ds1 = _dataset("ds-1", "Sales", "folder-1")
+    ds2 = _dataset("ds-2", "Costs", "folder-2")
+    project.find_item.side_effect = lambda did: {"ds-1": ds1, "ds-2": ds2}.get(did)
+    series_configs = [
+        {"dataset_id": "ds-1", "x_column_id": "", "y_column_id": "col-rev",
+         "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True},
+        {"dataset_id": "ds-2", "x_column_id": "", "y_column_id": "col-cost",
+         "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True},
+    ]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args.kwargs["parent_id"] is None
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_empty_plot_uses_the_originating_datasets_folder(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    dataset = project.find_item("ds-1")
+    dataset.parent_id = "folder-1"
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_empty_plot_with_no_originating_dataset_goes_to_root(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert project.add_item.call_args.kwargs["parent_id"] is None
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_redo_reinserts_the_chart_into_its_original_folder(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    dataset = project.find_item("ds-1")
+    dataset.parent_id = "folder-1"
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+    command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+    assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+    command.undo()
+    command.redo()
+
+    assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"

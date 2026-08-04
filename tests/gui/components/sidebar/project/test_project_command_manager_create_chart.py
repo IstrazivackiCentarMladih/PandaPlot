@@ -48,7 +48,6 @@ def test_create_chart_from_dataset_preselects_columns_when_the_tab_is_open(mock_
         app_context,
         dataset_id="ds-1",
         preselected_column_ids=["col-date", "col-rev"],
-        parent_id="folder-1",
     )
     app_context.get_command_executor.return_value.execute_command.assert_called_once_with(
         mock_command_cls.return_value
@@ -64,5 +63,5 @@ def test_create_chart_from_dataset_preselects_nothing_when_the_tab_is_not_open(m
     _manager(app_context, dataset_obj).create_chart_from_dataset()
 
     mock_command_cls.assert_called_once_with(
-        app_context, dataset_id="ds-1", preselected_column_ids=[], parent_id="folder-1"
+        app_context, dataset_id="ds-1", preselected_column_ids=[]
     )
