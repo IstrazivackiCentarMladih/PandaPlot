@@ -113,9 +113,15 @@ def test_wizard_title_and_axis_labels_are_applied_to_the_chart(mock_wizard_cls, 
 def test_a_blank_title_from_the_wizard_does_not_blank_out_the_default_name(
         mock_wizard_cls, app_context_with_project):
     """An unedited (blank) title/label field must not overwrite the
-    constructor-set default with an empty string."""
+    constructor-set default with an empty string.
+
+    Unlike the empty-wizard path, this drives the non-empty path (`is_empty`
+    stays `False`, the `_fake_wizard` default) so `set_labels(...)` is
+    actually called with the wizard's blank `""` title/labels -- exercising
+    the `or None` guards this test is named for.
+    """
     app_context, project = app_context_with_project
-    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line")
 
     command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
     assert command.execute() is True
@@ -124,6 +130,8 @@ def test_a_blank_title_from_the_wizard_does_not_blank_out_the_default_name(
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.name == "Chart from ds"
     assert created_chart.config["title"] == "Chart from ds"
+    assert created_chart.config["x_label"] == ""
+    assert created_chart.config["y_label"] == ""
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
