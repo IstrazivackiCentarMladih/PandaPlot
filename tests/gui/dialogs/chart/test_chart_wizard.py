@@ -43,7 +43,7 @@ def _fake_app_context():
 
 
 def _columns_for(dataset_id: str):
-    return [("col-date", "Date"), ("col-rev", "Revenue")]
+    return [("col-date", "Date"), ("col-rev", "Revenue"), ("col-cost", "Cost")]
 
 
 def _make_wizard(**kwargs) -> ChartWizard:
@@ -207,7 +207,7 @@ def test_editing_labels_then_revisiting_without_a_rebuild_keeps_the_edit():
     assert wizard.get_title() == "My custom title"
 
 
-def test_changing_chart_type_reseeds_the_labels():
+def test_a_touched_axis_label_survives_a_chart_type_change():
     wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
                            initial_column_ids=["col-date", "col-rev"])
     wizard.next()
@@ -222,9 +222,65 @@ def test_changing_chart_type_reseeds_the_labels():
     )
     wizard.type_page.type_list.setCurrentRow(bar_row)
     wizard.next()  # Type -> Data: cards rebuilt for "bar"
-    wizard.next()  # Data -> Labels: fresh cards -> reseed
+    wizard.next()  # Data -> Labels: fresh cards, but the field was touched
 
-    assert wizard.get_x_label() == "Date"  # back to the derived default, not the stale edit
+    assert wizard.get_x_label() == "something the user typed"
+
+
+def test_an_untouched_axis_label_still_updates_after_a_chart_type_change():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()
+    wizard.next()  # Data -> Labels: x label seeded to "Date", never touched
+
+    wizard.back()  # Labels -> Data
+    wizard.back()  # Data -> Type
+    bar_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    wizard.type_page.type_list.setCurrentRow(bar_row)
+    wizard.next()  # Type -> Data: cards rebuilt for "bar"
+    wizard.next()  # Data -> Labels: untouched field refreshes to the new default
+
+    assert wizard.get_x_label() == "Date"  # still derives correctly for the new type
+
+
+def test_touched_title_survives_a_chart_type_change():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()
+    wizard.next()
+    wizard.labels_page.title_edit.setText("My custom title")
+
+    wizard.back()  # Labels -> Data
+    wizard.back()  # Data -> Type
+    bar_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    wizard.type_page.type_list.setCurrentRow(bar_row)
+    wizard.next()  # Type -> Data: cards rebuilt for "bar"
+    wizard.next()  # Data -> Labels: fresh cards, but the title was touched
+
+    assert wizard.get_title() == "My custom title"
+
+
+def test_untouched_label_updates_after_changing_the_picked_column_without_a_type_change():
+    wizard = _make_wizard(initial_title="Chart from Sales", initial_dataset_id="ds-1",
+                           initial_column_ids=["col-date", "col-rev"])
+    wizard.next()
+    wizard.next()  # Data -> Labels: y label seeded from Revenue, never touched
+
+    assert wizard.get_y_label() == "Revenue"
+
+    wizard.back()  # Labels -> Data
+    card = wizard.data_page.cards[0]
+    card.apply_picked_columns("y", ["col-cost"])  # user picks a different Y column
+
+    wizard.next()  # Data -> Labels: same chart type, no rebuild, but untouched field refreshes
+
+    assert wizard.get_y_label() == "Cost"
 
 
 def test_get_labels_return_blank_on_the_empty_path():

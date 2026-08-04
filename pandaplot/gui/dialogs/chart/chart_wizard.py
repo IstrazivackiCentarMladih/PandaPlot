@@ -26,7 +26,6 @@ class ChartWizard(PWizard):
         self._datasets = datasets or []
         self._columns_provider = columns_provider or (lambda _dataset_id: [])
         self._is_empty = False
-        self._labels_seeded = False
         super().__init__(app_context=app_context, parent=parent)
         self._initialize()
 
@@ -158,11 +157,8 @@ class ChartWizard(PWizard):
             # type must leave whatever the user configured untouched.
             if rebuilt:
                 self._apply_initial_selection()
-                self._labels_seeded = False
         elif page_id == self._labels_page_id:
-            if not self._labels_seeded:
-                self._seed_labels_defaults()
-                self._labels_seeded = True
+            self._seed_labels_defaults()
 
     def _seed_labels_defaults(self) -> None:
         x_label = ""

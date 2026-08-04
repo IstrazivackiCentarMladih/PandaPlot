@@ -59,3 +59,28 @@ def test_set_defaults_overwrites_previous_defaults():
     assert page.get_title() == "New title"
     assert page.get_x_label() == "New X"
     assert page.get_y_label() == "New Y"
+
+
+def test_set_defaults_overwrites_an_untouched_field_even_on_a_second_call():
+    """Seeding itself must not mark a field as touched (regression guard for
+    the blockSignals wiring in set_defaults)."""
+    page = ChartLabelsPage(app_context=_fake_app_context())
+    page.set_defaults("Old title", "Old X", "Old Y")
+
+    page.set_defaults("Newer title", "Newer X", "Newer Y")
+
+    assert page.get_title() == "Newer title"
+    assert page.get_x_label() == "Newer X"
+    assert page.get_y_label() == "Newer Y"
+
+
+def test_a_field_touched_by_the_user_is_never_overwritten_again():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+    page.set_defaults("Old title", "Old X", "Old Y")
+
+    page.x_label_edit.setText("user typed this")  # simulates a real user edit
+    page.set_defaults("New title", "New X", "New Y")
+
+    assert page.get_x_label() == "user typed this"
+    assert page.get_title() == "New title"
+    assert page.get_y_label() == "New Y"

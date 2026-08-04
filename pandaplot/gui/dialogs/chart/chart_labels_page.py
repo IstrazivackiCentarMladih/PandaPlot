@@ -16,13 +16,20 @@ class ChartLabelsPage(PWizardPage):
         self.setTitle("Title and axis labels")
         form = QFormLayout(self)
 
+        self._title_touched = False
+        self._x_touched = False
+        self._y_touched = False
+
         self.title_edit = QLineEdit()
+        self.title_edit.textChanged.connect(lambda: setattr(self, "_title_touched", True))
         form.addRow("Title:", self.title_edit)
 
         self.x_label_edit = QLineEdit()
+        self.x_label_edit.textChanged.connect(lambda: setattr(self, "_x_touched", True))
         form.addRow("X-axis label:", self.x_label_edit)
 
         self.y_label_edit = QLineEdit()
+        self.y_label_edit.textChanged.connect(lambda: setattr(self, "_y_touched", True))
         form.addRow("Y-axis label:", self.y_label_edit)
 
     def _apply_theme(self):
@@ -30,9 +37,26 @@ class ChartLabelsPage(PWizardPage):
         pass
 
     def set_defaults(self, title: str, x_label: str, y_label: str) -> None:
-        self.title_edit.setText(title)
-        self.x_label_edit.setText(x_label)
-        self.y_label_edit.setText(y_label)
+        """Refresh whichever fields the user hasn't actually edited yet.
+
+        Called every time the wizard's Labels page is entered (not just
+        once) -- a field the user has typed into is never touched again
+        regardless of what changed elsewhere in the wizard, but an
+        untouched field always reflects the current Data-step state (e.g.
+        after the user picks a different column for a series).
+        """
+        for edit, touched, value in (
+            (self.title_edit, self._title_touched, title),
+            (self.x_label_edit, self._x_touched, x_label),
+            (self.y_label_edit, self._y_touched, y_label),
+        ):
+            if touched:
+                continue
+            edit.blockSignals(True)
+            try:
+                edit.setText(value)
+            finally:
+                edit.blockSignals(False)
 
     def get_title(self) -> str:
         return self.title_edit.text()
