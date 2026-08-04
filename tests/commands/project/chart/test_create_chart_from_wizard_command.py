@@ -39,13 +39,17 @@ def app_context_with_project():
     return app_context, project
 
 
-def _fake_wizard(chart_type="line", is_empty=False, series_configs=None):
+def _fake_wizard(chart_type="line", is_empty=False, series_configs=None,
+                  title="", x_label="", y_label=""):
     """A stand-in for `ChartWizard` with a mockable `finished` signal."""
     wizard = Mock()
     wizard.finished = Mock()
     wizard.get_chart_type.return_value = chart_type
     wizard.is_empty.return_value = is_empty
     wizard.get_series_configs.return_value = series_configs or []
+    wizard.get_title.return_value = title
+    wizard.get_x_label.return_value = x_label
+    wizard.get_y_label.return_value = y_label
     return wizard
 
 
@@ -70,6 +74,73 @@ def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_
     # `exec()` made the wizard application-modal implicitly; `show()` does not,
     # so the command must ask for it explicitly.
     wizard.setModal.assert_called_once_with(True)
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_execute_passes_the_default_chart_name_as_initial_title(mock_wizard_cls, app_context_with_project):
+    app_context, _ = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
+    assert command.execute() is True
+
+    assert mock_wizard_cls.call_args.kwargs["initial_title"] == "Chart from ds"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_wizard_title_and_axis_labels_are_applied_to_the_chart(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    wizard = _fake_wizard(chart_type="line", series_configs=series_configs,
+                           title="My Chart", x_label="Date", y_label="Revenue")
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.name == "My Chart"
+    assert created_chart.config["title"] == "My Chart"
+    assert created_chart.config["x_label"] == "Date"
+    assert created_chart.config["y_label"] == "Revenue"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_a_blank_title_from_the_wizard_does_not_blank_out_the_default_name(
+        mock_wizard_cls, app_context_with_project):
+    """An unedited (blank) title/label field must not overwrite the
+    constructor-set default with an empty string."""
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context, dataset_id="ds-1")
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.name == "Chart from ds"
+    assert created_chart.config["title"] == "Chart from ds"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_empty_path_never_reads_the_wizards_labels(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    wizard.get_title.assert_not_called()
+    wizard.get_x_label.assert_not_called()
+    wizard.get_y_label.assert_not_called()
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.name == "New Chart"
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

@@ -80,6 +80,7 @@ class CreateChartFromWizardCommand(Command):
                 parent=self.ui_controller.parent_widget,
                 initial_dataset_id=self.dataset_id,
                 initial_column_ids=self.preselected_column_ids,
+                initial_title=self._default_chart_name(project),
                 datasets=self._dataset_options(project),
                 columns_provider=self._columns_provider(project),
             )
@@ -149,6 +150,11 @@ class CreateChartFromWizardCommand(Command):
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
             if not dialog.is_empty():
+                chart.set_labels(
+                    title=dialog.get_title() or None,
+                    x_label=dialog.get_x_label() or None,
+                    y_label=dialog.get_y_label() or None,
+                )
                 for series_config in dialog.get_series_configs():
                     chart.add_data_series(
                         series_config["dataset_id"],
