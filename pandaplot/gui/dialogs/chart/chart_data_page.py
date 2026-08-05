@@ -1,16 +1,20 @@
 """Step 2 of the chart creation wizard: one or more series, each configured
-by a SeriesConfigCard, plus a 'Create empty plot' escape hatch.
+by a collapsible SeriesConfigCard, plus a 'Create empty plot' escape hatch.
 """
 from typing import Callable, Optional
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
 
+from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
 from pandaplot.gui.dialogs.chart.dataset_column_picker import DatasetColumnPicker
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
+from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
+from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 class ChartDataPage(PWizardPage):
@@ -26,22 +30,56 @@ class ChartDataPage(PWizardPage):
         self._initialize()
 
     def _init_ui(self):
-        self.setTitle("Configure your data")
-        self._layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        self.cards_container = QVBoxLayout()
-        self._layout.addLayout(self.cards_container)
+        self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
+        rail_row = QHBoxLayout()
+        rail_row.setContentsMargins(14, 10, 14, 10)
+        rail_row.addWidget(self.step_rail)
+        outer.addLayout(rail_row)
 
+        content = QVBoxLayout()
+        content.setContentsMargins(14, 14, 14, 14)
+        outer.addLayout(content, 1)
+
+        header_row = QHBoxLayout()
+        header_row.addWidget(SectionHeader("Series"))
+        header_row.addStretch(1)
         self.add_series_button = QPushButton("+ Add series")
         self.add_series_button.clicked.connect(self._add_card)
-        self._layout.addWidget(self.add_series_button)
+        header_row.addWidget(self.add_series_button)
+        content.addLayout(header_row)
 
-        self.empty_button = QPushButton("Create empty plot")
-        self.empty_button.clicked.connect(self.emptyRequested.emit)
-        self._layout.addWidget(self.empty_button)
+        cards_container = QWidget()
+        self.cards_container = QVBoxLayout(cards_container)
+        self.cards_container.setContentsMargins(0, 0, 0, 0)
+        self.cards_container.setSpacing(6)
+
+        self.cards_scroll_area = QScrollArea()
+        self.cards_scroll_area.setWidgetResizable(True)
+        self.cards_scroll_area.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.cards_scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.cards_scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.cards_scroll_area.setWidget(cards_container)
+        content.addWidget(self.cards_scroll_area, 1)
+
+        self.footer = WizardFooter(step_number=2, total_steps=3, show_empty_link=True)
+        self.footer.backClicked.connect(lambda: self.wizard().back())
+        self.footer.nextClicked.connect(lambda: self.wizard().next())
+        self.footer.cancelClicked.connect(lambda: self.wizard().reject())
+        self.footer.emptyRequested.connect(self.emptyRequested.emit)
+        self.empty_button = self.footer.empty_link
+        outer.addWidget(self.footer)
 
     def _apply_theme(self):
-        pass
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        tokens = theme_manager.get_design_tokens()
+        self.step_rail.set_tokens(tokens)
+        self.footer.set_tokens(tokens)
+        for card in self.cards:
+            card.set_tokens(tokens)
 
     def set_chart_type(self, chart_type: str) -> bool:
         """Point the page at `chart_type`, rebuilding the cards if it changed.

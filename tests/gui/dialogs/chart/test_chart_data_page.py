@@ -152,3 +152,34 @@ def test_pick_requested_without_a_selected_dataset_does_not_start_the_picker():
     card.pickRequested.emit("y")
 
     page._picker.start.assert_not_called()
+
+
+def test_new_cards_start_expanded():
+    page = _make_page()
+
+    assert page.cards[0].is_collapsed() is False
+
+
+def test_second_added_card_also_starts_expanded_first_card_untouched():
+    page = _make_page()
+    page.cards[0].y_column_combo.setCurrentIndex(page.cards[0].y_column_combo.findData("col-rev"))
+    page.cards[0].set_collapsed(True)
+
+    page.add_series_button.click()
+
+    assert page.cards[1].is_collapsed() is False
+    assert page.cards[0].is_collapsed() is True  # untouched by adding a sibling
+
+
+def test_cards_container_is_wrapped_in_a_scroll_area():
+    page = _make_page()
+
+    assert page.cards_scroll_area is not None
+    assert page.cards_scroll_area.widgetResizable() is True
+
+
+def test_page_exposes_a_step_rail_and_footer():
+    page = _make_page()
+
+    assert page.step_rail is not None
+    assert page.footer is not None
