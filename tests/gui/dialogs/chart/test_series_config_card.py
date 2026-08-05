@@ -16,6 +16,7 @@ def _line_card() -> SeriesConfigCard:
     card = SeriesConfigCard(role_spec=get_chart_role_spec("line"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
+    card.show()
     return card
 
 
@@ -171,3 +172,46 @@ def test_display_names_never_includes_error_roles():
     card.y_error_column_combo.setCurrentIndex(card.y_error_column_combo.findData("col-rev"))
 
     assert "y_error" not in card.get_display_names()
+
+
+def test_starts_expanded():
+    card = _line_card()
+
+    assert card.is_collapsed() is False
+    assert card.dataset_combo.isVisible() is True
+
+
+def test_collapsing_hides_the_form_and_shows_a_summary():
+    card = _line_card()
+    card.y_column_combo.setCurrentIndex(card.y_column_combo.findData("col-rev"))
+
+    card.set_collapsed(True)
+
+    assert card.is_collapsed() is True
+    assert card.dataset_combo.isVisible() is False
+    assert "Revenue" in card.summary_label.text()
+
+
+def test_expanding_again_restores_the_form():
+    card = _line_card()
+    card.set_collapsed(True)
+
+    card.set_collapsed(False)
+
+    assert card.is_collapsed() is False
+    assert card.dataset_combo.isVisible() is True
+
+
+def test_collapsed_state_does_not_affect_series_config():
+    card = _line_card()
+    card.y_column_combo.setCurrentIndex(card.y_column_combo.findData("col-rev"))
+    card.set_collapsed(True)
+
+    assert card.get_series_config()["y_column_id"] == "col-rev"
+
+
+def test_pick_and_remove_buttons_are_not_fixed_width():
+    card = _line_card()
+
+    assert card.y_pick_button.minimumWidth() == 0
+    assert card.remove_button.minimumWidth() == 0

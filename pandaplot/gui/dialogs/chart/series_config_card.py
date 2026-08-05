@@ -1,6 +1,8 @@
 """One series' configuration card for the chart creation wizard's Data step:
 dataset picker, per-role column pickers (+ 'pick from dataset' buttons),
-an optional error-bars toggle, and a remove button.
+an optional error-bars toggle, and a remove button. Collapsible to a
+one-line summary via `set_collapsed`, mirroring the accordion pattern used
+by the Chart Properties panel's Data tab.
 """
 from typing import Optional
 
@@ -8,20 +10,23 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
+from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
 
 _ROLE_LABELS = {"x": "X column", "y": "Y column", "values": "Values column"}
 _ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "values": "y_column_id"}
 
 
-class SeriesConfigCard(QWidget):
+class SeriesConfigCard(Card):
     removeRequested = Signal()
     pickRequested = Signal(str)
     configChanged = Signal()
@@ -34,10 +39,33 @@ class SeriesConfigCard(QWidget):
         self.error_bars_check: Optional[QCheckBox] = None
         self.x_error_column_combo: Optional[QComboBox] = None
         self.y_error_column_combo: Optional[QComboBox] = None
+        self._collapsed = False
+        self._tokens: dict = {}
         self._build_ui()
 
     def _build_ui(self):
-        grid = QGridLayout(self)
+        outer = QVBoxLayout(self)
+
+        # Collapsed summary row -- always built, shown only while collapsed.
+        self._summary_row = QWidget()
+        summary_layout = QHBoxLayout(self._summary_row)
+        summary_layout.setContentsMargins(0, 0, 0, 0)
+        self._swatch = QFrame()
+        self._swatch.setFixedSize(10, 10)
+        summary_layout.addWidget(self._swatch)
+        self.summary_label = QLabel()
+        summary_layout.addWidget(self.summary_label, 1)
+        self._error_status_label = QLabel()
+        summary_layout.addWidget(self._error_status_label)
+        self._expand_button = QPushButton("▸")
+        self._expand_button.setFlat(True)
+        self._expand_button.clicked.connect(lambda: self.set_collapsed(False))
+        summary_layout.addWidget(self._expand_button)
+        outer.addWidget(self._summary_row)
+
+        # Full form -- shown only while expanded.
+        self._form_widget = QWidget()
+        grid = QGridLayout(self._form_widget)
         row = 0
 
         grid.addWidget(QLabel("Dataset:"), row, 0)
@@ -89,6 +117,53 @@ class SeriesConfigCard(QWidget):
         self.remove_button = QPushButton("Remove")
         self.remove_button.clicked.connect(self.removeRequested.emit)
         grid.addWidget(self.remove_button, row, 0, 1, 2)
+
+        outer.addWidget(self._form_widget)
+        self._update_visibility()
+
+    # -- Collapse/expand --------------------------------------------------
+
+    def is_collapsed(self) -> bool:
+        return self._collapsed
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        self._collapsed = collapsed
+        self._update_visibility()
+        if collapsed:
+            self._refresh_summary()
+
+    def _update_visibility(self):
+        self._summary_row.setVisible(self._collapsed)
+        self._form_widget.setVisible(not self._collapsed)
+
+    def _refresh_summary(self):
+        names = self.get_display_names()
+        dataset_name = self.dataset_combo.currentText() or "—"
+        if "values" in names:
+            text = f"{dataset_name} — {names['values']}"
+        else:
+            x_name = names.get("x", "—")
+            y_name = names.get("y", "—")
+            text = f"{dataset_name} — {x_name} : {y_name}"
+        self.summary_label.setText(text)
+        color = self._tokens.get("series_palette", ["#C24141"])[0]
+        border = self._tokens.get("border_control", "#999")
+        radius = self._tokens.get("radius_swatch", 4)
+        self._swatch.setStyleSheet(
+            f"background-color: {color}; border: 1px solid {border}; border-radius: {radius}px;"
+        )
+        if self.error_bars_check is not None and self.error_bars_check.isChecked():
+            self._error_status_label.setText("with error bars")
+        else:
+            self._error_status_label.setText("no error bars")
+
+    def set_tokens(self, tokens: dict) -> None:
+        super().set_tokens(tokens)
+        self._tokens = tokens
+        if self._collapsed:
+            self._refresh_summary()
+
+    # -- Everything below is unchanged from the pre-redesign implementation --
 
     def _set_error_controls_visible(self, visible: bool):
         for error_role in ("x_error", "y_error"):
