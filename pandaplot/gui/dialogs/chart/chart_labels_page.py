@@ -5,6 +5,7 @@ from typing import Optional
 from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QVBoxLayout,
@@ -14,7 +15,10 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.core.widget_extension import PWizardPage
+from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
+from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 
 class ChartLabelsPage(PWizardPage):
@@ -24,6 +28,18 @@ class ChartLabelsPage(PWizardPage):
 
     def _init_ui(self):
         outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
+        rail_row = QHBoxLayout()
+        rail_row.setContentsMargins(14, 10, 14, 10)
+        rail_row.addWidget(self.step_rail)
+        outer.addLayout(rail_row)
+
+        content = QVBoxLayout()
+        content.setContentsMargins(14, 14, 14, 14)
+        outer.addLayout(content, 1)
 
         self._title_touched = False
         self._subtitle_touched = False
@@ -31,7 +47,7 @@ class ChartLabelsPage(PWizardPage):
         self._y_touched = False
 
         form = QFormLayout()
-        outer.addLayout(form)
+        content.addLayout(form)
 
         self.title_edit = QLineEdit()
         self.title_edit.textChanged.connect(lambda: setattr(self, "_title_touched", True))
@@ -57,11 +73,21 @@ class ChartLabelsPage(PWizardPage):
         toggles_layout.addWidget(QLabel("Show grid lines"), 1, 0)
         self.show_grid_toggle = ToggleSwitch(checked=True)
         toggles_layout.addWidget(self.show_grid_toggle, 1, 1)
-        outer.addWidget(toggles_card)
+        content.addWidget(toggles_card)
+
+        self.footer = WizardFooter(step_number=3, total_steps=3, show_empty_link=False)
+        self.footer.backClicked.connect(lambda: self.wizard().back())
+        self.footer.finishClicked.connect(lambda: self.wizard().accept())
+        self.footer.cancelClicked.connect(lambda: self.wizard().reject())
+        outer.addWidget(self.footer)
 
     def _apply_theme(self):
-        # Themed via ChartWizard's stylesheet cascade -- see chart_wizard.py.
-        pass
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        tokens = theme_manager.get_design_tokens()
+        self.step_rail.set_tokens(tokens)
+        self.footer.set_tokens(tokens)
+        self.show_legend_toggle.set_tokens(tokens)
+        self.show_grid_toggle.set_tokens(tokens)
 
     def set_defaults(self, title: str, x_label: str, y_label: str) -> None:
         """Refresh whichever fields the user hasn't actually edited yet.

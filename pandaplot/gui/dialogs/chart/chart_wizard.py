@@ -55,6 +55,13 @@ class ChartWizard(PWizard):
         # before the wizard is displayed.
         self.restart()
 
+        for page in (self.type_page, self.data_page, self.labels_page):
+            page.step_rail.stepClicked.connect(self._jump_to_step)
+
+    def _jump_to_step(self, step_index: int) -> None:
+        page_id = {0: self._type_page_id, 1: self._data_page_id, 2: self._labels_page_id}[step_index]
+        self.setCurrentId(page_id)
+
     def _apply_theme(self):
         # Qt stylesheets cascade to descendants by default, so setting this on
         # the wizard itself themes both pages (ChartTypePage's type list,
@@ -140,6 +147,11 @@ class ChartWizard(PWizard):
         """)
 
     def _on_page_changed(self, page_id: int) -> None:
+        summaries = self._completed_step_summaries()
+        current_index = {self._type_page_id: 0, self._data_page_id: 1, self._labels_page_id: 2}[page_id]
+        for page in (self.type_page, self.data_page, self.labels_page):
+            page.step_rail.set_state(current_index, summaries)
+
         if page_id == self._data_page_id:
             rebuilt = self.data_page.set_chart_type(self.type_page.selected_chart_type() or "line")
             # Only re-apply on a genuine rebuild: a fresh card set has no user
@@ -149,6 +161,18 @@ class ChartWizard(PWizard):
                 self._apply_initial_selection()
         elif page_id == self._labels_page_id:
             self._seed_labels_defaults()
+
+    def _completed_step_summaries(self) -> dict[int, str]:
+        """Rail text for steps already completed, keyed by step index (0/1/2)."""
+        summaries: dict[int, str] = {}
+        chart_type = self.type_page.selected_chart_type()
+        if chart_type:
+            from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
+            summaries[0] = f"Type · {get_chart_role_spec(chart_type).display_name}"
+        if self.data_page.cards:
+            count = len(self.data_page.cards)
+            summaries[1] = f"Data · {count} series" if count != 1 else "Data · 1 series"
+        return summaries
 
     def _seed_labels_defaults(self) -> None:
         x_label = ""

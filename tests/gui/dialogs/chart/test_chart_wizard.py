@@ -336,3 +336,36 @@ def test_generic_buttons_are_no_longer_forced_indigo():
     wizard = _make_wizard()
 
     assert "QPushButton {" not in wizard.styleSheet()
+
+
+def test_step_rail_shows_completed_steps_with_their_summary():
+    wizard = _make_wizard()
+    bar_row = next(
+        row for row in range(wizard.type_page.type_list.count())
+        if wizard.type_page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    wizard.type_page.type_list.setCurrentRow(bar_row)
+
+    wizard.next()  # Type -> Data
+    wizard.next()  # Data -> Labels
+
+    assert wizard.labels_page.step_rail._step_widgets[0].text() == "Type · Bar"
+    assert wizard.labels_page.step_rail._step_widgets[1].text() == "Data · 1 series"
+
+
+def test_clicking_a_completed_step_in_the_rail_jumps_there():
+    wizard = _make_wizard()
+    wizard.next()  # Type -> Data
+    wizard.next()  # Data -> Labels
+
+    wizard.labels_page.step_rail._step_widgets[0].click()  # "Type · ..."
+
+    assert wizard.currentId() == wizard._type_page_id
+
+
+def test_clicking_the_current_step_in_the_rail_does_nothing():
+    wizard = _make_wizard()
+
+    wizard.type_page.step_rail._step_widgets[0].click()
+
+    assert wizard.currentId() == wizard._type_page_id

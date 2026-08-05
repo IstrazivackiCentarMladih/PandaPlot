@@ -114,3 +114,11 @@ def test_legend_and_grid_toggles_are_independent():
 
     assert page.get_show_legend() is False
     assert page.get_show_grid() is True
+
+
+def test_page_exposes_a_step_rail_and_footer_with_no_empty_link():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    assert page.step_rail is not None
+    assert page.footer is not None
+    assert page.footer.empty_link is None  # step 3: no "Create empty plot" link
