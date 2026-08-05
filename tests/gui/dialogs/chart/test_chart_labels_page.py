@@ -84,3 +84,33 @@ def test_a_field_touched_by_the_user_is_never_overwritten_again():
     assert page.get_x_label() == "user typed this"
     assert page.get_title() == "New title"
     assert page.get_y_label() == "New Y"
+
+
+def test_subtitle_starts_empty():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    assert page.get_subtitle() == ""
+
+
+def test_subtitle_is_directly_editable():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    page.subtitle_edit.setText("A closer look")
+
+    assert page.get_subtitle() == "A closer look"
+
+
+def test_legend_and_grid_default_on():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    assert page.get_show_legend() is True
+    assert page.get_show_grid() is True
+
+
+def test_legend_and_grid_toggles_are_independent():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    page.show_legend_toggle.setChecked(False)
+
+    assert page.get_show_legend() is False
+    assert page.get_show_grid() is True
