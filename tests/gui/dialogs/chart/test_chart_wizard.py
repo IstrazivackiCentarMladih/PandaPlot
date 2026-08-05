@@ -308,6 +308,28 @@ def test_get_labels_return_blank_on_the_empty_path():
     assert wizard.get_y_label() == ""
 
 
+def test_subtitle_and_toggles_flow_through_to_the_wizards_getters():
+    wizard = _make_wizard()
+    wizard.next()
+    wizard.next()
+    wizard.labels_page.subtitle_edit.setText("A closer look")
+    wizard.labels_page.show_legend_toggle.setChecked(False)
+
+    assert wizard.get_subtitle() == "A closer look"
+    assert wizard.get_show_legend() is False
+    assert wizard.get_show_grid() is True
+
+
+def test_subtitle_and_legend_default_blank_and_true_on_the_empty_path():
+    wizard = _make_wizard()
+
+    wizard.type_page.emptyRequested.emit()
+
+    assert wizard.get_subtitle() == ""
+    assert wizard.get_show_legend() is True
+    assert wizard.get_show_grid() is True
+
+
 def test_wizard_has_no_native_buttons_and_a_fixed_size():
     # Note: QWizard.buttonLayout() (the getter) isn't bound in this PySide6
     # version (only setButtonLayout() is) so the native-buttons assertion is

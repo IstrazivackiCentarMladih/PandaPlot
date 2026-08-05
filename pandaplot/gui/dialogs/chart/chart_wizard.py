@@ -227,6 +227,11 @@ class ChartWizard(PWizard):
             return ""
         return self.labels_page.get_title()
 
+    def get_subtitle(self) -> str:
+        if self._is_empty:
+            return ""
+        return self.labels_page.get_subtitle()
+
     def get_x_label(self) -> str:
         if self._is_empty:
             return ""
@@ -236,3 +241,13 @@ class ChartWizard(PWizard):
         if self._is_empty:
             return ""
         return self.labels_page.get_y_label()
+
+    def get_show_legend(self) -> bool:
+        if self._is_empty:
+            return True
+        return self.labels_page.get_show_legend()
+
+    def get_show_grid(self) -> bool:
+        if self._is_empty:
+            return True
+        return self.labels_page.get_show_grid()

@@ -68,7 +68,7 @@ def _dataset(dataset_id, name, parent_id):
 
 
 def _fake_wizard(chart_type="line", is_empty=False, series_configs=None,
-                  title="", x_label="", y_label=""):
+                  title="", x_label="", y_label="", subtitle="", show_legend=True, show_grid=True):
     """A stand-in for `ChartWizard` with a mockable `finished` signal."""
     wizard = Mock()
     wizard.finished = Mock()
@@ -78,6 +78,9 @@ def _fake_wizard(chart_type="line", is_empty=False, series_configs=None,
     wizard.get_title.return_value = title
     wizard.get_x_label.return_value = x_label
     wizard.get_y_label.return_value = y_label
+    wizard.get_subtitle.return_value = subtitle
+    wizard.get_show_legend.return_value = show_legend
+    wizard.get_show_grid.return_value = show_grid
     return wizard
 
 
@@ -160,6 +163,38 @@ def test_a_blank_title_from_the_wizard_does_not_blank_out_the_default_name(
     assert created_chart.config["title"] == "Chart from ds"
     assert created_chart.config["x_label"] == ""
     assert created_chart.config["y_label"] == ""
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_subtitle_and_legend_and_grid_are_applied_to_the_chart(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line", subtitle="A closer look", show_legend=False, show_grid=False)
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.config["subtitle"] == "A closer look"
+    assert created_chart.config["show_legend"] is False
+    assert created_chart.config["show_grid_x"] is False
+    assert created_chart.config["show_grid_y"] is False
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_empty_path_never_reads_subtitle_or_legend_or_grid(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    wizard = _fake_wizard(chart_type="line", is_empty=True)
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    wizard.get_subtitle.assert_not_called()
+    wizard.get_show_legend.assert_not_called()
+    wizard.get_show_grid.assert_not_called()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

@@ -199,6 +199,10 @@ class CreateChartFromWizardCommand(Command):
                     x_label=dialog.get_x_label() or None,
                     y_label=dialog.get_y_label() or None,
                 )
+                chart.config["subtitle"] = dialog.get_subtitle()
+                chart.config["show_legend"] = dialog.get_show_legend()
+                chart.config["show_grid_x"] = dialog.get_show_grid()
+                chart.config["show_grid_y"] = dialog.get_show_grid()
                 for series_config in series_configs:
                     chart.add_data_series(
                         series_config["dataset_id"],
