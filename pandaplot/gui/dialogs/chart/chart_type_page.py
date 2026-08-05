@@ -8,11 +8,17 @@ matplotlib (see tests/gui/test_main_menu_lazy_imports.py).
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
+from pandaplot.gui.components.common.card import Card
+from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
+from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
+from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
+from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.theme.theme_manager import ThemeManager
 
 _SAMPLE_X = [1, 2, 3, 4, 5]
 _SAMPLE_Y = [2, 3, 1, 4, 3]
@@ -27,8 +33,22 @@ class ChartTypePage(PWizardPage):
         self._initialize()
 
     def _init_ui(self):
-        self.setTitle("Choose a chart type")
-        layout = QHBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
+        rail_row = QHBoxLayout()
+        rail_row.setContentsMargins(14, 10, 14, 10)
+        rail_row.addWidget(self.step_rail)
+        outer.addLayout(rail_row)
+
+        content = QHBoxLayout()
+        content.setContentsMargins(14, 14, 14, 14)
+        outer.addLayout(content, 1)
+
+        type_column = QVBoxLayout()
+        type_column.addWidget(SectionHeader("Chart type"))
 
         self.type_list = QListWidget()
         for chart_type, spec in CHART_ROLE_SPECS.items():
@@ -36,22 +56,54 @@ class ChartTypePage(PWizardPage):
             item.setData(Qt.ItemDataRole.UserRole, chart_type)
             self.type_list.addItem(item)
         self.type_list.currentItemChanged.connect(self._on_type_changed)
-        layout.addWidget(self.type_list, 0)
+        type_column.addWidget(self.type_list)
+        content.addLayout(type_column, 0)
 
         preview_column = QVBoxLayout()
+        preview_card = Card()
+        preview_layout = QVBoxLayout(preview_card)
+        preview_layout.addWidget(SectionHeader("Preview"))
         self.preview_container = QWidget()
         self.preview_container.setLayout(QVBoxLayout())
-        preview_column.addWidget(self.preview_container, 1)
+        preview_layout.addWidget(self.preview_container, 1)
+        preview_column.addWidget(preview_card, 1)
+        content.addLayout(preview_column, 1)
 
-        self.empty_button = QPushButton("Create empty plot")
-        self.empty_button.clicked.connect(self.emptyRequested.emit)
-        preview_column.addWidget(self.empty_button, 0)
+        self.footer = WizardFooter(step_number=1, total_steps=3, show_empty_link=True)
+        self.footer.nextClicked.connect(lambda: self.wizard().next())
+        self.footer.cancelClicked.connect(lambda: self.wizard().reject())
+        self.footer.emptyRequested.connect(self.emptyRequested.emit)
+        self.empty_button = self.footer.empty_link
+        outer.addWidget(self.footer)
 
-        layout.addLayout(preview_column, 1)
         self.type_list.setCurrentRow(0)
 
     def _apply_theme(self):
-        pass
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        self._apply_tokens(theme_manager.get_design_tokens())
+
+    def _apply_tokens(self, tokens: dict):
+        self.step_rail.set_tokens(tokens)
+        self.footer.set_tokens(tokens)
+        accent = tokens.get("accent", "#4A56C6")
+        text_secondary = tokens.get("text_secondary", "#3F4350")
+        border = tokens.get("border_control", "#DCDEE4")
+        selected_bg = tokens.get("accent_selected_bg", "#EEF0FB")
+        self.type_list.setStyleSheet(f"""
+            QListWidget {{ border: none; outline: none; }}
+            QListWidget::item {{
+                border: 1px solid {border}; border-radius: 5px;
+                padding: 7px 9px; margin-bottom: 4px; color: {text_secondary};
+            }}
+            QListWidget::item:selected {{
+                border: 1px solid {accent}; background: {selected_bg}; color: {accent};
+            }}
+        """)
+        for row in range(self.type_list.count()):
+            item = self.type_list.item(row)
+            chart_type = item.data(Qt.ItemDataRole.UserRole)
+            icon_color = accent if row == self.type_list.currentRow() else text_secondary
+            item.setIcon(chart_type_icon(chart_type, icon_color))
 
     def _on_type_changed(self, current: Optional[QListWidgetItem], _previous):
         if current is None:
