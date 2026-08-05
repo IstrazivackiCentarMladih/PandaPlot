@@ -126,6 +126,7 @@ class CreateChartFromWizardCommand(Command):
                 initial_title=self._default_chart_name(project),
                 datasets=self._dataset_options(project),
                 columns_provider=self._columns_provider(project),
+                project=project,
             )
             # Keep a strong reference so the dialog isn't garbage-collected while
             # open.

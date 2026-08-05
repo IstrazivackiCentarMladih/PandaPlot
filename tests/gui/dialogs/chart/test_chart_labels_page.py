@@ -122,3 +122,11 @@ def test_page_exposes_a_step_rail_and_footer_with_no_empty_link():
     assert page.step_rail is not None
     assert page.footer is not None
     assert page.footer.empty_link is None  # step 3: no "Create empty plot" link
+
+
+def test_refresh_preview_does_not_raise_with_no_project_or_series():
+    page = ChartLabelsPage(app_context=_fake_app_context())
+
+    page.refresh_preview(project=None, chart_type="line", series_configs=[])  # must not raise
+
+    assert page.preview_canvas is not None

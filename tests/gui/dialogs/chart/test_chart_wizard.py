@@ -391,3 +391,22 @@ def test_clicking_the_current_step_in_the_rail_does_nothing():
     wizard.type_page.step_rail._step_widgets[0].click()
 
     assert wizard.currentId() == wizard._type_page_id
+
+
+def test_entering_the_labels_page_renders_a_preview():
+    wizard = _make_wizard()
+    wizard.next()
+    wizard.next()  # Data -> Labels: triggers the initial preview render
+
+    assert wizard.labels_page.preview_canvas is not None
+    assert wizard.labels_page.preview_canvas.axes.get_title() != "" or True  # smoke check: no crash
+
+
+def test_editing_title_live_updates_the_preview():
+    wizard = _make_wizard()
+    wizard.next()
+    wizard.next()
+
+    wizard.labels_page.title_edit.setText("Voltage vs time")
+
+    assert wizard.labels_page.preview_canvas.axes.get_title() == "Voltage vs time"

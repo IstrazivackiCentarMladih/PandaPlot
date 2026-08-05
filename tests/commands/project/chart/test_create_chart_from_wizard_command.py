@@ -108,6 +108,17 @@ def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_wizard_is_constructed_with_the_current_project(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+
+    assert mock_wizard_cls.call_args.kwargs["project"] is project
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_execute_passes_the_default_chart_name_as_initial_title(mock_wizard_cls, app_context_with_project):
     app_context, _ = app_context_with_project
     mock_wizard_cls.return_value = _fake_wizard()

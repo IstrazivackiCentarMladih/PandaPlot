@@ -37,9 +37,12 @@ class ChartLabelsPage(PWizardPage):
         rail_row.addWidget(self.step_rail)
         outer.addLayout(rail_row)
 
-        content = QVBoxLayout()
+        content = QHBoxLayout()
         content.setContentsMargins(14, 14, 14, 14)
         outer.addLayout(content, 1)
+
+        left_column = QVBoxLayout()
+        content.addLayout(left_column, 1)
 
         self._title_touched = False
         self._subtitle_touched = False
@@ -47,7 +50,7 @@ class ChartLabelsPage(PWizardPage):
         self._y_touched = False
 
         form = QFormLayout()
-        content.addLayout(form)
+        left_column.addLayout(form)
 
         self.title_edit = QLineEdit()
         self.title_edit.textChanged.connect(lambda: setattr(self, "_title_touched", True))
@@ -73,7 +76,23 @@ class ChartLabelsPage(PWizardPage):
         toggles_layout.addWidget(QLabel("Show grid lines"), 1, 0)
         self.show_grid_toggle = ToggleSwitch(checked=True)
         toggles_layout.addWidget(self.show_grid_toggle, 1, 1)
-        content.addWidget(toggles_card)
+        left_column.addWidget(toggles_card)
+
+        preview_card = Card()
+        preview_layout = QVBoxLayout(preview_card)
+        self._preview_container = QWidget()
+        self._preview_container.setLayout(QVBoxLayout())
+        preview_layout.addWidget(self._preview_container, 1)
+        content.addWidget(preview_card, 1)
+
+        self.preview_canvas = None
+        self._last_project = None
+        self._last_chart_type = "line"
+        self._last_series_configs: list[dict] = []
+        for widget in (self.title_edit, self.subtitle_edit, self.x_label_edit, self.y_label_edit):
+            widget.textChanged.connect(self._refresh_preview_from_cache)
+        self.show_legend_toggle.toggled.connect(self._refresh_preview_from_cache)
+        self.show_grid_toggle.toggled.connect(self._refresh_preview_from_cache)
 
         self.footer = WizardFooter(step_number=3, total_steps=3, show_empty_link=False)
         self.footer.backClicked.connect(lambda: self.wizard().back())
@@ -130,3 +149,37 @@ class ChartLabelsPage(PWizardPage):
 
     def get_show_grid(self) -> bool:
         return self.show_grid_toggle.isChecked()
+
+    def refresh_preview(self, project, chart_type: str, series_configs: list[dict]) -> None:
+        """Re-render the preview from the wizard's current state.
+
+        Called by `ChartWizard` every time the Labels page is entered (with
+        the Type/Data steps' actual state), and by this page's own field/
+        toggle-change handlers thereafter (re-using the last-seen
+        project/chart_type/series_configs, since those three only change via
+        this method's own caller).
+        """
+        from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
+        from pandaplot.gui.dialogs.chart.wizard_preview import render_wizard_preview
+
+        self._last_project = project
+        self._last_chart_type = chart_type
+        self._last_series_configs = series_configs
+
+        if self.preview_canvas is not None:
+            self._preview_container.layout().removeWidget(self.preview_canvas)
+            self.preview_canvas.setParent(None)
+            self.preview_canvas.deleteLater()
+
+        canvas = ChartCanvas(width=3, height=2.5, dpi=70)
+        render_wizard_preview(
+            canvas, project, chart_type, series_configs,
+            title=self.get_title(), subtitle=self.get_subtitle(),
+            x_label=self.get_x_label(), y_label=self.get_y_label(),
+            show_legend=self.get_show_legend(), show_grid=self.get_show_grid(),
+        )
+        self._preview_container.layout().addWidget(canvas)
+        self.preview_canvas = canvas
+
+    def _refresh_preview_from_cache(self, *_args) -> None:
+        self.refresh_preview(self._last_project, self._last_chart_type, self._last_series_configs)

@@ -19,12 +19,14 @@ class ChartWizard(PWizard):
         initial_title: Optional[str] = None,
         datasets: Optional[list[tuple[str, str]]] = None,
         columns_provider: Optional[Callable[[str], list[tuple[str, str]]]] = None,
+        project=None,
     ):
         self._initial_dataset_id = initial_dataset_id
         self._initial_column_ids = initial_column_ids or []
         self._initial_title = initial_title or ""
         self._datasets = datasets or []
         self._columns_provider = columns_provider or (lambda _dataset_id: [])
+        self._project = project
         self._is_empty = False
         super().__init__(app_context=app_context, parent=parent)
         self._initialize()
@@ -187,6 +189,7 @@ class ChartWizard(PWizard):
                 x_label = names.get("x", "")
                 y_label = names.get("y", "")
         self.labels_page.set_defaults(self._initial_title, x_label, y_label)
+        self.labels_page.refresh_preview(self._project, self.get_chart_type(), self.data_page.series_configs())
 
     def _apply_initial_selection(self) -> None:
         if not self._initial_dataset_id or not self.data_page.cards:
