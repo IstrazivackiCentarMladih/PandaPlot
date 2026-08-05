@@ -13,6 +13,7 @@ def qapp():
 
 def test_step_1_of_3_shows_next_not_finish():
     footer = WizardFooter(step_number=1, total_steps=3, show_empty_link=True)
+    footer.show()
 
     assert footer.next_button.isVisible() is True
     assert footer.finish_button.isVisible() is False
@@ -21,6 +22,7 @@ def test_step_1_of_3_shows_next_not_finish():
 
 def test_last_step_shows_finish_not_next():
     footer = WizardFooter(step_number=3, total_steps=3, show_empty_link=False)
+    footer.show()
 
     assert footer.next_button.isVisible() is False
     assert footer.finish_button.isVisible() is True

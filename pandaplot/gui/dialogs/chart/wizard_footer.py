@@ -57,8 +57,6 @@ class WizardFooter(QWidget):
         self.finish_button.clicked.connect(self.finishClicked.emit)
         layout.addWidget(self.finish_button)
 
-        self.show()
-
     def set_back_enabled(self, enabled: bool) -> None:
         self.back_button.setEnabled(enabled)
 
