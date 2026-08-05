@@ -31,6 +31,8 @@ class ChartWizard(PWizard):
 
     def _init_ui(self):
         self.setWindowTitle("Create Chart")
+        self.setFixedSize(620, 440)
+        self.setButtonLayout([])
 
         self.type_page = ChartTypePage(app_context=self.app_context)
         self.type_page.emptyRequested.connect(self._finish_empty)
@@ -120,18 +122,6 @@ class ChartWizard(PWizard):
                 padding: 2px;
                 selection-background-color: {accent};
                 selection-color: white;
-            }}
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 7px 18px;
-                font-weight: bold;
-            }}
-            QPushButton:disabled {{
-                background-color: {card_border};
-                color: {secondary_fg};
             }}
             QListWidget {{
                 background-color: {input_bg};

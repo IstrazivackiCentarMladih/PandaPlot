@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWizard
 
 from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -291,3 +291,33 @@ def test_get_labels_return_blank_on_the_empty_path():
     assert wizard.get_title() == ""
     assert wizard.get_x_label() == ""
     assert wizard.get_y_label() == ""
+
+
+def test_wizard_has_no_native_buttons_and_a_fixed_size():
+    # Note: QWizard.buttonLayout() (the getter) isn't bound in this PySide6
+    # version (only setButtonLayout() is) so the native-buttons assertion is
+    # expressed behaviorally instead: after setButtonLayout([]), none of the
+    # standard wizard buttons become visible once the wizard is shown.
+    wizard = _make_wizard()
+
+    assert wizard.size().toTuple() == (620, 440)
+
+    wizard.show()
+    for role in (
+        QWizard.WizardButton.BackButton,
+        QWizard.WizardButton.NextButton,
+        QWizard.WizardButton.FinishButton,
+        QWizard.WizardButton.CancelButton,
+    ):
+        assert not wizard.button(role).isVisible()
+
+
+def test_generic_buttons_are_no_longer_forced_indigo():
+    """Regression guard: the old global `QPushButton { background: accent }`
+    rule made every button (including Back/Cancel) indigo. Per-page footers
+    (added in later tasks) style Back/Cancel neutrally themselves; this test
+    only guards that ChartWizard itself stops overriding button colors
+    wholesale."""
+    wizard = _make_wizard()
+
+    assert "QPushButton {" not in wizard.styleSheet()
