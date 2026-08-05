@@ -12,7 +12,7 @@ from shiboken6 import isValid
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
-from pandaplot.models.events.event_types import ProjectEvents
+from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state.app_context import AppContext
 
@@ -71,6 +71,13 @@ class ChartTab(PWidget):
         self.subscribe_to_event(
             ChartEvents.CHART_UPDATED, self.on_chart_updated)
         self.subscribe_to_event(FitEvents.FIT_APPLIED, self.on_fit_applied)
+        # Charts read their series data live from the source datasets, so any
+        # change to a dataset this chart plots (cell edits, added/removed
+        # rows or columns, imports, analysis columns) must re-render the
+        # chart. DATASET_CHANGED is the generic parent of all those specific
+        # dataset events (see EventHierarchy), so one subscription covers them.
+        self.subscribe_to_event(
+            DatasetEvents.DATASET_CHANGED, self.on_dataset_changed)
 
     def on_tab_title_changed(self, event_data: dict):
         """Handle tab title change events."""
@@ -101,6 +108,16 @@ class ChartTab(PWidget):
 
         # Only respond if this is our chart
         if updated_chart_id == self.chart.id:
+            self._refresh_chart_editor()
+
+    def on_dataset_changed(self, event_data: dict):
+        """Refresh the chart when one of its source datasets changes."""
+        changed_dataset_id = event_data.get("dataset_id")
+        if changed_dataset_id is None:
+            return
+
+        # Only re-render if this chart actually plots the changed dataset.
+        if changed_dataset_id in self.chart.get_all_datasets():
             self._refresh_chart_editor()
 
     def _refresh_chart_editor(self):
