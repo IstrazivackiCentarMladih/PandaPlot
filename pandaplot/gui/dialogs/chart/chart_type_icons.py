@@ -8,8 +8,6 @@ changes.
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap
 
-_PAINTERS = {}
-
 
 def _paint_line(painter: QPainter, size: int):
     points = [QPointF(1, size - 3), QPointF(size * 0.4, size * 0.45),
