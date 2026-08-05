@@ -9,7 +9,7 @@ keeps every page's rail in sync by calling `set_state` on whichever page is
 current.
 """
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QWidget
 
 
 class WizardStepRail(QWidget):
