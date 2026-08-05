@@ -76,7 +76,12 @@ class DataSeries:
     fill_enabled: bool = False
     fill_color: str = ""  # "" => inherit series.color
     fill_alpha: float = 0.3
-    fill_base: float = 0.0  # constant baseline y, used when fill_to_index < 0
+    # Orientation of the fill. "vertical" fills between the curve and a y
+    # baseline (matplotlib fill_between); "horizontal" fills between the curve
+    # and an x baseline (fill_betweenx). fill_base is interpreted on the
+    # corresponding axis (a y value when vertical, an x value when horizontal).
+    fill_orientation: str = "vertical"  # "vertical" | "horizontal"
+    fill_base: float = 0.0  # constant baseline, used when fill_to_index < 0
     fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
 
     def __post_init__(self):
@@ -458,6 +463,7 @@ class Chart(Item):
                     "fill_enabled": series.fill_enabled,
                     "fill_color": series.fill_color,
                     "fill_alpha": series.fill_alpha,
+                    "fill_orientation": series.fill_orientation,
                     "fill_base": series.fill_base,
                     "fill_to_index": series.fill_to_index
                 } for series in self.data_series
@@ -543,6 +549,7 @@ class Chart(Item):
                 fill_enabled=series_dict.get("fill_enabled", False),
                 fill_color=series_dict.get("fill_color", ""),
                 fill_alpha=series_dict.get("fill_alpha", 0.3),
+                fill_orientation=series_dict.get("fill_orientation", "vertical"),
                 fill_base=series_dict.get("fill_base", 0.0),
                 fill_to_index=series_dict.get("fill_to_index", -1)
             )

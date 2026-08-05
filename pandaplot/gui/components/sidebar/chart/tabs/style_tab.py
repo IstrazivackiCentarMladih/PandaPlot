@@ -384,34 +384,42 @@ class StyleTab(QWidget):
         fill_header_row.addWidget(self.fill_enabled_toggle)
         fill_layout.addLayout(fill_header_row, 0, 0, 1, 2)
 
+        # Orientation switch: off => vertical fill to a Y baseline
+        # (fill_between); on => horizontal fill to an X baseline
+        # (fill_betweenx). It also flips how the baseline field and "Fill to"
+        # interpolation are interpreted (see _update_fill_controls_visibility).
+        fill_layout.addWidget(QLabel("Horizontal:"), 1, 0)
+        self.fill_horizontal_toggle = ToggleSwitch()
+        fill_layout.addWidget(self.fill_horizontal_toggle, 1, 1)
+
         # "Fill to" is repopulated per selected series (see load_series_style):
         # a "Baseline" entry (value -1) plus every *other* series in the chart
         # (value = its index in data_series). Seeded with just Baseline so the
         # ValueComboBox has a non-empty initial item list.
-        fill_layout.addWidget(QLabel("Fill to:"), 1, 0)
+        fill_layout.addWidget(QLabel("Fill to:"), 2, 0)
         self.fill_to_control = ValueComboBox([("Baseline", -1)])
-        fill_layout.addWidget(self.fill_to_control, 1, 1)
+        fill_layout.addWidget(self.fill_to_control, 2, 1)
 
         self.fill_base_label = QLabel("Baseline:")
-        fill_layout.addWidget(self.fill_base_label, 2, 0)
+        fill_layout.addWidget(self.fill_base_label, 3, 0)
         self.fill_base_spin = QDoubleSpinBox()
         self.fill_base_spin.setRange(-1e9, 1e9)
         self.fill_base_spin.setDecimals(3)
-        fill_layout.addWidget(self.fill_base_spin, 2, 1)
+        fill_layout.addWidget(self.fill_base_spin, 3, 1)
 
         self.fill_color_label = QLabel("Color:")
-        fill_layout.addWidget(self.fill_color_label, 3, 0)
+        fill_layout.addWidget(self.fill_color_label, 4, 0)
         self.fill_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
-        fill_layout.addWidget(self.fill_color_row, 3, 1)
+        fill_layout.addWidget(self.fill_color_row, 4, 1)
 
         self.fill_match_line_label = QLabel("Match line:")
-        fill_layout.addWidget(self.fill_match_line_label, 4, 0)
+        fill_layout.addWidget(self.fill_match_line_label, 5, 0)
         self.fill_match_line_toggle = ToggleSwitch(checked=True)
-        fill_layout.addWidget(self.fill_match_line_toggle, 4, 1)
+        fill_layout.addWidget(self.fill_match_line_toggle, 5, 1)
 
-        fill_layout.addWidget(QLabel("Opacity:"), 5, 0)
+        fill_layout.addWidget(QLabel("Opacity:"), 6, 0)
         self.fill_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
-        fill_layout.addWidget(self.fill_opacity_slider, 5, 1)
+        fill_layout.addWidget(self.fill_opacity_slider, 6, 1)
 
         layout.addWidget(fill_card)
 
@@ -537,6 +545,7 @@ class StyleTab(QWidget):
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
+        self.fill_horizontal_toggle.toggled.connect(self._on_fill_orientation_toggled)
         self.fill_to_control.currentValueChanged.connect(self._on_fill_to_changed)
         self.fill_base_spin.valueChanged.connect(self._on_field_changed)
         self.fill_color_row.colorChanged.connect(self._on_field_changed)
@@ -1113,6 +1122,12 @@ class StyleTab(QWidget):
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
+    def _on_fill_orientation_toggled(self, _checked: bool):
+        """Handle the vertical/horizontal fill switch: only the baseline
+        label's axis (X vs Y) changes in the UI."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
     def _on_fill_to_changed(self, _value):
         """Handle a change of the 'Fill to' target (baseline vs. other series):
         the baseline value field only applies when filling to the baseline."""
@@ -1132,11 +1147,15 @@ class StyleTab(QWidget):
         enabled = self.fill_enabled_toggle.isChecked()
         to_baseline = self.fill_to_control.currentValue() == -1
         for widget in (
-            self.fill_to_control, self.fill_match_line_toggle,
-            self.fill_opacity_slider,
+            self.fill_horizontal_toggle, self.fill_to_control,
+            self.fill_match_line_toggle, self.fill_opacity_slider,
         ):
             widget.setEnabled(enabled)
 
+        # The baseline is a Y value for a vertical fill, an X value for a
+        # horizontal one -- label it so the field's meaning is unambiguous.
+        horizontal = self.fill_horizontal_toggle.isChecked()
+        self.fill_base_label.setText("X baseline:" if horizontal else "Y baseline:")
         show_baseline = enabled and to_baseline
         self.fill_base_label.setVisible(show_baseline)
         self.fill_base_spin.setVisible(show_baseline)
@@ -1203,6 +1222,9 @@ class StyleTab(QWidget):
         # convention. fill_to_index is -1 (fill down to the constant baseline)
         # or the index of another series to fill between.
         series.fill_enabled = self.fill_enabled_toggle.isChecked()
+        series.fill_orientation = (
+            "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
+        )
         series.fill_to_index = self.fill_to_control.currentValue()
         series.fill_base = self.fill_base_spin.value()
         series.fill_color = (
@@ -1275,6 +1297,9 @@ class StyleTab(QWidget):
             self.fill_enabled_toggle.blockSignals(True)
             self.fill_enabled_toggle.setChecked(series.fill_enabled)
             self.fill_enabled_toggle.blockSignals(False)
+            self.fill_horizontal_toggle.blockSignals(True)
+            self.fill_horizontal_toggle.setChecked(series.fill_orientation == "horizontal")
+            self.fill_horizontal_toggle.blockSignals(False)
             self.fill_to_control.setCurrentValue(series.fill_to_index)
             self.fill_base_spin.setValue(series.fill_base)
             self.fill_color_row.setCurrentColor(series.fill_color or series.color)
