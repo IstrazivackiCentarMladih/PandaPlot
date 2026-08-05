@@ -109,10 +109,12 @@ class TestNewEventBus:
         
         # Emit specific dataset event
         event_bus.emit("dataset.data_changed", {"dataset_id": "123"})
-        
+
+        # dataset.data_changed escalates to the generic dataset.changed event,
+        # so the pattern subscriber sees both calls, most recent last.
         expected_data = {
             "dataset_id": "123",
-            "event_type": "dataset.data_changed",
+            "event_type": "dataset.changed",
             "original_event": "dataset.data_changed"
         }
         callback.assert_called_with(expected_data)

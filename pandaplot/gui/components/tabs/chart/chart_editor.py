@@ -668,6 +668,14 @@ class ChartEditorWidget(PWidget):
 
     def create_chart_toolbar_actions(self, toolbar):
         """Create toolbar actions for chart operations."""
+        # Refresh action: re-read the current dataset values and redraw. The
+        # chart already refreshes automatically on dataset changes, but this
+        # lets the user force a redraw on demand.
+        refresh_action = QAction("♻️ Refresh", self)
+        refresh_action.setToolTip("Reload data from the datasets and redraw the chart")
+        refresh_action.triggered.connect(self._on_refresh)
+        toolbar.addAction(refresh_action)
+
         # Reset action
         reset_action = QAction("🔄 Reset", self)
         reset_action.triggered.connect(self.reset_chart)
@@ -1173,6 +1181,14 @@ class ChartEditorWidget(PWidget):
         self.chart.config["width_cm"] = width_cm
         self.chart.config["height_cm"] = height_cm
         self.update_chart()
+
+    def _on_refresh(self):
+        """Reload data from the datasets and redraw the chart on demand."""
+        self.refresh_chart()
+        self.update_status("Refreshed ✓")
+
+        # Reset status after 2 seconds
+        QTimer.singleShot(2000, lambda: self.update_status("Ready"))
 
     def _on_reset_zoom(self):
         """Handle reset zoom action."""
