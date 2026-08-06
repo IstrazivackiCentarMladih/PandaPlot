@@ -337,7 +337,7 @@ def test_wizard_has_no_native_buttons_and_a_fixed_size():
     # standard wizard buttons become visible once the wizard is shown.
     wizard = _make_wizard()
 
-    assert wizard.size().toTuple() == (620, 440)
+    assert wizard.size().toTuple() == (720, 440)
 
     wizard.show()
     for role in (

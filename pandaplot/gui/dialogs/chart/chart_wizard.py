@@ -49,7 +49,7 @@ class ChartWizard(PWizard):
             QWizard.WizardPixmap.BackgroundPixmap,
         ):
             self.setPixmap(pixmap_role, QPixmap())
-        self.setFixedSize(620, 440)
+        self.setFixedSize(720, 440)
         self.setButtonLayout([])
 
         self.type_page = ChartTypePage(app_context=self.app_context)
