@@ -281,17 +281,14 @@ class DatasetTab(PWidget):
         return title
 
     def create_chart_from_data(self):
-        """Create a chart from this dataset."""
+        """Create a chart from this dataset, pre-selecting any columns the
+        user has already selected in this tab's table view."""
         if not self.app_context:
             return
 
-        # Request chart creation through the main window's signal system
-        # We can emit a signal that will be handled by the tab container
-        chart_name = f"Chart from {self.dataset.name}"
         self.logger.info(
             "Requesting chart creation from dataset %s", self.dataset.id)
 
-        # Get the tab container from parent hierarchy
         parent_widget = self.parent()
         while parent_widget and not hasattr(parent_widget, "create_chart_from_dataset"):
             parent_widget = parent_widget.parent()
@@ -301,7 +298,10 @@ class DatasetTab(PWidget):
                 create_method = getattr(
                     parent_widget, "create_chart_from_dataset", None)
                 if callable(create_method):
-                    create_method(self.dataset.id, chart_name)
+                    create_method(
+                        self.dataset.id,
+                        preselected_column_ids=self._selected_column_ids(),
+                    )
                 else:
                     self.logger.warning(
                         "create_chart_from_dataset not callable on parent for dataset %s", self.dataset.id)
@@ -311,6 +311,10 @@ class DatasetTab(PWidget):
         else:
             self.logger.warning(
                 "Could not find tab container to create chart for dataset %s", self.dataset.id)
+
+    def _selected_column_ids(self) -> list[str]:
+        """Column ids currently selected in this tab's table view, in column order."""
+        return self.table_view.get_selected_column_ids()
 
     def export_data(self):
         """Export the dataset to a file."""

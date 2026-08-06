@@ -34,25 +34,34 @@ class AppContext:
     def get_manager(self, manager_type: type[T]) -> T:
         """
         Generic method to retrieve a manager instance by its type.
-        
+
         Args:
             manager_type: The type/class of the manager to retrieve
-            
+
         Returns:
             The manager instance of the specified type
-            
+
         Raises:
             KeyError: If no manager of the specified type is registered
             RuntimeError: If the manager is None (not initialized)
         """
         if manager_type not in self._managers:
             raise KeyError(f"Manager of type {manager_type.__name__} not found in AppContext")
-        
+
         manager = self._managers[manager_type]
         if manager is None:
             raise RuntimeError(f"{manager_type.__name__} not initialized in AppContext")
-        
+
         return manager
+
+    def register_manager(self, manager: Any) -> None:
+        """
+        Register a manager/widget constructed after AppContext initialization
+        (e.g. TabContainer, which MainWindow builds after AppContext exists),
+        so later `get_manager(type(manager))` calls resolve it the same way
+        managers passed into __init__ do.
+        """
+        self._managers[type(manager)] = manager
 
     def get_app_state(self) -> AppState:
         return self.app_state

@@ -694,6 +694,40 @@ class ChartEditorWidget(PWidget):
         # No configuration UI to load since it's now in the side panel
         pass
 
+    def _resolve_fill_baseline(self, project, series, series_index, query, horizontal=False):
+        """Resolve the second bound for a series' area fill.
+
+        Returns either the constant ``series.fill_base`` (fill down/across to a
+        straight baseline) or, when ``series.fill_to_index`` points at another
+        series in the chart, that series' curve interpolated onto this series'
+        sampling grid so the region *between* the two curves is filled.
+
+        ``query`` is this series' independent-axis samples: its x-values for a
+        vertical fill (interpolating the other series' y over x), or its
+        y-values for a horizontal fill (interpolating the other series' x over
+        y). Interpolation makes ``fill_between``/``fill_betweenx`` well-defined
+        even when the two series don't share a sampling grid; it falls back to
+        the constant baseline if the referenced series is missing or fails to
+        resolve.
+        """
+        idx = series.fill_to_index
+        if idx is None or idx < 0 or idx == series_index or idx >= len(self.chart.data_series):
+            return series.fill_base
+        other = self.chart.data_series[idx]
+        other_data = resolve_series_data(project, other, self.chart.chart_type)
+        if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
+            return series.fill_base
+        # Interpolate the other curve over its own independent axis (x when
+        # vertical, y when horizontal). np.interp needs that axis increasing.
+        if horizontal:
+            xp = np.asarray(other_data.y_data, dtype=float)
+            fp = np.asarray(other_data.x_data, dtype=float)
+        else:
+            xp = np.asarray(other_data.x_data, dtype=float)
+            fp = np.asarray(other_data.y_data, dtype=float)
+        order = np.argsort(xp)
+        return np.interp(np.asarray(query, dtype=float), xp[order], fp[order])
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -771,6 +805,27 @@ class ChartEditorWidget(PWidget):
                                          markeredgewidth=series.marker_edge_width,
                                          label=series.label,
                                          alpha=alpha)
+                        # Fill the area under this curve (or between it and
+                        # another series) when enabled.
+                        if series.fill_enabled:
+                            fill_color = series.fill_color or series.color
+                            fill_alpha = series.fill_alpha if series.visible else 0.3 * series.fill_alpha
+                            if series.fill_orientation == "horizontal":
+                                # fill_betweenx: shade between the curve and an
+                                # x baseline, indexed by this series' y-values.
+                                baseline = self._resolve_fill_baseline(
+                                    project, series, i, y_data, horizontal=True)
+                                target_axes.fill_betweenx(
+                                    y_data, x_data, baseline,
+                                    color=fill_color,
+                                    alpha=fill_alpha)
+                            else:
+                                baseline = self._resolve_fill_baseline(
+                                    project, series, i, x_data)
+                                target_axes.fill_between(
+                                    x_data, y_data, baseline,
+                                    color=fill_color,
+                                    alpha=fill_alpha)
                     elif self.chart.chart_type == "scatter":
                         mfc = series.marker_color or series.color
                         mec = series.marker_edge_color or series.color

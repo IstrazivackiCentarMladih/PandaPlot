@@ -1,9 +1,9 @@
-from typing import override
+from typing import Optional, override
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QApplication, QSplitter, QVBoxLayout, QWidget
 
-from pandaplot.commands.project.chart import CreateChartCommand
+from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
 from pandaplot.gui.components.tabs.floating_tab_window import FloatingTabWindow
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
@@ -395,6 +395,10 @@ class TabContainer(PWidget):
             self.logger.error("Failed to open tab for item %s: %s", item_id, str(e))
             return False
 
+    def get_tab_widget(self, item_id: str) -> Optional[QWidget]:
+        """Return the live tab widget for `item_id` if it's currently open, else None."""
+        return self.tabs.get(item_id)
+
     def open_tab(self, item_id):
         if not self.app_context:
             self.logger.warning("Cannot open tab: No app context provided")
@@ -605,9 +609,13 @@ class TabContainer(PWidget):
         target_pane.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab
 
-    def create_chart_from_dataset(self, dataset_id: str, chart_name: str):
-        """Create a new chart from a dataset and open it in a tab."""
-        # TODO: remove, needs update on dataset tab
+    def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):
+        """Open the chart creation wizard for a dataset.
+
+        The wizard is non-blocking, so no chart exists when this returns. The
+        resulting chart's tab is opened by this container's
+        `ChartEvents.CHART_CREATED` subscription once the user finishes.
+        """
         if not self.app_context:
             self.logger.warning("Cannot create chart: No app context provided")
             return
@@ -618,8 +626,6 @@ class TabContainer(PWidget):
             return
 
         project = app_state.current_project
-
-        # Verify dataset exists
         if project is None:
             self.logger.warning("Cannot create chart: No project loaded")
             return
@@ -628,14 +634,12 @@ class TabContainer(PWidget):
             self.logger.warning("Cannot create chart: Dataset %s not found", dataset_id)
             return
 
-        command = CreateChartCommand(self.app_context, dataset_id, chart_name, dataset_item.parent_id)
+        command = CreateChartFromWizardCommand(
+            self.app_context,
+            dataset_id=dataset_id,
+            preselected_column_ids=preselected_column_ids or [],
+        )
         self.app_context.get_command_executor().execute_command(command)
-
-        chart_id = command.created_chart_id
-
-        if chart_id:
-            # TODO: this should be handled on tab container level by listening on new item creation
-            return self.open_tab(chart_id)
 
     def on_project_closed(self):
         """Called when a project is closed - close all project-related tabs and show welcome tab if no tabs are open."""
