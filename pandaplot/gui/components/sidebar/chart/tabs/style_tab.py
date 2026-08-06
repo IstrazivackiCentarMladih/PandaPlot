@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
     QSpinBox,
     QVBoxLayout,
@@ -40,6 +41,17 @@ from pandaplot.services.config.config_manager import ConfigManager
 
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+
+# Colormaps offered for colormap/heatmap charts, grouped by kind: perceptually
+# uniform sequential, then classic sequential, then diverging, then the
+# familiar (if less perceptually sound) rainbow maps. Every name is a valid
+# matplotlib colormap, passed straight through to scatter()/pcolormesh().
+COLORMAP_OPTIONS = [
+    "viridis", "plasma", "inferno", "magma", "cividis",
+    "Greys", "Blues", "Greens", "Oranges", "Reds", "hot",
+    "coolwarm", "RdBu", "seismic", "Spectral",
+    "jet", "turbo", "rainbow",
+]
 
 
 def _make_bold_italic_checks_standalone() -> tuple[QCheckBox, QCheckBox]:
@@ -512,6 +524,52 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
+        # COLOR MAP group -- only meaningful for colormap/heatmap charts (the
+        # Z column, picked on the Data tab, is mapped to color through these).
+        # Shown only for a series target on those chart types (see
+        # _update_target_cards_visibility).
+        self.colormap_card = Card()
+        colormap_layout = QGridLayout(self.colormap_card)
+        colormap_layout.addWidget(SectionHeader("Color Map"), 0, 0, 1, 2)
+
+        colormap_layout.addWidget(QLabel("Colormap:"), 1, 0)
+        self.colormap_control = ValueComboBox([(name, name) for name in COLORMAP_OPTIONS])
+        colormap_layout.addWidget(self.colormap_control, 1, 1)
+
+        colormap_layout.addWidget(QLabel("Show colorbar:"), 2, 0)
+        self.colorbar_show_toggle = ToggleSwitch(checked=True)
+        colormap_layout.addWidget(self.colorbar_show_toggle, 2, 1)
+
+        self.colorbar_label_field = QLabel("Colorbar label:")
+        colormap_layout.addWidget(self.colorbar_label_field, 3, 0)
+        self.colorbar_label_edit = QLineEdit()
+        self.colorbar_label_edit.setPlaceholderText("Defaults to the Z column name")
+        colormap_layout.addWidget(self.colorbar_label_edit, 3, 1)
+
+        colormap_layout.addWidget(QLabel("Auto scale:"), 4, 0)
+        self.color_scale_auto_toggle = ToggleSwitch(checked=True)
+        self.color_scale_auto_toggle.setToolTip(
+            "Span the colormap over the data's own min..max. Turn off to set "
+            "fixed limits below.")
+        colormap_layout.addWidget(self.color_scale_auto_toggle, 4, 1)
+
+        self.color_vmin_label = QLabel("Min:")
+        colormap_layout.addWidget(self.color_vmin_label, 5, 0)
+        self.color_vmin_spin = QDoubleSpinBox()
+        self.color_vmin_spin.setRange(-1e12, 1e12)
+        self.color_vmin_spin.setDecimals(4)
+        colormap_layout.addWidget(self.color_vmin_spin, 5, 1)
+
+        self.color_vmax_label = QLabel("Max:")
+        colormap_layout.addWidget(self.color_vmax_label, 6, 0)
+        self.color_vmax_spin = QDoubleSpinBox()
+        self.color_vmax_spin.setRange(-1e12, 1e12)
+        self.color_vmax_spin.setDecimals(4)
+        self.color_vmax_spin.setValue(1.0)
+        colormap_layout.addWidget(self.color_vmax_spin, 6, 1)
+
+        layout.addWidget(self.colormap_card)
+
         # -- Axes (appearance) section: its own top-level selection in
         # style_series_chips (sibling to "Chart"/series/fit), not nested
         # under "Chart" -- axis appearance is a chart-wide concern like the
@@ -538,6 +596,10 @@ class StyleTab(QWidget):
             card.setVisible(False)
         for widget in self.axes_style_widgets:
             widget.setVisible(False)
+        # Series-only card shown just for colormap/heatmap charts; hidden until
+        # _update_target_cards_visibility says otherwise.
+        self.colormap_card.setVisible(False)
+        self._update_color_scale_controls()
 
         # Series/fit style field connections.
         self.line_color_row.colorChanged.connect(self._on_field_changed)
@@ -562,6 +624,12 @@ class StyleTab(QWidget):
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
+        self.colormap_control.currentValueChanged.connect(self._on_field_changed)
+        self.colorbar_show_toggle.toggled.connect(self._on_field_changed)
+        self.colorbar_label_edit.textChanged.connect(self._on_field_changed)
+        self.color_scale_auto_toggle.toggled.connect(self._on_color_scale_auto_toggled)
+        self.color_vmin_spin.valueChanged.connect(self._on_field_changed)
+        self.color_vmax_spin.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -644,6 +712,12 @@ class StyleTab(QWidget):
         # controls (direction/color/cap size) have no error bars to apply to.
         self.error_bars_card.setVisible(
             kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+        )
+        # Color Map card: only for a series on a colormap/heatmap chart, where
+        # the Z column is mapped to color (see chart_editor.py). No color
+        # dimension exists for the other chart types or for fit lines.
+        self.colormap_card.setVisible(
+            kind == "series" and self._chart_type in (ChartType.COLORMAP, ChartType.HEATMAP)
         )
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
@@ -1176,6 +1250,22 @@ class StyleTab(QWidget):
         self.axes_bg_color_row.setEnabled(not self.axes_bg_transparent_toggle.isChecked())
         self._on_chart_style_field_changed()
 
+    # -- Color map (colormap/heatmap) --------------------------------------
+
+    def _on_color_scale_auto_toggled(self, _checked: bool):
+        """Hide the manual Min/Max fields while the color scale auto-spans the
+        data (same hide-not-disable convention as the fill/marker controls)."""
+        self._update_color_scale_controls()
+        self._on_field_changed()
+
+    def _update_color_scale_controls(self):
+        show_manual = not self.color_scale_auto_toggle.isChecked()
+        for widget in (
+            self.color_vmin_label, self.color_vmin_spin,
+            self.color_vmax_label, self.color_vmax_spin,
+        ):
+            widget.setVisible(show_manual)
+
     # -- Series/fit style: load / apply --------------------------------------
 
     def _on_field_changed(self):
@@ -1232,6 +1322,15 @@ class StyleTab(QWidget):
             else self.fill_color_row.currentColor()
         )
         series.fill_alpha = self.fill_opacity_slider.value()
+
+        # Color mapping (colormap/heatmap charts). Harmless to write for other
+        # chart types -- the renderer only reads these for colormap/heatmap.
+        series.colormap = self.colormap_control.currentValue()
+        series.colorbar_show = self.colorbar_show_toggle.isChecked()
+        series.colorbar_label = self.colorbar_label_edit.text()
+        series.color_scale_auto = self.color_scale_auto_toggle.isChecked()
+        series.color_vmin = self.color_vmin_spin.value()
+        series.color_vmax = self.color_vmax_spin.value()
 
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
@@ -1308,6 +1407,21 @@ class StyleTab(QWidget):
             self.fill_match_line_toggle.blockSignals(False)
             self.fill_opacity_slider.setValue(series.fill_alpha)
             self._update_fill_controls_visibility()
+
+            # Color mapping (colormap/heatmap charts).
+            self.colormap_control.setCurrentValue(series.colormap)
+            self.colorbar_show_toggle.blockSignals(True)
+            self.colorbar_show_toggle.setChecked(series.colorbar_show)
+            self.colorbar_show_toggle.blockSignals(False)
+            self.colorbar_label_edit.blockSignals(True)
+            self.colorbar_label_edit.setText(series.colorbar_label)
+            self.colorbar_label_edit.blockSignals(False)
+            self.color_scale_auto_toggle.blockSignals(True)
+            self.color_scale_auto_toggle.setChecked(series.color_scale_auto)
+            self.color_scale_auto_toggle.blockSignals(False)
+            self.color_vmin_spin.setValue(series.color_vmin)
+            self.color_vmax_spin.setValue(series.color_vmax)
+            self._update_color_scale_controls()
         finally:
             self._updating_controls = previous_guard
 
@@ -1707,6 +1821,9 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.colormap_control.set_tokens(tokens)
+        self.colorbar_show_toggle.set_tokens(tokens)
+        self.color_scale_auto_toggle.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)

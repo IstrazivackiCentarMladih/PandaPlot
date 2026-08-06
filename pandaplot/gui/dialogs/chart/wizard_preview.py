@@ -57,6 +57,7 @@ def render_wizard_preview(
             dataset_id=config["dataset_id"],
             x_column_id=config.get("x_column_id", ""),
             y_column_id=config.get("y_column_id", ""),
+            z_column_id=config.get("z_column_id", ""),
             x_error_column_id=config.get("x_error_column_id", ""),
             y_error_column_id=config.get("y_error_column_id", ""),
             error_symmetric=config.get("error_symmetric", True),
@@ -64,7 +65,6 @@ def render_wizard_preview(
         data = resolve_series_data(project, series, chart_type)
         if data.error is not None:
             continue
-        any_plotted = True
         label = _series_label(project, config)
         if chart_type == "line":
             axes.plot(data.x_data, data.y_data, label=label)
@@ -74,6 +74,16 @@ def render_wizard_preview(
             axes.bar(data.x_data, data.y_data, label=label)
         elif chart_type == "hist":
             axes.hist(data.y_data, bins=10, label=label)
+        elif chart_type == "colormap":
+            axes.scatter(data.x_data, data.y_data, c=data.z_data, cmap="viridis")
+        elif chart_type == "heatmap":
+            from pandaplot.gui.components.tabs.chart.chart_heatmap import pivot_to_grid
+            try:
+                xs, ys, grid = pivot_to_grid(data.x_data, data.y_data, data.z_data)
+            except ValueError:
+                continue
+            axes.pcolormesh(xs, ys, grid, cmap="viridis", shading="nearest")
+        any_plotted = True
 
     if not any_plotted:
         # No resolvable series yet (wizard just opened, or the user hasn't

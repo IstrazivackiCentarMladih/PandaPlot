@@ -14,6 +14,7 @@ def _project_with_dataset():
     project = Project("P")
     dataset = Dataset(name="ds", data=pd.DataFrame({
         "a": [1, 2], "b": [3, 4], "err": [0.1, 0.2], "err_minus": [0.05, 0.15],
+        "z": [7, 8],
     }))
     project.add_item(dataset)
     return project, dataset
@@ -99,6 +100,48 @@ def test_resolves_asymmetric_minus_column():
     assert result.error is None
     assert list(result.y_err) == [0.1, 0.2]
     assert list(result.y_err_minus) == [0.05, 0.15]
+
+
+# --- z (color) column resolution for colormap/heatmap ---
+
+def test_z_column_not_resolved_for_non_color_chart():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", z_column="z")
+    result = resolve_series_data(project, series, chart_type="scatter")
+    assert result.error is None
+    assert result.z_data is None
+
+
+def test_z_column_resolved_for_colormap():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", z_column="z")
+    result = resolve_series_data(project, series, chart_type="colormap")
+    assert result.error is None
+    assert list(result.z_data) == [7, 8]
+
+
+def test_z_column_resolved_for_heatmap():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", z_column="z")
+    result = resolve_series_data(project, series, chart_type="heatmap")
+    assert result.error is None
+    assert list(result.z_data) == [7, 8]
+
+
+def test_missing_z_column_is_an_error_for_color_charts():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", z_column="")
+    result = resolve_series_data(project, series, chart_type="colormap")
+    assert result.x_data is None and result.z_data is None
+    assert "Z column" in result.error
+
+
+def test_stale_z_column_returns_error_naming_the_column():
+    project, dataset = _project_with_dataset()
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", z_column="gone")
+    result = resolve_series_data(project, series, chart_type="heatmap")
+    assert result.z_data is None
+    assert "gone" in result.error
 
 
 # --- build_error_array ---

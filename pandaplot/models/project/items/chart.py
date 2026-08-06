@@ -44,6 +44,12 @@ class DataSeries:
     y_error_column_id: str = ""
     x_error_minus_column_id: str = ""
     y_error_minus_column_id: str = ""
+    # Color-mapped ("colormap"/"heatmap") charts: the Z column supplies the
+    # value each point/cell is colored by, through `colormap` (any matplotlib
+    # colormap name) and an optional colorbar. Ignored by line/scatter/bar/
+    # hist charts. `z_column` is the legacy/fallback name (see z_column_id).
+    z_column_id: str = ""
+    z_column: str = ""
     # Legacy/fallback column names — populated only by loading old projects
     # (see resolve_series_column). New series reference columns by id.
     x_column: str = ""
@@ -83,6 +89,17 @@ class DataSeries:
     fill_orientation: str = "vertical"  # "vertical" | "horizontal"
     fill_base: float = 0.0  # constant baseline, used when fill_to_index < 0
     fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
+    # Color mapping (colormap/heatmap charts). `colormap` is any matplotlib
+    # colormap name (viridis, plasma, coolwarm, ...). The colorbar is a small
+    # scale legend drawn beside the plot; `colorbar_label` names it (empty =>
+    # the Z column's own name). When `color_scale_auto`, the colormap spans the
+    # data's own min..max; otherwise it's clamped to color_vmin..color_vmax.
+    colormap: str = "viridis"
+    colorbar_show: bool = True
+    colorbar_label: str = ""
+    color_scale_auto: bool = True
+    color_vmin: float = 0.0
+    color_vmax: float = 1.0
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -440,6 +457,8 @@ class Chart(Item):
                     "y_error_column_id": series.y_error_column_id,
                     "x_error_minus_column_id": series.x_error_minus_column_id,
                     "y_error_minus_column_id": series.y_error_minus_column_id,
+                    "z_column": series.z_column,
+                    "z_column_id": series.z_column_id,
                     "label": series.label,
                     "color": series.color,
                     "marker_color": series.marker_color,
@@ -465,7 +484,13 @@ class Chart(Item):
                     "fill_alpha": series.fill_alpha,
                     "fill_orientation": series.fill_orientation,
                     "fill_base": series.fill_base,
-                    "fill_to_index": series.fill_to_index
+                    "fill_to_index": series.fill_to_index,
+                    "colormap": series.colormap,
+                    "colorbar_show": series.colorbar_show,
+                    "colorbar_label": series.colorbar_label,
+                    "color_scale_auto": series.color_scale_auto,
+                    "color_vmin": series.color_vmin,
+                    "color_vmax": series.color_vmax
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -526,6 +551,8 @@ class Chart(Item):
                 y_error_column_id=series_dict.get("y_error_column_id", ""),
                 x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
                 y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
+                z_column=series_dict.get("z_column", ""),
+                z_column_id=series_dict.get("z_column_id", ""),
                 label=series_dict.get("label", ""),
                 color=series_dict.get("color", "#1f77b4"),
                 marker_color=series_dict.get("marker_color", ""),
@@ -551,7 +578,13 @@ class Chart(Item):
                 fill_alpha=series_dict.get("fill_alpha", 0.3),
                 fill_orientation=series_dict.get("fill_orientation", "vertical"),
                 fill_base=series_dict.get("fill_base", 0.0),
-                fill_to_index=series_dict.get("fill_to_index", -1)
+                fill_to_index=series_dict.get("fill_to_index", -1),
+                colormap=series_dict.get("colormap", "viridis"),
+                colorbar_show=series_dict.get("colorbar_show", True),
+                colorbar_label=series_dict.get("colorbar_label", ""),
+                color_scale_auto=series_dict.get("color_scale_auto", True),
+                color_vmin=series_dict.get("color_vmin", 0.0),
+                color_vmax=series_dict.get("color_vmax", 1.0)
             )
             chart.data_series.append(series)
         

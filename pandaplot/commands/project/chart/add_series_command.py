@@ -13,13 +13,14 @@ class AddSeriesCommand(Command):
 
     def __init__(self, app_context: AppContext, chart_id: str,
                  dataset_id: str, x_column_id: str, y_column_id: str,
-                 label: str = "", color: str = "#1f77b4"):
+                 label: str = "", color: str = "#1f77b4", z_column_id: str = ""):
         super().__init__()
         self.app_context = app_context
         self.chart_id = chart_id
         self.dataset_id = dataset_id
         self.x_column_id = x_column_id
         self.y_column_id = y_column_id
+        self.z_column_id = z_column_id
         self.label = label
         self.color = color
         self.added_index: Optional[int] = None
@@ -40,6 +41,7 @@ class AddSeriesCommand(Command):
             self.dataset_id,
             x_column_id=self.x_column_id,
             y_column_id=self.y_column_id,
+            z_column_id=self.z_column_id,
             label=self.label,
             color=self.color,
         )

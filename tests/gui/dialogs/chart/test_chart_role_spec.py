@@ -36,5 +36,15 @@ def test_unknown_chart_type_raises_key_error():
         get_chart_role_spec("violin")
 
 
-def test_exactly_four_chart_types_are_registered():
-    assert set(CHART_ROLE_SPECS.keys()) == {"line", "scatter", "bar", "hist"}
+def test_colormap_and_heatmap_require_x_y_z_and_have_no_error_bars():
+    for chart_type in ("colormap", "heatmap"):
+        spec = get_chart_role_spec(chart_type)
+        assert spec.roles == ("x", "y", "z")
+        assert spec.required_roles == ("x", "y", "z")
+        assert spec.supports_error_bars is False
+
+
+def test_registered_chart_types():
+    assert set(CHART_ROLE_SPECS.keys()) == {
+        "line", "scatter", "bar", "hist", "colormap", "heatmap"
+    }

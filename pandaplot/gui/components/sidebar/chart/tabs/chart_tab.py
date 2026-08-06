@@ -65,6 +65,8 @@ class ChartTab(QWidget):
                 ("Line", ChartType.LINE),
                 ("Bar", ChartType.BAR),
                 ("Histogram", ChartType.HISTOGRAM),
+                ("Color Map", ChartType.COLORMAP),
+                ("Heatmap", ChartType.HEATMAP),
             ]
         )
         info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
@@ -117,6 +119,8 @@ class ChartTab(QWidget):
                 ChartType.SCATTER: "scatter",
                 ChartType.BAR: "bar",
                 ChartType.HISTOGRAM: "hist",
+                ChartType.COLORMAP: "colormap",
+                ChartType.HEATMAP: "heatmap",
             }
             chart_type = self.chart_type_control.currentValue()
             if chart_type in chart_type_map and (
@@ -143,6 +147,8 @@ class ChartTab(QWidget):
                 "scatter": ChartType.SCATTER,
                 "bar": ChartType.BAR,
                 "hist": ChartType.HISTOGRAM,
+                "colormap": ChartType.COLORMAP,
+                "heatmap": ChartType.HEATMAP,
             }
             self._loaded_chart_type_supported = chart.chart_type in chart_type_map
             chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
@@ -163,6 +169,8 @@ class ChartTab(QWidget):
             ChartType.SCATTER: "scatter",
             ChartType.BAR: "bar",
             ChartType.HISTOGRAM: "hist",
+            ChartType.COLORMAP: "colormap",
+            ChartType.HEATMAP: "heatmap",
         }
         chart_type = self.chart_type_control.currentValue()
         if chart_type in chart_type_map:

@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
 
-_ROLE_LABELS = {"x": "X column", "y": "Y column", "values": "Values column"}
-_ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "values": "y_column_id"}
+_ROLE_LABELS = {"x": "X column", "y": "Y column", "z": "Z (color) column", "values": "Values column"}
+_ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "z": "z_column_id", "values": "y_column_id"}
 
 
 class SeriesConfigCard(Card):
@@ -241,6 +241,7 @@ class SeriesConfigCard(Card):
             "dataset_id": self.dataset_combo.currentData() or "",
             "x_column_id": "",
             "y_column_id": "",
+            "z_column_id": "",
             "x_error_column_id": "",
             "y_error_column_id": "",
             "error_symmetric": True,

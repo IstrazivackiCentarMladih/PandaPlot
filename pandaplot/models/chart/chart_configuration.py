@@ -13,6 +13,12 @@ class ChartType(Enum):
     HISTOGRAM = "histogram"
     BOX = "box"
     VIOLIN = "violin"
+    # Color-mapped point cloud: X/Y position, Z drives point color via a
+    # colormap + colorbar (scatter(x, y, c=z, cmap=...)).
+    COLORMAP = "colormap"
+    # Gridded matrix: X/Y define a regular grid, Z the per-cell value, drawn
+    # with pcolormesh + colorbar.
+    HEATMAP = "heatmap"
 
 
 class LineStyleType(Enum):

@@ -96,6 +96,9 @@ class ChartPropertiesPanel(PWidget):
             lambda ds, fd: self.style_tab.set_series_list(ds, fd, self.data_tab.selected_index)
         )
         self.data_tab.axesRefreshRequested.connect(self._on_axes_refresh_requested)
+        # Keep the Data tab's Z (color) column picker in sync with a live
+        # chart-type switch (shown only for colormap/heatmap).
+        self.chart_tab.chartTypeChanged.connect(self.data_tab.on_chart_type_changed)
         self.style_tab.seriesChipSelected.connect(self.data_tab._expand_series)
         self.tab_widget.addTab(self._wrap_in_scroll_area(self.data_tab), "Data")
 

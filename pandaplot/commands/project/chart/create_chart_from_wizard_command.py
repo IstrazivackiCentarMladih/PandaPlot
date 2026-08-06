@@ -203,6 +203,7 @@ class CreateChartFromWizardCommand(Command):
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
                         y_column_id=series_config["y_column_id"],
+                        z_column_id=series_config.get("z_column_id", ""),
                         x_error_column_id=series_config["x_error_column_id"],
                         y_error_column_id=series_config["y_error_column_id"],
                         error_symmetric=series_config["error_symmetric"],

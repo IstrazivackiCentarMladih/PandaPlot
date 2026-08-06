@@ -23,6 +23,14 @@ CHART_ROLE_SPECS: dict[str, ChartRoleSpec] = {
     "scatter": ChartRoleSpec("scatter", "Scatter", roles=("x", "y"), required_roles=("y",), supports_error_bars=True),
     "bar": ChartRoleSpec("bar", "Bar", roles=("x", "y"), required_roles=("y",), supports_error_bars=True),
     "hist": ChartRoleSpec("hist", "Histogram", roles=("values",), required_roles=("values",), supports_error_bars=False),
+    # Color-mapped charts add a Z (color) role; all three columns are required
+    # since there's nothing to map without them. No error bars.
+    "colormap": ChartRoleSpec(
+        "colormap", "Color Map", roles=("x", "y", "z"),
+        required_roles=("x", "y", "z"), supports_error_bars=False),
+    "heatmap": ChartRoleSpec(
+        "heatmap", "Heatmap", roles=("x", "y", "z"),
+        required_roles=("x", "y", "z"), supports_error_bars=False),
 }
 
 

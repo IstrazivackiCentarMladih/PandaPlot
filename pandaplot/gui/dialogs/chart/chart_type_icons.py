@@ -35,11 +35,35 @@ def _paint_hist(painter: QPainter, size: int):
         painter.drawRect(QRectF(x, y, w, h))
 
 
+def _paint_colormap(painter: QPainter, size: int):
+    """A scatter of filled dots plus a small vertical colorbar on the right."""
+    painter.setBrush(painter.pen().color())
+    for x, y in ((size * 0.2, size * 0.65), (size * 0.4, size * 0.4), (size * 0.55, size * 0.6)):
+        painter.drawEllipse(QRectF(x - 1.5, y - 1.5, 3, 3))
+    painter.drawRect(QRectF(size - 3, 2, 2, size - 4))
+
+
+def _paint_heatmap(painter: QPainter, size: int):
+    """A 3x3 grid of cells (a stylized matrix), some filled some outlined."""
+    cell = (size - 2) / 3.0
+    filled = {(0, 1), (1, 0), (1, 2), (2, 1), (2, 2)}
+    base_color = painter.pen().color()
+    for row in range(3):
+        for col in range(3):
+            rect = QRectF(1 + col * cell, 1 + row * cell, cell - 0.5, cell - 0.5)
+            if (row, col) in filled:
+                painter.fillRect(rect, base_color)
+            else:
+                painter.drawRect(rect)
+
+
 _PAINTERS = {
     "line": _paint_line,
     "scatter": _paint_scatter,
     "bar": _paint_bar,
     "hist": _paint_hist,
+    "colormap": _paint_colormap,
+    "heatmap": _paint_heatmap,
 }
 
 
@@ -47,7 +71,8 @@ def chart_type_icon(chart_type: str, color: str, size: int = 14) -> QIcon:
     """Render `chart_type`'s icon at `size`x`size` in `color`.
 
     Raises:
-        KeyError: if `chart_type` isn't one of "line"/"scatter"/"bar"/"hist".
+        KeyError: if `chart_type` isn't one of the keys in `_PAINTERS`
+            ("line"/"scatter"/"bar"/"hist"/"colormap"/"heatmap").
     """
     paint_fn = _PAINTERS[chart_type]
 

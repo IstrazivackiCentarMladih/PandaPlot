@@ -322,6 +322,9 @@ class SeriesData:
     x_err_minus: Optional[Any]
     y_err_minus: Optional[Any]
     error: Optional[str]
+    # Only resolved (non-None) for color-mapped chart types (colormap/heatmap);
+    # the value each point/cell is colored by. See resolve_series_data.
+    z_data: Optional[Any] = None
 
 
 def resolve_series_data(project, series, chart_type=None) -> SeriesData:
@@ -356,7 +359,14 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     needs_x_column = chart_type != "hist"
     x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
-    missing = [c for c in (x_column, y_column)
+    # Color-mapped charts need a Z column (the per-point/cell value); it's
+    # meaningless (and never resolved) for the other chart types.
+    needs_z_column = chart_type in ("colormap", "heatmap")
+    z_column = resolve_series_column(dataset, series.z_column_id, series.z_column) if needs_z_column else None
+    if needs_z_column and not z_column:
+        return SeriesData(None, None, None, None, None, None, "no Z column configured")
+
+    missing = [c for c in (x_column, y_column, z_column)
                if c and c not in df.columns]
     if missing:
         cols = ", ".join(f"'{c}'" for c in missing)
@@ -367,7 +377,8 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
-    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+    z_data = df[z_column].to_numpy() if z_column else None
+    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None, z_data=z_data)
 
 
 def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
@@ -417,6 +428,11 @@ class ChartEditorWidget(PWidget):
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
+        # Colorbar drawn for the current colormap/heatmap render, if any. It
+        # lives on its own figure axes (not the main axes cleared each render),
+        # so update_chart must explicitly remove the previous one before
+        # drawing again, or stale colorbars would accumulate.
+        self._colorbar = None
 
         self._initialize()
         self.load_chart_config()
@@ -728,6 +744,55 @@ class ChartEditorWidget(PWidget):
         order = np.argsort(xp)
         return np.interp(np.asarray(query, dtype=float), xp[order], fp[order])
 
+    def _resolve_z_label(self, project, series) -> str:
+        """Current display name of a series' Z (color) column, for the default
+        colorbar label. Empty when it can't be resolved (missing dataset/
+        column) so the colorbar just goes unlabeled rather than erroring."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.z_column_id, series.z_column) or ""
+
+    def _plot_color_mapped_series(self, target_axes, series, series_data, alpha):
+        """Render one series of a colormap (color-mapped scatter) or heatmap
+        (gridded pcolormesh) chart, returning the matplotlib mappable to hang a
+        colorbar on -- or None when the data can't be gridded (heatmap only).
+
+        Both map ``series_data.z_data`` through ``series.colormap`` over the
+        color limits from :func:`resolve_color_limits` (the data's own range
+        when ``color_scale_auto``, else the explicit vmin/vmax)."""
+        from pandaplot.gui.components.tabs.chart.chart_heatmap import (
+            pivot_to_grid,
+            resolve_color_limits,
+        )
+
+        _marker_map = {
+            "circle": "o", "square": "s", "triangle": "^", "diamond": "D",
+            "star": "*", "plus": "+", "cross": "x", "none": "o",
+        }
+        z_data = series_data.z_data
+        vmin, vmax = resolve_color_limits(
+            z_data, series.color_scale_auto, series.color_vmin, series.color_vmax)
+
+        if self.chart.chart_type == "heatmap":
+            try:
+                xs, ys, grid = pivot_to_grid(series_data.x_data, series_data.y_data, z_data)
+            except ValueError:
+                return None
+            return target_axes.pcolormesh(
+                xs, ys, grid,
+                cmap=series.colormap, vmin=vmin, vmax=vmax,
+                shading="nearest", alpha=alpha)
+
+        # colormap: color-mapped scatter.
+        return target_axes.scatter(
+            series_data.x_data, series_data.y_data,
+            c=z_data, cmap=series.colormap, vmin=vmin, vmax=vmax,
+            marker=_marker_map.get(series.marker_style, "o"),
+            s=series.marker_size ** 2,
+            edgecolors=series.marker_edge_color or "none",
+            linewidths=series.marker_edge_width,
+            label=series.label, alpha=alpha)
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -748,6 +813,15 @@ class ChartEditorWidget(PWidget):
             # Clear the current plot
             self.chart_canvas.axes.clear()
 
+            # Remove the previous colorbar (a colormap/heatmap render adds one
+            # on its own figure axes, which axes.clear() above doesn't touch).
+            if self._colorbar is not None:
+                try:
+                    self._colorbar.remove()
+                except Exception:
+                    self.logger.debug("Failed to remove stale colorbar", exc_info=True)
+                self._colorbar = None
+
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
             self.chart_canvas.fig.set_facecolor(fig_bg if fig_bg is not None else "none")
@@ -767,6 +841,12 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.original_ylim2 = None
 
             series_errors = []
+            # For colormap/heatmap charts: the first visible mapped series that
+            # asks for a colorbar supplies the single colorbar drawn beside the
+            # plot (overlaying several colorbars reads as clutter), plus its
+            # label. Left as None for every other chart type.
+            colorbar_mappable = None
+            colorbar_label = ""
             if not self.chart.data_series:
                 self.dataset_label.setText("No Data Loaded")
             else:
@@ -847,6 +927,20 @@ class ChartEditorWidget(PWidget):
                                          color=series.color,
                                          label=series.label,
                                          alpha=alpha)
+                    elif self.chart.chart_type in ("colormap", "heatmap"):
+                        mappable = self._plot_color_mapped_series(
+                            target_axes, series, series_data, alpha)
+                        if mappable is None:
+                            series_errors.append(
+                                f"{series.label or f'Series {i + 1}'}: no data to grid")
+                            continue
+                        # First colorbar-enabled series wins the single colorbar.
+                        if colorbar_mappable is None and series.colorbar_show:
+                            colorbar_mappable = mappable
+                            colorbar_label = (
+                                series.colorbar_label
+                                or self._resolve_z_label(project, series)
+                            )
 
                     if self.chart.chart_type in ("line", "scatter", "bar"):
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
@@ -904,6 +998,14 @@ class ChartEditorWidget(PWidget):
                                 fit.confidence_upper,
                                 color=fit.color,
                                 alpha=0.2)
+
+                # Draw the single colorbar for a colormap/heatmap chart, tied to
+                # the primary axes so tight_layout reserves room for it.
+                if colorbar_mappable is not None:
+                    self._colorbar = self.chart_canvas.fig.colorbar(
+                        colorbar_mappable, ax=self.chart_canvas.axes)
+                    if colorbar_label:
+                        self._colorbar.set_label(colorbar_label)
 
             # Apply chart configuration
             config = self.chart.config
