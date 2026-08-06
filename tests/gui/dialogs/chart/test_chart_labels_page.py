@@ -152,22 +152,6 @@ def test_page_exposes_a_step_rail_and_footer_with_no_empty_link():
     assert page.footer.empty_link is None  # step 3: no "Create empty plot" link
 
 
-def test_page_exposes_a_header():
-    page = ChartLabelsPage(app_context=_fake_app_context())
-
-    assert page.header is not None
-
-
-def test_headers_close_button_emits_close_clicked():
-    page = ChartLabelsPage(app_context=_fake_app_context())
-    received = []
-    page.header.closeClicked.connect(lambda: received.append(True))
-
-    page.header.close_button.click()
-
-    assert received == [True]
-
-
 def test_refresh_preview_does_not_raise_with_no_project_or_series():
     page = ChartLabelsPage(app_context=_fake_app_context())
 

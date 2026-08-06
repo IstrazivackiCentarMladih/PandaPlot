@@ -229,6 +229,32 @@ def test_expanded_card_has_a_collapse_button_that_collapses_it():
     assert card.is_collapsed() is True
 
 
+def test_set_tokens_styles_pick_and_remove_buttons_with_token_colors():
+    """Regression: these buttons had no token-driven styling at all, so they
+    fell back to the OS default button style -- dark-button-face with
+    dark/invisible text under a dark theme."""
+    card = _line_card()
+
+    card.set_tokens({"border_control": "#123456", "text_secondary": "#abcdef"})
+
+    assert "#123456" in card.y_pick_button.styleSheet()
+    assert "#abcdef" in card.y_pick_button.styleSheet()
+    assert card.y_pick_button.styleSheet() != ""
+    assert "#123456" in card.remove_button.styleSheet()
+    assert "#abcdef" in card.remove_button.styleSheet()
+
+
+def test_set_tokens_styles_expand_and_collapse_chevrons_flat():
+    card = _line_card()
+
+    card.set_tokens({"text_muted": "#654321"})
+
+    assert "#654321" in card._expand_button.styleSheet()
+    assert "#654321" in card._collapse_button.styleSheet()
+    assert "border: none" in card._expand_button.styleSheet()
+    assert "border: none" in card._collapse_button.styleSheet()
+
+
 def test_swatch_color_reflects_the_cards_index():
     card = _line_card()
     card.set_tokens({"series_palette": ["#111111", "#222222", "#333333"]})

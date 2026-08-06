@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -16,7 +17,6 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
-from pandaplot.gui.dialogs.chart.wizard_header import WizardHeader
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -31,10 +31,6 @@ class ChartLabelsPage(PWizardPage):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
-        self.header = WizardHeader()
-        self.header.closeClicked.connect(lambda: self.wizard().reject())
-        outer.addWidget(self.header)
 
         self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
         rail_row = QHBoxLayout()
@@ -108,7 +104,6 @@ class ChartLabelsPage(PWizardPage):
     def _apply_theme(self):
         theme_manager = self.app_context.get_manager(ThemeManager)
         tokens = theme_manager.get_design_tokens()
-        self.header.set_tokens(tokens)
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
         self.show_legend_toggle.set_tokens(tokens)
@@ -178,6 +173,7 @@ class ChartLabelsPage(PWizardPage):
             self.preview_canvas.deleteLater()
 
         canvas = ChartCanvas(width=3, height=2.5, dpi=70)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         render_wizard_preview(
             canvas, project, chart_type, series_configs,
             title=self.get_title(), subtitle=self.get_subtitle(),

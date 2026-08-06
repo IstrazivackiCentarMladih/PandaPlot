@@ -176,8 +176,41 @@ class SeriesConfigCard(Card):
     def set_tokens(self, tokens: dict) -> None:
         super().set_tokens(tokens)
         self._tokens = tokens
+        self._apply_button_styles(tokens)
         if self._collapsed:
             self._refresh_summary()
+
+    def _apply_button_styles(self, tokens: dict) -> None:
+        """Style every plain button on this card from theme tokens.
+
+        Without this, these buttons fall back to the OS/Qt default button
+        style, which under a dark theme renders as dark-button-face +
+        dark/invisible text. `pick_button`s and `remove_button` are regular
+        text buttons, styled like `WizardFooter`'s neutral bordered
+        Back/Cancel buttons; `_expand_button`/`_collapse_button` are
+        glyph-only chevrons, styled flat/borderless like
+        `DataTab._build_chevron_button`.
+        """
+        border = tokens.get("border_control", "#DCDEE4")
+        text_secondary = tokens.get("text_secondary", "#3F4350")
+        text_muted = tokens.get("text_muted", "#6B7280")
+        neutral_style = (
+            f"QPushButton {{ border: 1px solid {border}; border-radius: 5px; "
+            f"padding: 6px 13px; color: {text_secondary}; background: transparent; }}"
+        )
+        chevron_style = (
+            "QPushButton { border: none; background: transparent; "
+            f"color: {text_muted}; }}"
+        )
+        for role in self._role_spec.roles:
+            getattr(self, f"{role}_pick_button").setStyleSheet(neutral_style)
+        for error_role in ("x_error", "y_error"):
+            pick_button = getattr(self, f"{error_role}_pick_button", None)
+            if pick_button is not None:
+                pick_button.setStyleSheet(neutral_style)
+        self.remove_button.setStyleSheet(neutral_style)
+        self._expand_button.setStyleSheet(chevron_style)
+        self._collapse_button.setStyleSheet(chevron_style)
 
     # -- Everything below is unchanged from the pre-redesign implementation --
 

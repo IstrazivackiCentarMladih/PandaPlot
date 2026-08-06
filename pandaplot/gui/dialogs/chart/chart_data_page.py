@@ -12,7 +12,6 @@ from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
 from pandaplot.gui.dialogs.chart.dataset_column_picker import DatasetColumnPicker
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
-from pandaplot.gui.dialogs.chart.wizard_header import WizardHeader
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -34,10 +33,6 @@ class ChartDataPage(PWizardPage):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
-        self.header = WizardHeader()
-        self.header.closeClicked.connect(lambda: self.wizard().reject())
-        outer.addWidget(self.header)
 
         self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
         rail_row = QHBoxLayout()
@@ -84,9 +79,14 @@ class ChartDataPage(PWizardPage):
     def _apply_theme(self):
         theme_manager = self.app_context.get_manager(ThemeManager)
         tokens = theme_manager.get_design_tokens()
-        self.header.set_tokens(tokens)
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
+        border = tokens.get("border_control", "#DCDEE4")
+        text_secondary = tokens.get("text_secondary", "#3F4350")
+        self.add_series_button.setStyleSheet(
+            f"QPushButton {{ border: 1px solid {border}; border-radius: 5px; "
+            f"padding: 6px 13px; color: {text_secondary}; background: transparent; }}"
+        )
         for card in self.cards:
             card.set_tokens(tokens)
 
@@ -124,6 +124,8 @@ class ChartDataPage(PWizardPage):
         card.pickRequested.connect(lambda role, c=card: self._start_pick(c, role))
         self.cards_container.addWidget(card)
         self.cards.append(card)
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        card.set_tokens(theme_manager.get_design_tokens())
         self._refresh_card_columns(card)
         self.completeChanged.emit()
         return card

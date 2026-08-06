@@ -8,7 +8,14 @@ matplotlib (see tests/gui/test_main_menu_lazy_imports.py).
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.section_header import SectionHeader
@@ -16,7 +23,6 @@ from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
 from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
-from pandaplot.gui.dialogs.chart.wizard_header import WizardHeader
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -39,10 +45,6 @@ class ChartTypePage(PWizardPage):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        self.header = WizardHeader()
-        self.header.closeClicked.connect(lambda: self.wizard().reject())
-        outer.addWidget(self.header)
-
         self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
         rail_row = QHBoxLayout()
         rail_row.setContentsMargins(14, 10, 14, 10)
@@ -54,7 +56,9 @@ class ChartTypePage(PWizardPage):
         outer.addLayout(content, 1)
 
         type_column = QVBoxLayout()
-        type_column.addWidget(SectionHeader("Chart type"))
+        type_card = Card()
+        type_layout = QVBoxLayout(type_card)
+        type_layout.addWidget(SectionHeader("Chart type"))
 
         self.type_list = QListWidget()
         for chart_type, spec in CHART_ROLE_SPECS.items():
@@ -62,7 +66,8 @@ class ChartTypePage(PWizardPage):
             item.setData(Qt.ItemDataRole.UserRole, chart_type)
             self.type_list.addItem(item)
         self.type_list.currentItemChanged.connect(self._on_type_changed)
-        type_column.addWidget(self.type_list)
+        type_layout.addWidget(self.type_list, 1)
+        type_column.addWidget(type_card, 1)
         content.addLayout(type_column, 0)
 
         preview_column = QVBoxLayout()
@@ -93,7 +98,6 @@ class ChartTypePage(PWizardPage):
 
     def _apply_tokens(self, tokens: dict):
         self._tokens = tokens
-        self.header.set_tokens(tokens)
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
         accent = tokens.get("accent", "#4A56C6")
@@ -132,6 +136,7 @@ class ChartTypePage(PWizardPage):
             self._preview_canvas.deleteLater()
 
         canvas = ChartCanvas(width=4, height=3, dpi=80)
+        canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         axes = canvas.axes
         if chart_type == "line":
             axes.plot(_SAMPLE_X, _SAMPLE_Y)

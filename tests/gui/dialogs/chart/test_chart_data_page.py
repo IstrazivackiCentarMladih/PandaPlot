@@ -213,22 +213,6 @@ def test_page_exposes_a_step_rail_and_footer():
     assert page.footer is not None
 
 
-def test_page_exposes_a_header():
-    page = _make_page()
-
-    assert page.header is not None
-
-
-def test_headers_close_button_emits_close_clicked():
-    page = _make_page()
-    received = []
-    page.header.closeClicked.connect(lambda: received.append(True))
-
-    page.header.close_button.click()
-
-    assert received == [True]
-
-
 def test_two_collapsed_cards_show_different_swatch_colors():
     """Regression: `_refresh_summary` always used series_palette[0] regardless
     of which series the card represents, so every collapsed card showed the
@@ -260,6 +244,31 @@ def test_removing_a_card_reindexes_remaining_cards_swatch_colors():
     # After removal, remaining cards should be re-indexed 0, 1 (not 1, 2).
     assert remaining[0]._index == 0
     assert remaining[1]._index == 1
+
+
+def test_add_series_button_is_styled_from_tokens():
+    """Regression: `add_series_button` had no token-driven styling, falling
+    back to the OS default button style (dark-button-face + invisible text
+    under a dark theme)."""
+    page = _make_page()
+
+    page._apply_theme()
+
+    stylesheet = page.add_series_button.styleSheet()
+    assert stylesheet != ""
+    assert _FAKE_TOKENS["border_control"] in stylesheet
+    assert _FAKE_TOKENS["text_secondary"] in stylesheet
+
+
+def test_a_freshly_added_card_is_tokened_immediately():
+    """Regression: cards added mid-session (via + Add series) picked up no
+    styling until the next theme-change event."""
+    page = _make_page()
+
+    page.add_series_button.click()
+    new_card = page.cards[-1]
+
+    assert new_card.remove_button.styleSheet() != ""
 
 
 def test_next_button_enabled_state_tracks_iscomplete():

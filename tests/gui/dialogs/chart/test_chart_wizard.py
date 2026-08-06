@@ -349,6 +349,19 @@ def test_wizard_has_no_native_buttons_and_a_fixed_size():
         assert not wizard.button(role).isVisible()
 
 
+def test_wizard_uses_classic_style_to_avoid_a_native_banner_region():
+    """QWizard reserves a banner/watermark region above the page content on
+    styles that have one (e.g. Aero/ModernStyle), painted with the OS/native
+    palette rather than our theme tokens. Every page here builds 100% of its
+    own chrome and never calls setTitle()/setSubTitle(), so that region is
+    dead space; ClassicStyle avoids reserving it. This only locks in the
+    intended configuration -- the actual on-screen effect needs a real
+    display to confirm."""
+    wizard = _make_wizard()
+
+    assert wizard.wizardStyle() == QWizard.WizardStyle.ClassicStyle
+
+
 def test_generic_buttons_are_no_longer_forced_indigo():
     """Regression guard: the old global `QPushButton { background: accent }`
     rule made every button (including Back/Cancel) indigo. Per-page footers

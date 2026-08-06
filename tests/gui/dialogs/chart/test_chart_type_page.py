@@ -105,22 +105,6 @@ def test_page_exposes_a_step_rail_and_footer():
     assert page.footer.empty_link is not None  # step 1: empty-plot link is shown
 
 
-def test_page_exposes_a_header():
-    page = ChartTypePage(app_context=_fake_app_context())
-
-    assert page.header is not None
-
-
-def test_headers_close_button_emits_close_clicked():
-    page = ChartTypePage(app_context=_fake_app_context())
-    received = []
-    page.header.closeClicked.connect(lambda: received.append(True))
-
-    page.header.close_button.click()
-
-    assert received == [True]
-
-
 def test_empty_button_is_the_footers_link():
     page = ChartTypePage(app_context=_fake_app_context())
 

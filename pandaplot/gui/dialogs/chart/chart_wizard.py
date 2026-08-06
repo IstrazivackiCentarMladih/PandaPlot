@@ -1,6 +1,9 @@
 """Top-level chart creation wizard: Type step, then Data step."""
 from typing import Callable, Optional
 
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QWizard
+
 from pandaplot.gui.core.widget_extension import PWizard
 from pandaplot.gui.dialogs.chart.chart_data_page import ChartDataPage
 from pandaplot.gui.dialogs.chart.chart_labels_page import ChartLabelsPage
@@ -33,6 +36,19 @@ class ChartWizard(PWizard):
 
     def _init_ui(self):
         self.setWindowTitle("Create Chart")
+        # Every page here builds 100% of its own visible chrome (step rail,
+        # content, footer) and never calls setTitle()/setSubTitle() on any
+        # page, so QWizard's native banner/watermark region -- painted with
+        # the OS/native palette, not our theme tokens -- is pure dead space.
+        # ClassicStyle doesn't reserve that region when no title is set.
+        self.setWizardStyle(QWizard.WizardStyle.ClassicStyle)
+        for pixmap_role in (
+            QWizard.WizardPixmap.WatermarkPixmap,
+            QWizard.WizardPixmap.LogoPixmap,
+            QWizard.WizardPixmap.BannerPixmap,
+            QWizard.WizardPixmap.BackgroundPixmap,
+        ):
+            self.setPixmap(pixmap_role, QPixmap())
         self.setFixedSize(620, 440)
         self.setButtonLayout([])
 
