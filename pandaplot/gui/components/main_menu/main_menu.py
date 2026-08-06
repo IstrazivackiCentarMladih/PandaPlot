@@ -6,6 +6,9 @@ from PySide6.QtWidgets import QMenu, QWidget
 from pandaplot.commands.app.exit_command import ExitCommand
 from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.dataset import ImportDataCommand
+from pandaplot.commands.project.dataset.add_rows_columns_command import (
+    AddRowsColumnsCommand,
+)
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
@@ -26,6 +29,9 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 class MainMenu(PMenuBar):
     def __init__(self, parent: QWidget, app_context: AppContext):
         super().__init__(app_context=app_context, parent=parent)
+        # Dataset of the currently active tab, if any -- used to preselect the
+        # dataset in dialogs opened from the menu.
+        self.active_dataset_id: str | None = None
         self._initialize()
 
     @override
@@ -200,6 +206,11 @@ class MainMenu(PMenuBar):
         ).execute_command(CreateEmptyDatasetCommand(self.app_context)))
         data_menu.addAction(create_empty_dataset_action)
 
+        self.add_rows_columns_action = QAction("Add Rows / Columns...", self)
+        self.add_rows_columns_action.triggered.connect(lambda: self.app_context.get_command_executor(
+        ).execute_command(AddRowsColumnsCommand(self.app_context, dataset_id=self.active_dataset_id)))
+        data_menu.addAction(self.add_rows_columns_action)
+
         data_menu.addSeparator()
 
         new_note_action = QAction("New Note", self)
@@ -216,10 +227,11 @@ class MainMenu(PMenuBar):
         ).execute_command(CreateChartFromWizardCommand(self.app_context)))
         chart_menu.addAction(self.create_chart_action)
 
-        self._update_create_chart_action_enabled()
+        self._update_dataset_dependent_actions()
         return chart_menu
 
-    def _update_create_chart_action_enabled(self):
+    def _update_dataset_dependent_actions(self):
+        """Enable the actions that need an existing dataset to act on."""
         app_state = self.app_context.get_app_state()
         has_datasets = False
         if app_state.has_project and app_state.current_project:
@@ -227,14 +239,20 @@ class MainMenu(PMenuBar):
                 isinstance(item, Dataset) for item in app_state.current_project.get_all_items()
             )
         self.create_chart_action.setEnabled(has_datasets)
+        self.add_rows_columns_action.setEnabled(has_datasets)
+
+    def _on_tab_changed(self, event_data: dict):
+        """Track the active tab's dataset so menu dialogs can preselect it."""
+        self.active_dataset_id = event_data.get("dataset_id")
 
     @override
     def setup_event_subscriptions(self):
-        from pandaplot.models.events import ProjectEvents
-        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_create_chart_action_enabled())
+        from pandaplot.models.events import ProjectEvents, UIEvents
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
 
     def show_settings_dialog(self):
         """Show the settings dialog."""
