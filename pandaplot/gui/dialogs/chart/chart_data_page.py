@@ -9,7 +9,6 @@ from PySide6.QtWidgets import QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
-from pandaplot.gui.dialogs.chart.dataset_column_picker import DatasetColumnPicker
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
@@ -26,7 +25,6 @@ class ChartDataPage(PWizardPage):
         self._chart_type: str = "line"
         self._datasets: list[tuple[str, str]] = []
         self._columns_provider: Optional[Callable[[str], list[tuple[str, str]]]] = None
-        self._picker = DatasetColumnPicker(app_context)
         self._initialize()
 
     def _init_ui(self):
@@ -121,7 +119,6 @@ class ChartDataPage(PWizardPage):
         card.removeRequested.connect(lambda c=card: self._remove_card(c))
         card.datasetChanged.connect(lambda _dataset_id, c=card: self._refresh_card_columns(c))
         card.configChanged.connect(self.completeChanged.emit)
-        card.pickRequested.connect(lambda role, c=card: self._start_pick(c, role))
         self.cards_container.addWidget(card)
         self.cards.append(card)
         theme_manager = self.app_context.get_manager(ThemeManager)
@@ -145,15 +142,6 @@ class ChartDataPage(PWizardPage):
         dataset_id = card.dataset_combo.currentData()
         if dataset_id and self._columns_provider is not None:
             card.set_dataset_columns(dataset_id, self._columns_provider(dataset_id))
-
-    def _start_pick(self, card: SeriesConfigCard, role: str) -> None:
-        dataset_id = card.dataset_combo.currentData()
-        if not dataset_id:
-            return
-        self._picker.start(
-            self.wizard(), dataset_id, role,
-            on_done=lambda column_ids, c=card, r=role: c.apply_picked_columns(r, column_ids),
-        )
 
     def series_configs(self) -> list[dict]:
         return [card.get_series_config() for card in self.cards]

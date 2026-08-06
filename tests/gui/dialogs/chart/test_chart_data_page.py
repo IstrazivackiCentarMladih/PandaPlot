@@ -126,62 +126,6 @@ def test_changing_chart_type_resets_to_a_single_card_of_the_new_type():
     assert page.cards[0].error_bars_check is None
 
 
-def test_pick_requested_starts_the_picker_with_the_cards_dataset_and_role():
-    page = _make_page()
-    page._picker.start = Mock()
-    card = page.cards[0]
-
-    card.pickRequested.emit("y")
-
-    page._picker.start.assert_called_once()
-    args, kwargs = page._picker.start.call_args
-    assert args[0] is page.wizard()
-    assert args[1] == "ds-1"
-    assert args[2] == "y"
-    assert "on_done" in kwargs
-
-
-def test_on_done_callback_applies_picked_columns_to_the_originating_card():
-    page = _make_page()
-    page._picker.start = Mock()
-    card = page.cards[0]
-
-    card.pickRequested.emit("y")
-
-    on_done = page._picker.start.call_args.kwargs["on_done"]
-    on_done(["col-rev"])
-
-    assert card.y_column_combo.currentData() == "col-rev"
-
-
-def test_pick_requested_on_second_card_applies_to_that_card_only():
-    page = _make_page()
-    page.add_series_button.click()
-    assert len(page.cards) == 2
-    for card in page.cards:
-        card.dataset_combo.setCurrentIndex(card.dataset_combo.findData("ds-1"))
-    page._picker.start = Mock()
-
-    page.cards[1].pickRequested.emit("y")
-
-    on_done = page._picker.start.call_args.kwargs["on_done"]
-    on_done(["col-rev"])
-
-    assert page.cards[1].y_column_combo.currentData() == "col-rev"
-    assert page.cards[0].y_column_combo.currentData() != "col-rev"
-
-
-def test_pick_requested_without_a_selected_dataset_does_not_start_the_picker():
-    page = _make_page()
-    page._picker.start = Mock()
-    card = page.cards[0]
-    card.dataset_combo.setCurrentIndex(-1)
-
-    card.pickRequested.emit("y")
-
-    page._picker.start.assert_not_called()
-
-
 def test_new_cards_start_expanded():
     page = _make_page()
 

@@ -82,16 +82,6 @@ def test_apply_picked_columns_uses_only_the_first_id():
     assert card.y_column_combo.currentData() == "col-rev"
 
 
-def test_pick_button_emits_role_name(qapp):
-    card = _line_card()
-    received = []
-    card.pickRequested.connect(received.append)
-
-    card.y_pick_button.click()
-
-    assert received == ["y"]
-
-
 def test_remove_button_emits_remove_requested():
     card = _line_card()
     received = []
@@ -210,10 +200,9 @@ def test_collapsed_state_does_not_affect_series_config():
     assert card.get_series_config()["y_column_id"] == "col-rev"
 
 
-def test_pick_and_remove_buttons_are_not_fixed_width():
+def test_remove_button_is_not_fixed_width():
     card = _line_card()
 
-    assert card.y_pick_button.minimumWidth() == 0
     assert card.remove_button.minimumWidth() == 0
 
 
@@ -229,36 +218,16 @@ def test_expanded_card_has_a_collapse_button_that_collapses_it():
     assert card.is_collapsed() is True
 
 
-def test_set_tokens_styles_pick_and_remove_buttons_with_token_colors():
-    """Regression: these buttons had no token-driven styling at all, so they
-    fell back to the OS default button style -- dark-button-face with
+def test_set_tokens_styles_remove_button_with_token_colors():
+    """Regression: this button had no token-driven styling at all, so it fell
+    back to the OS default button style -- dark-button-face with
     dark/invisible text under a dark theme."""
     card = _line_card()
 
     card.set_tokens({"border_control": "#123456", "text_secondary": "#abcdef"})
 
-    assert "#123456" in card.y_pick_button.styleSheet()
-    assert "#abcdef" in card.y_pick_button.styleSheet()
-    assert card.y_pick_button.styleSheet() != ""
     assert "#123456" in card.remove_button.styleSheet()
     assert "#abcdef" in card.remove_button.styleSheet()
-
-
-def test_set_tokens_styles_error_pick_buttons_with_token_colors():
-    """Regression: the x_error/y_error pick buttons were never stored as
-    instance attributes, so `_apply_button_styles` silently skipped them via
-    `getattr(..., None)` and they stayed on OS-default (dark-on-dark) styling."""
-    card = _line_card()
-    card.error_bars_check.setChecked(True)
-
-    card.set_tokens({"border_control": "#123456", "text_secondary": "#abcdef"})
-
-    assert card.x_error_pick_button.styleSheet() != ""
-    assert "#123456" in card.x_error_pick_button.styleSheet()
-    assert "#abcdef" in card.x_error_pick_button.styleSheet()
-    assert card.y_error_pick_button.styleSheet() != ""
-    assert "#123456" in card.y_error_pick_button.styleSheet()
-    assert "#abcdef" in card.y_error_pick_button.styleSheet()
 
 
 def test_set_tokens_styles_expand_and_collapse_chevrons_flat():

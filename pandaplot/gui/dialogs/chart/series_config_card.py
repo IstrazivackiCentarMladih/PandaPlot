@@ -1,8 +1,7 @@
 """One series' configuration card for the chart creation wizard's Data step:
-dataset picker, per-role column pickers (+ 'pick from dataset' buttons),
-an optional error-bars toggle, and a remove button. Collapsible to a
-one-line summary via `set_collapsed`, mirroring the accordion pattern used
-by the Chart Properties panel's Data tab.
+dataset picker, per-role column pickers, an optional error-bars toggle, and
+a remove button. Collapsible to a one-line summary via `set_collapsed`,
+mirroring the accordion pattern used by the Chart Properties panel's Data tab.
 """
 from typing import Optional
 
@@ -28,7 +27,6 @@ _ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "values": "y_column_id
 
 class SeriesConfigCard(Card):
     removeRequested = Signal()
-    pickRequested = Signal(str)
     configChanged = Signal()
     datasetChanged = Signal(str)
 
@@ -95,13 +93,7 @@ class SeriesConfigCard(Card):
             combo.currentIndexChanged.connect(lambda _index=None: self.configChanged.emit())
             self._role_combos[role] = combo
             setattr(self, f"{role}_column_combo", combo)
-            role_row = QHBoxLayout()
-            role_row.addWidget(combo, 1)
-            pick_button = QPushButton("Pick from dataset")
-            pick_button.clicked.connect(lambda _checked=False, r=role: self.pickRequested.emit(r))
-            setattr(self, f"{role}_pick_button", pick_button)
-            role_row.addWidget(pick_button, 0)
-            grid.addLayout(role_row, row, 1)
+            grid.addWidget(combo, row, 1)
             row += 1
 
         if self._role_spec.supports_error_bars:
@@ -116,16 +108,9 @@ class SeriesConfigCard(Card):
                 combo.currentIndexChanged.connect(lambda _index=None: self.configChanged.emit())
                 self._role_combos[error_role] = combo
                 setattr(self, f"{error_role}_column_combo", combo)
-                error_row = QHBoxLayout()
-                error_row.addWidget(combo, 1)
-                pick_button = QPushButton("Pick from dataset")
-                pick_button.clicked.connect(lambda _checked=False, r=error_role: self.pickRequested.emit(r))
-                setattr(self, f"{error_role}_pick_button", pick_button)
-                error_row.addWidget(pick_button, 0)
                 grid.addWidget(error_label, row, 0)
-                grid.addLayout(error_row, row, 1)
+                grid.addWidget(combo, row, 1)
                 setattr(self, f"_{error_role}_label", error_label)
-                setattr(self, f"_{error_role}_row", error_row)
                 row += 1
 
             self._set_error_controls_visible(False)
@@ -186,11 +171,10 @@ class SeriesConfigCard(Card):
 
         Without this, these buttons fall back to the OS/Qt default button
         style, which under a dark theme renders as dark-button-face +
-        dark/invisible text. `pick_button`s and `remove_button` are regular
-        text buttons, styled like `WizardFooter`'s neutral bordered
-        Back/Cancel buttons; `_expand_button`/`_collapse_button` are
-        glyph-only chevrons, styled flat/borderless like
-        `DataTab._build_chevron_button`.
+        dark/invisible text. `remove_button` is a regular text button,
+        styled like `WizardFooter`'s neutral bordered Back/Cancel buttons;
+        `_expand_button`/`_collapse_button` are glyph-only chevrons, styled
+        flat/borderless like `DataTab._build_chevron_button`.
         """
         border = tokens.get("border_control", "#DCDEE4")
         text_secondary = tokens.get("text_secondary", "#3F4350")
@@ -203,11 +187,6 @@ class SeriesConfigCard(Card):
             "QPushButton { border: none; background: transparent; "
             f"color: {text_muted}; }}"
         )
-        for role in self._role_spec.roles:
-            getattr(self, f"{role}_pick_button").setStyleSheet(neutral_style)
-        if self._role_spec.supports_error_bars:
-            for error_role in ("x_error", "y_error"):
-                getattr(self, f"{error_role}_pick_button").setStyleSheet(neutral_style)
         self.remove_button.setStyleSheet(neutral_style)
         self._expand_button.setStyleSheet(chevron_style)
         self._collapse_button.setStyleSheet(chevron_style)
@@ -217,12 +196,7 @@ class SeriesConfigCard(Card):
     def _set_error_controls_visible(self, visible: bool):
         for error_role in ("x_error", "y_error"):
             getattr(self, f"_{error_role}_label").setVisible(visible)
-            combo = self._role_combos[error_role]
-            combo.setVisible(visible)
-            for i in range(getattr(self, f"_{error_role}_row").count()):
-                item = getattr(self, f"_{error_role}_row").itemAt(i)
-                if item.widget() is not None:
-                    item.widget().setVisible(visible)
+            self._role_combos[error_role].setVisible(visible)
 
     def _on_error_bars_toggled(self, checked: bool):
         self._set_error_controls_visible(checked)

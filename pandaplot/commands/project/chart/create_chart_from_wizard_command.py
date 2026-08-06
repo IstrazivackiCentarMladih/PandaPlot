@@ -3,11 +3,7 @@ Chart item — the single path every chart-creation entry point uses.
 
 The wizard is opened non-blocking (`show()`, not `exec()`): `execute()` returns
 as soon as the wizard is on screen, and the chart is built later in
-`_on_wizard_finished`, driven by the wizard's `finished(int)` signal. This is
-required for the pick-from-dataset flow — `DatasetColumnPicker` needs a real
-hide -> change-modality -> show cycle on the wizard (the only sequence Qt
-honours when updating a window's modal-blocking registration), which would tear
-down a blocking `exec()` loop.
+`_on_wizard_finished`, driven by the wizard's `finished(int)` signal.
 """
 
 from typing import Optional, override
@@ -137,8 +133,8 @@ class CreateChartFromWizardCommand(Command):
             # would not keep this command alive. The command is only referenced
             # by CommandExecutor's undo stack, which drops entries past
             # `max_undo_levels` -- 10 unrelated commands while the wizard sits
-            # open (the wizard deliberately unblocks the main window during a
-            # pick session) would collect the command and silently break Finish.
+            # open (the user may take a while configuring it) would collect the
+            # command and silently break Finish.
             # The closure holds a genuine strong reference to `self` and to
             # `dialog`, and the dialog owns the connection, so
             # `self <-> dialog <-> closure` keeps everything alive for as long
@@ -149,9 +145,7 @@ class CreateChartFromWizardCommand(Command):
             dialog.finished.connect(lambda result: self._on_wizard_finished(result, dialog))
             # `exec()` used to make the wizard application-modal implicitly;
             # `show()` does not, so set it explicitly to keep the project from
-            # being edited underneath a half-configured wizard. This is also
-            # the modality `DatasetColumnPicker` temporarily drops (and later
-            # restores) to hand the dataset table back to the user.
+            # being edited underneath a half-configured wizard.
             dialog.setModal(True)
             dialog.show()
             dialog.raise_()
