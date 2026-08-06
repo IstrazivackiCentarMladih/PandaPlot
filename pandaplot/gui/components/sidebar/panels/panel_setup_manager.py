@@ -21,6 +21,7 @@ from pandaplot.gui.components.sidebar.panels.panel_conditions import (
 from pandaplot.gui.components.sidebar.preprocessing.preprocessing_panel import PreprocessingPanel
 from pandaplot.gui.components.sidebar.project.project_view_panel import ProjectViewPanel
 from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
+from pandaplot.gui.components.sidebar.statistics.descriptive_panel import DescriptiveStatsPanel
 from pandaplot.gui.components.sidebar.statistics.statistics_panel import StatisticsPanel
 from pandaplot.gui.components.sidebar.transform.transform_panel import TransformPanel
 from pandaplot.models.state.app_context import AppContext
