@@ -53,3 +53,37 @@ def test_set_state_replaces_previous_summaries():
 
     assert rail._step_widgets[0].text() == "Type · Bar"
     assert rail._step_widgets[1].text() == "Data · 1 series"
+
+
+def test_each_step_renders_a_circle_icon():
+    rail = WizardStepRail(["Type", "Data", "Labels"])
+    rail.set_state(current_index=1, summaries={0: "Type · Line"})
+
+    for button in rail._step_widgets:
+        assert not button.icon().isNull()
+
+
+def test_current_completed_and_upcoming_circles_are_visually_distinct():
+    """Regression guard for the plain QPushButton rail: each state must
+    paint its own circle icon (filled/checkmark/outlined), not share one."""
+    rail = WizardStepRail(["Type", "Data", "Labels"])
+    rail.set_state(current_index=1, summaries={0: "Type · Line"})
+
+    completed_icon = rail._step_widgets[0].icon().pixmap(17, 17).toImage()
+    current_icon = rail._step_widgets[1].icon().pixmap(17, 17).toImage()
+    upcoming_icon = rail._step_widgets[2].icon().pixmap(17, 17).toImage()
+
+    assert completed_icon != current_icon
+    assert current_icon != upcoming_icon
+    assert completed_icon != upcoming_icon
+
+
+def test_set_tokens_regenerates_the_circle_icons():
+    rail = WizardStepRail(["Type", "Data", "Labels"])
+    rail.set_state(current_index=1, summaries={})
+    before = rail._step_widgets[1].icon().pixmap(17, 17).toImage()
+
+    rail.set_tokens({"accent": "#00FF00"})
+
+    after = rail._step_widgets[1].icon().pixmap(17, 17).toImage()
+    assert before != after
