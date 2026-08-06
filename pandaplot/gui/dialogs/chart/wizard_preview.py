@@ -15,10 +15,32 @@ still only ever set via Chart Properties after Finish, exactly as today.
 """
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
 from pandaplot.gui.components.tabs.chart.chart_editor import resolve_series_data
+from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
 
 _SAMPLE_X = [1, 2, 3, 4, 5]
 _SAMPLE_Y = [2, 3, 1, 4, 3]
+
+
+def _series_label(project, config: dict) -> str:
+    """Readable legend label for a series, e.g. "{dataset name}:{Y column name}".
+
+    Mirrors `CreateChartFromWizardCommand._default_series_label` so the
+    preview's legend matches what the actually-created chart shows. Degrades
+    gracefully to the raw dataset id if the project or dataset can't resolve
+    it -- this is only a preview, never worth crashing over.
+    """
+    dataset_id = config.get("dataset_id", "")
+    if project is None:
+        return dataset_id
+    dataset = project.find_item(dataset_id)
+    if not isinstance(dataset, Dataset):
+        return dataset_id
+    y_column_id = config.get("y_column_id", "")
+    y_column_name = ""
+    if y_column_id:
+        y_column_name = dataset.column_name(y_column_id) or ""
+    return f"{dataset.name}:{y_column_name}" if y_column_name else dataset.name
 
 
 def render_wizard_preview(
@@ -43,7 +65,7 @@ def render_wizard_preview(
         if data.error is not None:
             continue
         any_plotted = True
-        label = config.get("dataset_id", "") or None
+        label = _series_label(project, config)
         if chart_type == "line":
             axes.plot(data.x_data, data.y_data, label=label)
         elif chart_type == "scatter":
@@ -66,15 +88,9 @@ def render_wizard_preview(
         elif chart_type == "hist":
             axes.hist(_SAMPLE_Y, bins=5)
 
-    axes.set_title(title)
+    axes.set_title(f"{title}\n{subtitle}" if subtitle else title)
     axes.set_xlabel(x_label)
     axes.set_ylabel(y_label)
-    if subtitle:
-        # Matplotlib has no built-in subtitle artist; a small secondary title
-        # just below the main one reads close enough for a preview (the real
-        # two-artist title+subtitle rendering stays in chart_editor.py).
-        axes.text(0.5, 1.0, subtitle, transform=axes.transAxes,
-                   ha="center", va="bottom", fontsize=8)
     if show_legend and any_plotted:
         axes.legend()
     axes.grid(show_grid)

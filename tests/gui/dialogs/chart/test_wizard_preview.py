@@ -18,13 +18,14 @@ def _canvas():
     return ChartCanvas(width=3, height=2, dpi=60)
 
 
-def _project_with_dataset(dataset_id="ds-1"):
+def _project_with_dataset(dataset_id="ds-1", dataset_name="Sales"):
     import pandas as pd
 
     from pandaplot.models.project.items import Dataset
 
     dataset = Mock(spec=Dataset)
     dataset.id = dataset_id
+    dataset.name = dataset_name
     dataset.data = pd.DataFrame({"Date": [1, 2, 3], "Revenue": [10, 20, 15]})
     dataset.column_id.side_effect = lambda name: {"Date": "col-date", "Revenue": "col-rev"}.get(name)
     dataset.column_name.side_effect = lambda cid: {"col-date": "Date", "col-rev": "Revenue"}.get(cid)
@@ -85,3 +86,40 @@ def test_grid_off_disables_gridlines():
     )
 
     assert not canvas.axes.xaxis.get_gridlines()[0].get_visible()
+
+
+def test_title_and_subtitle_combine_into_one_title_instead_of_overlapping():
+    """Regression: a separately-drawn subtitle `axes.text(...)` landed in the
+    same vertical band as `axes.set_title`, visually colliding with it."""
+    canvas = _canvas()
+
+    render_wizard_preview(
+        canvas, project=None, chart_type="line", series_configs=[],
+        title="Revenue", subtitle="Q1 2026", x_label="", y_label="",
+        show_legend=True, show_grid=True,
+    )
+
+    title = canvas.axes.get_title()
+    assert "\n" in title
+    assert "Revenue" in title
+    assert "Q1 2026" in title
+
+
+def test_legend_shows_a_readable_name_not_the_raw_dataset_id():
+    """Regression: the preview's legend showed the opaque dataset id (e.g.
+    "ds-1") instead of a readable "{dataset name}:{column name}" label."""
+    canvas = _canvas()
+    project = _project_with_dataset(dataset_name="Sales")
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+
+    render_wizard_preview(
+        canvas, project=project, chart_type="line", series_configs=series_configs,
+        title="", subtitle="", x_label="", y_label="", show_legend=True, show_grid=True,
+    )
+
+    label = canvas.axes.get_lines()[0].get_label()
+    assert label == "Sales:Revenue"
+    assert "ds-1" not in label
