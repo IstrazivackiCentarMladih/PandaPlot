@@ -7,6 +7,9 @@ from pandaplot.gui.components.sidebar.analysis.analysis_panel import AnalysisPan
 from pandaplot.gui.components.sidebar.chart.chart_properties_panel import (
     ChartPropertiesPanel,
 )
+from pandaplot.gui.components.sidebar.chart_analysis.chart_analysis_panel import (
+    ChartAnalysisPanel,
+)
 from pandaplot.gui.components.sidebar.fit.fit_panel import FitPanel
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import (
     ConditionalPanelManager,
@@ -15,11 +18,11 @@ from pandaplot.gui.components.sidebar.panels.panel_conditions import (
     is_chart_tab_active,
     is_dataset_tab_active,
 )
+from pandaplot.gui.components.sidebar.preprocessing.preprocessing_panel import PreprocessingPanel
 from pandaplot.gui.components.sidebar.project.project_view_panel import ProjectViewPanel
+from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
 from pandaplot.gui.components.sidebar.statistics.statistics_panel import StatisticsPanel
 from pandaplot.gui.components.sidebar.transform.transform_panel import TransformPanel
-from pandaplot.gui.components.sidebar.preprocessing.preprocessing_panel import PreprocessingPanel
-from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
 from pandaplot.models.state.app_context import AppContext
 
 
@@ -42,6 +45,7 @@ class PanelSetupManager:
         self.register_panel(SignalPanel(self.app_context), "signal", "📡", is_dataset_tab_active)
         self.register_panel(ChartPropertiesPanel(self.app_context), "chart_properties", "📈", is_chart_tab_active)
         self.register_panel(FitPanel(self.app_context), "fit", "📐", is_chart_tab_active)
+        self.register_panel(ChartAnalysisPanel(self.app_context), "chart_analysis", "🧮", is_chart_tab_active)
 
     def register_panel(self, panel: QWidget, name: str, icon: str, visibility_condition):
         self.logger.info("Registered panel: %s", name)
