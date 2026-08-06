@@ -5,7 +5,7 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
 
-from PySide6.QtWidgets import QDialog, QMainWindow, QMenuBar, QTabWidget, QWidget
+from PySide6.QtWidgets import QDialog, QMainWindow, QMenuBar, QTabWidget, QWidget, QWizard, QWizardPage
 
 from pandaplot.models.events.event_types import ThemeEvents
 from pandaplot.models.state.app_context import AppContext
@@ -131,5 +131,19 @@ class PTabWidget(WidgetExtension, QTabWidget):
 class PDialog(WidgetExtension, QDialog):
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None, **kwargs):
         QDialog.__init__(self, parent, **kwargs)
+        WidgetExtension.__init__(self, app_context=app_context)
+        self.destroyed.connect(self.unsubscribe_all)
+
+
+class PWizard(WidgetExtension, QWizard):
+    def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None, **kwargs):
+        QWizard.__init__(self, parent, **kwargs)
+        WidgetExtension.__init__(self, app_context=app_context)
+        self.destroyed.connect(self.unsubscribe_all)
+
+
+class PWizardPage(WidgetExtension, QWizardPage):
+    def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None, **kwargs):
+        QWizardPage.__init__(self, parent, **kwargs)
         WidgetExtension.__init__(self, app_context=app_context)
         self.destroyed.connect(self.unsubscribe_all)

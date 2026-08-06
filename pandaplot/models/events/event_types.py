@@ -169,6 +169,7 @@ class EventHierarchy:
         "dataset.row_removed": ["dataset.row_removed", "dataset.structure_changed", "dataset.changed"],
         "dataset.row_updated": ["dataset.row_updated", "dataset.data_changed", "dataset.changed"],
         "dataset.bulk_update": ["dataset.bulk_update", "dataset.data_changed", "dataset.changed"],
+        "dataset.data_changed": ["dataset.data_changed", "dataset.changed"],
         "dataset.imported": ["dataset.imported", "dataset.changed"],
         "dataset.exported": ["dataset.exported"],
         "dataset.created": ["dataset.created", "project.item_added", "project.changed"],

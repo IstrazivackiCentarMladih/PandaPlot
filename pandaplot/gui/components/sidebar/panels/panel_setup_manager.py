@@ -41,6 +41,7 @@ class PanelSetupManager:
         self.register_panel(PreprocessingPanel(self.app_context), "preprocessing", "⚖️", is_dataset_tab_active)
 
         self.register_panel(AnalysisPanel(self.app_context), "analysis", "📊", is_dataset_tab_active)
+        self.register_panel(DescriptiveStatsPanel(self.app_context), "descriptive", "📋", is_dataset_tab_active)
         self.register_panel(StatisticsPanel(self.app_context), "statistics", "🧪", is_dataset_tab_active)
         self.register_panel(SignalPanel(self.app_context), "signal", "📡", is_dataset_tab_active)
         self.register_panel(ChartPropertiesPanel(self.app_context), "chart_properties", "📈", is_chart_tab_active)

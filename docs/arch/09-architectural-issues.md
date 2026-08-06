@@ -89,18 +89,13 @@ The class is 9 lines, has no `execute()`, `undo()`, or `redo()`, and stores a re
 
 ---
 
-## MEDIUM: `CreateChartCommand` queries the same dataset twice and has a dead TODO
+## RESOLVED: `CreateChartCommand` queried the same dataset twice and had a dead TODO
 
-**File:** [commands/project/chart/create_chart_command.py:51-83](../../pandaplot/commands/project/chart/create_chart_command.py)
+**File:** [commands/project/chart/create_chart_from_wizard_command.py](../../pandaplot/commands/project/chart/create_chart_from_wizard_command.py)
 
-```python
-dataset = project.find_item(self.dataset_id)   # Line 61 - first lookup
-...
-# TODO: remove this
-dataset_obj = project.find_item(self.dataset_id)  # Line 83 - identical second lookup
-```
+`CreateChartCommand` used to look the dataset up twice (the second lookup guarded by a `# TODO: remove this`) and construct a chart with hardcoded default series from the first two columns with no user input, bypassing the intended series-configuration workflow.
 
-The second `find_item` call is redundant and guarded by a `# TODO: remove this` comment that has been left in place. Separately, the command constructs a chart with hardcoded default series from the first two columns with no user input — this bypasses the intended `AddSeriesCommand` workflow.
+It has been replaced by `CreateChartFromWizardCommand`, which opens `ChartWizard` and builds the chart type and each `DataSeries` from what the user actually configured. The duplicate lookup and the dead TODO are gone.
 
 ---
 
@@ -147,6 +142,6 @@ Commands store snapshots of data for undo (e.g., full DataFrame copies in `Impor
 | 4 | `EditCommand.undo()` no error handling, assumes `self.dataset` set | **MEDIUM** | `edit_command.py`, `edit_batch_command.py`, `change_column_dtype_command.py` |
 | 5 | `PerformFitCommand` is not a Command, no logic, no undo | **MEDIUM** | `perform_fit_command.py` |
 | 6 | Analysis operations block Qt main thread | **MEDIUM** | `analysis_command.py`, `analysis_engine.py` |
-| 7 | `CreateChartCommand` double dataset lookup + TODO dead code | **MEDIUM** | `create_chart_command.py:61,83` |
+| 7 | ~~`CreateChartCommand` double dataset lookup + TODO dead code~~ (resolved: replaced by `CreateChartFromWizardCommand`) | **RESOLVED** | `create_chart_from_wizard_command.py` |
 | 8 | Inconsistent `set_data()` vs direct DataFrame mutation | **LOW** | `edit_command.py`, `change_column_dtype_command.py` |
 | 9 | Undo stack eviction leaves command data in memory | **LOW** | `command_executor.py:39` |

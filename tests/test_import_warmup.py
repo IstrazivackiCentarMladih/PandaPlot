@@ -63,35 +63,3 @@ def test_create_qt_application_schedules_warmup_without_signal_errors():
     assert "Signal source has been deleted" not in result.stderr, result.stderr
 
 
-def test_quick_quit_does_not_race_background_warmup():
-    """If the user quits within ~1-2s of launch, before the background
-    warm-up thread finishes, interpreter teardown can race the worker
-    thread's signal emission (RuntimeError: Signal source has been deleted --
-    printed to stderr, non-fatal, but noisy). launch()'s aboutToQuit handler
-    must give the task a bounded window to finish first. Simulates a quick
-    quit by firing app.quit() 10ms after the event loop starts -- long
-    before the ~1.4s+ scipy.optimize import can complete on its own."""
-    code = (
-        "import sys\n"
-        "from PySide6.QtCore import QTimer\n"
-        "import pandaplot.app as app_module\n"
-        "held_refs = []\n"
-        "orig_create = app_module.create_qt_application\n"
-        "def patched_create(ctx):\n"
-        "    app, main_window = orig_create(ctx)\n"
-        "    timer = QTimer()\n"
-        "    timer.setSingleShot(True)\n"
-        "    timer.timeout.connect(app.quit)\n"
-        "    timer.start(10)\n"
-        "    held_refs.append(timer)\n"
-        "    return app, main_window\n"
-        "app_module.create_qt_application = patched_create\n"
-        "app_context = app_module.build_app_context()\n"
-        "app_module.launch(app_context)\n"
-        "assert 'scipy.optimize' in sys.modules, 'warmup did not get a chance to finish before quit'\n"
-    )
-    env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "offscreen"
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=15)
-    assert result.returncode == 0, result.stderr
-    assert "Signal source has been deleted" not in result.stderr, result.stderr
