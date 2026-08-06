@@ -99,5 +99,5 @@ Project
 | `project.item_removed` | Any `remove_item()` call |
 | `project.item_renamed` | `RenameItemCommand` execution |
 | `dataset.created` | `ImportCsvCommand` / `CreateEmptyDatasetCommand` |
-| `chart.created` | `CreateChartCommand` |
+| `chart.created` | `CreateChartFromWizardCommand` |
 | `note.created` | Note creation command |

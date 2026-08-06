@@ -4,6 +4,7 @@ from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu, QWidget
 
 from pandaplot.commands.app.exit_command import ExitCommand
+from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.dataset import ImportDataCommand
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
@@ -17,6 +18,7 @@ from pandaplot.commands.project.project import (
     SaveProjectCommand,
 )
 from pandaplot.gui.core.widget_extension import PMenuBar
+from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -103,6 +105,10 @@ class MainMenu(PMenuBar):
         # Data menu
         data_menu = self._create_data_menu()
         self.addMenu(data_menu)
+
+        # Chart menu
+        chart_menu = self._create_chart_menu()
+        self.addMenu(chart_menu)
 
         # Settings menu
         settings_menu = QMenu("Settings", self)
@@ -201,6 +207,34 @@ class MainMenu(PMenuBar):
         ).execute_command(CreateNoteCommand(self.app_context)))
         data_menu.addAction(new_note_action)
         return data_menu
+
+    def _create_chart_menu(self) -> QMenu:
+        chart_menu = QMenu("Chart", self)
+
+        self.create_chart_action = QAction("Create New", self)
+        self.create_chart_action.triggered.connect(lambda: self.app_context.get_command_executor(
+        ).execute_command(CreateChartFromWizardCommand(self.app_context)))
+        chart_menu.addAction(self.create_chart_action)
+
+        self._update_create_chart_action_enabled()
+        return chart_menu
+
+    def _update_create_chart_action_enabled(self):
+        app_state = self.app_context.get_app_state()
+        has_datasets = False
+        if app_state.has_project and app_state.current_project:
+            has_datasets = any(
+                isinstance(item, Dataset) for item in app_state.current_project.get_all_items()
+            )
+        self.create_chart_action.setEnabled(has_datasets)
+
+    @override
+    def setup_event_subscriptions(self):
+        from pandaplot.models.events import ProjectEvents
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_create_chart_action_enabled())
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_create_chart_action_enabled())
+        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_create_chart_action_enabled())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_create_chart_action_enabled())
 
     def show_settings_dialog(self):
         """Show the settings dialog."""
