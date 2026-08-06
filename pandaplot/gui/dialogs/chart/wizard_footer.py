@@ -6,7 +6,7 @@ signals directly to `self.wizard().back()/next()/accept()/reject()` -- the
 footer itself has no reference to the wizard, keeping it independently
 testable (see test_wizard_footer.py).
 """
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 
@@ -31,7 +31,7 @@ class WizardFooter(QWidget):
         if show_empty_link:
             self.empty_link = QPushButton("Create empty plot instead", self)
             self.empty_link.setFlat(True)
-            self.empty_link.setCursor(self.cursor())
+            self.empty_link.setCursor(Qt.CursorShape.PointingHandCursor)
             self.empty_link.clicked.connect(self.emptyRequested.emit)
             layout.addWidget(self.empty_link)
 
