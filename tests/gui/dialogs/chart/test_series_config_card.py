@@ -215,3 +215,25 @@ def test_pick_and_remove_buttons_are_not_fixed_width():
 
     assert card.y_pick_button.minimumWidth() == 0
     assert card.remove_button.minimumWidth() == 0
+
+
+def test_expanded_card_has_a_collapse_button_that_collapses_it():
+    """Regression: the collapsible-card feature was unreachable -- only the
+    collapsed summary row had an expand button; the expanded form had no
+    way to collapse."""
+    card = _line_card()
+    assert card.is_collapsed() is False
+
+    card._collapse_button.click()
+
+    assert card.is_collapsed() is True
+
+
+def test_swatch_color_reflects_the_cards_index():
+    card = _line_card()
+    card.set_tokens({"series_palette": ["#111111", "#222222", "#333333"]})
+    card.set_index(1)
+
+    card.set_collapsed(True)
+
+    assert "#222222" in card._swatch.styleSheet()

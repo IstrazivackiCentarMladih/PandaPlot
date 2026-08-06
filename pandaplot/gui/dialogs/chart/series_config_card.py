@@ -32,7 +32,7 @@ class SeriesConfigCard(Card):
     configChanged = Signal()
     datasetChanged = Signal(str)
 
-    def __init__(self, role_spec: ChartRoleSpec, parent: Optional[QWidget] = None):
+    def __init__(self, role_spec: ChartRoleSpec, parent: Optional[QWidget] = None, index: int = 0):
         super().__init__(parent)
         self._role_spec = role_spec
         self._role_combos: dict[str, QComboBox] = {}
@@ -41,7 +41,13 @@ class SeriesConfigCard(Card):
         self.y_error_column_combo: Optional[QComboBox] = None
         self._collapsed = False
         self._tokens: dict = {}
+        self._index = index
         self._build_ui()
+
+    def set_index(self, index: int) -> None:
+        self._index = index
+        if self._collapsed:
+            self._refresh_summary()
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -67,6 +73,15 @@ class SeriesConfigCard(Card):
         self._form_widget = QWidget()
         grid = QGridLayout(self._form_widget)
         row = 0
+
+        collapse_row = QHBoxLayout()
+        collapse_row.addStretch(1)
+        self._collapse_button = QPushButton("▾")
+        self._collapse_button.setFlat(True)
+        self._collapse_button.clicked.connect(lambda: self.set_collapsed(True))
+        collapse_row.addWidget(self._collapse_button)
+        grid.addLayout(collapse_row, row, 0, 1, 2)
+        row += 1
 
         grid.addWidget(QLabel("Dataset:"), row, 0)
         self.dataset_combo = QComboBox()
@@ -146,7 +161,8 @@ class SeriesConfigCard(Card):
             y_name = names.get("y", "—")
             text = f"{dataset_name} — {x_name} : {y_name}"
         self.summary_label.setText(text)
-        color = self._tokens.get("series_palette", ["#C24141"])[0]
+        palette = self._tokens.get("series_palette", ["#C24141"])
+        color = palette[self._index % len(palette)]
         border = self._tokens.get("border_control", "#999")
         radius = self._tokens.get("radius_swatch", 4)
         self._swatch.setStyleSheet(
