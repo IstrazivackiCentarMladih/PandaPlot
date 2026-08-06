@@ -82,7 +82,9 @@ class ChartLabelsPage(PWizardPage):
         preview_card = Card()
         preview_layout = QVBoxLayout(preview_card)
         self._preview_container = QWidget()
-        self._preview_container.setLayout(QVBoxLayout())
+        container_layout = QVBoxLayout()
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        self._preview_container.setLayout(container_layout)
         preview_layout.addWidget(self._preview_container, 1)
         content.addWidget(preview_card, 1)
 

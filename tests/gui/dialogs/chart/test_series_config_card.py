@@ -244,6 +244,23 @@ def test_set_tokens_styles_pick_and_remove_buttons_with_token_colors():
     assert "#abcdef" in card.remove_button.styleSheet()
 
 
+def test_set_tokens_styles_error_pick_buttons_with_token_colors():
+    """Regression: the x_error/y_error pick buttons were never stored as
+    instance attributes, so `_apply_button_styles` silently skipped them via
+    `getattr(..., None)` and they stayed on OS-default (dark-on-dark) styling."""
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+
+    card.set_tokens({"border_control": "#123456", "text_secondary": "#abcdef"})
+
+    assert card.x_error_pick_button.styleSheet() != ""
+    assert "#123456" in card.x_error_pick_button.styleSheet()
+    assert "#abcdef" in card.x_error_pick_button.styleSheet()
+    assert card.y_error_pick_button.styleSheet() != ""
+    assert "#123456" in card.y_error_pick_button.styleSheet()
+    assert "#abcdef" in card.y_error_pick_button.styleSheet()
+
+
 def test_set_tokens_styles_expand_and_collapse_chevrons_flat():
     card = _line_card()
 

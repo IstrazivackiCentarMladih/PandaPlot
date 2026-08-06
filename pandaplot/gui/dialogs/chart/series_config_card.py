@@ -120,6 +120,7 @@ class SeriesConfigCard(Card):
                 error_row.addWidget(combo, 1)
                 pick_button = QPushButton("Pick from dataset")
                 pick_button.clicked.connect(lambda _checked=False, r=error_role: self.pickRequested.emit(r))
+                setattr(self, f"{error_role}_pick_button", pick_button)
                 error_row.addWidget(pick_button, 0)
                 grid.addWidget(error_label, row, 0)
                 grid.addLayout(error_row, row, 1)
@@ -204,10 +205,9 @@ class SeriesConfigCard(Card):
         )
         for role in self._role_spec.roles:
             getattr(self, f"{role}_pick_button").setStyleSheet(neutral_style)
-        for error_role in ("x_error", "y_error"):
-            pick_button = getattr(self, f"{error_role}_pick_button", None)
-            if pick_button is not None:
-                pick_button.setStyleSheet(neutral_style)
+        if self._role_spec.supports_error_bars:
+            for error_role in ("x_error", "y_error"):
+                getattr(self, f"{error_role}_pick_button").setStyleSheet(neutral_style)
         self.remove_button.setStyleSheet(neutral_style)
         self._expand_button.setStyleSheet(chevron_style)
         self._collapse_button.setStyleSheet(chevron_style)
