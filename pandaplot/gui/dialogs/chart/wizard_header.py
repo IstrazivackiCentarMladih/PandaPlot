@@ -80,15 +80,9 @@ class WizardHeader(QWidget):
         self.set_tokens({})
 
     def set_tokens(self, tokens: dict) -> None:
-        # Cast to `str` before handing values to QPen/QColor: some callers'
-        # tests exercise `_apply_theme` with a bare `Mock()` app_context
-        # (`WizardFooter`/`WizardStepRail` only ever interpolate tokens into
-        # QSS strings, so an unconfigured Mock value never reaches a real Qt
-        # constructor there; this widget's icons paint with real QColor/QPen,
-        # so it needs the same tolerance).
-        accent = str(tokens.get("accent", "#4A56C6"))
-        text_muted = str(tokens.get("text_muted", "#6B7280"))
-        border = str(tokens.get("border_panel", "#E5E6EA"))
+        accent = tokens.get("accent", "#4A56C6")
+        text_muted = tokens.get("text_muted", "#6B7280")
+        border = tokens.get("border_panel", "#E5E6EA")
 
         self.icon_label.setPixmap(_checkmark_icon(accent).pixmap(14, 14))
         self.title_label.setStyleSheet("font-weight: 700; font-size: 12.5px;")

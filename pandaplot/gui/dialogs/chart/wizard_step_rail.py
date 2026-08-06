@@ -21,16 +21,11 @@ def _circle_icon(state: str, number: int, tokens: dict) -> QIcon:
     indigo-filled + white number, light-indigo-bg + checkmark, or
     outlined + muted number.
     """
-    # Cast to `str`: some callers' tests exercise `_apply_theme` with a bare
-    # `Mock()` app_context, whose `get_design_tokens()` also returns an
-    # unconfigured Mock -- `_apply_styles` previously only ever interpolated
-    # these into QSS strings, so that was harmless, but painting a real
-    # circle needs real QColor/QPen constructor arguments.
-    accent = str(tokens.get("accent", "#4A56C6"))
-    muted = str(tokens.get("text_muted", "#9AA0AB"))
-    border = str(tokens.get("border_control", "#DCDEE4"))
-    completed_bg = str(tokens.get("accent_selected_bg", "#EEF0FB"))
-    completed_fg = str(tokens.get("accent_active_text", accent))
+    accent = tokens.get("accent", "#4A56C6")
+    muted = tokens.get("text_muted", "#9AA0AB")
+    border = tokens.get("border_control", "#DCDEE4")
+    completed_bg = tokens.get("accent_selected_bg", "#EEF0FB")
+    completed_fg = tokens.get("accent_active_text", accent)
 
     pixmap = QPixmap(_CIRCLE_SIZE, _CIRCLE_SIZE)
     pixmap.fill(Qt.GlobalColor.transparent)
@@ -66,7 +61,16 @@ def _circle_icon(state: str, number: int, tokens: dict) -> QIcon:
     painter.setFont(font)
     painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
     painter.end()
-    return QIcon(pixmap)
+
+    # Register the painted pixmap for both Normal and Disabled modes: the
+    # current and upcoming step buttons are (correctly) disabled to preserve
+    # click-gating, but Qt's default icon engine auto-desaturates a
+    # Normal-only QIcon for its Disabled rendering, which would grey out the
+    # indigo-filled/outlined-muted colors this function just painted.
+    icon = QIcon()
+    icon.addPixmap(pixmap, QIcon.Mode.Normal)
+    icon.addPixmap(pixmap, QIcon.Mode.Disabled)
+    return icon
 
 
 class WizardStepRail(QWidget):
