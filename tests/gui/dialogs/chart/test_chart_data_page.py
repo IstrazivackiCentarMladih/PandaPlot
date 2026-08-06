@@ -185,6 +185,22 @@ def test_page_exposes_a_step_rail_and_footer():
     assert page.footer is not None
 
 
+def test_page_exposes_a_header():
+    page = _make_page()
+
+    assert page.header is not None
+
+
+def test_headers_close_button_emits_close_clicked():
+    page = _make_page()
+    received = []
+    page.header.closeClicked.connect(lambda: received.append(True))
+
+    page.header.close_button.click()
+
+    assert received == [True]
+
+
 def test_two_collapsed_cards_show_different_swatch_colors():
     """Regression: `_refresh_summary` always used series_palette[0] regardless
     of which series the card represents, so every collapsed card showed the

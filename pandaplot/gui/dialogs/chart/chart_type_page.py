@@ -16,6 +16,7 @@ from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
 from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
+from pandaplot.gui.dialogs.chart.wizard_header import WizardHeader
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -37,6 +38,10 @@ class ChartTypePage(PWizardPage):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+
+        self.header = WizardHeader()
+        self.header.closeClicked.connect(lambda: self.wizard().reject())
+        outer.addWidget(self.header)
 
         self.step_rail = WizardStepRail(["Type", "Data", "Labels"])
         rail_row = QHBoxLayout()
@@ -88,6 +93,7 @@ class ChartTypePage(PWizardPage):
 
     def _apply_tokens(self, tokens: dict):
         self._tokens = tokens
+        self.header.set_tokens(tokens)
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
         accent = tokens.get("accent", "#4A56C6")
