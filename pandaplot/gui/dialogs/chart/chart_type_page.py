@@ -30,6 +30,7 @@ class ChartTypePage(PWizardPage):
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
         super().__init__(app_context=app_context, parent=parent)
         self._preview_canvas = None
+        self._tokens: dict = {}
         self._initialize()
 
     def _init_ui(self):
@@ -76,6 +77,9 @@ class ChartTypePage(PWizardPage):
         self.empty_button = self.footer.empty_link
         outer.addWidget(self.footer)
 
+        self.completeChanged.connect(lambda: self.footer.set_next_enabled(self.isComplete()))
+        self.footer.set_next_enabled(self.isComplete())
+
         self.type_list.setCurrentRow(0)
 
     def _apply_theme(self):
@@ -83,6 +87,7 @@ class ChartTypePage(PWizardPage):
         self._apply_tokens(theme_manager.get_design_tokens())
 
     def _apply_tokens(self, tokens: dict):
+        self._tokens = tokens
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
         accent = tokens.get("accent", "#4A56C6")
@@ -110,6 +115,7 @@ class ChartTypePage(PWizardPage):
             return
         self._render_preview(current.data(Qt.ItemDataRole.UserRole))
         self.completeChanged.emit()
+        self._apply_tokens(self._tokens)
 
     def _render_preview(self, chart_type: str):
         from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas

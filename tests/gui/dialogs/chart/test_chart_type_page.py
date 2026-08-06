@@ -109,3 +109,56 @@ def test_empty_button_is_the_footers_link():
     page = ChartTypePage(app_context=_fake_app_context())
 
     assert page.empty_button is page.footer.empty_link
+
+
+def test_next_button_enabled_state_tracks_iscomplete():
+    """Regression: after Task 3 removed QWizard's native buttons, nothing
+    wired isComplete()/completeChanged to the footer's Next button, so users
+    could advance past an incomplete page."""
+    page = ChartTypePage(app_context=_fake_app_context())
+
+    # A chart type is selected by default, so Type starts complete/enabled.
+    assert page.isComplete() is True
+    assert page.footer.next_button.isEnabled() is True
+
+
+def test_selecting_a_different_type_refreshes_the_accent_colored_icon():
+    """Regression: `_apply_tokens` only ran from theme-change events, so the
+    accent-colored icon stayed stuck on whichever row was current at the
+    last theme event, never updating when the user picked a new type."""
+    page = ChartTypePage(app_context=_fake_app_context())
+    page._apply_tokens(_FAKE_TOKENS)  # simulate a theme event, as _apply_theme would
+    old_row = page.type_list.currentRow()
+
+    bar_row = next(
+        row for row in range(page.type_list.count())
+        if page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "bar"
+    )
+    assert old_row != bar_row  # sanity: we actually switch rows
+
+    # `_apply_tokens` regenerates every row's icon on each call, so if
+    # selecting a new type re-applies tokens, both the old and new
+    # current-row icons must be freshly created (different QIcon instances,
+    # hence different cache keys) compared to right before the switch.
+    old_row_icon_before = page.type_list.item(old_row).icon().cacheKey()
+    bar_row_icon_before = page.type_list.item(bar_row).icon().cacheKey()
+
+    page.type_list.setCurrentRow(bar_row)
+
+    old_row_icon_after = page.type_list.item(old_row).icon().cacheKey()
+    bar_row_icon_after = page.type_list.item(bar_row).icon().cacheKey()
+    assert old_row_icon_after != old_row_icon_before
+    assert bar_row_icon_after != bar_row_icon_before
+
+
+def test_selecting_a_different_type_keeps_next_enabled_in_sync():
+    page = ChartTypePage(app_context=_fake_app_context())
+    histogram_row = next(
+        row for row in range(page.type_list.count())
+        if page.type_list.item(row).data(Qt.ItemDataRole.UserRole) == "hist"
+    )
+
+    page.type_list.setCurrentRow(histogram_row)
+
+    assert page.isComplete() is True
+    assert page.footer.next_button.isEnabled() is True

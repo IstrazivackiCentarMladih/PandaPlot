@@ -183,3 +183,52 @@ def test_page_exposes_a_step_rail_and_footer():
 
     assert page.step_rail is not None
     assert page.footer is not None
+
+
+def test_two_collapsed_cards_show_different_swatch_colors():
+    """Regression: `_refresh_summary` always used series_palette[0] regardless
+    of which series the card represents, so every collapsed card showed the
+    same swatch color."""
+    page = _make_page()
+    page.add_series_button.click()
+    for card in page.cards:
+        card.set_tokens({"series_palette": ["#111111", "#222222", "#333333"]})
+        card.set_collapsed(True)
+
+    colors = [card._swatch.styleSheet() for card in page.cards]
+
+    assert colors[0] != colors[1]
+
+
+def test_removing_a_card_reindexes_remaining_cards_swatch_colors():
+    page = _make_page()
+    page.add_series_button.click()
+    page.add_series_button.click()
+    for card in page.cards:
+        card.set_tokens({"series_palette": ["#111111", "#222222", "#333333"]})
+
+    first_card = page.cards[0]
+    first_card.removeRequested.emit()
+
+    remaining = page.cards
+    for card in remaining:
+        card.set_collapsed(True)
+    # After removal, remaining cards should be re-indexed 0, 1 (not 1, 2).
+    assert remaining[0]._index == 0
+    assert remaining[1]._index == 1
+
+
+def test_next_button_enabled_state_tracks_iscomplete():
+    """Regression: after Task 3 removed QWizard's native buttons, nothing
+    wired isComplete()/completeChanged to the footer's Next button, so users
+    could advance past an incomplete page."""
+    page = _make_page()
+
+    # Default card has no Y column picked yet -> incomplete -> disabled.
+    assert page.isComplete() is False
+    assert page.footer.next_button.isEnabled() is False
+
+    page.cards[0].y_column_combo.setCurrentIndex(page.cards[0].y_column_combo.findData("col-rev"))
+
+    assert page.isComplete() is True
+    assert page.footer.next_button.isEnabled() is True

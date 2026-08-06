@@ -73,6 +73,9 @@ class ChartDataPage(PWizardPage):
         self.empty_button = self.footer.empty_link
         outer.addWidget(self.footer)
 
+        self.completeChanged.connect(lambda: self.footer.set_next_enabled(self.isComplete()))
+        self.footer.set_next_enabled(self.isComplete())
+
     def _apply_theme(self):
         theme_manager = self.app_context.get_manager(ThemeManager)
         tokens = theme_manager.get_design_tokens()
@@ -107,7 +110,7 @@ class ChartDataPage(PWizardPage):
             self._refresh_card_columns(card)
 
     def _add_card(self) -> SeriesConfigCard:
-        card = SeriesConfigCard(role_spec=get_chart_role_spec(self._chart_type))
+        card = SeriesConfigCard(role_spec=get_chart_role_spec(self._chart_type), index=len(self.cards))
         card.set_datasets(self._datasets)
         card.removeRequested.connect(lambda c=card: self._remove_card(c))
         card.datasetChanged.connect(lambda _dataset_id, c=card: self._refresh_card_columns(c))
@@ -126,6 +129,8 @@ class ChartDataPage(PWizardPage):
         self.cards_container.removeWidget(card)
         card.setParent(None)
         card.deleteLater()
+        for index, remaining_card in enumerate(self.cards):
+            remaining_card.set_index(index)
         self.completeChanged.emit()
 
     def _refresh_card_columns(self, card: SeriesConfigCard) -> None:
