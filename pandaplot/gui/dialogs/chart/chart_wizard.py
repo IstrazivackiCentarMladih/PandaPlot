@@ -149,6 +149,10 @@ class ChartWizard(PWizard):
         """)
 
     def _on_page_changed(self, page_id: int) -> None:
+        if page_id not in (self._type_page_id, self._data_page_id, self._labels_page_id):
+            # QWizard's internal reset() (Cancel/Esc/window-close) emits
+            # currentIdChanged(-1); there's no page to sync the rail to.
+            return
         summaries = self._completed_step_summaries()
         current_index = {self._type_page_id: 0, self._data_page_id: 1, self._labels_page_id: 2}[page_id]
         for page in (self.type_page, self.data_page, self.labels_page):
@@ -173,7 +177,7 @@ class ChartWizard(PWizard):
             summaries[0] = f"Type · {get_chart_role_spec(chart_type).display_name}"
         if self.data_page.cards:
             count = len(self.data_page.cards)
-            summaries[1] = f"Data · {count} series" if count != 1 else "Data · 1 series"
+            summaries[1] = f"Data · {count} series"
         return summaries
 
     def _seed_labels_defaults(self) -> None:

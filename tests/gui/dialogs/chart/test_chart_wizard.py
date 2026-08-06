@@ -399,7 +399,17 @@ def test_entering_the_labels_page_renders_a_preview():
     wizard.next()  # Data -> Labels: triggers the initial preview render
 
     assert wizard.labels_page.preview_canvas is not None
-    assert wizard.labels_page.preview_canvas.axes.get_title() != "" or True  # smoke check: no crash
+
+
+def test_cancelling_the_wizard_does_not_raise():
+    """Regression: QWizard's internal reset() (Cancel/Esc/window-close) emits
+    currentIdChanged(-1); _on_page_changed used to key a dict on page_id
+    without guarding for -1, raising KeyError."""
+    wizard = _make_wizard()
+
+    wizard._on_page_changed(-1)  # exercises the real guard directly
+
+    wizard.reject()  # also exercise it via the actual Cancel/reset path
 
 
 def test_editing_title_live_updates_the_preview():
