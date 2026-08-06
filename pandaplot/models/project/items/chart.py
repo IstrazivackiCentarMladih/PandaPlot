@@ -100,6 +100,12 @@ class DataSeries:
     color_scale_auto: bool = True
     color_vmin: float = 0.0
     color_vmax: float = 1.0
+    # Heatmap-only: how (x, y, z) becomes a regular grid. "grid" pivots data
+    # already on a lattice (exact); "binned" aggregates scattered points into
+    # heatmap_resolution² cells (mean per cell); "interpolated" fills a
+    # heatmap_resolution² grid via griddata. Ignored by colormap scatter.
+    heatmap_gridding: str = "grid"
+    heatmap_resolution: int = 50
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -490,7 +496,9 @@ class Chart(Item):
                     "colorbar_label": series.colorbar_label,
                     "color_scale_auto": series.color_scale_auto,
                     "color_vmin": series.color_vmin,
-                    "color_vmax": series.color_vmax
+                    "color_vmax": series.color_vmax,
+                    "heatmap_gridding": series.heatmap_gridding,
+                    "heatmap_resolution": series.heatmap_resolution
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -584,7 +592,9 @@ class Chart(Item):
                 colorbar_label=series_dict.get("colorbar_label", ""),
                 color_scale_auto=series_dict.get("color_scale_auto", True),
                 color_vmin=series_dict.get("color_vmin", 0.0),
-                color_vmax=series_dict.get("color_vmax", 1.0)
+                color_vmax=series_dict.get("color_vmax", 1.0),
+                heatmap_gridding=series_dict.get("heatmap_gridding", "grid"),
+                heatmap_resolution=series_dict.get("heatmap_resolution", 50)
             )
             chart.data_series.append(series)
         

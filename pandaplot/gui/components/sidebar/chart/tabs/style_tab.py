@@ -568,6 +568,29 @@ class StyleTab(QWidget):
         self.color_vmax_spin.setValue(1.0)
         colormap_layout.addWidget(self.color_vmax_spin, 6, 1)
 
+        # Heatmap-only: how scattered (x, y, z) points become a grid. Hidden
+        # for colormap scatter (no gridding needed there) -- see
+        # _update_colormap_gridding_visibility.
+        self.heatmap_gridding_label = QLabel("Gridding:")
+        colormap_layout.addWidget(self.heatmap_gridding_label, 7, 0)
+        self.heatmap_gridding_control = ValueComboBox([
+            ("Exact grid", "grid"),
+            ("Binned (scattered)", "binned"),
+            ("Interpolated (scattered)", "interpolated"),
+        ])
+        self.heatmap_gridding_control.setToolTip(
+            "Exact grid: data already on a lattice. Binned/Interpolated: turn "
+            "arbitrary scattered points into a grid.")
+        colormap_layout.addWidget(self.heatmap_gridding_control, 7, 1)
+
+        self.heatmap_resolution_label = QLabel("Resolution:")
+        colormap_layout.addWidget(self.heatmap_resolution_label, 8, 0)
+        self.heatmap_resolution_spin = QSpinBox()
+        self.heatmap_resolution_spin.setRange(2, 500)
+        self.heatmap_resolution_spin.setValue(50)
+        self.heatmap_resolution_spin.setToolTip("Cells per axis for binned/interpolated gridding")
+        colormap_layout.addWidget(self.heatmap_resolution_spin, 8, 1)
+
         layout.addWidget(self.colormap_card)
 
         # -- Axes (appearance) section: its own top-level selection in
@@ -600,6 +623,7 @@ class StyleTab(QWidget):
         # _update_target_cards_visibility says otherwise.
         self.colormap_card.setVisible(False)
         self._update_color_scale_controls()
+        self._update_colormap_gridding_visibility()
 
         # Series/fit style field connections.
         self.line_color_row.colorChanged.connect(self._on_field_changed)
@@ -630,6 +654,8 @@ class StyleTab(QWidget):
         self.color_scale_auto_toggle.toggled.connect(self._on_color_scale_auto_toggled)
         self.color_vmin_spin.valueChanged.connect(self._on_field_changed)
         self.color_vmax_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_gridding_control.currentValueChanged.connect(self._on_heatmap_gridding_changed)
+        self.heatmap_resolution_spin.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -719,6 +745,7 @@ class StyleTab(QWidget):
         self.colormap_card.setVisible(
             kind == "series" and self._chart_type in (ChartType.COLORMAP, ChartType.HEATMAP)
         )
+        self._update_colormap_gridding_visibility()
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
@@ -1266,6 +1293,23 @@ class StyleTab(QWidget):
         ):
             widget.setVisible(show_manual)
 
+    def _on_heatmap_gridding_changed(self, _value):
+        """Resolution only matters for the scattered gridding modes."""
+        self._update_colormap_gridding_visibility()
+        self._on_field_changed()
+
+    def _update_colormap_gridding_visibility(self):
+        """Gridding controls are heatmap-only (colormap scatter needs no
+        gridding); the resolution field further shows only for the scattered
+        modes (binned/interpolated), not the exact-grid mode."""
+        is_heatmap = self._chart_type == ChartType.HEATMAP
+        self.heatmap_gridding_label.setVisible(is_heatmap)
+        self.heatmap_gridding_control.setVisible(is_heatmap)
+        show_resolution = is_heatmap and self.heatmap_gridding_control.currentValue() in (
+            "binned", "interpolated")
+        self.heatmap_resolution_label.setVisible(show_resolution)
+        self.heatmap_resolution_spin.setVisible(show_resolution)
+
     # -- Series/fit style: load / apply --------------------------------------
 
     def _on_field_changed(self):
@@ -1331,6 +1375,8 @@ class StyleTab(QWidget):
         series.color_scale_auto = self.color_scale_auto_toggle.isChecked()
         series.color_vmin = self.color_vmin_spin.value()
         series.color_vmax = self.color_vmax_spin.value()
+        series.heatmap_gridding = self.heatmap_gridding_control.currentValue()
+        series.heatmap_resolution = self.heatmap_resolution_spin.value()
 
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
@@ -1422,6 +1468,9 @@ class StyleTab(QWidget):
             self.color_vmin_spin.setValue(series.color_vmin)
             self.color_vmax_spin.setValue(series.color_vmax)
             self._update_color_scale_controls()
+            self.heatmap_gridding_control.setCurrentValue(series.heatmap_gridding)
+            self.heatmap_resolution_spin.setValue(series.heatmap_resolution)
+            self._update_colormap_gridding_visibility()
         finally:
             self._updating_controls = previous_guard
 
@@ -1824,6 +1873,7 @@ class StyleTab(QWidget):
         self.colormap_control.set_tokens(tokens)
         self.colorbar_show_toggle.set_tokens(tokens)
         self.color_scale_auto_toggle.set_tokens(tokens)
+        self.heatmap_gridding_control.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)

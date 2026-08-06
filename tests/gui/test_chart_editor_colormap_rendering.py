@@ -95,6 +95,56 @@ def test_switching_away_from_heatmap_removes_colorbar():
     assert _colorbar_axes_count(editor) == 1
 
 
+def _editor_with_scattered_chart():
+    app_context = build_app_context()
+    project = Project(name="Scatter Render Project")
+    # Irregular scattered points -- NOT on a lattice, so exact-grid pivot would
+    # be mostly empty; binned/interpolated gridding handle these.
+    df = pd.DataFrame({
+        "x": [0.1, 0.9, 0.4, 0.7, 0.2, 0.6, 0.85, 0.15],
+        "y": [0.2, 0.8, 0.5, 0.3, 0.9, 0.1, 0.4, 0.65],
+        "z": [1.0, 9.0, 4.0, 7.0, 2.0, 6.0, 8.0, 3.0],
+    })
+    dataset = Dataset(name="ds1", data=df)
+    project.add_item(dataset)
+    app_context.app_state.load_project(project)
+
+    chart = Chart(name="Scatter Heatmap", chart_type="heatmap")
+    chart.add_data_series(
+        dataset.id,
+        x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"),
+        z_column_id=dataset.column_id("z"),
+        label="S",
+    )
+    project.add_item(chart)
+    return ChartEditorWidget(app_context=app_context, chart=chart, parent=None)
+
+
+def test_scattered_heatmap_binned_is_drawn():
+    _qapp()
+    editor = _editor_with_scattered_chart()
+    editor.chart.data_series[0].heatmap_gridding = "binned"
+    editor.chart.data_series[0].heatmap_resolution = 6
+    editor.update_chart()
+
+    meshes = [c for c in editor.chart_canvas.axes.collections if isinstance(c, QuadMesh)]
+    assert meshes, "expected a binned pcolormesh QuadMesh for scattered data"
+    assert editor._colorbar is not None
+
+
+def test_scattered_heatmap_interpolated_is_drawn():
+    _qapp()
+    editor = _editor_with_scattered_chart()
+    editor.chart.data_series[0].heatmap_gridding = "interpolated"
+    editor.chart.data_series[0].heatmap_resolution = 12
+    editor.update_chart()
+
+    meshes = [c for c in editor.chart_canvas.axes.collections if isinstance(c, QuadMesh)]
+    assert meshes, "expected an interpolated pcolormesh QuadMesh for scattered data"
+    assert editor._colorbar is not None
+
+
 def test_missing_z_column_skips_series_without_crashing():
     _qapp()
     editor = _editor_with_grid_chart("colormap")

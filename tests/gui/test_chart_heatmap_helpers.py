@@ -4,6 +4,9 @@ import numpy as np
 import pytest
 
 from pandaplot.gui.components.tabs.chart.chart_heatmap import (
+    bin_to_grid,
+    build_heatmap_grid,
+    interpolate_to_grid,
     pivot_to_grid,
     resolve_color_limits,
 )
@@ -59,6 +62,70 @@ def test_pivot_to_grid_duplicate_last_wins():
 def test_pivot_to_grid_empty_raises():
     with pytest.raises(ValueError):
         pivot_to_grid([], [], [])
+
+
+# --- scattered-data gridding: bin_to_grid ---
+
+def test_bin_to_grid_shape_and_mean_aggregation():
+    # Two points land in the same (low-x, low-y) bin; the cell holds their mean.
+    x = [0.1, 0.2, 0.9]
+    y = [0.1, 0.2, 0.9]
+    z = [10.0, 20.0, 100.0]
+    xs, ys, grid = bin_to_grid(x, y, z, bins=2)
+    assert grid.shape == (2, 2)
+    assert len(xs) == 2 and len(ys) == 2
+    # bottom-left cell = mean(10, 20) = 15; top-right = 100.
+    assert grid[0, 0] == 15.0
+    assert grid[1, 1] == 100.0
+
+
+def test_bin_to_grid_empty_cells_are_nan():
+    xs, ys, grid = bin_to_grid([0.0, 1.0], [0.0, 1.0], [1.0, 2.0], bins=2)
+    # Only the diagonal cells have points; off-diagonal cells are NaN.
+    assert np.isnan(grid[0, 1])
+    assert np.isnan(grid[1, 0])
+
+
+def test_bin_to_grid_empty_raises():
+    with pytest.raises(ValueError):
+        bin_to_grid([], [], [], bins=4)
+
+
+# --- scattered-data gridding: interpolate_to_grid ---
+
+def test_interpolate_to_grid_shape_and_fills_interior():
+    rng = np.random.default_rng(0)
+    x = rng.random(100)
+    y = rng.random(100)
+    z = x + y
+    xs, ys, grid = interpolate_to_grid(x, y, z, resolution=16)
+    assert grid.shape == (16, 16)
+    assert np.isfinite(grid).any()
+
+
+def test_interpolate_to_grid_collinear_falls_back_to_nearest():
+    # Collinear points can't be triangulated by linear griddata; the helper
+    # must fall back to "nearest" and still produce a full field.
+    xs, ys, grid = interpolate_to_grid([0, 0, 0], [0, 1, 2], [1, 2, 3], resolution=5)
+    assert grid.shape == (5, 5)
+    assert np.all(np.isfinite(grid))
+
+
+# --- dispatch: build_heatmap_grid ---
+
+def test_build_heatmap_grid_dispatches_by_mode():
+    x, y, z = [0, 1, 0, 1], [0, 0, 1, 1], [1, 2, 3, 4]
+    _, _, grid_exact = build_heatmap_grid(x, y, z, "grid", 5)
+    assert grid_exact.shape == (2, 2)
+    _, _, grid_binned = build_heatmap_grid(x, y, z, "binned", 3)
+    assert grid_binned.shape == (3, 3)
+    _, _, grid_interp = build_heatmap_grid(x, y, z, "interpolated", 4)
+    assert grid_interp.shape == (4, 4)
+
+
+def test_build_heatmap_grid_unknown_mode_is_exact_grid():
+    _, _, grid = build_heatmap_grid([0, 1, 0, 1], [0, 0, 1, 1], [1, 2, 3, 4], "???", 5)
+    assert grid.shape == (2, 2)
 
 
 # --- matplotlib API smoke tests: guard the exact calls the renderer makes ---

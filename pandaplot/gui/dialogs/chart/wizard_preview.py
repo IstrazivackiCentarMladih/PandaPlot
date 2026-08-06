@@ -77,9 +77,12 @@ def render_wizard_preview(
         elif chart_type == "colormap":
             axes.scatter(data.x_data, data.y_data, c=data.z_data, cmap="viridis")
         elif chart_type == "heatmap":
-            from pandaplot.gui.components.tabs.chart.chart_heatmap import pivot_to_grid
+            from pandaplot.gui.components.tabs.chart.chart_heatmap import build_heatmap_grid
             try:
-                xs, ys, grid = pivot_to_grid(data.x_data, data.y_data, data.z_data)
+                xs, ys, grid = build_heatmap_grid(
+                    data.x_data, data.y_data, data.z_data,
+                    config.get("heatmap_gridding", "grid"),
+                    config.get("heatmap_resolution", 50))
             except ValueError:
                 continue
             axes.pcolormesh(xs, ys, grid, cmap="viridis", shading="nearest")

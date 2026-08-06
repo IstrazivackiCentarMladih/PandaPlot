@@ -11,6 +11,8 @@ def test_data_series_color_mapping_defaults():
     assert series.colorbar_show is True
     assert series.colorbar_label == ""
     assert series.color_scale_auto is True
+    assert series.heatmap_gridding == "grid"
+    assert series.heatmap_resolution == 50
 
 
 def test_chart_type_enum_has_colormap_and_heatmap():
@@ -24,6 +26,7 @@ def test_chart_round_trips_color_mapping_fields():
         dataset_id="ds1", x_column_id="xid", y_column_id="yid", z_column_id="zid",
         colormap="plasma", colorbar_show=False, colorbar_label="Temp",
         color_scale_auto=False, color_vmin=-2.5, color_vmax=7.5,
+        heatmap_gridding="binned", heatmap_resolution=120,
     )
 
     data = chart.to_dict()
@@ -36,6 +39,8 @@ def test_chart_round_trips_color_mapping_fields():
     assert series_dict["color_scale_auto"] is False
     assert series_dict["color_vmin"] == -2.5
     assert series_dict["color_vmax"] == 7.5
+    assert series_dict["heatmap_gridding"] == "binned"
+    assert series_dict["heatmap_resolution"] == 120
 
     restored = Chart.from_dict(data)
     rs = restored.data_series[0]
@@ -47,6 +52,8 @@ def test_chart_round_trips_color_mapping_fields():
     assert rs.color_scale_auto is False
     assert rs.color_vmin == -2.5
     assert rs.color_vmax == 7.5
+    assert rs.heatmap_gridding == "binned"
+    assert rs.heatmap_resolution == 120
 
 
 def test_legacy_chart_without_color_fields_gets_defaults():
@@ -56,7 +63,7 @@ def test_legacy_chart_without_color_fields_gets_defaults():
     chart.add_data_series(dataset_id="ds1", x_column_id="xid", y_column_id="yid")
     data = chart.to_dict()
     for key in ("z_column_id", "colormap", "colorbar_show", "color_scale_auto",
-                "color_vmin", "color_vmax"):
+                "color_vmin", "color_vmax", "heatmap_gridding", "heatmap_resolution"):
         data["data_series"][0].pop(key, None)
 
     restored = Chart.from_dict(data)
@@ -65,3 +72,5 @@ def test_legacy_chart_without_color_fields_gets_defaults():
     assert rs.colormap == "viridis"
     assert rs.colorbar_show is True
     assert rs.color_scale_auto is True
+    assert rs.heatmap_gridding == "grid"
+    assert rs.heatmap_resolution == 50

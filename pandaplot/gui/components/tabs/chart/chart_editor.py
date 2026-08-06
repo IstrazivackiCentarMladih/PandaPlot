@@ -761,7 +761,7 @@ class ChartEditorWidget(PWidget):
         color limits from :func:`resolve_color_limits` (the data's own range
         when ``color_scale_auto``, else the explicit vmin/vmax)."""
         from pandaplot.gui.components.tabs.chart.chart_heatmap import (
-            pivot_to_grid,
+            build_heatmap_grid,
             resolve_color_limits,
         )
 
@@ -775,7 +775,9 @@ class ChartEditorWidget(PWidget):
 
         if self.chart.chart_type == "heatmap":
             try:
-                xs, ys, grid = pivot_to_grid(series_data.x_data, series_data.y_data, z_data)
+                xs, ys, grid = build_heatmap_grid(
+                    series_data.x_data, series_data.y_data, z_data,
+                    series.heatmap_gridding, series.heatmap_resolution)
             except ValueError:
                 return None
             return target_axes.pcolormesh(

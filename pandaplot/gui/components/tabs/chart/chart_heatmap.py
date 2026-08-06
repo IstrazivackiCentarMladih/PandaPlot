@@ -65,3 +65,86 @@ def pivot_to_grid(x_data, y_data, z_data):
     grid = np.full((ys.size, xs.size), np.nan)
     grid[yi, xi] = z
     return xs, ys, grid
+
+
+def bin_to_grid(x_data, y_data, z_data, bins: int):
+    """Aggregate scattered ``(x, y, z)`` points into a regular ``bins x bins``
+    grid, each cell holding the **mean** z of the points that fall in it.
+
+    Unlike :func:`pivot_to_grid` (which needs the points to already sit on a
+    lattice of exact x/y values), this handles arbitrary scattered data by
+    binning it -- the standard 2-D-histogram approach. Empty cells (no points)
+    are ``NaN`` so they render transparent. Returns ``(x_centers, y_centers,
+    grid)`` with ``grid`` shape ``(bins, bins)`` = ``(len(y_centers),
+    len(x_centers))``, ready for pcolormesh with ``shading="nearest"``.
+
+    Raises ``ValueError`` when there are no points to bin.
+    """
+    x = np.asarray(x_data, dtype=float)
+    y = np.asarray(y_data, dtype=float)
+    z = np.asarray(z_data, dtype=float)
+    if x.size == 0 or y.size == 0 or z.size == 0:
+        raise ValueError("no data to bin")
+    bins = max(1, int(bins))
+
+    sums, xedges, yedges = np.histogram2d(x, y, bins=bins, weights=z)
+    counts, _, _ = np.histogram2d(x, y, bins=bins)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        means = sums / counts
+    means[counts == 0] = np.nan
+    x_centers = 0.5 * (xedges[:-1] + xedges[1:])
+    y_centers = 0.5 * (yedges[:-1] + yedges[1:])
+    # histogram2d indexes [xi, yi]; pcolormesh wants (ny, nx), so transpose.
+    return x_centers, y_centers, means.T
+
+
+def interpolate_to_grid(x_data, y_data, z_data, resolution: int, method: str = "linear"):
+    """Interpolate scattered ``(x, y, z)`` points onto a regular
+    ``resolution x resolution`` grid via ``scipy.interpolate.griddata``, giving
+    a smooth continuous heatmap (as opposed to :func:`bin_to_grid`'s blocky
+    per-cell means).
+
+    ``method`` is "linear"/"cubic"/"nearest"; "linear"/"cubic" leave points
+    outside the data's convex hull as ``NaN`` (transparent). Degenerate inputs
+    that ``griddata`` can't triangulate (too few points, all collinear) fall
+    back to "nearest", which always produces a full field. Returns
+    ``(x_centers, y_centers, grid)`` shaped for pcolormesh, or raises
+    ``ValueError`` when there's nothing to interpolate.
+    """
+    from scipy.interpolate import griddata
+
+    x = np.asarray(x_data, dtype=float)
+    y = np.asarray(y_data, dtype=float)
+    z = np.asarray(z_data, dtype=float)
+    if x.size == 0 or y.size == 0 or z.size == 0:
+        raise ValueError("no data to interpolate")
+    resolution = max(2, int(resolution))
+
+    xs = np.linspace(float(x.min()), float(x.max()), resolution)
+    ys = np.linspace(float(y.min()), float(y.max()), resolution)
+    grid_x, grid_y = np.meshgrid(xs, ys)
+    points = np.column_stack([x, y])
+    try:
+        grid = griddata(points, z, (grid_x, grid_y), method=method)
+    except Exception:
+        grid = None
+    # "nearest" always yields a full field; fall back to it when a
+    # triangulation-based method failed or produced an all-NaN result.
+    if grid is None or not np.any(np.isfinite(grid)):
+        grid = griddata(points, z, (grid_x, grid_y), method="nearest")
+    return xs, ys, grid
+
+
+def build_heatmap_grid(x_data, y_data, z_data, mode: str, resolution: int):
+    """Turn ``(x, y, z)`` into a regular grid for a heatmap, choosing how by
+    ``mode``: "binned" (2-D-histogram means) and "interpolated" (griddata) both
+    handle arbitrary **scattered** data; anything else ("grid", the default)
+    uses the exact :func:`pivot_to_grid` for data already on a lattice.
+    ``resolution`` is the per-axis bin/grid-point count for the scattered modes
+    (ignored by "grid"). Returns ``(xs, ys, grid)``; raises ``ValueError`` when
+    there's no data."""
+    if mode == "binned":
+        return bin_to_grid(x_data, y_data, z_data, resolution)
+    if mode == "interpolated":
+        return interpolate_to_grid(x_data, y_data, z_data, resolution)
+    return pivot_to_grid(x_data, y_data, z_data)
