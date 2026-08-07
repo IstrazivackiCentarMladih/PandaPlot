@@ -13,7 +13,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.gui.components.common.drop_down_combo_box import DropDownComboBox
+
 _MAX_SPINBOX_VALUE = 2_147_483_647
+# Dataset combo sizing: characters of width it always reserves, and the width
+# past which a long dataset name is elided rather than widening the dialog.
+_MIN_COMBO_CHARS = 24
+_MAX_COMBO_WIDTH = 360
 
 
 class DatasetSize(NamedTuple):
@@ -54,9 +60,17 @@ class AddRowsColumnsDialog(QDialog):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        self.dataset_combo = QComboBox()
+        self.dataset_combo = DropDownComboBox()
         for dataset in self._datasets:
             self.dataset_combo.addItem(dataset.name, dataset.id)
+        # Grow to fit the longest dataset name instead of clipping it to the
+        # combo's minimum width, with a floor so short names still get a
+        # comfortable field and a ceiling so one long name can't stretch the
+        # dialog across the screen (Qt elides past that).
+        self.dataset_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.dataset_combo.setMinimumContentsLength(_MIN_COMBO_CHARS)
+        self.dataset_combo.setMaximumWidth(_MAX_COMBO_WIDTH)
         self.dataset_combo.currentIndexChanged.connect(self._on_dataset_changed)
         form.addRow("Dataset:", self.dataset_combo)
 
@@ -103,6 +117,9 @@ class AddRowsColumnsDialog(QDialog):
 
         self.current_size_label.setText(
             f"{dataset.rows} rows x {dataset.columns} columns")
+        # A name past _MAX_COMBO_WIDTH is clipped in the closed combo; the
+        # tooltip keeps it readable without widening the dialog.
+        self.dataset_combo.setToolTip(dataset.name)
 
         # Minimum first, then value: a value below the new minimum would be
         # clamped, and lowering the minimum afterwards would not restore it.

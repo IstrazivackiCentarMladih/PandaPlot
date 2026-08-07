@@ -1,6 +1,7 @@
 import pytest
 from PySide6.QtWidgets import QApplication, QDialogButtonBox
 
+from pandaplot.gui.components.common.drop_down_combo_box import DropDownComboBox
 from pandaplot.gui.dialogs.dataset.add_rows_columns_dialog import (
     AddRowsColumnsDialog,
     DatasetSize,
@@ -80,6 +81,31 @@ class TestAddRowsColumnsDialog:
         assert dialog.get_target_columns() == 7
         assert dialog.current_size_label.text() == "4 rows x 7 columns"
         assert _ok_button(dialog).isEnabled() is False
+
+    def test_dataset_combo_drops_its_list_below_the_field(self):
+        dialog = AddRowsColumnsDialog(_datasets())
+
+        assert isinstance(dialog.dataset_combo, DropDownComboBox)
+
+    def test_dataset_combo_is_wide_enough_for_its_names(self):
+        """The combo used to clip names to its minimum width ("Firs...")."""
+        dialog = AddRowsColumnsDialog(_datasets())
+        combo = dialog.dataset_combo
+
+        assert combo.sizeAdjustPolicy() == combo.SizeAdjustPolicy.AdjustToContents
+        assert combo.minimumContentsLength() >= 20
+        # Wide enough for the longest entry, and never wider than the cap.
+        longest = max(combo.fontMetrics().horizontalAdvance(d.name) for d in _datasets())
+        assert combo.sizeHint().width() >= longest
+        assert combo.maximumWidth() <= 400
+
+    def test_a_long_name_is_capped_but_stays_readable_via_tooltip(self):
+        long_name = "signal_analysis_test_data_with_an_absurdly_long_name"
+        dialog = AddRowsColumnsDialog(
+            [DatasetSize(id="ds-1", name=long_name, rows=1, columns=1)])
+
+        assert dialog.dataset_combo.width() <= dialog.dataset_combo.maximumWidth()
+        assert dialog.dataset_combo.toolTip() == long_name
 
     def test_empty_dataset_can_be_grown_from_zero(self):
         dialog = AddRowsColumnsDialog([DatasetSize(id="ds-0", name="Empty", rows=0, columns=0)])

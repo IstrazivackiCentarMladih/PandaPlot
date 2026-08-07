@@ -66,7 +66,7 @@ class MainMenu(PMenuBar):
             }}
             QMenuBar::item:pressed {{
                 background-color: {card_pressed};
-                color: white;
+                color: {base_fg};
             }}
             QMenu {{
                 background-color: {card_bg};
@@ -85,7 +85,7 @@ class MainMenu(PMenuBar):
             }}
             QMenu::item:pressed {{
                 background-color: {card_pressed};
-                color: white;
+                color: {base_fg};
             }}
             QMenu::separator {{
                 height: 1px;
