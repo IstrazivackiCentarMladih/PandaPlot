@@ -145,6 +145,39 @@ def test_scattered_heatmap_interpolated_is_drawn():
     assert editor._colorbar is not None
 
 
+def test_colorbar_charts_do_not_shrink_across_rerenders():
+    # Regression: a colorbar created with the default use_gridspec=True
+    # subdivides the axes' gridspec, and that subdivision survives
+    # colorbar.remove(). Without resetting the gridspec each render, every
+    # re-render (e.g. changing colormap or toggling autoscale) stole more
+    # space, shrinking the plot. The axes width must stay constant instead.
+    _qapp()
+    editor = _editor_with_grid_chart("heatmap")
+    editor.update_chart()
+    width_after_first = editor.chart_canvas.axes.get_position().bounds[2]
+
+    for cmap in ("plasma", "coolwarm", "magma"):
+        editor.chart.data_series[0].colormap = cmap
+        editor.update_chart()
+        width = editor.chart_canvas.axes.get_position().bounds[2]
+        assert abs(width - width_after_first) < 1e-6, (
+            f"axes width drifted from {width_after_first} to {width} on re-render")
+
+
+def test_switching_away_from_colorbar_reclaims_full_width():
+    # Leaving a colormap/heatmap chart must give the plot area back the space
+    # the colorbar had reserved (not leave it permanently shrunk).
+    _qapp()
+    editor = _editor_with_grid_chart("heatmap")
+    editor.update_chart()
+    heatmap_width = editor.chart_canvas.axes.get_position().bounds[2]
+
+    editor.chart.chart_type = "scatter"
+    editor.update_chart()
+    scatter_width = editor.chart_canvas.axes.get_position().bounds[2]
+    assert scatter_width > heatmap_width
+
+
 def test_missing_z_column_skips_series_without_crashing():
     _qapp()
     editor = _editor_with_grid_chart("colormap")

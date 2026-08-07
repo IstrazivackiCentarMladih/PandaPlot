@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, override
 
 import numpy as np
+from matplotlib.gridspec import GridSpec
 from matplotlib.ticker import (
     AutoLocator,
     AutoMinorLocator,
@@ -823,6 +824,18 @@ class ChartEditorWidget(PWidget):
                 except Exception:
                     self.logger.debug("Failed to remove stale colorbar", exc_info=True)
                 self._colorbar = None
+
+            # Reset the main axes to a fresh full-figure 1x1 gridspec. A
+            # colorbar created with the default use_gridspec=True *subdivides*
+            # the axes' gridspec to make room, and that subdivision survives
+            # colorbar.remove() -- so without this reset, every re-render
+            # (change colormap, toggle autoscale, or any other edit that
+            # re-renders a colormap/heatmap chart) would steal space from the
+            # already-shrunk axes, making the plot progressively smaller.
+            subplotspec = self.chart_canvas.axes.get_subplotspec()
+            if subplotspec is not None:
+                self.chart_canvas.axes.set_subplotspec(
+                    GridSpec(1, 1, figure=self.chart_canvas.fig)[0])
 
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
