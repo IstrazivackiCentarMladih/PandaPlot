@@ -106,7 +106,9 @@ def test_palette_sets_all_roles_for_light_theme(tmp_path: Path):
     assert palette.color(QPalette.ColorRole.ButtonText) == fg
     assert palette.color(QPalette.ColorRole.ToolTipBase) == bg
     assert palette.color(QPalette.ColorRole.ToolTipText) == fg
-    assert palette.color(QPalette.ColorRole.PlaceholderText) != palette.color(QPalette.ColorRole.Window)
+    placeholder = palette.color(QPalette.ColorRole.PlaceholderText)
+    assert placeholder != bg
+    assert placeholder != fg
 
 
 def test_idempotent_apply(tmp_path: Path):

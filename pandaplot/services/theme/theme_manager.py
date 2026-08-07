@@ -76,6 +76,22 @@ class ThemeManager:
             "font_size": ctx.interface_font_size,
         })
 
+    @staticmethod
+    def _relative_luminance(color: QColor) -> float:
+        return (0.2126 * color.red() + 0.7152 * color.green() + 0.0722 * color.blue()) / 255.0
+
+    @classmethod
+    def _contrasting_text_color(cls, accent: QColor, theme: Theme) -> QColor:
+        """Pick black or white text so it stays legible against ``accent``."""
+        lum = cls._relative_luminance(accent)
+        if lum > 0.6:
+            return QColor(0, 0, 0)
+        # Light theme favors dark text unless the accent is extremely dark
+        # (lum < 0.25), where white text is still needed for contrast.
+        if theme != Theme.DARK and lum >= 0.25:
+            return QColor(0, 0, 0)
+        return QColor(255, 255, 255)
+
     def build_stylesheet(self, ctx: ThemeContext) -> str:
         accent = ctx.accent
         text_color = "#000000"  # fallback
@@ -87,20 +103,7 @@ class ThemeManager:
                 # Derive hover / pressed variants
                 hover = c.lighter(110).name()
                 pressed = c.darker(115).name()
-                # Compute relative luminance to decide contrasting text color
-                r, g, b = c.red(), c.green(), c.blue()
-                lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-                # If accent is light, use dark text; if dark, use light text
-                if lum > 0.6:
-                    text_color = "#000000"
-                else:
-                    text_color = "#FFFFFF"
-            # Adjust for overall theme preference so light theme favors dark text unless accent is extremely dark
-            if ctx.theme != Theme.DARK and text_color == "#FFFFFF":
-                # Force dark text if accent still offers 4.5:1 contrast against white background (approx luminance threshold)
-                # If accent is very dark (lum < 0.25) keep white text.
-                if lum >= 0.25:
-                    text_color = "#000000"
+                text_color = self._contrasting_text_color(c, ctx.theme).name()
         except Exception:  # noqa: BLE001
             pass
 
@@ -178,9 +181,14 @@ class ThemeManager:
         accent = QColor(ctx.accent)
         if not accent.isValid():
             accent = QColor(74, 86, 198)
-        r, g, b = accent.red(), accent.green(), accent.blue()
-        accent_lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
-        highlighted_text = QColor(0, 0, 0) if accent_lum > 0.6 else QColor(255, 255, 255)
+        highlighted_text = self._contrasting_text_color(accent, ctx.theme)
+        # Muted variant of fg, halfway to bg, so placeholder text is visibly
+        # distinct from real text but still legible against the background.
+        placeholder = QColor(
+            (fg.red() + bg.red()) // 2,
+            (fg.green() + bg.green()) // 2,
+            (fg.blue() + bg.blue()) // 2,
+        )
 
         palette.setColor(QPalette.ColorRole.Window, bg)
         palette.setColor(QPalette.ColorRole.WindowText, fg)
@@ -191,7 +199,7 @@ class ThemeManager:
         palette.setColor(QPalette.ColorRole.ToolTipBase, bg)
         palette.setColor(QPalette.ColorRole.ToolTipText, fg)
         palette.setColor(QPalette.ColorRole.BrightText, fg)
-        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(fg).lighter(160) if ctx.theme == Theme.DARK else QColor(fg).lighter(220))
+        palette.setColor(QPalette.ColorRole.PlaceholderText, placeholder)
         palette.setColor(QPalette.ColorRole.Highlight, accent)
         palette.setColor(QPalette.ColorRole.HighlightedText, highlighted_text)
         self._app.setPalette(palette)
