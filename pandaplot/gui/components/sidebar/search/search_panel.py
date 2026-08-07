@@ -8,7 +8,7 @@ to the matched text.
 from typing import Optional, override
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QTextDocument
+from PySide6.QtGui import QTextDocument, QTextOption
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -62,6 +62,12 @@ class _HighlightDelegate(QStyledItemDelegate):
         after = _escape(text[hl_end:])
         doc = QTextDocument()
         doc.setDocumentMargin(2)
+        # Keep each snippet on a single line so the height sizeHint reports
+        # matches what paint draws; overly long snippets are clipped, not
+        # wrapped (build_snippet already trims around the match).
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.NoWrap)
+        doc.setDefaultTextOption(option)
         doc.setHtml(
             f'<span>{before}</span>'
             f'<span style="background-color:{self.highlight};color:{self.highlight_fg};">{hit}</span>'
@@ -76,16 +82,20 @@ class _HighlightDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
             return
 
-        # Draw the normal row background/selection, then the rich text on top.
+        # Draw the normal row background/selection, then the rich text on top,
+        # vertically centred within the row.
         self.initStyleOption(option, index)
         option.text = ""
         widget = option.widget
         if widget:
             widget.style().drawControl(QStyle.ControlElement.CE_ItemViewItem, option, painter, widget)
 
+        doc_height = doc.size().height()
+        y_offset = option.rect.top() + max(0, (option.rect.height() - doc_height) / 2)
+
         painter.save()
-        painter.translate(option.rect.left() + 4, option.rect.top())
-        doc.setTextWidth(option.rect.width() - 8)
+        painter.setClipRect(option.rect)
+        painter.translate(option.rect.left() + 4, y_offset)
         doc.drawContents(painter)
         painter.restore()
 
@@ -94,7 +104,8 @@ class _HighlightDelegate(QStyledItemDelegate):
         doc = self._document(index)
         if doc is None:
             return super().sizeHint(option, index)
-        return QSize(int(doc.idealWidth()) + 8, 20)
+        size = doc.size()
+        return QSize(int(size.width()) + 8, int(size.height()))
 
 
 def _escape(text: str) -> str:
