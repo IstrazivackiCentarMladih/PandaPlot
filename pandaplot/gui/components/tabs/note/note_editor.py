@@ -4,7 +4,7 @@ Note tab widget for displaying and editing notes in the main tab container.
 from typing import override
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QFont, QKeySequence
+from PySide6.QtGui import QAction, QFont, QKeySequence, QTextCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.commands.project.note import EditNoteCommand
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import NoteEvents
+from pandaplot.models.events import NoteEvents, UIEvents
 from pandaplot.models.project.items import Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
@@ -352,6 +352,39 @@ class NoteEditorWidget(PWidget):
         # Subscribe to external rename/content change events for this note
         self.subscribe_to_event(
             NoteEvents.NOTE_CONTENT_CHANGED, self.on_note_content_changed_event)
+        # Jump to a match when note search asks to reveal one in this note.
+        self.subscribe_to_event(
+            UIEvents.NOTE_REVEAL_MATCH, self.on_reveal_match_event)
+
+    def on_reveal_match_event(self, event_data: dict):
+        """Move the cursor to (and select) a match requested by note search."""
+        if event_data.get("note_id") != self.note.id:
+            return
+
+        line_number = event_data.get("line_number")
+        match_start = event_data.get("match_start")
+        match_end = event_data.get("match_end")
+        if line_number is None or match_start is None or match_end is None:
+            return
+
+        # The match must be visible in the source editor, so ensure the text
+        # pane is showing (split keeps the preview too).
+        if self.stack.currentIndex() == 1:  # preview-only
+            self.set_mode("split")
+
+        document = self.text_edit.document()
+        block = document.findBlockByLineNumber(max(0, line_number - 1))
+        if not block.isValid():
+            return
+
+        cursor = QTextCursor(block)
+        cursor.setPosition(block.position() + match_start)
+        cursor.setPosition(
+            block.position() + match_end, QTextCursor.MoveMode.KeepAnchor
+        )
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.ensureCursorVisible()
+        self.text_edit.setFocus()
 
     def load_note_content(self):
         """Load the note content into the editor."""
