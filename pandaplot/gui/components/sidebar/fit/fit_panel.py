@@ -66,7 +66,7 @@ class FitPanel(SidebarPanel):
         self._init_panel_layout()
 
         # Title
-        self._set_title("Curve Fitting")
+        self._set_title("📐 Curve Fitting")
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
