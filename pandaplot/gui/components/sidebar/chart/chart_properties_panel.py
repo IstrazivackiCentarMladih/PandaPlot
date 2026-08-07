@@ -110,7 +110,7 @@ class ChartPropertiesPanel(SidebarPanel):
 
         body_widget = QWidget(self)
         body_layout = QVBoxLayout(body_widget)
-        body_layout.setContentsMargins(0, 6, 0, 0)
+        body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
         body_layout.addWidget(self.tab_selector_combo)
         body_layout.addWidget(self.tab_widget, stretch=1)
