@@ -5,7 +5,6 @@ scaling) applied to dataset columns before plotting or analysis.
 
 from typing import Any, Dict, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -17,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -28,14 +26,14 @@ from pandaplot.analysis.preprocessing_types import PREPROCESSING_METHODS, list_m
 from pandaplot.commands.project.dataset.preprocess_column_command import (
     PreprocessColumnCommand,
 )
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class PreprocessingPanel(PWidget):
+class PreprocessingPanel(SidebarPanel):
     """
     Side panel for applying preprocessing transformations to dataset columns.
     """
@@ -52,17 +50,9 @@ class PreprocessingPanel(PWidget):
     @override
     def _init_ui(self):
         """Build the panel layout."""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        self._init_panel_layout()
 
-        self.title_label = QLabel("⚖️ Preprocessing")
-        main_layout.addWidget(self.title_label)
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._set_title("⚖️ Preprocessing")
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -78,8 +68,7 @@ class PreprocessingPanel(PWidget):
 
         content_layout.addStretch()
 
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
 
     def create_method_section(self, layout):
         """Create the transformation selector and its description."""
@@ -433,16 +422,7 @@ class PreprocessingPanel(PWidget):
             }}
         """)
 
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         for label in (self.description_label, self.naming_hint):
             label.setStyleSheet(f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}")

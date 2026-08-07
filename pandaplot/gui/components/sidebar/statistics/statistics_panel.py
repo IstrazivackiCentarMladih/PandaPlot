@@ -5,7 +5,6 @@ hypothesis tests on dataset columns and adding the results to the project as dat
 
 from typing import List, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -17,7 +16,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -25,15 +23,15 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import STAT_TESTS, InputMode, StatTestResult, StatTestType
 from pandaplot.commands.project.dataset.statistical_test_command import StatisticalTestCommand
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.statistics.test_info_dialog import TestInfoDialog
-from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class StatisticsPanel(PWidget):
+class StatisticsPanel(SidebarPanel):
     """Side panel for guided statistical testing on dataset columns."""
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
@@ -50,17 +48,9 @@ class StatisticsPanel(PWidget):
 
     @override
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        self._init_panel_layout()
 
-        self.title_label = QLabel("🧪 Statistical Tests")
-        main_layout.addWidget(self.title_label)
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._set_title("🧪 Statistical Tests")
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -74,8 +64,7 @@ class StatisticsPanel(PWidget):
         self._create_action_buttons(content_layout)
 
         content_layout.addStretch()
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
 
         # Populate for the initially selected test.
         self._on_test_type_changed()
@@ -464,16 +453,7 @@ class StatisticsPanel(PWidget):
             }}
         """)
 
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         self.run_btn.setStyleSheet("""
             QPushButton {

@@ -11,18 +11,18 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.commands.project.item import RenameItemCommand
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.project.item_name_delegate import ItemNameDelegate
 from pandaplot.gui.components.sidebar.project.project_command_manager import ProjectPanelCommandManager
 from pandaplot.gui.components.sidebar.project.project_context_manager import ProjectViewPanelContextManager
 from pandaplot.gui.components.sidebar.project.project_tree import ProjectTreeWidget
 from pandaplot.gui.components.sidebar.project.project_tree_manager import ProjectTreeManager
-from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class ProjectViewPanel(PWidget):
+class ProjectViewPanel(SidebarPanel):
     """
     UI component that displays project information and listens to app state changes.
     This follows the MVC pattern by listening to events from the app state.
@@ -61,17 +61,14 @@ class ProjectViewPanel(PWidget):
     def _init_ui(self):
         """Create the treeview widget."""
         # Main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        self._init_panel_layout()
 
-        # Panel title  
-        self.title_label = QLabel("📁 Project Explorer")
-        layout.addWidget(self.title_label)
+        # Panel title
+        self._set_title("📁 Project Explorer")
 
         # Create project title display
         self.title_frame = QGroupBox("Project Info")
-        layout.addWidget(self.title_frame)
+        self.main_layout.addWidget(self.title_frame)
 
         title_layout = QVBoxLayout(self.title_frame)
         title_layout.setContentsMargins(4, 4, 4, 4)
@@ -110,7 +107,7 @@ class ProjectViewPanel(PWidget):
         self.tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.tree.setDefaultDropAction(Qt.DropAction.MoveAction)
 
-        layout.addWidget(self.tree)
+        self.main_layout.addWidget(self.tree)
 
         self.project_tree_manager = ProjectTreeManager(
             self.app_context, self.tree, self.on_item_name_changed)
@@ -262,16 +259,7 @@ class ProjectViewPanel(PWidget):
         """)
         
         # Style panel title (like other panels)
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Apply theme to project title and file labels
         self.project_title_label.setStyleSheet(f"""

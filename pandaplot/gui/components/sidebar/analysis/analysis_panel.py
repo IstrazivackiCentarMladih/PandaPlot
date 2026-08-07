@@ -4,7 +4,6 @@ Analysis panel for mathematical operations on dataset columns.
 
 from typing import Any, Dict, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -23,14 +21,14 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import AnalysisEngine
 from pandaplot.commands.project.dataset.analysis_command import AnalysisCommand
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import AnalysisEvents, DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class AnalysisPanel(PWidget):
+class AnalysisPanel(SidebarPanel):
     """
     Side panel for mathematical analysis operations on dataset columns.
     """
@@ -47,52 +45,42 @@ class AnalysisPanel(PWidget):
     def _init_ui(self):
         """Setup the user interface."""
         # Main layout with scroll area
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
+        self._init_panel_layout()
+
         # Panel title
-        self.title_label = QLabel("📊 Analysis Operations")
-        main_layout.addWidget(self.title_label)
-        
-        # Scroll area for content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        self._set_title("📊 Analysis Operations")
+
         # Content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(4, 4, 4, 4)
         content_layout.setSpacing(6)
-        
+
         # Analysis type selection
         self.create_analysis_type_section(content_layout)
-        
+
         # Column selection
         self.create_column_selection_section(content_layout)
-        
+
         # Parameters section
         self.create_parameters_section(content_layout)
-        
+
         # Data range section
         self.create_range_section(content_layout)
-        
+
         # Result configuration
         self.create_result_section(content_layout)
-        
+
         # Preview section
         self.create_preview_section(content_layout)
-        
+
         # Action buttons
         self.create_action_buttons(content_layout)
-        
+
         # Add stretch to push everything to top
         content_layout.addStretch()
-        
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+
+        self._set_content(content_widget, scrollable=True)
     
     @override
     def _apply_theme(self):
@@ -133,16 +121,7 @@ class AnalysisPanel(PWidget):
         """)
         
         # Style title label
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Style preview button
         self.preview_btn.setStyleSheet("""

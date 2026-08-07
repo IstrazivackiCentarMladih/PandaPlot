@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Optional, override
 
 import pandas as pd
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -15,14 +15,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMenu,
     QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import FitEvents, ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext
@@ -30,7 +29,7 @@ from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
 
 
-class FitPanel(PWidget):
+class FitPanel(SidebarPanel):
     """Side panel for performing curve fitting on chart data."""
 
     fit_completed = Signal(dict)  # Emitted when fit is completed with results
@@ -64,36 +63,29 @@ class FitPanel(PWidget):
     @override
     def _init_ui(self):
         """Set up the user interface."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Title
-        self.title_label = QLabel("Curve Fitting")
-        layout.addWidget(self.title_label)
+        self._init_panel_layout()
 
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        # Title
+        self._set_title("📐 Curve Fitting")
+
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        
+        content_layout.setContentsMargins(4, 4, 4, 4)
+        content_layout.setSpacing(6)
+
         # Data source section
         self._create_data_source_section(content_layout)
-        
+
         # Fit configuration section
         self._create_fit_config_section(content_layout)
-        
+
         # Results section
         self._create_results_section(content_layout)
-        
+
         # Action buttons
         self._create_action_buttons(content_layout)
-        
-        scroll.setWidget(content_widget)
-        layout.addWidget(scroll)
+
+        self._set_content(content_widget, scrollable=True)
 
     @override
     def _apply_theme(self):
@@ -131,17 +123,8 @@ class FitPanel(PWidget):
             }}
         """)
 
-        # Title label with improved styling
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        # Title label with shared styling
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         # Main action buttons
         self._apply_button_styling()
