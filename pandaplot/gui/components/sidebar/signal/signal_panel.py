@@ -12,20 +12,19 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QPushButton,
     QTextEdit,
-    QScrollArea,
     QHBoxLayout,
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class SignalPanel(PWidget):
+class SignalPanel(SidebarPanel):
     """Sidebar panel for signal analysis."""
 
     def __init__(
@@ -44,25 +43,14 @@ class SignalPanel(PWidget):
 
     @override
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        self._init_panel_layout()
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        self._set_title("📡 Signal Analysis")
 
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
-
-        self.title_label = QLabel("📡 Signal Analysis")
-        layout.addWidget(self.title_label)
 
         # Analysis selector
         group = QGroupBox("Analysis")
@@ -143,8 +131,7 @@ class SignalPanel(PWidget):
 
         layout.addStretch()
 
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
         self._on_analysis_changed()
 
     def _on_analysis_changed(self):
@@ -520,16 +507,7 @@ class SignalPanel(PWidget):
             }}
         """)
 
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         self.run_btn.setStyleSheet("""
             QPushButton {
