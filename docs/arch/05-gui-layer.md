@@ -44,6 +44,10 @@ Icon-based left panel switcher. Each icon maps to a panel:
 
 `ConditionalPanelManager` listens to `UIEvents` and `ProjectEvents` to show/hide the correct panel automatically.
 
+### SidebarPanel (`gui/components/sidebar/panels/sidebar_panel.py`)
+
+Base class (extends `PWidget`) all 9 sidebar panels use for a consistent shell: a title pinned at the top via `_set_title()`, and a content area added via `_set_content(widget, scrollable=...)` — wrapped in a `QScrollArea` when `scrollable=True`, added directly otherwise (used by `ChartPropertiesPanel`, which scrolls per-tab instead, and `ProjectViewPanel`, whose tree scrolls natively).
+
 ### ProjectViewPanel
 
 Hierarchical tree view of all project items. Subscribes to:
