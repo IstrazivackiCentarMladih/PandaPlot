@@ -105,6 +105,14 @@ class ThemeManager:
             pass
 
         tokens = self.get_design_tokens()
+        danger = tokens["status_danger"]
+        danger_c = QColor(danger)
+        if danger_c.isValid():
+            danger_hover = danger_c.lighter(110).name()
+            danger_pressed = danger_c.darker(115).name()
+        else:
+            danger_hover = danger
+            danger_pressed = danger
         shared_widget_rules = f"""
             QFrame[card="true"] {{
                 background-color: {tokens['surface_white']};
@@ -160,6 +168,21 @@ class ThemeManager:
             QPushButton[primary="true"]:pressed {{
                 background-color: {pressed};
                 border-color: {pressed};
+            }}
+            QPushButton[destructive="true"] {{
+                background-color: {danger};
+                border: 1px solid {danger};
+                border-radius: 4px;
+                padding: 4px 8px;
+                color: #FFFFFF;
+            }}
+            QPushButton[destructive="true"]:hover {{
+                background-color: {danger_hover};
+                border-color: {danger_hover};
+            }}
+            QPushButton[destructive="true"]:pressed {{
+                background-color: {danger_pressed};
+                border-color: {danger_pressed};
             }}
             QTabBar::tab:selected {{ color: {accent}; }}
         """ + shared_widget_rules
@@ -242,7 +265,7 @@ class ThemeManager:
                 "accent": accent, "accent_active_text": accent_active_text,
                 "accent_selected_bg": "#2E3350", "accent_disabled": accent_disabled,
                 "status_modified_dot": "#E09A1F", "status_modified_text": "#E0A94A",
-                "status_success": "#3FA46A",
+                "status_success": "#3FA46A", "status_danger": "#C24141",
                 "y2_accent": "#B27FD1", "y2_accent_bg": "#3A2E45",
                 "series_palette": ["#C24141", "#6B77E8", "#3F9BB0", "#3FA46A", "#E09A1F"],
                 "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,
@@ -257,7 +280,7 @@ class ThemeManager:
             "accent": accent, "accent_active_text": accent_active_text,
             "accent_selected_bg": "#EEF0FB", "accent_disabled": accent_disabled,
             "status_modified_dot": "#E09A1F", "status_modified_text": "#B06A00",
-            "status_success": "#3FA46A",
+            "status_success": "#3FA46A", "status_danger": "#DC3545",
             "y2_accent": "#8A4BB8", "y2_accent_bg": "#F5EEFB",
             "series_palette": ["#A01818", "#4A56C6", "#2B7A8C", "#3FA46A", "#E09A1F"],
             "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,

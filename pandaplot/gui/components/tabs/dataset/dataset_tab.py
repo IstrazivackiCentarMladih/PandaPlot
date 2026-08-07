@@ -58,40 +58,7 @@ class DatasetTab(PWidget):
         card_hover = palette.get("card_hover", "#e9ecef")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#000000")
-        secondary_fg = palette.get("secondary_fg", "#555555")
         accent = palette.get("accent", "#4A90E2")
-        
-        # Derive accent color variants for interaction states
-        from PySide6.QtGui import QColor
-        accent_color = QColor(accent)
-        if accent_color.isValid():
-            accent_hover = accent_color.darker(110).name()
-            accent_pressed = accent_color.darker(125).name()
-        else:
-            accent_hover = accent
-            accent_pressed = accent
-        
-        # Apply styling to action buttons
-        for btn in [self.create_chart_btn, self.export_btn]:
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {accent};
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: {accent_hover};
-                }}
-                QPushButton:pressed {{
-                    background-color: {accent_pressed};
-                }}
-                QPushButton:disabled {{
-                    background-color: {secondary_fg};
-                }}
-            """)
         
         # Apply styling to table view
         self.table_view.setStyleSheet(f"""
@@ -121,41 +88,6 @@ class DatasetTab(PWidget):
                 font-weight: bold;
                 color: {base_fg};
             }}
-        """)
-        
-        # Apply styling to action buttons
-        self.create_chart_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {accent_hover};
-            }}
-            QPushButton:pressed {{
-                background-color: {accent_pressed};
-            }}
-        """)
-        
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1e7e34;
-            }
-            QPushButton:pressed {
-                background-color: #155724;
-            }
         """)
 
     def on_dataset_column_added(self, event_data):
@@ -211,11 +143,13 @@ class DatasetTab(PWidget):
 
         # Create chart button
         self.create_chart_btn = QPushButton("📈 Create Chart from Data")
+        self.create_chart_btn.setProperty("primary", True)
         self.create_chart_btn.clicked.connect(self.create_chart_from_data)
         actions_layout.addWidget(self.create_chart_btn)
 
         # Export data button
         self.export_btn = QPushButton("💾 Export Data")
+        self.export_btn.setProperty("primary", True)
         self.export_btn.clicked.connect(self.export_data)
         actions_layout.addWidget(self.export_btn)
 

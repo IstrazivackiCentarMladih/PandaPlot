@@ -329,7 +329,8 @@ class SettingsDialog(PDialog):
         accent_layout.addWidget(QLabel("Accent color:"))
         self.accent_color_btn = QPushButton()
         self.accent_color_btn.setFixedSize(70, 30)
-        self.accent_color_btn.setStyleSheet("background-color: #007bff; border-radius: 4px;")
+        initial_accent = self._config_manager.config.appearance.accent_color
+        self.accent_color_btn.setStyleSheet(f"background-color: {initial_accent}; border-radius: 4px;")
         self.accent_color_btn.clicked.connect(self.choose_accent_color)
         accent_layout.addWidget(self.accent_color_btn)
         accent_layout.addStretch()

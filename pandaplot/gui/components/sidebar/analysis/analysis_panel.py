@@ -123,21 +123,6 @@ class AnalysisPanel(SidebarPanel):
         # Style title label
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
-        # Style preview button
-        self.preview_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        
         # Style apply button
         self.apply_btn.setStyleSheet(f"""
             QPushButton {{
@@ -272,6 +257,7 @@ class AnalysisPanel(SidebarPanel):
         group_layout = QVBoxLayout()
         
         self.preview_btn = QPushButton("🔍 Preview Analysis")
+        self.preview_btn.setProperty("primary", True)
         self.preview_btn.clicked.connect(self.preview_analysis)
         
         self.preview_text = QTextEdit()

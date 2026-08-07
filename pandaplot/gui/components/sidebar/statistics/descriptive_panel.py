@@ -109,6 +109,7 @@ class DescriptiveStatsPanel(SidebarPanel):
         group_layout = QVBoxLayout()
 
         self.run_btn = QPushButton("▶ Compute")
+        self.run_btn.setProperty("primary", True)
         self.run_btn.clicked.connect(self.compute)
         group_layout.addWidget(self.run_btn)
 
@@ -316,18 +317,6 @@ class DescriptiveStatsPanel(SidebarPanel):
         """)
 
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
-
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #2980b9; }
-        """)
 
         self.add_btn.setStyleSheet(f"""
             QPushButton {{

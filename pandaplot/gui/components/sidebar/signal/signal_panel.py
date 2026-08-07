@@ -102,6 +102,7 @@ class SignalPanel(SidebarPanel):
         results_layout = QVBoxLayout()
 
         self.run_btn = QPushButton("▶ Run Analysis")
+        self.run_btn.setProperty("primary", True)
         self.run_btn.clicked.connect(self.run_analysis)
 
         results_layout.addWidget(self.run_btn)
@@ -507,21 +508,6 @@ class SignalPanel(SidebarPanel):
         """)
 
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
-
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
 
         self.add_btn.setStyleSheet(f"""
             QPushButton {{
