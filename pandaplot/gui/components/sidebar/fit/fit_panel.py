@@ -4,7 +4,7 @@ from dataclasses import replace
 from typing import Optional, override
 
 import pandas as pd
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
