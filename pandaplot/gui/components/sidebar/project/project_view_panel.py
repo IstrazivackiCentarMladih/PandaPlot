@@ -298,6 +298,13 @@ class ProjectViewPanel(SidebarPanel):
                 background-color: {card_hover};
                 color: {base_fg};
             }}
+            QHeaderView::section {{
+                background-color: {card_bg};
+                color: {base_fg};
+                border: none;
+                border-bottom: 1px solid {card_border};
+                padding: 2px 4px;
+            }}
         """)
         
         self.logger.debug("Applied theme.")

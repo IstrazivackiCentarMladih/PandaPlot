@@ -175,10 +175,25 @@ class ThemeManager:
         else:
             bg = QColor(255, 255, 255)
             fg = QColor(0, 0, 0)
+        accent = QColor(ctx.accent)
+        if not accent.isValid():
+            accent = QColor(74, 86, 198)
+        r, g, b = accent.red(), accent.green(), accent.blue()
+        accent_lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+        highlighted_text = QColor(0, 0, 0) if accent_lum > 0.6 else QColor(255, 255, 255)
+
         palette.setColor(QPalette.ColorRole.Window, bg)
         palette.setColor(QPalette.ColorRole.WindowText, fg)
         palette.setColor(QPalette.ColorRole.Base, bg)
         palette.setColor(QPalette.ColorRole.Text, fg)
+        palette.setColor(QPalette.ColorRole.Button, bg)
+        palette.setColor(QPalette.ColorRole.ButtonText, fg)
+        palette.setColor(QPalette.ColorRole.ToolTipBase, bg)
+        palette.setColor(QPalette.ColorRole.ToolTipText, fg)
+        palette.setColor(QPalette.ColorRole.BrightText, fg)
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(fg).lighter(160) if ctx.theme == Theme.DARK else QColor(fg).lighter(220))
+        palette.setColor(QPalette.ColorRole.Highlight, accent)
+        palette.setColor(QPalette.ColorRole.HighlightedText, highlighted_text)
         self._app.setPalette(palette)
         self._app.setStyleSheet(self.build_stylesheet(ctx))
         f = self._app.font()

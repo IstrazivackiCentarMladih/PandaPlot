@@ -85,6 +85,30 @@ def test_stylesheet_contains_accent_and_font(tmp_path: Path):
     assert app.font()._pt == 15
 
 
+def test_palette_sets_all_roles_for_light_theme(tmp_path: Path):
+    from PySide6.QtGui import QPalette
+
+    bus = EventBus()
+    cm = ConfigManager(bus, config_path=tmp_path / "c.json", auto_save=False)
+    tm = ThemeManager(bus, cm)
+    app = DummyApp()
+    tm.set_qt_app(app)
+
+    cm.update({"appearance": {"theme": "light"}}, save=False)
+
+    palette = app.palette()
+    fg = palette.color(QPalette.ColorRole.WindowText)
+    bg = palette.color(QPalette.ColorRole.Window)
+
+    # Roles that must follow the app's fg/bg choice rather than the
+    # OS-inherited default palette (root cause of white-on-white text).
+    assert palette.color(QPalette.ColorRole.Button) == bg
+    assert palette.color(QPalette.ColorRole.ButtonText) == fg
+    assert palette.color(QPalette.ColorRole.ToolTipBase) == bg
+    assert palette.color(QPalette.ColorRole.ToolTipText) == fg
+    assert palette.color(QPalette.ColorRole.PlaceholderText) != palette.color(QPalette.ColorRole.Window)
+
+
 def test_idempotent_apply(tmp_path: Path):
     bus = EventBus()
     cm = ConfigManager(bus, config_path=tmp_path / "c.json", auto_save=False)
