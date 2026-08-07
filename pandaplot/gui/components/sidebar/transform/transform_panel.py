@@ -7,7 +7,6 @@ for applying transformations to dataset tabs.
 
 from typing import Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -19,20 +18,19 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.transform.transform_controller import TransformController
-from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class TransformPanel(PWidget):
+class TransformPanel(SidebarPanel):
     """
     Transform panel for data transformations, adapted from transform_tab.py.
     Designed for sidebar integration with conditional visibility.
@@ -63,51 +61,40 @@ class TransformPanel(PWidget):
     def _init_ui(self):
         """Create the UI layout optimized for sidebar width constraints."""
         # Main layout with scroll area for long content
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
+        self._init_panel_layout()
+
         # Panel title
-        self.title_label = QLabel("🔧 Transform Operations")
-        # Remove hardcoded styling - will be applied in _apply_theme
-        main_layout.addWidget(self.title_label)
-        
-        # Create scroll area for panel content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        self._set_title("🔧 Transform Operations")
+
         # Content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(4, 4, 4, 4)
         content_layout.setSpacing(6)
-        
+
         # Header section (dataset info)
         self.create_header_section(content_layout)
-        
+
         # Transform type selection
         self.create_transform_type_section(content_layout)
-        
+
         # Column selection section
         self.create_column_selection_section(content_layout)
-        
+
         # Function definition area
         self.create_function_section(content_layout)
-        
+
         # Preview section
         self.create_preview_section(content_layout)
-        
+
         # Action buttons
         self.create_action_buttons(content_layout)
-        
+
         # Add stretch to push content to top
         content_layout.addStretch()
-        
+
         # Set content widget in scroll area
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
     
     @override
     def _apply_theme(self):
@@ -148,16 +135,7 @@ class TransformPanel(PWidget):
         """)
         
         # Style panel title
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Style dataset labels in header
         self.dataset_label.setStyleSheet(f"""
