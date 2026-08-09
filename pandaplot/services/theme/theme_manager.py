@@ -108,6 +108,15 @@ class ThemeManager:
             pass
 
         tokens = self.get_design_tokens()
+        danger = tokens["status_danger"]
+        danger_pressed = danger
+        try:
+            dc = QColor(danger)
+            if dc.isValid():
+                danger_pressed = dc.darker(115).name()
+        except Exception:  # noqa: BLE001
+            pass
+
         shared_widget_rules = f"""
             QFrame[card="true"] {{
                 background-color: {tokens['surface_white']};
@@ -157,14 +166,64 @@ class ThemeManager:
             QMessageBox QPushButton:hover, QDialogButtonBox QPushButton:hover {{
                 background-color: {tokens['surface_inset']};
             }}
+            QPushButton[secondary="true"] {{
+                background-color: transparent;
+                border: 1px solid {tokens['border_control']};
+                border-radius: {tokens['radius_control']}px;
+                padding: 6px 14px;
+                color: {tokens['text_secondary']};
+            }}
+            QPushButton[secondary="true"]:hover {{
+                background-color: {tokens['surface_inset']};
+            }}
+            QPushButton[secondary="true"]:pressed {{
+                background-color: {tokens['surface_chrome']};
+            }}
+            QPushButton[secondary="true"]:disabled {{
+                border-color: {tokens['border_subtle']};
+                color: {tokens['text_hint']};
+            }}
+            QPushButton[destructive="true"] {{
+                background-color: transparent;
+                border: 1px solid {danger};
+                border-radius: {tokens['radius_control']}px;
+                padding: 6px 14px;
+                color: {danger};
+            }}
+            QPushButton[destructive="true"]:hover {{
+                background-color: {danger};
+                color: #FFFFFF;
+            }}
+            QPushButton[destructive="true"]:pressed {{
+                background-color: {danger_pressed};
+                color: #FFFFFF;
+            }}
+            QPushButton[destructive="true"]:disabled {{
+                border-color: {tokens['border_subtle']};
+                color: {tokens['text_hint']};
+            }}
+            QPushButton[icon="true"] {{
+                border: none;
+                background-color: transparent;
+                padding: 4px;
+                color: {tokens['text_muted']};
+            }}
+            QPushButton[icon="true"]:hover {{
+                background-color: {tokens['surface_inset']};
+            }}
+            QPushButton[icon="true"][destructive="true"]:hover {{
+                background-color: {danger};
+                color: #FFFFFF;
+            }}
         """
 
         return f"""
             QPushButton[primary="true"] {{
                 background-color: {accent};
                 border: 1px solid {accent};
-                border-radius: 4px;
-                padding: 4px 8px;
+                border-radius: {tokens['radius_control']}px;
+                padding: 6px 14px;
+                font-weight: 600;
                 color: {text_color};
             }}
             QPushButton[primary="true"]:hover {{
@@ -174,6 +233,11 @@ class ThemeManager:
             QPushButton[primary="true"]:pressed {{
                 background-color: {pressed};
                 border-color: {pressed};
+            }}
+            QPushButton[primary="true"]:disabled {{
+                background-color: {tokens['accent_disabled']};
+                border-color: {tokens['accent_disabled']};
+                color: {tokens['text_hint']};
             }}
             QTabBar::tab:selected {{ color: {accent}; }}
         """ + shared_widget_rules
@@ -276,7 +340,7 @@ class ThemeManager:
                 "accent": accent, "accent_active_text": accent_active_text,
                 "accent_selected_bg": "#2E3350", "accent_disabled": accent_disabled,
                 "status_modified_dot": "#E09A1F", "status_modified_text": "#E0A94A",
-                "status_success": "#3FA46A",
+                "status_success": "#3FA46A", "status_danger": "#C24141",
                 "y2_accent": "#B27FD1", "y2_accent_bg": "#3A2E45",
                 "series_palette": ["#C24141", "#6B77E8", "#3F9BB0", "#3FA46A", "#E09A1F"],
                 "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,
@@ -291,7 +355,7 @@ class ThemeManager:
             "accent": accent, "accent_active_text": accent_active_text,
             "accent_selected_bg": "#EEF0FB", "accent_disabled": accent_disabled,
             "status_modified_dot": "#E09A1F", "status_modified_text": "#B06A00",
-            "status_success": "#3FA46A",
+            "status_success": "#3FA46A", "status_danger": "#DC3545",
             "y2_accent": "#8A4BB8", "y2_accent_bg": "#F5EEFB",
             "series_palette": ["#A01818", "#4A56C6", "#2B7A8C", "#3FA46A", "#E09A1F"],
             "radius_swatch": 4, "radius_control": 5, "radius_card": 6, "radius_chip": 12,
