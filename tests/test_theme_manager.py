@@ -85,6 +85,26 @@ def test_stylesheet_contains_accent_and_font(tmp_path: Path):
     assert app.font()._pt == 15
 
 
+def test_stylesheet_forces_readable_text_on_dialog_buttons(tmp_path: Path):
+    """QMessageBox/QDialogButtonBox OK/Cancel buttons render via the native
+    Windows visual-styles API on windowsvista/windows11 styles, which colors
+    button labels from the OS theme and ignores QPalette entirely. Only an
+    explicit QSS rule forces Qt's palette-aware fallback painter."""
+    bus = EventBus()
+    cm = ConfigManager(bus, config_path=tmp_path / "c.json", auto_save=False)
+    tm = ThemeManager(bus, cm)
+    app = DummyApp()
+    tm.set_qt_app(app)
+
+    cm.update({"appearance": {"theme": "light"}}, save=False)
+    qss = app.styleSheet()
+
+    assert "QMessageBox QPushButton" in qss
+    assert "QDialogButtonBox QPushButton" in qss
+    # Light theme's text_primary token, so the rule actually forces dark text.
+    assert "#1C1E26" in qss
+
+
 def test_palette_sets_all_roles_for_light_theme(tmp_path: Path):
     from PySide6.QtGui import QPalette
 

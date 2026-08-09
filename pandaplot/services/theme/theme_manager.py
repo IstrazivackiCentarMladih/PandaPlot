@@ -146,6 +146,17 @@ class ThemeManager:
             QComboBox QAbstractItemView::item {{
                 padding: 4px 8px;
             }}
+            QMessageBox QPushButton, QDialogButtonBox QPushButton {{
+                color: {tokens['text_primary']};
+                background-color: {tokens['surface_white']};
+                border: 1px solid {tokens['border_control']};
+                border-radius: {tokens['radius_control']}px;
+                padding: 4px 14px;
+                min-width: 70px;
+            }}
+            QMessageBox QPushButton:hover, QDialogButtonBox QPushButton:hover {{
+                background-color: {tokens['surface_inset']};
+            }}
         """
 
         return f"""
