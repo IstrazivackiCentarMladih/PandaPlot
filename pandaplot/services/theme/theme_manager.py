@@ -202,16 +202,16 @@ class ThemeManager:
                 border-color: {tokens['border_subtle']};
                 color: {tokens['text_hint']};
             }}
-            QPushButton[icon="true"] {{
+            QPushButton[iconButton="true"] {{
                 border: none;
                 background-color: transparent;
                 padding: 4px;
                 color: {tokens['text_muted']};
             }}
-            QPushButton[icon="true"]:hover {{
+            QPushButton[iconButton="true"]:hover {{
                 background-color: {tokens['surface_inset']};
             }}
-            QPushButton[icon="true"][destructive="true"]:hover {{
+            QPushButton[iconButton="true"][destructive="true"]:hover {{
                 background-color: {danger};
                 color: #FFFFFF;
             }}

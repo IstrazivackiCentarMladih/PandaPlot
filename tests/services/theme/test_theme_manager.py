@@ -37,8 +37,8 @@ def test_build_stylesheet_includes_secondary_destructive_icon_selectors():
     qss = manager.build_stylesheet(ctx)
     assert 'QPushButton[secondary="true"]' in qss
     assert 'QPushButton[destructive="true"]' in qss
-    assert 'QPushButton[icon="true"]' in qss
-    assert 'QPushButton[icon="true"][destructive="true"]:hover' in qss
+    assert 'QPushButton[iconButton="true"]' in qss
+    assert 'QPushButton[iconButton="true"][destructive="true"]:hover' in qss
 
 
 def test_build_stylesheet_primary_uses_shared_shape():
