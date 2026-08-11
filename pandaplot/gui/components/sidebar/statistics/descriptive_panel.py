@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QPushButton,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import DescriptiveStatsResult
 from pandaplot.commands.project.dataset.descriptive_stats_command import DescriptiveStatsCommand
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
@@ -77,7 +77,7 @@ class DescriptiveStatsPanel(SidebarPanel):
         self._apply_hint_label_theme(hint)
         group_layout.addWidget(hint)
 
-        self.select_all_btn = QPushButton("Select all")
+        self.select_all_btn = PButton("Select all", role="secondary")
         self.select_all_btn.clicked.connect(self.column_list.selectAll)
         group_layout.addWidget(self.select_all_btn)
 
@@ -108,7 +108,7 @@ class DescriptiveStatsPanel(SidebarPanel):
         group = QGroupBox("Results")
         group_layout = QVBoxLayout()
 
-        self.run_btn = QPushButton("▶ Compute")
+        self.run_btn = PButton("▶ Compute", role="secondary")
         self.run_btn.clicked.connect(self.compute)
         group_layout.addWidget(self.run_btn)
 
@@ -124,11 +124,11 @@ class DescriptiveStatsPanel(SidebarPanel):
     def _create_action_buttons(self, layout):
         button_layout = QHBoxLayout()
 
-        self.add_btn = QPushButton("➕ Add Results to Project")
+        self.add_btn = PButton("➕ Add Results to Project", role="primary")
         self.add_btn.clicked.connect(self.add_results_to_project)
         self.add_btn.setEnabled(False)
 
-        self.clear_btn = QPushButton("🔄 Clear")
+        self.clear_btn = PButton("🔄 Clear", role="secondary")
         self.clear_btn.clicked.connect(self.clear)
 
         button_layout.addWidget(self.add_btn)
@@ -288,9 +288,6 @@ class DescriptiveStatsPanel(SidebarPanel):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             DescriptiveStatsPanel {{
@@ -316,40 +313,3 @@ class DescriptiveStatsPanel(SidebarPanel):
         """)
 
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
-
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #2980b9; }
-        """)
-
-        self.add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: {card_hover}; color: {base_fg}; }}
-            QPushButton:disabled {{ background-color: {secondary_fg}; color: #999999; }}
-        """)
-
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #7f8c8d; }}
-        """)
