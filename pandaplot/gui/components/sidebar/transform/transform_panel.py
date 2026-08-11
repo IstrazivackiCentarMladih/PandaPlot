@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.transform.transform_controller import TransformController
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
@@ -107,9 +108,7 @@ class TransformPanel(SidebarPanel):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        
+
         # Apply theme to main widget (like project view panel)
         self.setStyleSheet(f"""
             TransformPanel {{
@@ -166,39 +165,6 @@ class TransformPanel(SidebarPanel):
             }}
         """)
         
-        # Style action buttons
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-        
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-        """)
-
     def create_header_section(self, layout):
         """Create header section showing current dataset info."""
         header_group = QGroupBox("Active Dataset")
@@ -302,7 +268,7 @@ class TransformPanel(SidebarPanel):
         
         # Preview controls
         preview_controls = QHBoxLayout()
-        self.preview_btn = QPushButton("Preview")
+        self.preview_btn = PButton("Preview", role="secondary")
         self.preview_btn.setMaximumWidth(70)
         
         self.preview_rows_combo = QComboBox()
@@ -324,10 +290,10 @@ class TransformPanel(SidebarPanel):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = QPushButton("Apply")
+        self.apply_btn = PButton("Apply", role="primary")
         # Remove hardcoded styling - will be applied in _apply_theme
-        
-        self.clear_btn = QPushButton("Clear")
+
+        self.clear_btn = PButton("Clear", role="secondary")
         # Remove hardcoded styling - will be applied in _apply_theme
         
         button_layout.addWidget(self.apply_btn)
