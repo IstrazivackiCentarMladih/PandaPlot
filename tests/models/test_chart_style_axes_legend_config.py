@@ -620,6 +620,23 @@ def test_tick_label_style_fields_default_when_missing():
     assert chart.config.get("x_tick_label_italic", False) is False
 
 
+def test_axis_and_tick_label_rotation_default_to_zero_when_missing():
+    chart = Chart(name="Test Chart")
+    for prefix in ("x", "y", "y2"):
+        assert chart.config.get(f"{prefix}_label_rotation", 0) == 0
+        assert chart.config.get(f"{prefix}_tick_label_rotation", 0) == 0
+
+
+def test_axis_and_tick_label_rotation_round_trips_through_serialization():
+    chart = Chart(name="Test Chart")
+    chart.config["x_label_rotation"] = 45
+    chart.config["y_tick_label_rotation"] = -30
+    data = chart.to_dict()
+    restored = Chart.from_dict(data)
+    assert restored.config["x_label_rotation"] == 45
+    assert restored.config["y_tick_label_rotation"] == -30
+
+
 def test_legend_custom_placement_fields_default_when_missing():
     chart = Chart(name="Test Chart")
     assert chart.config.get("legend_custom_x", 1.02) == 1.02
