@@ -195,7 +195,6 @@ class SearchPanel(PWidget):
         btn.setProperty("chip", True)
         btn.setCheckable(True)
         btn.setToolTip(tooltip)
-        btn.setFixedWidth(34)
         btn.toggled.connect(lambda checked, b=btn: self._sync_chip_selected(b, checked))
         return btn
 
