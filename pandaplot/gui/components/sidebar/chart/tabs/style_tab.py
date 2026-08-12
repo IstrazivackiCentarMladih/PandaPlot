@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -753,8 +752,8 @@ class StyleTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy style to Y axis")
-            copy_button.setFlat(True)
+            from pandaplot.gui.components.common.p_button import PButton
+            copy_button = PButton("Copy style to Y axis", role="secondary")
             copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
             form_layout.addWidget(copy_button)
 

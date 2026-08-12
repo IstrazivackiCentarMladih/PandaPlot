@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -200,8 +199,8 @@ class AxesTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy settings to Y axis")
-            copy_button.setFlat(True)
+            from pandaplot.gui.components.common.p_button import PButton
+            copy_button = PButton("Copy settings to Y axis", role="secondary")
             copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_settings(p))
             form_layout.addWidget(copy_button)
 
