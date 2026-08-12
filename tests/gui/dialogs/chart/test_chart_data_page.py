@@ -212,7 +212,7 @@ def test_a_freshly_added_card_is_tokened_immediately():
     page.add_series_button.click()
     new_card = page.cards[-1]
 
-    assert new_card.remove_button.styleSheet() != ""
+    assert new_card._tokens != {}
 
 
 def test_next_button_enabled_state_tracks_iscomplete():
