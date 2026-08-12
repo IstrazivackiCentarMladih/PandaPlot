@@ -32,8 +32,12 @@ class TestStatsEngine:
         assert any("Welch" in str(v) for _, v in result.rows)
 
     def test_paired_t_uses_complete_pairs_only(self):
+        # Differences between the complete pairs (index 0, 1, 4) vary
+        # (-1.5, -1.0, -2.2) rather than being identical, so the paired
+        # differences have real variance and scipy doesn't hit the
+        # near-zero-variance catastrophic-cancellation edge case.
         a = pd.Series([1.0, 2.0, 3.0, np.nan, 5.0], name="A")
-        b = pd.Series([2.0, 3.0, np.nan, 4.0, 6.0], name="B")
+        b = pd.Series([2.5, 3.0, np.nan, 4.0, 7.2], name="B")
         result = StatsEngine.run_test(StatTestType.PAIRED_T, [a, b])
         # Only 3 rows have both values present.
         n_pairs = dict(result.rows)["N pairs"]
