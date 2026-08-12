@@ -128,6 +128,8 @@ class WizardStepRail(QWidget):
                 button.setText(self._steps[i])
                 button.setEnabled(False)
                 button.setProperty("stepState", "upcoming")
+            button.style().unpolish(button)
+            button.style().polish(button)
         self._apply_styles()
 
     def set_tokens(self, tokens: dict) -> None:
@@ -135,19 +137,9 @@ class WizardStepRail(QWidget):
         self._apply_styles()
 
     def _apply_styles(self) -> None:
-        accent = self._tokens.get("accent", "#4A56C6")
-        muted = self._tokens.get("text_muted", "#9AA0AB")
-        text_primary = self._tokens.get("text_primary", "#1C1E26")
         border = self._tokens.get("border_control", "#DCDEE4")
         for i, button in enumerate(self._step_widgets):
             state = button.property("stepState")
             button.setIcon(_circle_icon(state, i + 1, self._tokens))
-            if state == "current":
-                style = f"font-weight: 700; color: {accent}; border: none;"
-            elif state == "completed":
-                style = f"font-weight: 600; color: {text_primary}; border: none;"
-            else:
-                style = f"color: {muted}; border: none;"
-            button.setStyleSheet(f"QPushButton {{ {style} }}")
         for connector in self._connectors:
             connector.setStyleSheet(f"background-color: {border};")

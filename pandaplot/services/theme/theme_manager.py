@@ -149,6 +149,20 @@ class ThemeManager:
                 color: #FFFFFF;
                 border-color: {accent};
             }}
+            QPushButton[stepState="current"] {{
+                border: none;
+                font-weight: 700;
+                color: {accent};
+            }}
+            QPushButton[stepState="completed"] {{
+                border: none;
+                font-weight: 600;
+                color: {tokens['text_primary']};
+            }}
+            QPushButton[stepState="upcoming"] {{
+                border: none;
+                color: {tokens['text_muted']};
+            }}
             QComboBox {{
                 padding: 4px 8px;
             }}
