@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.dialogs.chart.chart_data_page import ChartDataPage
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -190,18 +191,19 @@ def test_removing_a_card_reindexes_remaining_cards_swatch_colors():
     assert remaining[1]._index == 1
 
 
-def test_add_series_button_is_styled_from_tokens():
-    """Regression: `add_series_button` had no token-driven styling, falling
-    back to the OS default button style (dark-button-face + invisible text
-    under a dark theme)."""
+def test_add_series_button_uses_shared_secondary_button_style():
+    """Regression: `add_series_button` used to be a raw QPushButton with
+    hand-rolled, token-driven inline styling (dark-button-face + invisible
+    text under a dark theme before that fix). It is now a `PButton` whose
+    "secondary" role is applied via the shared global QSS, so no per-widget
+    stylesheet or manual token wiring is needed."""
     page = _make_page()
 
     page._apply_theme()
 
-    stylesheet = page.add_series_button.styleSheet()
-    assert stylesheet != ""
-    assert _FAKE_TOKENS["border_control"] in stylesheet
-    assert _FAKE_TOKENS["text_secondary"] in stylesheet
+    assert isinstance(page.add_series_button, PButton)
+    assert page.add_series_button.property("secondary") is True
+    assert page.add_series_button.styleSheet() == ""
 
 
 def test_a_freshly_added_card_is_tokened_immediately():
