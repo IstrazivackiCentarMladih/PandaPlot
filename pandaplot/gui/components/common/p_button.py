@@ -2,6 +2,12 @@
 standard), both applied as Qt dynamic properties consumed by
 ThemeManager's global QSS (see [secondary]/[destructive]/[primary]/[iconButton]
 selectors in pandaplot/services/theme/theme_manager.py).
+
+`on_click` and `enabled` let call sites fold their construction-time
+`clicked.connect(...)`/`setEnabled(...)` calls directly into the constructor
+call, instead of wiring them up afterward in a separate `_connect_signals()`
+step; `on_click` accepts a plain callable, a bound Qt Signal, or a
+`<signal>.emit` method.
 """
 from __future__ import annotations
 
@@ -16,7 +22,7 @@ _ROLES: tuple[ButtonRole, ...] = ("primary", "secondary", "destructive")
 
 class PButton(QPushButton):
     def __init__(self, text: str = "", role: ButtonRole = "secondary",
-                 icon: bool = False, on_click: Optional[Callable[[], None]] = None,
+                 icon: bool = False, on_click: Optional[Callable[..., object]] = None,
                  enabled: bool = True, parent: Optional[QWidget] = None):
         super().__init__(text, parent)
         self.setProperty("iconButton", icon)

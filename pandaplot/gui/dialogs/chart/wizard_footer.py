@@ -58,7 +58,7 @@ class WizardFooter(QWidget):
         layout.addWidget(self.next_button)
 
         self.finish_button = PButton(
-            "Create chart", role="primary", on_click=self.finishClicked.emit, parent=self
+            "Create Chart", role="primary", on_click=self.finishClicked.emit, parent=self
         )
         self.finish_button.setVisible(is_last_step)
         layout.addWidget(self.finish_button)
