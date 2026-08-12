@@ -196,8 +196,10 @@ class IconBar(PWidget):
     
     def _apply_button_theme(self, button: QPushButton, is_active: bool = False) -> None:
         """Toggle the button's active/inactive appearance via the shared
-        [segment="true"][selected="true"] QSS rule."""
+        [segment="true"][selected="true"] QSS rule, plus a left-border accent
+        indicator (via [navActive="true"]) unique to this vertical icon bar."""
         button.setProperty("selected", is_active)
+        button.setProperty("navActive", is_active)
         button.style().unpolish(button)
         button.style().polish(button)
 

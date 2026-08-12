@@ -132,10 +132,16 @@ class ThemeManager:
                 color: {tokens['text_muted']};
                 padding: 4px 8px;
             }}
+            QPushButton[segment="true"]:hover {{
+                background-color: {tokens['surface_inset']};
+            }}
             QPushButton[segment="true"][selected="true"] {{
                 background-color: {tokens['accent_selected_bg']};
                 color: {tokens['accent_active_text']};
                 font-weight: 600;
+            }}
+            QPushButton[segment="true"][selected="true"][navActive="true"] {{
+                border-left: 3px solid {accent};
             }}
             QPushButton[chip="true"] {{
                 border: 1px solid {tokens['border_control']};
@@ -143,6 +149,9 @@ class ThemeManager:
                 padding: 4px 10px;
                 color: {tokens['text_secondary']};
                 background-color: transparent;
+            }}
+            QPushButton[chip="true"]:hover {{
+                background-color: {tokens['surface_inset']};
             }}
             QPushButton[chip="true"][selected="true"] {{
                 background-color: {accent};
