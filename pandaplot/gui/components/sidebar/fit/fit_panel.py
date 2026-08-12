@@ -97,7 +97,6 @@ class FitPanel(SidebarPanel):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         # Apply theme to main widget
         self.setStyleSheet(f"""
