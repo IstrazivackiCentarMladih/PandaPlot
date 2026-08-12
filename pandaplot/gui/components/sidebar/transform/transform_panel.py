@@ -238,10 +238,13 @@ class TransformPanel(SidebarPanel):
         quick_buttons_layout = QHBoxLayout()
         
         self.multiply_btn = QPushButton("×2")
+        self.multiply_btn.setProperty("chip", True)
         self.multiply_btn.setMaximumWidth(30)
         self.square_btn = QPushButton("x²")
+        self.square_btn.setProperty("chip", True)
         self.square_btn.setMaximumWidth(30)
         self.upper_btn = QPushButton("ABC")
+        self.upper_btn.setProperty("chip", True)
         self.upper_btn.setMaximumWidth(30)
         
         quick_buttons_layout.addWidget(QLabel("Quick:"))
