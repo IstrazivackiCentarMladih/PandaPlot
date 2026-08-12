@@ -197,7 +197,13 @@ class IconBar(PWidget):
     def _apply_button_theme(self, button: QPushButton, is_active: bool = False) -> None:
         """Toggle the button's active/inactive appearance via the shared
         [segment="true"][selected="true"] QSS rule, plus a left-border accent
-        indicator (via [navActive="true"]) unique to this vertical icon bar."""
+        indicator (via [navActive="true"]) unique to this vertical icon bar.
+
+        navActive is kept separate from the shared selected property so this
+        icon-bar-specific "clearer active indicator" (a left border) doesn't
+        leak onto other [segment="true"] consumers such as SegmentedControl's
+        horizontal pill row, where a left border would read as a stray line
+        rather than an active-state cue."""
         button.setProperty("selected", is_active)
         button.setProperty("navActive", is_active)
         button.style().unpolish(button)

@@ -48,6 +48,8 @@ def test_set_active_button_marks_only_the_named_button_selected(icon_bar):
 
     assert button_a.property("selected") is True
     assert button_b.property("selected") is False
+    assert button_a.property("navActive") is True
+    assert button_b.property("navActive") is False
 
 
 def test_set_active_button_switches_between_buttons(icon_bar):
@@ -59,3 +61,5 @@ def test_set_active_button_switches_between_buttons(icon_bar):
 
     assert button_a.property("selected") is False
     assert button_b.property("selected") is True
+    assert button_a.property("navActive") is False
+    assert button_b.property("navActive") is True

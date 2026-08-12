@@ -41,6 +41,15 @@ def test_build_stylesheet_includes_secondary_destructive_icon_selectors():
     assert 'QPushButton[iconButton="true"][destructive="true"]:hover' in qss
 
 
+def test_build_stylesheet_includes_navactive_and_hover_selectors():
+    manager = _manager_with_context(Theme.LIGHT)
+    ctx = manager._current
+    qss = manager.build_stylesheet(ctx)
+    assert 'QPushButton[segment="true"][selected="true"][navActive="true"]' in qss
+    assert 'QPushButton[segment="true"]:hover' in qss
+    assert 'QPushButton[chip="true"]:hover' in qss
+
+
 def test_build_stylesheet_primary_uses_shared_shape():
     manager = _manager_with_context(Theme.LIGHT)
     ctx = manager._current
