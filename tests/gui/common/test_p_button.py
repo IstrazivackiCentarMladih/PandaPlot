@@ -84,3 +84,17 @@ def test_on_click_and_enabled_false_compose():
     button.setEnabled(True)
     button.click()
     assert calls == [True]
+
+
+def test_on_click_accepts_a_qt_signal():
+    from PySide6.QtCore import QObject, Signal
+
+    class _Emitter(QObject):
+        fired = Signal()
+
+    emitter = _Emitter()
+    calls = []
+    emitter.fired.connect(lambda: calls.append(True))
+    button = PButton("Apply", role="primary", on_click=emitter.fired)
+    button.click()
+    assert calls == [True]
