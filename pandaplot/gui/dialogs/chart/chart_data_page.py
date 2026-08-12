@@ -46,9 +46,10 @@ class ChartDataPage(PWizardPage):
         header_row = QHBoxLayout()
         header_row.addWidget(SectionHeader("Series"))
         header_row.addStretch(1)
-        self.add_series_button = PButton("+ Add series", role="secondary")
+        self.add_series_button = PButton(
+            "+ Add series", role="secondary", on_click=self._add_card
+        )
         self.add_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.add_series_button.clicked.connect(self._add_card)
         header_row.addWidget(self.add_series_button)
         content.addLayout(header_row)
 
