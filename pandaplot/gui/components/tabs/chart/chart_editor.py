@@ -176,12 +176,12 @@ def apply_axis_ticks(
     )
 
 
-def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False):
-    """Set font size/family/weight/style on every major and minor tick-value
-    label of a matplotlib Axis. `Axis.set_tick_params` (used by
+def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False, rotation=0):
+    """Set font size/family/weight/style/rotation on every major and minor
+    tick-value label of a matplotlib Axis. `Axis.set_tick_params` (used by
     `apply_axis_ticks` for color/direction) has no font-family/weight/style
-    knobs of its own, so those three must be set directly on each tick
-    label's Text artist instead."""
+    knobs of its own, so those three (plus rotation) must be set directly on
+    each tick label's Text artist instead."""
     fontweight = "bold" if bold else "normal"
     fontstyle = "italic" if italic else "normal"
     for label in axis.get_ticklabels() + axis.get_ticklabels(minor=True):
@@ -189,6 +189,7 @@ def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False
         label.set_fontfamily(font_family)
         label.set_fontweight(fontweight)
         label.set_fontstyle(fontstyle)
+        label.set_rotation(rotation)
 
 
 def resolve_axis_color(prefix, own_color, match_enabled, x_color):
@@ -966,12 +967,14 @@ class ChartEditorWidget(PWidget):
                 fontfamily=config.get("x_font_family", "DejaVu Sans"),
                 fontweight="bold" if config.get("x_title_bold", False) else "normal",
                 fontstyle="italic" if config.get("x_title_italic", False) else "normal",
+                rotation=config.get("x_label_rotation", 0),
             )
             self.chart_canvas.axes.set_ylabel(
                 config.get("y_label", ""), color=y_label_color,
                 fontfamily=config.get("y_font_family", "DejaVu Sans"),
                 fontweight="bold" if config.get("y_title_bold", False) else "normal",
                 fontstyle="italic" if config.get("y_title_italic", False) else "normal",
+                rotation=config.get("y_label_rotation", 90),
             )
             x_scale = config.get("x_scale", "linear")
             y_scale = config.get("y_scale", "linear")
@@ -995,6 +998,7 @@ class ChartEditorWidget(PWidget):
                     fontfamily=config.get("y2_font_family", "DejaVu Sans"),
                     fontweight="bold" if config.get("y2_title_bold", False) else "normal",
                     fontstyle="italic" if config.get("y2_title_italic", False) else "normal",
+                    rotation=config.get("y2_label_rotation", 90),
                 )
                 y2_scale = config.get("y2_scale", "linear")
                 self.chart_canvas.axes2.set_yscale(
@@ -1038,6 +1042,7 @@ class ChartEditorWidget(PWidget):
                     config.get("y2_tick_label_font_family", "DejaVu Sans"),
                     bold=config.get("y2_tick_label_bold", False),
                     italic=config.get("y2_tick_label_italic", False),
+                    rotation=config.get("y2_tick_label_rotation", 0),
                 )
 
                 if config.get("show_grid_y2", True):
@@ -1072,6 +1077,7 @@ class ChartEditorWidget(PWidget):
                 config.get("x_tick_label_font_family", "DejaVu Sans"),
                 bold=config.get("x_tick_label_bold", False),
                 italic=config.get("x_tick_label_italic", False),
+                rotation=config.get("x_tick_label_rotation", 0),
             )
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
@@ -1099,6 +1105,7 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_label_font_family", "DejaVu Sans"),
                 bold=config.get("y_tick_label_bold", False),
                 italic=config.get("y_tick_label_italic", False),
+                rotation=config.get("y_tick_label_rotation", 0),
             )
 
             apply_spine_colors(

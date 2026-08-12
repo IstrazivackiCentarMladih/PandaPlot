@@ -42,3 +42,22 @@ def test_minor_tick_labels_also_get_the_font():
     minor_labels = [label for label in axis.get_ticklabels(minor=True) if label.get_text()]
     for label in minor_labels:
         assert label.get_fontfamily() == ["Georgia"]
+
+
+def test_rotation_defaults_to_zero():
+    axis = _make_axis()
+    apply_axis_ticks(axis, "auto", 5, 1.0, "auto", "")
+    apply_tick_label_font(axis, font_size=10, font_family="DejaVu Sans")
+    labels = [label for label in axis.get_ticklabels() if label.get_text()]
+    for label in labels:
+        assert label.get_rotation() == 0
+
+
+def test_rotation_is_applied_to_major_and_minor_tick_labels():
+    axis = _make_axis()
+    apply_axis_ticks(axis, "auto", 5, 1.0, "auto", "", minor_enabled=True)
+    apply_tick_label_font(axis, font_size=10, font_family="DejaVu Sans", rotation=45)
+    labels = [label for label in axis.get_ticklabels() + axis.get_ticklabels(minor=True) if label.get_text()]
+    assert labels, "expected at least one tick label after autoscale"
+    for label in labels:
+        assert label.get_rotation() == 45
