@@ -127,7 +127,10 @@ class ThemeManager:
                 border: 2px solid {accent};
             }}
             QPushButton[segment="true"] {{
-                border: none;
+                border-top: none;
+                border-right: none;
+                border-bottom: none;
+                border-left: 3px solid transparent;
                 background-color: transparent;
                 color: {tokens['text_muted']};
                 padding: 4px 8px;
