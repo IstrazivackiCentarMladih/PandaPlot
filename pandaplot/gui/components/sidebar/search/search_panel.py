@@ -19,11 +19,10 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTreeWidget,
     QTreeWidgetItem,
-    QVBoxLayout,
     QWidget,
 )
 
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events.event_types import NoteEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items.note import Note
 from pandaplot.models.state.app_context import AppContext
@@ -124,7 +123,7 @@ def _is_dark(hex_color: str) -> bool:
     return (0.299 * r + 0.587 * g + 0.114 * b) < 128
 
 
-class SearchPanel(PWidget):
+class SearchPanel(SidebarPanel):
     """Search-across-notes panel shown in the sidebar."""
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
@@ -149,12 +148,9 @@ class SearchPanel(PWidget):
 
     @override
     def _init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        self._init_panel_layout()
 
-        self.title_label = QLabel("🔍 Search Notes")
-        layout.addWidget(self.title_label)
+        self._set_title("🔍 Search Notes")
 
         # Search box
         self.search_input = QLineEdit()
@@ -162,7 +158,7 @@ class SearchPanel(PWidget):
         self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(lambda _: self._debounce.start())
         self.search_input.returnPressed.connect(self.run_search)
-        layout.addWidget(self.search_input)
+        self.main_layout.addWidget(self.search_input)
 
         # Option toggles
         options_row = QHBoxLayout()
@@ -174,11 +170,11 @@ class SearchPanel(PWidget):
             btn.toggled.connect(self.run_search)
             options_row.addWidget(btn)
         options_row.addStretch()
-        layout.addLayout(options_row)
+        self.main_layout.addLayout(options_row)
 
         # Summary line
         self.summary_label = QLabel("")
-        layout.addWidget(self.summary_label)
+        self.main_layout.addWidget(self.summary_label)
 
         # Results tree
         self.results = QTreeWidget()
@@ -188,7 +184,7 @@ class SearchPanel(PWidget):
         self.delegate = _HighlightDelegate(self.results)
         self.results.setItemDelegate(self.delegate)
         self.results.itemActivated.connect(self._on_item_activated)
-        layout.addWidget(self.results, 1)
+        self.main_layout.addWidget(self.results, 1)
 
     def _make_toggle(self, text: str, tooltip: str) -> QPushButton:
         btn = QPushButton(text)
@@ -201,18 +197,56 @@ class SearchPanel(PWidget):
     def _apply_theme(self):
         theme_manager = self.app_context.get_manager(ThemeManager)
         palette = theme_manager.get_surface_palette()
+        card_bg = palette.get("card_bg", "#ffffff")
+        card_border = palette.get("card_border", "#dee2e6")
         accent = palette.get("accent", "#4A90E2")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
         card_hover = palette.get("card_hover", "#e9ecef")
 
-        self.title_label.setStyleSheet(f"color: {base_fg}; font-weight: bold; font-size: 13px;")
-        self.summary_label.setStyleSheet(f"color: {secondary_fg}; font-size: 11px;")
+        self.setStyleSheet(f"""
+            SearchPanel {{
+                background-color: {card_bg};
+                color: {base_fg};
+            }}
+        """)
+
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self.summary_label.setStyleSheet(f"color: {secondary_fg}; font-size: 11px; background-color: transparent;")
+
+        self.search_input.setStyleSheet(f"""
+            QLineEdit {{
+                color: {base_fg};
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+                padding: 4px;
+            }}
+        """)
+
+        self.results.setStyleSheet(f"""
+            QTreeWidget {{
+                color: {base_fg};
+                background-color: {card_bg};
+                selection-background-color: {accent};
+                selection-color: white;
+                border: 1px solid {card_border};
+                border-radius: 4px;
+            }}
+            QTreeWidget::item:selected {{
+                background-color: {accent};
+                color: white;
+            }}
+            QTreeWidget::item:hover {{
+                background-color: {card_hover};
+                color: {base_fg};
+            }}
+        """)
 
         for btn in (self.case_button, self.word_button, self.regex_button):
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    border: 1px solid {palette.get('card_border', '#ccc')};
+                    border: 1px solid {card_border};
                     border-radius: 3px; padding: 2px; color: {base_fg};
                     background-color: transparent;
                 }}
