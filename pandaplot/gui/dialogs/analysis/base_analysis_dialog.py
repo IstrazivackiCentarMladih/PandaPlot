@@ -122,8 +122,9 @@ class BaseAnalysisDialog(QDialog):
         group = QGroupBox("Preview")
         layout = QVBoxLayout()
         
-        preview_btn = PButton("Preview Analysis", role="secondary")
-        preview_btn.clicked.connect(self.preview_analysis)
+        preview_btn = PButton(
+            "Preview Analysis", role="secondary", on_click=self.preview_analysis
+        )
         
         self.preview_text = QTextEdit()
         self.preview_text.setMaximumHeight(150)
