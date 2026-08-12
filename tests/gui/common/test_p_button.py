@@ -53,3 +53,34 @@ def test_set_role_changes_role_at_runtime():
 def test_button_text_is_preserved():
     button = PButton("Apply", role="primary")
     assert button.text() == "Apply"
+
+
+def test_on_click_connects_handler():
+    calls = []
+    button = PButton("Apply", role="primary", on_click=lambda: calls.append(True))
+    button.click()
+    assert calls == [True]
+
+
+def test_omitting_on_click_makes_no_connection():
+    button = PButton("Apply", role="primary")
+    button.click()  # must not raise with no handler attached
+
+
+def test_enabled_false_disables_button_at_construction():
+    button = PButton("Apply", role="primary", enabled=False)
+    assert button.isEnabled() is False
+
+
+def test_enabled_defaults_to_true():
+    button = PButton("Apply", role="primary")
+    assert button.isEnabled() is True
+
+
+def test_on_click_and_enabled_false_compose():
+    calls = []
+    button = PButton("Fit", role="primary", on_click=lambda: calls.append(True), enabled=False)
+    assert button.isEnabled() is False
+    button.setEnabled(True)
+    button.click()
+    assert calls == [True]

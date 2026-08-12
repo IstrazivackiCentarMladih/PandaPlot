@@ -5,7 +5,7 @@ selectors in pandaplot/services/theme/theme_manager.py).
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 from PySide6.QtWidgets import QPushButton, QWidget
 
@@ -16,10 +16,15 @@ _ROLES: tuple[ButtonRole, ...] = ("primary", "secondary", "destructive")
 
 class PButton(QPushButton):
     def __init__(self, text: str = "", role: ButtonRole = "secondary",
-                 icon: bool = False, parent: Optional[QWidget] = None):
+                 icon: bool = False, on_click: Optional[Callable[[], None]] = None,
+                 enabled: bool = True, parent: Optional[QWidget] = None):
         super().__init__(text, parent)
         self.setProperty("iconButton", icon)
         self.set_role(role)
+        if on_click is not None:
+            self.clicked.connect(on_click)
+        if not enabled:
+            self.setEnabled(False)
 
     def set_role(self, role: ButtonRole) -> None:
         for r in _ROLES:
