@@ -218,27 +218,24 @@ def test_expanded_card_has_a_collapse_button_that_collapses_it():
     assert card.is_collapsed() is True
 
 
-def test_set_tokens_styles_remove_button_with_token_colors():
-    """Regression: this button had no token-driven styling at all, so it fell
-    back to the OS default button style -- dark-button-face with
-    dark/invisible text under a dark theme."""
+def test_remove_button_is_a_destructive_pbutton():
+    """Series removal is an irreversible data-removal action, so it gets the
+    destructive role instead of the neutral/secondary look used elsewhere on
+    this card. Styling itself is now handled by PButton's dynamic properties
+    plus the global QSS, not per-widget stylesheets built from tokens."""
     card = _line_card()
 
-    card.set_tokens({"border_control": "#123456", "text_secondary": "#abcdef"})
-
-    assert "#123456" in card.remove_button.styleSheet()
-    assert "#abcdef" in card.remove_button.styleSheet()
+    assert card.remove_button.property("destructive") is True
+    assert card.remove_button.property("secondary") is False
 
 
-def test_set_tokens_styles_expand_and_collapse_chevrons_flat():
+def test_expand_and_collapse_chevrons_are_secondary_icon_pbuttons():
     card = _line_card()
 
-    card.set_tokens({"text_muted": "#654321"})
-
-    assert "#654321" in card._expand_button.styleSheet()
-    assert "#654321" in card._collapse_button.styleSheet()
-    assert "border: none" in card._expand_button.styleSheet()
-    assert "border: none" in card._collapse_button.styleSheet()
+    assert card._expand_button.property("secondary") is True
+    assert card._expand_button.property("iconButton") is True
+    assert card._collapse_button.property("secondary") is True
+    assert card._collapse_button.property("iconButton") is True
 
 
 def test_swatch_color_reflects_the_cards_index():

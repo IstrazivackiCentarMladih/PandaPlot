@@ -13,12 +13,12 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from pandaplot.gui.components.common.card import Card
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
 
 _ROLE_LABELS = {"x": "X column", "y": "Y column", "values": "Values column"}
@@ -61,8 +61,7 @@ class SeriesConfigCard(Card):
         summary_layout.addWidget(self.summary_label, 1)
         self._error_status_label = QLabel()
         summary_layout.addWidget(self._error_status_label)
-        self._expand_button = QPushButton("▸")
-        self._expand_button.setFlat(True)
+        self._expand_button = PButton("▸", role="secondary", icon=True)
         self._expand_button.clicked.connect(lambda: self.set_collapsed(False))
         summary_layout.addWidget(self._expand_button)
         outer.addWidget(self._summary_row)
@@ -74,8 +73,7 @@ class SeriesConfigCard(Card):
 
         collapse_row = QHBoxLayout()
         collapse_row.addStretch(1)
-        self._collapse_button = QPushButton("▾")
-        self._collapse_button.setFlat(True)
+        self._collapse_button = PButton("▾", role="secondary", icon=True)
         self._collapse_button.clicked.connect(lambda: self.set_collapsed(True))
         collapse_row.addWidget(self._collapse_button)
         grid.addLayout(collapse_row, row, 0, 1, 2)
@@ -115,7 +113,7 @@ class SeriesConfigCard(Card):
 
             self._set_error_controls_visible(False)
 
-        self.remove_button = QPushButton("Remove")
+        self.remove_button = PButton("Remove", role="destructive")
         self.remove_button.clicked.connect(self.removeRequested.emit)
         grid.addWidget(self.remove_button, row, 0, 1, 2)
 
@@ -162,34 +160,8 @@ class SeriesConfigCard(Card):
     def set_tokens(self, tokens: dict) -> None:
         super().set_tokens(tokens)
         self._tokens = tokens
-        self._apply_button_styles(tokens)
         if self._collapsed:
             self._refresh_summary()
-
-    def _apply_button_styles(self, tokens: dict) -> None:
-        """Style every plain button on this card from theme tokens.
-
-        Without this, these buttons fall back to the OS/Qt default button
-        style, which under a dark theme renders as dark-button-face +
-        dark/invisible text. `remove_button` is a regular text button,
-        styled like `WizardFooter`'s neutral bordered Back/Cancel buttons;
-        `_expand_button`/`_collapse_button` are glyph-only chevrons, styled
-        flat/borderless like `DataTab._build_chevron_button`.
-        """
-        border = tokens.get("border_control", "#DCDEE4")
-        text_secondary = tokens.get("text_secondary", "#3F4350")
-        text_muted = tokens.get("text_muted", "#6B7280")
-        neutral_style = (
-            f"QPushButton {{ border: 1px solid {border}; border-radius: 5px; "
-            f"padding: 6px 13px; color: {text_secondary}; background: transparent; }}"
-        )
-        chevron_style = (
-            "QPushButton { border: none; background: transparent; "
-            f"color: {text_muted}; }}"
-        )
-        self.remove_button.setStyleSheet(neutral_style)
-        self._expand_button.setStyleSheet(chevron_style)
-        self._collapse_button.setStyleSheet(chevron_style)
 
     # -- Everything below is unchanged from the pre-redesign implementation --
 

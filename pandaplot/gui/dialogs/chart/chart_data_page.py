@@ -4,8 +4,9 @@ by a collapsible SeriesConfigCard, plus a 'Create empty plot' escape hatch.
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
 from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
@@ -45,7 +46,8 @@ class ChartDataPage(PWizardPage):
         header_row = QHBoxLayout()
         header_row.addWidget(SectionHeader("Series"))
         header_row.addStretch(1)
-        self.add_series_button = QPushButton("+ Add series")
+        self.add_series_button = PButton("+ Add series", role="secondary")
+        self.add_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.add_series_button.clicked.connect(self._add_card)
         header_row.addWidget(self.add_series_button)
         content.addLayout(header_row)
@@ -79,12 +81,6 @@ class ChartDataPage(PWizardPage):
         tokens = theme_manager.get_design_tokens()
         self.step_rail.set_tokens(tokens)
         self.footer.set_tokens(tokens)
-        border = tokens.get("border_control", "#DCDEE4")
-        text_secondary = tokens.get("text_secondary", "#3F4350")
-        self.add_series_button.setStyleSheet(
-            f"QPushButton {{ border: 1px solid {border}; border-radius: 5px; "
-            f"padding: 6px 13px; color: {text_secondary}; background: transparent; }}"
-        )
         for card in self.cards:
             card.set_tokens(tokens)
 

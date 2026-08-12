@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QPushButton,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -23,8 +22,9 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import STAT_TESTS, InputMode, StatTestResult, StatTestType
 from pandaplot.commands.project.dataset.statistical_test_command import StatisticalTestCommand
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.gui.components.sidebar.statistics.test_info_dialog import TestInfoDialog
+from pandaplot.gui.components.sidebar.statistics.test_info_dialog import InfoDialogHelper
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -83,7 +83,7 @@ class StatisticsPanel(SidebarPanel):
         selector_row = QHBoxLayout()
         selector_row.setContentsMargins(0, 0, 0, 0)
         selector_row.addWidget(self.test_type_combo, 1)
-        self.info_btn = QPushButton("ℹ️")
+        self.info_btn = PButton("ℹ️", role="secondary", icon=True)
         self.info_btn.setFixedWidth(32)
         self.info_btn.setToolTip("Learn about this test: explanation, formula and an example")
         self.info_btn.clicked.connect(self._show_test_info)
@@ -118,7 +118,7 @@ class StatisticsPanel(SidebarPanel):
         group = QGroupBox("Results")
         group_layout = QVBoxLayout()
 
-        self.run_btn = QPushButton("▶ Run Test")
+        self.run_btn = PButton("▶ Run Test", role="secondary")
         self.run_btn.clicked.connect(self.run_test)
         group_layout.addWidget(self.run_btn)
 
@@ -134,11 +134,11 @@ class StatisticsPanel(SidebarPanel):
     def _create_action_buttons(self, layout):
         button_layout = QHBoxLayout()
 
-        self.add_btn = QPushButton("➕ Add Results to Project")
+        self.add_btn = PButton("➕ Add Results to Project", role="primary")
         self.add_btn.clicked.connect(self.add_results_to_project)
         self.add_btn.setEnabled(False)
 
-        self.clear_btn = QPushButton("🔄 Clear")
+        self.clear_btn = PButton("🔄 Clear", role="secondary")
         self.clear_btn.clicked.connect(self.clear)
 
         button_layout.addWidget(self.add_btn)
@@ -157,7 +157,7 @@ class StatisticsPanel(SidebarPanel):
         test_type = self._current_test_type()
         if test_type is None:
             return
-        dialog = TestInfoDialog(self.app_context, STAT_TESTS[test_type], parent=self)
+        dialog = InfoDialogHelper(self.app_context, STAT_TESTS[test_type], parent=self)
         dialog.exec()
 
     def _on_test_type_changed(self):
@@ -426,9 +426,6 @@ class StatisticsPanel(SidebarPanel):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             StatisticsPanel {{
@@ -454,50 +451,3 @@ class StatisticsPanel(SidebarPanel):
         """)
 
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
-
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #2980b9; }
-        """)
-
-        self.info_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-                padding: 4px;
-            }}
-            QPushButton:hover {{ background-color: {card_hover}; }}
-        """)
-
-        self.add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: {card_hover}; color: {base_fg}; }}
-            QPushButton:disabled {{ background-color: {secondary_fg}; color: #999999; }}
-        """)
-
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #7f8c8d; }}
-        """)

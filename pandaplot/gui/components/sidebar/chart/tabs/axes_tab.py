@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.chip_row import ChipRow
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
@@ -200,8 +200,7 @@ class AxesTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy settings to Y axis")
-            copy_button.setFlat(True)
+            copy_button = PButton("Copy settings to Y axis", role="secondary")
             copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_settings(p))
             form_layout.addWidget(copy_button)
 

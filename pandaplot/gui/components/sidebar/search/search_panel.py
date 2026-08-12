@@ -188,10 +188,17 @@ class SearchPanel(SidebarPanel):
 
     def _make_toggle(self, text: str, tooltip: str) -> QPushButton:
         btn = QPushButton(text)
+        btn.setProperty("chip", True)
         btn.setCheckable(True)
         btn.setToolTip(tooltip)
-        btn.setFixedWidth(34)
+        btn.toggled.connect(lambda checked, b=btn: self._sync_chip_selected(b, checked))
         return btn
+
+    @staticmethod
+    def _sync_chip_selected(button: QPushButton, checked: bool) -> None:
+        button.setProperty("selected", checked)
+        button.style().unpolish(button)
+        button.style().polish(button)
 
     @override
     def _apply_theme(self):
@@ -200,9 +207,9 @@ class SearchPanel(SidebarPanel):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         accent = palette.get("accent", "#4A90E2")
+        card_hover = palette.get("card_hover", "#e9ecef")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        card_hover = palette.get("card_hover", "#e9ecef")
 
         self.setStyleSheet(f"""
             SearchPanel {{
@@ -242,17 +249,6 @@ class SearchPanel(SidebarPanel):
                 color: {base_fg};
             }}
         """)
-
-        for btn in (self.case_button, self.word_button, self.regex_button):
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    border: 1px solid {card_border};
-                    border-radius: 3px; padding: 2px; color: {base_fg};
-                    background-color: transparent;
-                }}
-                QPushButton:hover {{ background-color: {card_hover}; }}
-                QPushButton:checked {{ background-color: {accent}; color: white; border-color: {accent}; }}
-            """)
 
         # Match-highlight colours: soft amber in both themes, chosen from the
         # panel background's brightness so it reads in light and dark.
