@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -159,11 +160,12 @@ class IconBar(PWidget):
         # Add stretch to push main panel buttons to top and settings to bottom
         self.button_layout.addStretch()
         
-        self.settings_button = QPushButton("⚙️")
+        self.settings_button = PButton("⚙️", role="secondary", icon=True)
         # TODO: use command instead of signal
         # TODO: make settings button addition more generic so that icon bar doesn't know about settings
         self.settings_button.clicked.connect(self.settings_requested.emit)
-        # Remove hardcoded styling - will be applied in _apply_theme
+        # Emoji glyph needs a larger font size than the icon-shape QSS sets by default
+        self.settings_button.setStyleSheet("font-size: 16px;")
         self.settings_button.setToolTip("Settings")
         self.button_layout.addWidget(self.settings_button)
 
@@ -183,85 +185,34 @@ class IconBar(PWidget):
             }}
         """)
         
-        # Apply theme to settings button
-        self._apply_settings_button_theme()
-        
         # Apply theme to all panel buttons
         self._apply_panel_buttons_theme()
-    
-    def _apply_settings_button_theme(self):
-        """Apply theme styling to settings button."""
-        theme_manager = self.app_context.get_manager(ThemeManager)
-        palette = theme_manager.get_surface_palette()
-        
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        card_pressed = palette.get("card_pressed", "#dee2e6")
-        base_fg = palette.get("base_fg", "#333333")
-        
-        self.settings_button.setStyleSheet(f"""
-            QPushButton {{
-                border: none;
-                padding: 5px;
-                background-color: transparent;
-                color: {base_fg};
-                font-size: 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_pressed};
-            }}
-        """)
-    
+
     def _apply_panel_buttons_theme(self):
         """Apply theme styling to all panel buttons."""
         # Apply styling to all existing panel buttons
         for panel_name, btn in self.panels.items():
             self._apply_button_theme(btn, is_active=False)
     
-    def _apply_button_theme(self, button, is_active=False):
-        """Apply theme styling to a single button."""
-        theme_manager = self.app_context.get_manager(ThemeManager)
-        palette = theme_manager.get_surface_palette()
-        
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        card_pressed = palette.get("card_pressed", "#dee2e6")
-        base_fg = palette.get("base_fg", "#333333")
-        accent = palette.get("accent", "#4A90E2")
-        
-        if is_active:
-            button.setStyleSheet(f"""
-                QPushButton {{
-                    border: none;
-                    padding: 5px;
-                    background-color: {accent};
-                    color: white;
-                }}
-                QPushButton:hover {{
-                    background-color: {accent};
-                    opacity: 0.8;
-                }}
-            """)
-        else:
-            button.setStyleSheet(f"""
-                QPushButton {{
-                    border: none;
-                    padding: 5px;
-                    background-color: transparent;
-                    color: {base_fg};
-                }}
-                QPushButton:hover {{
-                    background-color: {card_hover};
-                }}
-                QPushButton:pressed {{
-                    background-color: {card_pressed};
-                }}
-            """)
+    def _apply_button_theme(self, button: QPushButton, is_active: bool = False) -> None:
+        """Toggle the button's active/inactive appearance via the shared
+        [segment="true"][selected="true"] QSS rule, plus a left-border accent
+        indicator (via [navActive="true"]) unique to this vertical icon bar.
+
+        navActive is kept separate from the shared selected property so this
+        icon-bar-specific "clearer active indicator" (a left border) doesn't
+        leak onto other [segment="true"] consumers such as SegmentedControl's
+        horizontal pill row, where a left border would read as a stray line
+        rather than an active-state cue."""
+        button.setProperty("selected", is_active)
+        button.setProperty("navActive", is_active)
+        button.style().unpolish(button)
+        button.style().polish(button)
 
     def add_panel_button(self, name: str, icon: str):
         """Add a new panel button to the icon bar."""
         btn = QPushButton(icon)
+        btn.setProperty("segment", True)
         btn.clicked.connect(lambda: self.panel_requested.emit(name))
         # Remove hardcoded styling - will be applied via theme
 

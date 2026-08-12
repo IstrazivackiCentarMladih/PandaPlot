@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -19,6 +18,7 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
@@ -753,8 +753,7 @@ class StyleTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy style to Y axis")
-            copy_button.setFlat(True)
+            copy_button = PButton("Copy style to Y axis", role="secondary")
             copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
             form_layout.addWidget(copy_button)
 

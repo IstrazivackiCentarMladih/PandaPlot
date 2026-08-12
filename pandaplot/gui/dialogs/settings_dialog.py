@@ -146,22 +146,6 @@ class SettingsDialog(PDialog):
                 background-color: {card_bg};
                 color: {secondary_fg};
             }}
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {accent};
-                opacity: 0.8;
-            }}
-            QPushButton:pressed {{
-                background-color: {accent};
-                opacity: 0.6;
-            }}
             QLabel {{
                 color: {base_fg};
             }}
@@ -177,27 +161,6 @@ class SettingsDialog(PDialog):
             }}
             QCheckBox {{
                 color: {base_fg};
-            }}
-        """)
-        
-        # Apply specific button styling
-        self.reset_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-            }}
-            QPushButton:hover {{
-                background-color: #545b62;
-            }}
-        """)
-        
-        self.cancel_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-            }}
-            QPushButton:hover {{
-                background-color: #545b62;
             }}
         """)
         
@@ -329,7 +292,14 @@ class SettingsDialog(PDialog):
         accent_layout.addWidget(QLabel("Accent color:"))
         self.accent_color_btn = QPushButton()
         self.accent_color_btn.setFixedSize(70, 30)
-        self.accent_color_btn.setStyleSheet("background-color: #007bff; border-radius: 4px;")
+        initial_accent_color = (
+            self._config_manager.config.appearance.accent_color
+            if self._config_manager is not None
+            else ApplicationConfig.default().appearance.accent_color
+        )
+        self.accent_color_btn.setStyleSheet(
+            f"background-color: {initial_accent_color}; border-radius: 4px;"
+        )
         self.accent_color_btn.clicked.connect(self.choose_accent_color)
         accent_layout.addWidget(self.accent_color_btn)
         accent_layout.addStretch()
@@ -401,30 +371,35 @@ class SettingsDialog(PDialog):
     
     def create_buttons(self, layout):
         """Create the button frame."""
+        # Imported lazily to avoid a circular import: this module is imported
+        # by pandaplot.gui.dialogs.__init__, and pandaplot.gui.components.common.p_button
+        # sits under the pandaplot.gui.components package, whose __init__ imports
+        # CollapsibleSidebar, which in turn imports SettingsDialog from this module.
+        from pandaplot.gui.components.common.p_button import PButton
+
         self.button_frame = QFrame()
         button_layout = QHBoxLayout(self.button_frame)
         button_layout.setContentsMargins(16, 12, 16, 12)
         
         # Reset button
-        self.reset_btn = QPushButton("🔄 Reset to Defaults")
+        self.reset_btn = PButton("🔄 Reset to Defaults", role="secondary")
         self.reset_btn.clicked.connect(self.reset_to_defaults)
         button_layout.addWidget(self.reset_btn)
-        
+
         button_layout.addStretch()
-        
+
         # Cancel button
-        self.cancel_btn = QPushButton("❌ Cancel")
-        # Remove hardcoded styling - will be applied in _apply_theme
+        self.cancel_btn = PButton("❌ Cancel", role="secondary")
         self.cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(self.cancel_btn)
-        
+
         # Apply button
-        self.apply_btn = QPushButton("✅ Apply")
+        self.apply_btn = PButton("Apply", role="primary")
         self.apply_btn.clicked.connect(self.apply_settings)
         button_layout.addWidget(self.apply_btn)
-        
+
         # OK button
-        self.ok_btn = QPushButton("💾 OK")
+        self.ok_btn = PButton("💾 OK", role="primary")
         self.ok_btn.clicked.connect(self.accept_settings)
         self.ok_btn.setDefault(True)
         button_layout.addWidget(self.ok_btn)

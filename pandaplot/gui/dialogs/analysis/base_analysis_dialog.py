@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QLineEdit,
-    QPushButton,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.models.project.items.dataset import Dataset
 
 
@@ -122,7 +122,7 @@ class BaseAnalysisDialog(QDialog):
         group = QGroupBox("Preview")
         layout = QVBoxLayout()
         
-        preview_btn = QPushButton("Preview Analysis")
+        preview_btn = PButton("Preview Analysis", role="secondary")
         preview_btn.clicked.connect(self.preview_analysis)
         
         self.preview_text = QTextEdit()

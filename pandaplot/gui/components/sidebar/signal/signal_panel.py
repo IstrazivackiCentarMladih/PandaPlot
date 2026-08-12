@@ -9,13 +9,13 @@ from PySide6.QtWidgets import (
     QWidget,
     QDoubleSpinBox,
     QSpinBox,
-    QPushButton,
     QTextEdit,
     QHBoxLayout,
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.project.items import Dataset
@@ -101,7 +101,7 @@ class SignalPanel(SidebarPanel):
         results_group = QGroupBox("Results")
         results_layout = QVBoxLayout()
 
-        self.run_btn = QPushButton("▶ Run Analysis")
+        self.run_btn = PButton("▶ Run Analysis", role="secondary")
         self.run_btn.clicked.connect(self.run_analysis)
 
         results_layout.addWidget(self.run_btn)
@@ -116,11 +116,11 @@ class SignalPanel(SidebarPanel):
 
         button_layout = QHBoxLayout()
 
-        self.add_btn = QPushButton("➕ Add Results to Project")
+        self.add_btn = PButton("➕ Add Results to Project", role="primary")
         self.add_btn.clicked.connect(self.add_results_to_project)
         self.add_btn.setEnabled(False)
 
-        self.clear_btn = QPushButton("🔄 Clear")
+        self.clear_btn = PButton("🔄 Clear", role="secondary")
         self.clear_btn.clicked.connect(self.clear)
 
         button_layout.addWidget(self.add_btn)
@@ -482,9 +482,6 @@ class SignalPanel(SidebarPanel):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             QGroupBox {{
@@ -508,63 +505,12 @@ class SignalPanel(SidebarPanel):
 
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-
-        self.add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-
         self.results_text.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {card_bg};
                 color: {base_fg};
                 border: 1px solid {card_border};
                 border-radius: 4px;
-            }}
-        """)
-
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-
-            QPushButton:hover {{
-                background-color: #7f8c8d;
             }}
         """)
 

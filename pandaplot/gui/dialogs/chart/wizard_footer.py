@@ -9,6 +9,8 @@ testable (see test_wizard_footer.py).
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
+from pandaplot.gui.components.common.p_button import PButton
+
 
 class WizardFooter(QWidget):
     backClicked = Signal()
@@ -37,22 +39,22 @@ class WizardFooter(QWidget):
 
         layout.addStretch(1)
 
-        self.back_button = QPushButton("Back", self)
+        self.back_button = PButton("Back", role="secondary", parent=self)
         self.back_button.setVisible(step_number > 1)
         self.back_button.clicked.connect(self.backClicked.emit)
         layout.addWidget(self.back_button)
 
-        self.cancel_button = QPushButton("Cancel", self)
+        self.cancel_button = PButton("Cancel", role="secondary", parent=self)
         self.cancel_button.clicked.connect(self.cancelClicked.emit)
         layout.addWidget(self.cancel_button)
 
         is_last_step = step_number == total_steps
-        self.next_button = QPushButton("Next", self)
+        self.next_button = PButton("Next", role="primary", parent=self)
         self.next_button.setVisible(not is_last_step)
         self.next_button.clicked.connect(self.nextClicked.emit)
         layout.addWidget(self.next_button)
 
-        self.finish_button = QPushButton("Create chart", self)
+        self.finish_button = PButton("Create chart", role="primary", parent=self)
         self.finish_button.setVisible(is_last_step)
         self.finish_button.clicked.connect(self.finishClicked.emit)
         layout.addWidget(self.finish_button)
@@ -66,8 +68,6 @@ class WizardFooter(QWidget):
 
     def set_tokens(self, tokens: dict) -> None:
         accent = tokens.get("accent", "#4A56C6")
-        border = tokens.get("border_control", "#DCDEE4")
-        text_secondary = tokens.get("text_secondary", "#3F4350")
         text_hint = tokens.get("text_hint", "#9AA0AB")
 
         self.step_label.setStyleSheet(f"color: {text_hint}; font-size: 10.5px;")
@@ -75,15 +75,3 @@ class WizardFooter(QWidget):
             self.empty_link.setStyleSheet(
                 f"QPushButton {{ color: {accent}; font-weight: 600; border: none; }}"
             )
-        neutral_style = (
-            f"QPushButton {{ border: 1px solid {border}; border-radius: 5px; "
-            f"padding: 6px 13px; color: {text_secondary}; background: transparent; }}"
-        )
-        self.back_button.setStyleSheet(neutral_style)
-        self.cancel_button.setStyleSheet(neutral_style)
-        accent_style = (
-            f"QPushButton {{ border: none; border-radius: 5px; padding: 6px 17px; "
-            f"background: {accent}; color: white; font-weight: 600; }}"
-        )
-        self.next_button.setStyleSheet(accent_style)
-        self.finish_button.setStyleSheet(accent_style)
