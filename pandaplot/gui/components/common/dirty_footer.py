@@ -21,13 +21,12 @@ class DirtyFooter(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._status_label = QLabel("No changes", self)
-        self._revert_button = PButton("Revert", role="secondary", parent=self)
-        self._apply_button = PButton("Apply", role="primary", parent=self)
-
-        self._revert_button.setEnabled(False)
-        self._apply_button.setEnabled(False)
-        self._revert_button.clicked.connect(self.revertClicked)
-        self._apply_button.clicked.connect(self.applyClicked)
+        self._revert_button = PButton(
+            "Revert", role="secondary", on_click=self.revertClicked, enabled=False, parent=self
+        )
+        self._apply_button = PButton(
+            "Apply", role="primary", on_click=self.applyClicked, enabled=False, parent=self
+        )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)

@@ -205,7 +205,10 @@ class FitPanel(SidebarPanel):
         self.custom_function_edit.setPlaceholderText("e.g., a*x**2 + b*x + c")
         custom_layout.addWidget(self.custom_function_edit, 0, 1)
         #show menu
-        self.function_button = PButton("Functions", role="secondary")
+        self.function_button = PButton(
+            "Functions", role="secondary",
+            on_click=lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
+        )
         custom_layout.addWidget(self.function_button, 0, 2)
         self.menu = QMenu()
         self.function_names = ["sin", "cos","tan", "sqrt", "exp", "log", "arcsin", "arccos"]
@@ -215,11 +218,6 @@ class FitPanel(SidebarPanel):
             action = self.menu.addAction(name)
             action.triggered.connect(lambda checked, f=name: self.fit_command.insert_function(f + "("))
 
-        #connect buttons to menu
-        self.function_button.clicked.connect(
-            lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
-        )
-        
         custom_layout.addWidget(QLabel("Parameters:"), 1, 0)
         self.custom_params_edit = QLineEdit()
         self.custom_params_edit.setPlaceholderText("e.g., a, b, c")
@@ -283,12 +281,12 @@ class FitPanel(SidebarPanel):
         """Create action buttons."""
         button_layout = QHBoxLayout()
 
-        self.fit_button = PButton("Perform Fit", role="primary")
-        self.fit_button.setEnabled(self.scipy_available)
+        self.fit_button = PButton(
+            "Perform Fit", role="primary", on_click=self.fit_command.perform_fit, enabled=self.scipy_available
+        )
         button_layout.addWidget(self.fit_button)
 
-        self.apply_button = PButton("Apply", role="secondary")
-        self.apply_button.setEnabled(False)
+        self.apply_button = PButton("Apply", role="secondary", on_click=self._apply_fit, enabled=False)
         button_layout.addWidget(self.apply_button)
 
         self.clear_button = PButton("Clear Results", role="secondary")
@@ -300,8 +298,6 @@ class FitPanel(SidebarPanel):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
-        self.fit_button.clicked.connect(self.fit_command.perform_fit)
-        self.apply_button.clicked.connect(self._apply_fit)
         self.clear_button.clicked.connect(self._clear_results)
     
     def setup_event_subscriptions(self):
