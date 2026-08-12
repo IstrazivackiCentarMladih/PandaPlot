@@ -101,8 +101,7 @@ class SignalPanel(SidebarPanel):
         results_group = QGroupBox("Results")
         results_layout = QVBoxLayout()
 
-        self.run_btn = PButton("▶ Run Analysis", role="secondary")
-        self.run_btn.clicked.connect(self.run_analysis)
+        self.run_btn = PButton("Run", role="secondary", on_click=self.run_analysis)
 
         results_layout.addWidget(self.run_btn)
 
@@ -116,12 +115,11 @@ class SignalPanel(SidebarPanel):
 
         button_layout = QHBoxLayout()
 
-        self.add_btn = PButton("➕ Add Results to Project", role="primary")
-        self.add_btn.clicked.connect(self.add_results_to_project)
-        self.add_btn.setEnabled(False)
+        self.add_btn = PButton(
+            "Add to Project", role="primary", on_click=self.add_results_to_project, enabled=False
+        )
 
-        self.clear_btn = PButton("🔄 Clear", role="secondary")
-        self.clear_btn.clicked.connect(self.clear)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear)
 
         button_layout.addWidget(self.add_btn)
         button_layout.addWidget(self.clear_btn)
