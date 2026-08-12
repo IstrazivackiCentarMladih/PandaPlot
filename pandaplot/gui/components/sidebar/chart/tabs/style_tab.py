@@ -766,8 +766,10 @@ class StyleTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = PButton("Copy style to Y axis", role="secondary")
-            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
+            copy_button = PButton(
+                "Copy style to Y axis", role="secondary",
+                on_click=lambda _checked=False, p=prefix: self._on_copy_axis_style(p)
+            )
             form_layout.addWidget(copy_button)
 
         self.axes_style_forms[prefix] = {

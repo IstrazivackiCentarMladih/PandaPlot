@@ -82,8 +82,7 @@ class ExamplesDialog(PDialog):
         # top-level import of PButton (under gui.components.common) would fail.
         from pandaplot.gui.components.common.p_button import PButton
 
-        self.close_btn = PButton("Cancel", role="secondary")
-        self.close_btn.clicked.connect(self.reject)
+        self.close_btn = PButton("Cancel", role="secondary", on_click=self.reject)
         layout.addWidget(self.close_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
     def _create_example_item(self, example: dict) -> QPushButton:

@@ -112,9 +112,10 @@ class DataTab(QWidget):
         self._series_section_header = SectionHeader("Series")
         header_row.addWidget(self._series_section_header)
         header_row.addStretch(1)
-        self.add_series_button = PButton("+ Add series", role="secondary")
+        self.add_series_button = PButton(
+            "+ Add series", role="secondary", on_click=self._add_series
+        )
         self.add_series_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.add_series_button.clicked.connect(self._add_series)
         header_row.addWidget(self.add_series_button)
         layout.addLayout(header_row)
 
@@ -310,20 +311,24 @@ class DataTab(QWidget):
         """Per-row delete icon (replaces the old single bottom Remove button
         so a specific series/fit can be removed regardless of which entry
         is selected/expanded)."""
-        button = PButton("\U0001f5d1", role="destructive", icon=True)  # wastebasket emoji
+        button = PButton(
+            "\U0001f5d1", role="destructive", icon=True,  # wastebasket emoji
+            on_click=lambda _checked=False, i=index: self._remove_series_at(i)
+        )
         button.setFixedWidth(24)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setToolTip("Remove")
-        button.clicked.connect(lambda _checked=False, i=index: self._remove_series_at(i))
         return button
 
     def _build_chevron_button(self, index: int, expanded: bool) -> QPushButton:
         """Accordion toggle: purely visual expand/collapse, independent of
         selection (see `_toggle_card_expanded`)."""
-        chevron = PButton("▾" if expanded else "▸", role="secondary", icon=True)
+        chevron = PButton(
+            "▾" if expanded else "▸", role="secondary", icon=True,
+            on_click=lambda _checked=False, i=index: self._toggle_card_expanded(i)
+        )
         chevron.setFixedWidth(24)
         chevron.setCursor(Qt.CursorShape.PointingHandCursor)
-        chevron.clicked.connect(lambda _checked=False, i=index: self._toggle_card_expanded(i))
         return chevron
 
     def _install_select_on_click(self, card: QWidget, index: int):
@@ -511,9 +516,10 @@ class DataTab(QWidget):
             self._expanded_card_y_axis_badge_tokens = tokens
             header.addWidget(badge)
         header.addWidget(self._build_trash_button(index))
-        chevron = PButton("▾", role="secondary", icon=True)  # ▾, indicates "currently expanded"
+        chevron = PButton(
+            "▾", role="secondary", icon=True, enabled=False
+        )  # ▾, indicates "currently expanded"
         chevron.setFixedWidth(24)
-        chevron.setEnabled(False)
         header.addWidget(chevron)
         outer.addLayout(header)
 

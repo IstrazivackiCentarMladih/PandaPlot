@@ -271,7 +271,7 @@ class TransformPanel(SidebarPanel):
         
         # Preview controls
         preview_controls = QHBoxLayout()
-        self.preview_btn = PButton("Preview", role="secondary")
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.update_preview)
         self.preview_btn.setMaximumWidth(70)
         
         self.preview_rows_combo = QComboBox()
@@ -293,10 +293,10 @@ class TransformPanel(SidebarPanel):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = PButton("Apply", role="primary")
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_transform)
         # Remove hardcoded styling - will be applied in _apply_theme
 
-        self.clear_btn = PButton("Clear", role="secondary")
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_panel)
         # Remove hardcoded styling - will be applied in _apply_theme
         
         button_layout.addWidget(self.apply_btn)
@@ -308,10 +308,7 @@ class TransformPanel(SidebarPanel):
         """Set up signal connections."""
         self.transform_type_combo.currentTextChanged.connect(self.on_transform_type_changed)
         self.source_column_list.itemSelectionChanged.connect(self.on_source_column_changed)
-        self.preview_btn.clicked.connect(self.update_preview)
-        self.apply_btn.clicked.connect(self.apply_transform)
-        self.clear_btn.clicked.connect(self.clear_panel)
-        
+
         # Quick function buttons
         self.multiply_btn.clicked.connect(lambda: self.insert_quick_function("x * 2"))
         self.square_btn.clicked.connect(lambda: self.insert_quick_function("x ** 2"))

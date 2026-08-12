@@ -218,8 +218,7 @@ class AnalysisPanel(SidebarPanel):
         group = QGroupBox("Preview")
         group_layout = QVBoxLayout()
         
-        self.preview_btn = PButton("🔍 Preview Analysis", role="secondary")
-        self.preview_btn.clicked.connect(self.preview_analysis)
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.preview_analysis)
         
         self.preview_text = QTextEdit()
         self.preview_text.setMaximumHeight(120)
@@ -236,11 +235,9 @@ class AnalysisPanel(SidebarPanel):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = PButton("Apply", role="primary")
-        self.apply_btn.clicked.connect(self.apply_analysis)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_analysis)
 
-        self.clear_btn = PButton("🔄 Clear", role="secondary")
-        self.clear_btn.clicked.connect(self.clear_inputs)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_inputs)
         
         button_layout.addWidget(self.apply_btn)
         button_layout.addWidget(self.clear_btn)

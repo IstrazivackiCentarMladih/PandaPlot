@@ -39,24 +39,28 @@ class WizardFooter(QWidget):
 
         layout.addStretch(1)
 
-        self.back_button = PButton("Back", role="secondary", parent=self)
+        self.back_button = PButton(
+            "Back", role="secondary", on_click=self.backClicked.emit, parent=self
+        )
         self.back_button.setVisible(step_number > 1)
-        self.back_button.clicked.connect(self.backClicked.emit)
         layout.addWidget(self.back_button)
 
-        self.cancel_button = PButton("Cancel", role="secondary", parent=self)
-        self.cancel_button.clicked.connect(self.cancelClicked.emit)
+        self.cancel_button = PButton(
+            "Cancel", role="secondary", on_click=self.cancelClicked.emit, parent=self
+        )
         layout.addWidget(self.cancel_button)
 
         is_last_step = step_number == total_steps
-        self.next_button = PButton("Next", role="primary", parent=self)
+        self.next_button = PButton(
+            "Next", role="primary", on_click=self.nextClicked.emit, parent=self
+        )
         self.next_button.setVisible(not is_last_step)
-        self.next_button.clicked.connect(self.nextClicked.emit)
         layout.addWidget(self.next_button)
 
-        self.finish_button = PButton("Create chart", role="primary", parent=self)
+        self.finish_button = PButton(
+            "Create Chart", role="primary", on_click=self.finishClicked.emit, parent=self
+        )
         self.finish_button.setVisible(is_last_step)
-        self.finish_button.clicked.connect(self.finishClicked.emit)
         layout.addWidget(self.finish_button)
 
     def set_back_enabled(self, enabled: bool) -> None:

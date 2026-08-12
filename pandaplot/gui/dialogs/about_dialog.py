@@ -96,9 +96,8 @@ class AboutDialog(PDialog):
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        self.close_btn = PButton("Close", role="secondary")
+        self.close_btn = PButton("Close", role="secondary", on_click=self.accept)
         self.close_btn.setDefault(True)
-        self.close_btn.clicked.connect(self.accept)
         button_layout.addWidget(self.close_btn)
         button_layout.addStretch()
         layout.addLayout(button_layout)

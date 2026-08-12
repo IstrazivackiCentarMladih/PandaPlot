@@ -152,8 +152,7 @@ class PreprocessingPanel(SidebarPanel):
         group = QGroupBox("Preview")
         group_layout = QVBoxLayout()
 
-        self.preview_btn = PButton("🔍 Preview", role="secondary")
-        self.preview_btn.clicked.connect(self.preview)
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.preview)
 
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
@@ -169,11 +168,9 @@ class PreprocessingPanel(SidebarPanel):
         """Create the apply/clear buttons."""
         button_layout = QHBoxLayout()
 
-        self.apply_btn = PButton("Apply", role="primary")
-        self.apply_btn.clicked.connect(self.apply)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply)
 
-        self.clear_btn = PButton("🔄 Clear", role="secondary")
-        self.clear_btn.clicked.connect(self.clear_inputs)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_inputs)
 
         button_layout.addWidget(self.apply_btn)
         button_layout.addWidget(self.clear_btn)

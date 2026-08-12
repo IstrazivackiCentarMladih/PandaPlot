@@ -61,8 +61,9 @@ class SeriesConfigCard(Card):
         summary_layout.addWidget(self.summary_label, 1)
         self._error_status_label = QLabel()
         summary_layout.addWidget(self._error_status_label)
-        self._expand_button = PButton("▸", role="secondary", icon=True)
-        self._expand_button.clicked.connect(lambda: self.set_collapsed(False))
+        self._expand_button = PButton(
+            "▸", role="secondary", icon=True, on_click=lambda: self.set_collapsed(False)
+        )
         summary_layout.addWidget(self._expand_button)
         outer.addWidget(self._summary_row)
 
@@ -73,8 +74,9 @@ class SeriesConfigCard(Card):
 
         collapse_row = QHBoxLayout()
         collapse_row.addStretch(1)
-        self._collapse_button = PButton("▾", role="secondary", icon=True)
-        self._collapse_button.clicked.connect(lambda: self.set_collapsed(True))
+        self._collapse_button = PButton(
+            "▾", role="secondary", icon=True, on_click=lambda: self.set_collapsed(True)
+        )
         collapse_row.addWidget(self._collapse_button)
         grid.addLayout(collapse_row, row, 0, 1, 2)
         row += 1
@@ -113,8 +115,9 @@ class SeriesConfigCard(Card):
 
             self._set_error_controls_visible(False)
 
-        self.remove_button = PButton("Remove", role="destructive")
-        self.remove_button.clicked.connect(self.removeRequested.emit)
+        self.remove_button = PButton(
+            "Remove", role="destructive", on_click=self.removeRequested.emit
+        )
         grid.addWidget(self.remove_button, row, 0, 1, 2)
 
         outer.addWidget(self._form_widget)

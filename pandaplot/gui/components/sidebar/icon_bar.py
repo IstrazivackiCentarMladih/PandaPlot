@@ -160,10 +160,11 @@ class IconBar(PWidget):
         # Add stretch to push main panel buttons to top and settings to bottom
         self.button_layout.addStretch()
         
-        self.settings_button = PButton("⚙️", role="secondary", icon=True)
         # TODO: use command instead of signal
         # TODO: make settings button addition more generic so that icon bar doesn't know about settings
-        self.settings_button.clicked.connect(self.settings_requested.emit)
+        self.settings_button = PButton(
+            "⚙️", role="secondary", icon=True, on_click=self.settings_requested.emit
+        )
         # Emoji glyph needs a larger font size than the icon-shape QSS sets by default
         self.settings_button.setStyleSheet("font-size: 16px;")
         self.settings_button.setToolTip("Settings")

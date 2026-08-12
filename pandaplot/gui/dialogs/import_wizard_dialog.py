@@ -176,8 +176,7 @@ class ImportWizardDialog(PDialog):
         self.file_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         row.addWidget(self.file_path_label, 1)
 
-        self.browse_button = PButton("Browse…", role="secondary")
-        self.browse_button.clicked.connect(self._browse_file)
+        self.browse_button = PButton("Browse…", role="secondary", on_click=self._browse_file)
         row.addWidget(self.browse_button, 0)
 
         parent_layout.addLayout(row)
@@ -272,13 +271,11 @@ class ImportWizardDialog(PDialog):
         row.setContentsMargins(0, 0, 0, 0)
         row.addStretch(1)
 
-        self.cancel_button = PButton("Cancel", role="secondary")
-        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button = PButton("Cancel", role="secondary", on_click=self.reject)
         row.addWidget(self.cancel_button)
 
-        self.import_button = PButton("Import", role="primary")
+        self.import_button = PButton("Import", role="primary", on_click=self.accept)
         self.import_button.setDefault(True)
-        self.import_button.clicked.connect(self.accept)
         row.addWidget(self.import_button)
 
         parent_layout.addWidget(self.button_frame)

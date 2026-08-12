@@ -83,10 +83,9 @@ class StatisticsPanel(SidebarPanel):
         selector_row = QHBoxLayout()
         selector_row.setContentsMargins(0, 0, 0, 0)
         selector_row.addWidget(self.test_type_combo, 1)
-        self.info_btn = PButton("ℹ️", role="secondary", icon=True)
+        self.info_btn = PButton("ℹ️", role="secondary", icon=True, on_click=self._show_test_info)
         self.info_btn.setFixedWidth(32)
         self.info_btn.setToolTip("Learn about this test: explanation, formula and an example")
-        self.info_btn.clicked.connect(self._show_test_info)
         selector_row.addWidget(self.info_btn)
         form.addRow("Test:", selector_row)
         group_layout.addLayout(form)
@@ -118,8 +117,7 @@ class StatisticsPanel(SidebarPanel):
         group = QGroupBox("Results")
         group_layout = QVBoxLayout()
 
-        self.run_btn = PButton("▶ Run Test", role="secondary")
-        self.run_btn.clicked.connect(self.run_test)
+        self.run_btn = PButton("Run", role="secondary", on_click=self.run_test)
         group_layout.addWidget(self.run_btn)
 
         self.results_text = QTextEdit()
@@ -134,12 +132,11 @@ class StatisticsPanel(SidebarPanel):
     def _create_action_buttons(self, layout):
         button_layout = QHBoxLayout()
 
-        self.add_btn = PButton("➕ Add Results to Project", role="primary")
-        self.add_btn.clicked.connect(self.add_results_to_project)
-        self.add_btn.setEnabled(False)
+        self.add_btn = PButton(
+            "Add to Project", role="primary", on_click=self.add_results_to_project, enabled=False
+        )
 
-        self.clear_btn = PButton("🔄 Clear", role="secondary")
-        self.clear_btn.clicked.connect(self.clear)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear)
 
         button_layout.addWidget(self.add_btn)
         button_layout.addWidget(self.clear_btn)

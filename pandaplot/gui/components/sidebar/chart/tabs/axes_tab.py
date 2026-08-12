@@ -200,8 +200,10 @@ class AxesTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = PButton("Copy settings to Y axis", role="secondary")
-            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_settings(p))
+            copy_button = PButton(
+                "Copy settings to Y axis", role="secondary",
+                on_click=lambda _checked=False, p=prefix: self._on_copy_axis_settings(p)
+            )
             form_layout.addWidget(copy_button)
 
         self.axes_forms[prefix] = {
