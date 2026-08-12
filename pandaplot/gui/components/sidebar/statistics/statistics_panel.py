@@ -24,7 +24,7 @@ from pandaplot.analysis import STAT_TESTS, InputMode, StatTestResult, StatTestTy
 from pandaplot.commands.project.dataset.statistical_test_command import StatisticalTestCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.gui.components.sidebar.statistics.test_info_dialog import TestInfoDialog
+from pandaplot.gui.components.sidebar.statistics.test_info_dialog import InfoDialogHelper
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -157,7 +157,7 @@ class StatisticsPanel(SidebarPanel):
         test_type = self._current_test_type()
         if test_type is None:
             return
-        dialog = TestInfoDialog(self.app_context, STAT_TESTS[test_type], parent=self)
+        dialog = InfoDialogHelper(self.app_context, STAT_TESTS[test_type], parent=self)
         dialog.exec()
 
     def _on_test_type_changed(self):
