@@ -142,13 +142,13 @@ class DatasetTab(PWidget):
         actions_layout.setContentsMargins(0, 5, 0, 0)
 
         # Create chart button
-        self.create_chart_btn = PButton("📈 Create Chart from Data", role="primary")
-        self.create_chart_btn.clicked.connect(self.create_chart_from_data)
+        self.create_chart_btn = PButton(
+            "Create Chart", role="primary", on_click=self.create_chart_from_data
+        )
         actions_layout.addWidget(self.create_chart_btn)
 
         # Export data button
-        self.export_btn = PButton("💾 Export Data", role="secondary")
-        self.export_btn.clicked.connect(self.export_data)
+        self.export_btn = PButton("Export Data", role="secondary", on_click=self.export_data)
         actions_layout.addWidget(self.export_btn)
 
         # Add stretch to push buttons to the left
