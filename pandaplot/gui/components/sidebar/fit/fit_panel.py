@@ -289,7 +289,7 @@ class FitPanel(SidebarPanel):
         self.apply_button = PButton("Apply", role="secondary", on_click=self._apply_fit, enabled=False)
         button_layout.addWidget(self.apply_button)
 
-        self.clear_button = PButton("Clear Results", role="secondary")
+        self.clear_button = PButton("Clear Results", role="secondary", on_click=self._clear_results)
         button_layout.addWidget(self.clear_button)
         
         layout.addLayout(button_layout)
@@ -298,8 +298,7 @@ class FitPanel(SidebarPanel):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
-        self.clear_button.clicked.connect(self._clear_results)
-    
+
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
         self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
