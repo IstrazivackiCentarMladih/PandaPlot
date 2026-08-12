@@ -169,7 +169,7 @@ class PreprocessingPanel(SidebarPanel):
         """Create the apply/clear buttons."""
         button_layout = QHBoxLayout()
 
-        self.apply_btn = PButton("✅ Apply", role="primary")
+        self.apply_btn = PButton("Apply", role="primary")
         self.apply_btn.clicked.connect(self.apply)
 
         self.clear_btn = PButton("🔄 Clear", role="secondary")

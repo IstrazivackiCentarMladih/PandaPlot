@@ -288,7 +288,7 @@ class FitPanel(SidebarPanel):
         self.fit_button.setEnabled(self.scipy_available)
         button_layout.addWidget(self.fit_button)
 
-        self.apply_button = PButton("Apply to Chart", role="secondary")
+        self.apply_button = PButton("Apply", role="secondary")
         self.apply_button.setEnabled(False)
         button_layout.addWidget(self.apply_button)
 

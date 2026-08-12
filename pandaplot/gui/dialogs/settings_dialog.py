@@ -394,7 +394,7 @@ class SettingsDialog(PDialog):
         button_layout.addWidget(self.cancel_btn)
 
         # Apply button
-        self.apply_btn = PButton("✅ Apply", role="primary")
+        self.apply_btn = PButton("Apply", role="primary")
         self.apply_btn.clicked.connect(self.apply_settings)
         button_layout.addWidget(self.apply_btn)
 

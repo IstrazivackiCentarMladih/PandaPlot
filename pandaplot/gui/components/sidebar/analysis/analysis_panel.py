@@ -236,7 +236,7 @@ class AnalysisPanel(SidebarPanel):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = PButton("✅ Apply Analysis", role="primary")
+        self.apply_btn = PButton("Apply", role="primary")
         self.apply_btn.clicked.connect(self.apply_analysis)
 
         self.clear_btn = PButton("🔄 Clear", role="secondary")
