@@ -4,7 +4,7 @@ Visitor pattern implementation for traversing project item hierarchies.
 
 from typing import Any, Protocol
 
-from pandaplot.models.project.items import Chart, Dataset, Folder, Item, ItemCollection, Note
+from pandaplot.models.project.items import Chart, Dataset, Folder, Image, ImageGallery, Item, ItemCollection, Note
 
 
 class ItemVisitor(Protocol):
@@ -26,6 +26,14 @@ class ItemVisitor(Protocol):
         """Visit a chart item."""
         ...
     
+    def visit_image_gallery(self, gallery: ImageGallery, context: Any = None) -> Any:
+        """Visit an image gallery (or nested album) item."""
+        ...
+
+    def visit_image(self, image: Image, context: Any = None) -> Any:
+        """Visit an image item."""
+        ...
+
     def visit_item_collection(self, collection: ItemCollection, context: Any = None) -> Any:
         """Visit a generic item collection."""
         ...
@@ -89,6 +97,10 @@ class ProjectTreeBuilder:
             return self.visit_dataset(item, parent_context)
         elif isinstance(item, Chart):
             return self.visit_chart(item, parent_context)
+        elif isinstance(item, ImageGallery):
+            return self.visit_image_gallery(item, parent_context)
+        elif isinstance(item, Image):
+            return self.visit_image(item, parent_context)
         elif isinstance(item, ItemCollection):
             return self.visit_item_collection(item, parent_context)
         else:
@@ -133,6 +145,28 @@ class ProjectTreeBuilder:
             {"type": "chart", "id": chart.id, "data": chart}
         )
     
+    def visit_image_gallery(self, gallery: ImageGallery, parent_context: Any = None) -> Any:
+        """Visit an image gallery (or nested album) and recursively build its children."""
+        tree_item = self.tree_item_factory(
+            f"🖼️ {gallery.name}",
+            "imagegallery",
+            {"type": "imagegallery", "id": gallery.id, "data": gallery}
+        )
+
+        for child_item in gallery.get_items():
+            child_tree_item = self.visit(child_item, tree_item)
+            self.attach_tree_item(tree_item, child_tree_item)
+
+        return tree_item
+
+    def visit_image(self, image: Image, parent_context: Any = None) -> Any:
+        """Visit an image item."""
+        return self.tree_item_factory(
+            f"🎞️ {image.name}",
+            "image",
+            {"type": "image", "id": image.id, "data": image}
+        )
+
     def visit_item_collection(self, collection: ItemCollection, parent_context: Any = None) -> Any:
         """Visit a generic item collection."""
         tree_item = self.tree_item_factory(

@@ -75,12 +75,12 @@ class ProjectTreeWidget(QTreeWidget):
                 target_type = target_data.get("type", "")
 
                 # If dropping on a folder, make it the parent
-                if target_type == "folder":
+                if target_type in ["folder", "imagegallery"]:
                     new_parent_id = target_data.get("id", "root")
                     self.logger.debug(
                         "ProjectTreeWidget: dropping on folder new_parent_id=%s", new_parent_id)
                 # If dropping on another item, use its parent folder
-                elif target_type in ["note", "dataset", "chart"]:
+                elif target_type in ["note", "dataset", "chart", "image"]:
                     target_item_obj = target_data.get("data")
                     if target_item_obj and target_item_obj.parent_id:
                         # Check if the parent_id is the root collection ID
@@ -167,12 +167,12 @@ class ProjectTreeWidget(QTreeWidget):
                             "ProjectTreeWidget: drag over item %s %s", target_type, target_id)
 
                         # Valid drop targets: folders (drop into), project root, or any item (to drop beside it)
-                        if target_type in ["folder", "project", "note", "dataset", "chart"]:
+                        if target_type in ["folder", "project", "note", "dataset", "chart", "imagegallery", "image"]:
                             # Only highlight folders and project root for "drop into" operations
                             # For other items, provide subtle feedback since it's a "drop beside" operation
-                            if target_type in ["folder", "project"]:
+                            if target_type in ["folder", "project", "imagegallery"]:
                                 self._highlight_item(target_item)
-                                if target_type == "folder":
+                                if target_type in ("folder", "imagegallery"):
                                     self.setToolTip("Drop into folder")
                                 else:
                                     self.setToolTip("Drop at project root")
@@ -231,7 +231,7 @@ class ProjectTreeWidget(QTreeWidget):
 
             from PySide6.QtGui import QColor
 
-            if target_type == "folder":
+            if target_type in ("folder", "imagegallery"):
                 # Green for folders (items will be moved INTO the folder)
                 highlight_color = QColor(144, 238, 144, 120)  # Light green
             elif target_type == "project":

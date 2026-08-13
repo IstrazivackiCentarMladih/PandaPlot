@@ -199,6 +199,15 @@ class ProjectPanelCommandManager:
             # For folders, toggle expansion
             if item_type == "folder":
                 item.setExpanded(not item.isExpanded())
+            # Image galleries (and nested albums) open their grid-view tab
+            # rather than merely expanding, since that's how you browse them.
+            elif item_type == "imagegallery":
+                self.open_selected_item()
+                return
+            # Images have no standalone tab; open their parent gallery instead.
+            elif item_type == "image":
+                self._open_parent_gallery(item_data)
+                return
             # For other items that can be opened, don't start editing
             elif item_type in ["note", "dataset", "chart"]:
                 self.open_selected_item()
@@ -206,3 +215,22 @@ class ProjectPanelCommandManager:
 
         # For project root or items without actions, do nothing
         # Inline editing is triggered by single click when item is selected
+
+    def _open_parent_gallery(self, item_data):
+        """Open the tab for an Image's parent ImageGallery (images have no own tab)."""
+        image = item_data.get("data")
+        if image is None or not image.parent_id:
+            return
+
+        project = self.app_state.current_project
+        if not project:
+            return
+
+        gallery = project.find_item(image.parent_id)
+        if gallery is None:
+            return
+
+        self.app_state.event_bus.emit(UIEvents.TAB_OPEN_REQUESTED, TabOpenRequestedData(
+            item_id=gallery.id,
+            item_name=gallery.name
+        ).to_dict())
