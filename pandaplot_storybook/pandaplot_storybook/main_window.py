@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
         self._theme_manager = theme_manager
         self._config = config
         self._current_story_def: StoryDef | None = None
+        self._current_story_name: str | None = None
         self._current_controls_panel: ControlsPanel | None = None
 
         self._sidebar = QListWidget()
@@ -72,6 +73,7 @@ class MainWindow(QMainWindow):
     def _on_story_selected(self, name: str) -> None:
         if not name:
             return
+        self._current_story_name = name
         self._current_story_def = get_story(name)
         self._rebuild_controls_panel()
         self._refresh_preview()
@@ -91,6 +93,8 @@ class MainWindow(QMainWindow):
         values = self._current_controls_panel.values() if self._current_controls_panel else {}
         tokens = self._theme_manager.get_design_tokens()
         widget = self._current_story_def.make_widget(values, tokens)
+        if not isinstance(widget, QWidget):
+            raise TypeError(f"Story '{self._current_story_name}' returned {widget!r}, expected a QWidget")
         if hasattr(widget, "set_tokens"):
             widget.set_tokens(tokens)
         self._preview_layout.addWidget(widget)

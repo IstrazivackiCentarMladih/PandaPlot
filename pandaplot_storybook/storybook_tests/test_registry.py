@@ -23,3 +23,13 @@ def test_registering_the_same_name_twice_raises():
         @story("__TestWidgetTwo__")
         def _build_again() -> StoryDef:
             return StoryDef(controls=[], make_widget=lambda values, tokens: None)
+
+
+def test_registry_is_isolated_between_tests():
+    """`__TestWidget__` was registered by an earlier test in this module.
+
+    If the autouse isolation fixture in conftest.py did not restore the
+    registry after that test, it would still be visible here.
+    """
+    assert "__TestWidget__" not in all_story_names()
+    assert "__TestWidgetTwo__" not in all_story_names()
