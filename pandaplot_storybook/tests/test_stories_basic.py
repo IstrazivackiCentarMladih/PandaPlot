@@ -32,3 +32,35 @@ def test_chip_row_story_builds_a_widget(qtbot):
     widget = story_def.make_widget(values, tokens={})
     assert widget is not None
     qtbot.addWidget(widget)
+
+
+def test_card_story_builds_a_widget(qtbot):
+    story_def = get_story("Card")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_color_swatch_row_story_builds_a_widget(qtbot):
+    story_def = get_story("ColorSwatchRow")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_dirty_footer_story_builds_a_widget(qtbot):
+    story_def = get_story("DirtyFooter")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_drop_down_combo_box_story_builds_a_widget(qtbot):
+    story_def = get_story("DropDownComboBox")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
