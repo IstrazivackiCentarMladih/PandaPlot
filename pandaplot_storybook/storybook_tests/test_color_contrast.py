@@ -50,3 +50,23 @@ def test_segmented_control_override_meets_wcag_aa_against_real_tokens(theme):
     bg = tokens["accent_selected_bg"]
     text = SEGMENTED_SELECTED_TEXT[theme.value]
     assert contrast_ratio(text, bg) >= 4.5
+
+
+@pytest.mark.parametrize("theme", [Theme.LIGHT, Theme.DARK])
+def test_sidebar_selected_text_meets_wcag_aa_against_real_accent_token(theme):
+    """Review finding 1: the sidebar's selected-row stylesheet used to pair
+    `tokens['accent']` (background) with `tokens['accent_active_text']`
+    (foreground) -- but `accent_active_text` is `accent.darker(115)`,
+    designed for accent-colored *text* on a neutral surface elsewhere in
+    pandaplot, not for text drawn on top of `accent` itself. That pairing
+    computed to ~1.22:1 contrast for the default accent, far below WCAG AA's
+    4.5:1. `pick_contrasting_text` instead picks whichever of black/white
+    actually clears AA against the real `accent` token, computed here from a
+    real ThemeManager/ApplicationConfig, not a hardcoded guess.
+    """
+    from pandaplot_storybook.color_contrast import pick_contrasting_text
+
+    tokens = _tokens_for(theme)
+    accent = tokens["accent"]
+    chosen_fg = pick_contrasting_text(accent)
+    assert contrast_ratio(chosen_fg, accent) >= 4.5

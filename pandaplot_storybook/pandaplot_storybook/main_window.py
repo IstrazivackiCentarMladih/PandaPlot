@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from pandaplot_storybook.color_contrast import SEGMENTED_SELECTED_TEXT
+from pandaplot_storybook.color_contrast import SEGMENTED_SELECTED_TEXT, pick_contrasting_text
 from pandaplot_storybook.controls import ControlsPanel
 from pandaplot_storybook.registry import StoryDef, all_story_names, get_story
 
@@ -181,16 +181,25 @@ class MainWindow(QMainWindow):
         # "the component under test" (requirement 3); sidebar/controls share
         # the app-chrome surface but are still separated from one another
         # and from the preview by a visible border (requirement 2).
-        backgrounds = {
-            "sidebarPane": tokens["surface_white"],
-            "previewPane": tokens["surface_chrome"],
-            "controlsPane": tokens["surface_chrome"],
+        # Each pane gets its own background+border pairing so all three
+        # splitter regions read as visually distinct at the outer-frame
+        # level, not just via the preview's inner recessed surface below
+        # (requirement 2 / review finding 2). Sidebar and controls both read
+        # as "app chrome" (surface_white) but are told apart by border tone;
+        # preview is the deliberate odd one out (surface_chrome), since it
+        # already gets its own recessed inner surface_inset panel.
+        pane_styles = {
+            "sidebarPane": (tokens["surface_white"], tokens["border_panel"]),
+            "previewPane": (tokens["surface_chrome"], tokens["border_panel"]),
+            "controlsPane": (tokens["surface_white"], tokens["border_control"]),
         }
-        background = backgrounds.get(object_name, tokens["surface_chrome"])
+        background, border = pane_styles.get(
+            object_name, (tokens["surface_chrome"], tokens["border_panel"])
+        )
         pane.setStyleSheet(
             f"QFrame#{object_name} {{"
             f" background-color: {background};"
-            f" border: 1px solid {tokens['border_panel']};"
+            f" border: 1px solid {border};"
             "}"
         )
         if object_name == "previewPane":
@@ -232,15 +241,25 @@ class MainWindow(QMainWindow):
         renders with a more muted "inactive" palette group when the widget
         lacks keyboard focus. This instance-local stylesheet makes the
         selected item equally visible focused or not, in both themes.
+
+        Storybook-local fix for review finding 1: `accent_active_text` is
+        designed for accent-colored *text* on a light/neutral background
+        elsewhere in pandaplot (it's only `accent.darker(115)`), not for
+        text drawn ON TOP of the `accent` background used here, so pairing
+        them gave ~1.22:1 contrast. Instead pick whichever of black/white
+        actually clears WCAG AA against the real `accent` token at render
+        time (verified in storybook_tests/test_color_contrast.py against
+        real ThemeManager tokens for both themes).
         """
         tokens = self._theme_manager.get_design_tokens()
+        selected_text = pick_contrasting_text(tokens["accent"])
         self._sidebar.setStyleSheet(
             "QListWidget::item {"
             f" padding: 4px 8px;"
             "}"
             "QListWidget::item:selected, QListWidget::item:selected:!active {"
             f" background-color: {tokens['accent']};"
-            f" color: {tokens['accent_active_text']};"
+            f" color: {selected_text};"
             "}"
             "QListWidget::item:hover {"
             f" background-color: {tokens['surface_inset']};"

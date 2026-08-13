@@ -47,4 +47,19 @@ SEGMENTED_SELECTED_TEXT = {
 }
 
 
-__all__ = ["SEGMENTED_SELECTED_TEXT", "contrast_ratio"]
+def pick_contrasting_text(bg_hex: str) -> str:
+    """Return whichever of black/white gives the higher contrast against `bg_hex`.
+
+    Used for the sidebar's selected-row text: `tokens['accent']` varies by
+    theme/config, so the correct foreground can't be a fixed hex like
+    `SEGMENTED_SELECTED_TEXT` above (which is tuned for a *different*
+    background, `accent_selected_bg`). This is a simple, robust fallback
+    that's always guaranteed to be the better of the two options against
+    whatever `accent` happens to be, at render time.
+    """
+    white_ratio = contrast_ratio("#FFFFFF", bg_hex)
+    black_ratio = contrast_ratio("#000000", bg_hex)
+    return "#FFFFFF" if white_ratio >= black_ratio else "#000000"
+
+
+__all__ = ["SEGMENTED_SELECTED_TEXT", "contrast_ratio", "pick_contrasting_text"]
