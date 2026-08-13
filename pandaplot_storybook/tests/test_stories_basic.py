@@ -64,3 +64,45 @@ def test_drop_down_combo_box_story_builds_a_widget(qtbot):
     widget = story_def.make_widget(values, tokens={})
     assert widget is not None
     qtbot.addWidget(widget)
+
+
+def test_section_header_story_builds_a_widget(qtbot):
+    story_def = get_story("SectionHeader")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_slider_with_spinbox_story_builds_a_widget(qtbot):
+    story_def = get_story("SliderWithSpinbox")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_value_combo_box_story_builds_a_widget(qtbot):
+    story_def = get_story("ValueComboBox")
+    values = {control.name: control.default for control in story_def.controls}
+    widget = story_def.make_widget(values, tokens={})
+    assert widget is not None
+    qtbot.addWidget(widget)
+
+
+def test_line_style_icons_story_builds_a_widget_with_no_controls(qtbot):
+    story_def = get_story("LineStyleIcons")
+    assert story_def.controls == []
+    widget = story_def.make_widget({}, tokens={})
+    assert widget is not None
+    assert widget.count() > 0
+    qtbot.addWidget(widget)
+
+
+def test_font_family_options_story_builds_a_widget_with_no_controls(qtbot):
+    story_def = get_story("FontFamilyOptions")
+    assert story_def.controls == []
+    widget = story_def.make_widget({}, tokens={})
+    assert widget is not None
+    assert widget.count() > 0
+    qtbot.addWidget(widget)
