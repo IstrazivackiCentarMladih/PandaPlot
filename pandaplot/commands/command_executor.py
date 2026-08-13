@@ -32,9 +32,12 @@ class CommandExecutor:
         self.logger.debug("Executing command: %s", command_name)
         
         try:
-            command.execute()
-            
-            # Add to undo stack
+            success = command.execute()
+
+            if not success:
+                self.logger.warning("Command execution failed: %s", command_name)
+                return False
+
             self.undo_stack.append(command)
             if len(self.undo_stack) > self.max_undo_levels:
                 #TODO: ensure we clean command references properly
