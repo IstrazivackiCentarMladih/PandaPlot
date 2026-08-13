@@ -10,7 +10,7 @@ from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import EventBus
-from pandaplot.models.project.items import Chart, Dataset, Folder, Note
+from pandaplot.models.project.items import Chart, Dataset, Folder, Image, ImageGallery, Note
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
@@ -19,6 +19,8 @@ from pandaplot.services.theme import ThemeManager
 from pandaplot.storage.chart_data_manager import ChartDataManager
 from pandaplot.storage.dataset_data_manager import DatasetDataManager
 from pandaplot.storage.folder_data_manager import FolderDataManager
+from pandaplot.storage.image_data_manager import ImageDataManager
+from pandaplot.storage.image_gallery_data_manager import ImageGalleryDataManager
 from pandaplot.storage.item_data_manager_factory import ItemDataManagerFactory
 from pandaplot.storage.note_data_manager import NoteDataManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
@@ -33,6 +35,8 @@ def create_project_data_manager() -> ProjectDataManager:
     factory.register("folder", Folder, FolderDataManager(), "folder")
     factory.register("chart", Chart, ChartDataManager(), "chart")
     factory.register("dataset", Dataset, DatasetDataManager(), "dataset")
+    factory.register("image", Image, ImageDataManager(), "image")
+    factory.register("imagegallery", ImageGallery, ImageGalleryDataManager(), "imagegallery")
     return ProjectDataManager(factory)
 
 
