@@ -29,6 +29,10 @@ uv run pytest
 
 ## Adding a new story
 
+Tests live in `storybook_tests/` (not `tests/`, to avoid colliding with
+PandaPlot's own root-level `tests/` package when running `pytest` from the
+repo root).
+
 Add `pandaplot_storybook/stories/<widget>_story.py` with a `@story("Name")`-decorated
 builder returning a `StoryDef` (see any existing `*_story.py` for the pattern),
 then import it from `pandaplot_storybook/stories/__init__.py`.
