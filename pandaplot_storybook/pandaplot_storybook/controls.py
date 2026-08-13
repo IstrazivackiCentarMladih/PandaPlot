@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLineEdit, QSpinBox, QWidget
-
-from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 
 from pandaplot_storybook.registry import (
     BoolControl,
