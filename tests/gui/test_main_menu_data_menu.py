@@ -50,7 +50,7 @@ def test_data_menu_has_an_add_rows_columns_action():
 
     titles = [action.text() for action in _data_menu(menu).actions()]
     assert "Add Rows / Columns..." in titles
-    assert titles.index("Add Rows / Columns...") == titles.index("Create Empty Dataset") + 1
+    assert titles.index("Add Rows / Columns...") == titles.index("Import Images...") + 1
 
 
 def test_add_rows_columns_action_disabled_with_no_datasets():

@@ -128,7 +128,7 @@ class ProjectViewPanelContextManager(QMenu):
         self.create_chart_action.setVisible(item_type == "dataset")
 
         # Show image import only for image galleries (or a container it could be created under)
-        self.import_images_action.setVisible(item_type in ("imagegallery", "folder", "project"))
+        self.import_images_action.setVisible(item_type == "imagegallery")
 
         self.delete_action.setEnabled(can_delete)
 
