@@ -3,7 +3,7 @@ import pytest
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon, _vector_arrow_geometry
+from pandaplot.gui.dialogs.chart.chart_type_icons import _vector_arrow_geometry, chart_type_icon
 
 
 @pytest.fixture(scope="module", autouse=True)
