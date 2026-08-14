@@ -22,9 +22,14 @@ class ImageDataManager(ItemDataManager[Image]):
         if item.storage_mode == "copied":
             data = item.get_bytes()
             if data is None:
-                raise ValueError(f"Image '{item.name}' (ID: {item.id}) has storage_mode='copied' but no bytes set")
-            blob_path = f"{path_in_zip}.{item.image_ext}"
-            zip_file.writestr(blob_path, data)
+                self.logger.warning(
+                    "Image '%s' (ID: %s) has storage_mode='copied' but no bytes in memory; "
+                    "skipping blob write, only metadata will be saved",
+                    item.name, item.id
+                )
+            else:
+                blob_path = f"{path_in_zip}.{item.image_ext}"
+                zip_file.writestr(blob_path, data)
 
         metadata = {
             "id": item.id,
@@ -65,7 +70,13 @@ class ImageDataManager(ItemDataManager[Image]):
 
         if image.storage_mode == "copied":
             blob_path = f"{path_in_zip}.{image.image_ext}"
-            image.set_bytes(zip_file.read(blob_path))
+            if blob_path in zip_file.namelist():
+                image.set_bytes(zip_file.read(blob_path))
+            else:
+                self.logger.warning(
+                    "Blob file '%s' not found for image '%s' (ID: %s); bytes will be None",
+                    blob_path, image.name, image.id
+                )
 
         self.logger.info("Successfully loaded image '%s' (ID: %s)", image.name, image.id)
         return image

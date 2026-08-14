@@ -15,6 +15,9 @@ class _ZipBytesProxy:
     def read(self, path: str) -> bytes:
         return self._raw_data[path]
 
+    def namelist(self) -> list:
+        return list(self._raw_data.keys())
+
 
 class ProjectDataManager:
     def __init__(self, item_data_manager_factory: ItemDataManagerFactory):

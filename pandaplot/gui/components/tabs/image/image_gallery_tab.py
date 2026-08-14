@@ -38,6 +38,13 @@ class ImageGalleryTab(PWidget):
         self.app_context = app_context
         self.app_state = app_context.get_app_state()
         self.gallery = gallery
+        # Session-lifetime cache of already-loaded/scaled thumbnails, keyed by
+        # image id. A cached value of None means "failed to load this
+        # session, don't retry" -- this avoids re-downloading external URL
+        # images (or re-decoding bytes) on every grid repopulation, which
+        # otherwise happens on every PROJECT_ITEM_ADDED/REMOVED/RENAMED event
+        # anywhere in the project.
+        self._thumbnail_cache: dict[str, Optional[QPixmap]] = {}
         self._initialize()
         self._populate_grid()
         self.setup_connections()
@@ -78,7 +85,37 @@ class ImageGalleryTab(PWidget):
         return self.gallery.name
 
     def _on_project_item_changed(self, event_data: dict):
-        self._populate_grid()
+        if self._event_concerns_this_gallery(event_data):
+            self._populate_grid()
+
+    def _event_concerns_this_gallery(self, event_data: dict) -> bool:
+        """
+        Best-effort filter so this tab only repopulates for events that
+        actually affect its own contents, rather than on every project
+        item add/remove/rename anywhere in the project (event payloads
+        vary by command, so this checks every key we know commands use).
+        """
+        parent_id = event_data.get("parent_id")
+        if parent_id is not None:
+            return parent_id == self.gallery.id
+
+        item_data = event_data.get("item_data")
+        if isinstance(item_data, dict) and "parent_id" in item_data:
+            return item_data.get("parent_id") == self.gallery.id
+
+        candidate_ids = {
+            event_data.get(key)
+            for key in ("item_id", "gallery_id", "image_id")
+            if event_data.get(key)
+        }
+        if not candidate_ids:
+            # No usable identifying info at all -- fall back to repopulating,
+            # since we can't safely rule the event out.
+            return True
+        if self.gallery.id in candidate_ids:
+            return True
+        current_child_ids = {child.id for child in self.gallery.get_items()}
+        return bool(candidate_ids & current_child_ids)
 
     def _populate_grid(self):
         self.grid.clear()
@@ -93,7 +130,16 @@ class ImageGalleryTab(PWidget):
         self._refresh_toolbar_state()
 
     def _thumbnail_for(self, image: Image) -> QPixmap:
-        """Load (or fetch) image bytes and downscale in memory; broken placeholder on any failure."""
+        """Load (or fetch) image bytes and downscale in memory; broken placeholder on any failure.
+
+        Results (including failures) are cached for the tab's lifetime, keyed
+        by image id, so external URL images in particular are not
+        re-downloaded on every grid repopulation within the same session.
+        """
+        if image.id in self._thumbnail_cache:
+            cached = self._thumbnail_cache[image.id]
+            return cached if cached is not None else self._broken_placeholder()
+
         try:
             data = image.get_bytes()
             if data is None and image.storage_mode == "external":
@@ -104,9 +150,12 @@ class ImageGalleryTab(PWidget):
             pixmap = QPixmap()
             if not pixmap.loadFromData(data):
                 raise ValueError("could not decode image data")
-            return pixmap.scaled(_TILE_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            scaled = pixmap.scaled(_TILE_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self._thumbnail_cache[image.id] = scaled
+            return scaled
         except Exception:
             self.logger.warning("Failed to load thumbnail for image '%s' (id=%s)", image.name, image.id)
+            self._thumbnail_cache[image.id] = None
             return self._broken_placeholder()
 
     def _load_external_bytes(self, source_file: str) -> Optional[bytes]:
@@ -180,7 +229,7 @@ class ImageGalleryTab(PWidget):
         if not confirmed:
             return
         for item in selected:
-            command = DeleteItemCommand(self.app_context, item_id=item.id)
+            command = DeleteItemCommand(self.app_context, item_id=item.id, confirm=False)
             self.app_context.get_command_executor().execute_command(command)
 
     def _on_group_into_album_clicked(self):
@@ -194,9 +243,10 @@ class ImageGalleryTab(PWidget):
         create_command = CreateImageGalleryCommand(
             self.app_context, gallery_name=album_name.strip(), parent_id=self.gallery.id
         )
-        if not self.app_context.get_command_executor().execute_command(create_command):
-            return
+        self.app_context.get_command_executor().execute_command(create_command)
         album_id = create_command.created_gallery_id
+        if album_id is None:
+            return
 
         for image in selected:
             move_command = MoveItemCommand(

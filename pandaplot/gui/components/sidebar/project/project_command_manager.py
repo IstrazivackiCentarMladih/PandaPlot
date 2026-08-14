@@ -85,12 +85,6 @@ class ProjectPanelCommandManager:
         if selected_info and selected_info["type"] == "imagegallery":
             gallery_id = selected_info["id"]
 
-        if gallery_id is None:
-            create_command = CreateImageGalleryCommand(self.app_context, parent_id=self.get_target_folder_id())
-            if not self.app_context.get_command_executor().execute_command(create_command):
-                return
-            gallery_id = create_command.created_gallery_id
-
         from PySide6.QtWidgets import QDialog
 
         from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
@@ -98,6 +92,13 @@ class ProjectPanelCommandManager:
         dialog = ImageImportDialog(self.app_context, parent=self.parent_widget)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
+        if gallery_id is None:
+            create_command = CreateImageGalleryCommand(self.app_context, parent_id=self.get_target_folder_id())
+            self.app_context.get_command_executor().execute_command(create_command)
+            gallery_id = create_command.created_gallery_id
+            if gallery_id is None:
+                return
 
         import_command = ImportImagesCommand(
             self.app_context, gallery_id=gallery_id,
