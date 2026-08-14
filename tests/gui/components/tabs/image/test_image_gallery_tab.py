@@ -71,3 +71,37 @@ class TestImageGalleryTab:
         tab.grid.itemSelectionChanged.emit()
 
         assert tab.group_into_album_button.isEnabled() is True
+
+
+class TestEventConcernsThisGallery:
+    def test_removed_item_no_longer_in_gallery_still_matches_last_populate(self, app_context):
+        """Regression: undo of ImportImagesCommand removes the image from the
+        gallery *then* emits PROJECT_ITEM_REMOVED with only
+        {"project", "image_id"} (no parent_id). By the time the event
+        arrives, gallery.get_items() no longer contains it, so matching
+        against current children alone would miss it and leave a stale
+        tile. The filter must still recognize it via the last-populate
+        snapshot.
+        """
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        assert tab.grid.count() == 1
+
+        # Simulate the undo: item already removed from the gallery by the
+        # time the event fires.
+        gallery.remove_item(image)
+        event_data = {"project": Mock(), "image_id": image.id}
+
+        assert tab._event_concerns_this_gallery(event_data) is True
+
+    def test_unrelated_removed_item_does_not_match(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        event_data = {"project": Mock(), "image_id": "some-other-id-never-in-this-gallery"}
+
+        assert tab._event_concerns_this_gallery(event_data) is False

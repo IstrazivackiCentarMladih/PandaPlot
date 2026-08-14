@@ -45,6 +45,15 @@ class ImageGalleryTab(PWidget):
         # otherwise happens on every PROJECT_ITEM_ADDED/REMOVED/RENAMED event
         # anywhere in the project.
         self._thumbnail_cache: dict[str, Optional[QPixmap]] = {}
+        # Ids of this gallery's children as of the last successful
+        # _populate_grid() call. Some PROJECT_ITEM_REMOVED events (e.g.
+        # undo of an import or of a gallery creation) fire *after* the item
+        # has already been removed from self.gallery, carrying only the
+        # removed item's own id and no parent_id -- so matching against
+        # current children alone would miss them. Keeping this snapshot
+        # lets _event_concerns_this_gallery still recognize such ids as
+        # "was ours as of last populate".
+        self._last_child_ids: set[str] = set()
         self._initialize()
         self._populate_grid()
         self.setup_connections()
@@ -115,7 +124,7 @@ class ImageGalleryTab(PWidget):
         if self.gallery.id in candidate_ids:
             return True
         current_child_ids = {child.id for child in self.gallery.get_items()}
-        return bool(candidate_ids & current_child_ids)
+        return bool(candidate_ids & (current_child_ids | self._last_child_ids))
 
     def _populate_grid(self):
         self.grid.clear()
@@ -127,6 +136,7 @@ class ImageGalleryTab(PWidget):
             elif isinstance(child, Image):
                 item.setIcon(QIcon(self._thumbnail_for(child)))
             self.grid.addItem(item)
+        self._last_child_ids = {child.id for child in self.gallery.get_items()}
         self._refresh_toolbar_state()
 
     def _thumbnail_for(self, image: Image) -> QPixmap:
