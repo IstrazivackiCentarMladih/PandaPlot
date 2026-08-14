@@ -43,3 +43,16 @@ def test_vector_preview_with_a_configured_series_draws_real_data():
 
     quivers = [c for c in canvas.axes.collections if isinstance(c, Quiver)]
     assert len(quivers) == 1
+    # Assert the drawn quiver carries the real series's U/V data, not the
+    # module's `_SAMPLE_U`/`_SAMPLE_V` fallback constants. If the
+    # u/v/magnitude column-id pass-through into `DataSeries` were broken,
+    # `resolve_series_data` would fail to resolve the series and the
+    # renderer would silently fall back to sample data instead -- a bug
+    # this test must be able to catch.
+    assert list(quivers[0].U) == [1.0, -1.0]
+    assert list(quivers[0].V) == [0.5, 0.5]
+    # Also confirm the legend carries the real series's derived label
+    # ("{dataset name}:{Y column name}"), which the sample-data fallback
+    # never sets.
+    _, labels = canvas.axes.get_legend_handles_labels()
+    assert labels == ["ds1:y"]
