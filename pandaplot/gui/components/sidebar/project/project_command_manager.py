@@ -9,6 +9,7 @@ from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
 from pandaplot.commands.project.folder import CreateFolderCommand
+from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
 from pandaplot.commands.project.item import DeleteItemCommand
 from pandaplot.commands.project.note import CreateNoteCommand
 from pandaplot.commands.project.project import RenameProjectCommand
@@ -63,6 +64,46 @@ class ProjectPanelCommandManager:
 
         command = ImportDataCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
+
+    def add_image_gallery(self):
+        """Add a new image gallery."""
+        if not self.app_state.has_project:
+            return
+
+        folder_id = self.get_target_folder_id()
+
+        command = CreateImageGalleryCommand(self.app_context, parent_id=folder_id)
+        self.app_context.get_command_executor().execute_command(command)
+
+    def import_images(self):
+        """Import images into the selected image gallery, creating one first if none is selected."""
+        if not self.app_state.has_project:
+            return
+
+        selected_info = self.get_selected_item_info()
+        gallery_id = None
+        if selected_info and selected_info["type"] == "imagegallery":
+            gallery_id = selected_info["id"]
+
+        if gallery_id is None:
+            create_command = CreateImageGalleryCommand(self.app_context, parent_id=self.get_target_folder_id())
+            if not self.app_context.get_command_executor().execute_command(create_command):
+                return
+            gallery_id = create_command.created_gallery_id
+
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
+
+        dialog = ImageImportDialog(self.app_context, parent=self.parent_widget)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        import_command = ImportImagesCommand(
+            self.app_context, gallery_id=gallery_id,
+            sources=dialog.get_sources(), copy_into_project=dialog.get_copy_into_project(),
+        )
+        self.app_context.get_command_executor().execute_command(import_command)
 
     def create_empty_dataset(self):
         """Create a new empty dataset."""
