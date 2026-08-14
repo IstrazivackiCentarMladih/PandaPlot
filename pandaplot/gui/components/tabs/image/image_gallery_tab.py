@@ -99,8 +99,10 @@ class ImageGalleryTab(PWidget):
         self.grid.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         layout.addWidget(self.grid)
 
-        self.grid.itemSelectionChanged.connect(self._refresh_toolbar_state)
+        self.grid.itemSelectionChanged.connect(self._on_selection_changed)
         self.grid.itemDoubleClicked.connect(self._on_item_double_clicked)
+        self.grid.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.grid.customContextMenuRequested.connect(self._on_grid_context_menu)
 
     @override
     def _apply_theme(self):
@@ -310,6 +312,70 @@ class ImageGalleryTab(PWidget):
         self.group_into_album_button.setEnabled(
             len(selected) >= 2 and all(isinstance(c, Image) for c in selected)
         )
+
+    def _on_selection_changed(self):
+        self._refresh_toolbar_state()
+        self._refresh_tile_icons()
+
+    def _refresh_tile_icons(self) -> None:
+        tokens = self._current_tokens()
+        selected_ids = set(self._selected_ids())
+        for i in range(self.grid.count()):
+            item = self.grid.item(i)
+            child_id = item.data(Qt.ItemDataRole.UserRole)
+            child = self.current_gallery.get_item_by_id(child_id)
+            if child is None:
+                continue
+            is_selected = child_id in selected_ids
+            if isinstance(child, ImageGallery):
+                item.setIcon(build_gallery_tile_icon(None, "album", is_selected, tokens))
+            elif isinstance(child, Image):
+                item.setIcon(build_gallery_tile_icon(self._thumbnail_for(child), "image", is_selected, tokens))
+
+    def _on_grid_context_menu(self, position) -> None:
+        item = self.grid.itemAt(position)
+        if item is None:
+            return
+        if not item.isSelected():
+            self.grid.clearSelection()
+            item.setSelected(True)
+        menu = self._build_context_menu(item)
+        menu.exec(self.grid.viewport().mapToGlobal(position))
+
+    def _build_context_menu(self, item: QListWidgetItem):
+        from PySide6.QtGui import QAction
+        from PySide6.QtWidgets import QMenu
+
+        menu = QMenu(self)
+        selected = self._selected_children()
+
+        rename_action = QAction("Rename", self)
+        rename_action.setEnabled(len(selected) == 1)
+        rename_action.triggered.connect(self._on_rename_clicked)
+        menu.addAction(rename_action)
+
+        delete_action = QAction("Delete", self)
+        delete_action.setEnabled(len(selected) >= 1)
+        delete_action.triggered.connect(self._on_delete_clicked)
+        menu.addAction(delete_action)
+
+        child_id = item.data(Qt.ItemDataRole.UserRole)
+        child = self.current_gallery.get_item_by_id(child_id)
+        if isinstance(child, ImageGallery) and len(selected) == 1:
+            menu.addSeparator()
+            open_new_tab_action = QAction("Open in New Tab", self)
+            open_new_tab_action.triggered.connect(lambda: self._open_in_new_tab(child))
+            menu.addAction(open_new_tab_action)
+
+        return menu
+
+    def _open_in_new_tab(self, gallery: ImageGallery) -> None:
+        from pandaplot.models.events.event_data import TabOpenRequestedData
+        from pandaplot.models.events.event_types import UIEvents
+
+        self.app_state.event_bus.emit(UIEvents.TAB_OPEN_REQUESTED, TabOpenRequestedData(
+            item_id=gallery.id, item_name=gallery.name
+        ).to_dict())
 
     def _on_import_clicked(self):
         from PySide6.QtWidgets import QDialog

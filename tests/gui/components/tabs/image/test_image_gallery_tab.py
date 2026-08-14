@@ -287,6 +287,75 @@ class TestBreadcrumbSegments:
         assert not isinstance(last_widget, PButton)
 
 
+class TestImageGalleryTabSelectionCheckmarks:
+    def test_selecting_a_tile_updates_its_icon(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        unselected_icon = tab.grid.item(0).icon()
+
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        selected_icon = tab.grid.item(0).icon()
+        from PySide6.QtCore import QSize
+        assert unselected_icon.pixmap(QSize(120, 120)).toImage() != selected_icon.pixmap(QSize(120, 120)).toImage()
+
+
+class TestImageGalleryTabContextMenu:
+    def test_context_menu_has_rename_and_delete_for_single_selection(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        menu = tab._build_context_menu(tab.grid.item(0))
+        action_texts = [a.text() for a in menu.actions()]
+
+        assert "Rename" in action_texts
+        assert "Delete" in action_texts
+
+    def test_context_menu_has_open_in_new_tab_for_album(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(ImageGallery(name="Day 1"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        menu = tab._build_context_menu(tab.grid.item(0))
+        action_texts = [a.text() for a in menu.actions()]
+
+        assert "Open in New Tab" in action_texts
+
+    def test_context_menu_has_no_open_in_new_tab_for_image(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        menu = tab._build_context_menu(tab.grid.item(0))
+        action_texts = [a.text() for a in menu.actions()]
+
+        assert "Open in New Tab" not in action_texts
+
+    def test_open_in_new_tab_emits_tab_open_requested(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        gallery.add_item(album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        tab._open_in_new_tab(album)
+
+        app_context.get_app_state.return_value.event_bus.emit.assert_called_once()
+        args = app_context.get_app_state.return_value.event_bus.emit.call_args.args
+        assert args[1]["item_id"] == album.id
+
+
 class TestImageGalleryTabMovedEvent:
     def test_subscribes_to_project_item_moved(self, app_context):
         gallery = ImageGallery(name="Trip")
