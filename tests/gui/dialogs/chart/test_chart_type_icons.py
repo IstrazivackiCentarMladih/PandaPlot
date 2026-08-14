@@ -12,7 +12,7 @@ def qapp():
     yield app
 
 
-@pytest.mark.parametrize("chart_type", ["line", "scatter", "bar", "hist"])
+@pytest.mark.parametrize("chart_type", ["line", "scatter", "bar", "hist", "vector"])
 def test_icon_renders_a_non_empty_pixmap(chart_type):
     icon = chart_type_icon(chart_type, "#4A56C6")
 
