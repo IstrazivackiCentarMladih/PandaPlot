@@ -65,6 +65,7 @@ class ImageGalleryTab(PWidget):
         # leak into this one's filter).
         self._last_child_ids: set[str] = set()
         self._initialize()
+        self._rebuild_breadcrumb()
         self._populate_grid()
         self.setup_connections()
 
@@ -75,10 +76,10 @@ class ImageGalleryTab(PWidget):
         breadcrumb_row = QHBoxLayout()
         self.back_button = PButton("◀", on_click=self._go_back, enabled=False)
         self.forward_button = PButton("▶", on_click=self._go_forward, enabled=False)
-        self.breadcrumb_label = QLabel()
+        self.breadcrumb_row_layout = QHBoxLayout()
         breadcrumb_row.addWidget(self.back_button)
         breadcrumb_row.addWidget(self.forward_button)
-        breadcrumb_row.addWidget(self.breadcrumb_label)
+        breadcrumb_row.addLayout(self.breadcrumb_row_layout)
         breadcrumb_row.addStretch()
         layout.addLayout(breadcrumb_row)
 
@@ -166,9 +167,28 @@ class ImageGalleryTab(PWidget):
             chain.append(parent)
             cursor = parent
         chain.reverse()
-        self.breadcrumb_label.setText(" > ".join(g.name for g in chain))
+        self._clear_breadcrumb_segments()
+        last_index = len(chain) - 1
+        for index, gallery in enumerate(chain):
+            if index == last_index:
+                segment: QWidget = QLabel(gallery.name)
+            else:
+                segment = PButton(
+                    gallery.name, role="secondary",
+                    on_click=lambda _checked=False, g=gallery: self._navigate_to(g),
+                )
+            self.breadcrumb_row_layout.addWidget(segment)
+            if index != last_index:
+                self.breadcrumb_row_layout.addWidget(QLabel(" > "))
         self.back_button.setEnabled(self._history_index > 0)
         self.forward_button.setEnabled(self._history_index < len(self._history) - 1)
+
+    def _clear_breadcrumb_segments(self) -> None:
+        while self.breadcrumb_row_layout.count():
+            child = self.breadcrumb_row_layout.takeAt(0)
+            widget = child.widget()
+            if widget is not None:
+                widget.deleteLater()
 
     def _on_project_item_changed(self, event_data: dict):
         if self._event_concerns_this_gallery(event_data):

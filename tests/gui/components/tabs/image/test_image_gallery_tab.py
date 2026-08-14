@@ -2,12 +2,25 @@
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.tabs.image.image_gallery_tab import ImageGalleryTab
 from pandaplot.models.project.items import Image, ImageGallery
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+def _project_stub(*items):
+    """Minimal stand-in for a Project, resolving find_item() from a dict of
+    real ImageGallery/Image instances so _rebuild_breadcrumb's parent-walk
+    can actually traverse ImageGallery.parent_id chains (unlike the default
+    Mock() app_context fixture, where isinstance(parent, ImageGallery) always
+    fails and the breadcrumb chain never grows past one element)."""
+    by_id = {item.id: item for item in items}
+    stub = Mock()
+    stub.find_item.side_effect = lambda item_id: by_id.get(item_id)
+    return stub
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -202,6 +215,76 @@ class TestImageGalleryTabNavigation:
 
         assert tab.current_gallery is album
         app_context.get_app_state.return_value.event_bus.emit.assert_not_called()
+
+
+class TestBreadcrumbSegments:
+    def test_three_level_nesting_produces_three_breadcrumb_segments(self, app_context):
+        root = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        sub_album = ImageGallery(name="Morning")
+        root.add_item(album)
+        album.add_item(sub_album)
+        app_context.get_app_state.return_value.current_project = _project_stub(root, album, sub_album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=root, parent=None)
+
+        tab._navigate_to(album)
+        tab._navigate_to(sub_album)
+
+        segments = [
+            tab.breadcrumb_row_layout.itemAt(i).widget()
+            for i in range(tab.breadcrumb_row_layout.count())
+            if isinstance(tab.breadcrumb_row_layout.itemAt(i).widget(), (PButton, QLabel))
+            and tab.breadcrumb_row_layout.itemAt(i).widget().text().strip() != ">"
+        ]
+        names = [w.text() for w in segments]
+        assert names == ["Trip", "Day 1", "Morning"]
+
+    def test_clicking_non_last_segment_navigates_and_updates_history(self, app_context):
+        root = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        sub_album = ImageGallery(name="Morning")
+        root.add_item(album)
+        album.add_item(sub_album)
+        app_context.get_app_state.return_value.current_project = _project_stub(root, album, sub_album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=root, parent=None)
+
+        tab._navigate_to(album)
+        tab._navigate_to(sub_album)
+
+        # Find the "Trip" (root) breadcrumb segment button and click it.
+        root_button = None
+        for i in range(tab.breadcrumb_row_layout.count()):
+            widget = tab.breadcrumb_row_layout.itemAt(i).widget()
+            if isinstance(widget, PButton) and widget.text() == "Trip":
+                root_button = widget
+                break
+        assert root_button is not None
+        root_button.click()
+
+        assert tab.current_gallery is root
+        # History should now have the root appended after sub_album, and
+        # forward navigation should return to sub_album.
+        tab._go_back()
+        assert tab.current_gallery is sub_album
+        tab._go_forward()
+        assert tab.current_gallery is root
+
+    def test_last_segment_is_not_a_clickable_button(self, app_context):
+        root = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        root.add_item(album)
+        app_context.get_app_state.return_value.current_project = _project_stub(root, album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=root, parent=None)
+
+        tab._navigate_to(album)
+
+        last_widget = None
+        for i in range(tab.breadcrumb_row_layout.count()):
+            widget = tab.breadcrumb_row_layout.itemAt(i).widget()
+            if isinstance(widget, (PButton, QLabel)) and widget.text() == "Day 1":
+                last_widget = widget
+        assert last_widget is not None
+        assert not isinstance(last_widget, PButton)
 
 
 class TestImageGalleryTabMovedEvent:
