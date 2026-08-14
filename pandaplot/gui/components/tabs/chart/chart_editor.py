@@ -871,6 +871,25 @@ class ChartEditorWidget(PWidget):
                                          color=series.color,
                                          label=series.label,
                                          alpha=alpha)
+                    elif self.chart.chart_type == "vector":
+                        quiver_kwargs = {
+                            "scale": series.vector_scale if series.vector_scale > 0 else None,
+                            "width": series.vector_width,
+                            "headwidth": series.vector_head_width,
+                            "headlength": series.vector_head_length,
+                            "headaxislength": series.vector_head_axis_length,
+                            "label": series.label,
+                            "alpha": alpha,
+                        }
+                        if series_data.magnitude_data is not None:
+                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
+                                               series_data.magnitude_data,
+                                               cmap=series.vector_colormap or "viridis",
+                                               **quiver_kwargs)
+                        else:
+                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
+                                               color=series.vector_color,
+                                               **quiver_kwargs)
 
                     if self.chart.chart_type in ("line", "scatter", "bar"):
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
