@@ -37,21 +37,35 @@ def _paint_hist(painter: QPainter, size: int):
         painter.drawRect(QRectF(x, y, w, h))
 
 
-def _paint_vector(painter: QPainter, size: int):
+def _vector_arrow_geometry(size: int):
+    """Compute the (start, end, [wing1, wing2]) points for each arrow.
+
+    Pulled out of `_paint_vector` so tests can assert the geometry stays
+    within the [0, size] icon canvas without needing to inspect pixels.
+    """
+    arrows = []
     for start_frac, end_frac in (
         ((0.15, 0.85), (0.55, 0.35)),
-        ((0.4, 0.9), (0.9, 0.15)),
+        ((0.35, 0.9), (0.8, 0.3)),
     ):
         start = QPointF(size * start_frac[0], size * start_frac[1])
         end = QPointF(size * end_frac[0], size * end_frac[1])
-        painter.drawLine(start, end)
         angle = math.atan2(end.y() - start.y(), end.x() - start.x())
-        head_len = size * 0.22
+        head_len = size * 0.2
+        wings = []
         for delta in (2.6, -2.6):
-            head_point = QPointF(
+            wings.append(QPointF(
                 end.x() - head_len * math.cos(angle + delta),
                 end.y() - head_len * math.sin(angle + delta),
-            )
+            ))
+        arrows.append((start, end, wings))
+    return arrows
+
+
+def _paint_vector(painter: QPainter, size: int):
+    for start, end, wings in _vector_arrow_geometry(size):
+        painter.drawLine(start, end)
+        for head_point in wings:
             painter.drawLine(end, head_point)
 
 
