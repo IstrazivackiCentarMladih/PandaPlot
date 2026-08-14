@@ -468,10 +468,22 @@ class ImageGalleryTab(PWidget):
         if isinstance(child, ImageGallery):
             self._navigate_to(child)
         elif isinstance(child, Image):
+            self._open_lightbox_for(child)
+
+    def _open_lightbox_for(self, image: Image) -> None:
+        images = [c for c in self.current_gallery.get_items() if isinstance(c, Image)]
+        if image not in images:
+            return
+        start_index = images.index(image)
+
+        def _load(img: Image) -> Optional[QPixmap]:
             pixmap = QPixmap()
-            data = child.get_bytes() or self._load_external_bytes(child.source_file)
+            data = img.get_bytes() or self._load_external_bytes(img.source_file)
             if data and pixmap.loadFromData(data):
-                ImageLightboxDialog(pixmap, child.name, parent=self).exec()
+                return pixmap
+            return None
+
+        ImageLightboxDialog(images, start_index, load_pixmap=_load, parent=self).exec()
 
     def _on_view_mode_changed(self, mode: str) -> None:
         if mode == "list":
@@ -511,7 +523,4 @@ class ImageGalleryTab(PWidget):
         if isinstance(child, ImageGallery):
             self._navigate_to(child)
         elif isinstance(child, Image):
-            pixmap = QPixmap()
-            data = child.get_bytes() or self._load_external_bytes(child.source_file)
-            if data and pixmap.loadFromData(data):
-                ImageLightboxDialog(pixmap, child.name, parent=self).exec()
+            self._open_lightbox_for(child)
