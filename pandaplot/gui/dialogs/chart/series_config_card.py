@@ -21,8 +21,14 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
 
-_ROLE_LABELS = {"x": "X column", "y": "Y column", "values": "Values column"}
-_ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "values": "y_column_id"}
+_ROLE_LABELS = {
+    "x": "X column", "y": "Y column", "values": "Values column",
+    "u": "U column", "v": "V column", "magnitude": "Color-by column (optional)",
+}
+_ROLE_TO_FIELD = {
+    "x": "x_column_id", "y": "y_column_id", "values": "y_column_id",
+    "u": "u_column_id", "v": "v_column_id", "magnitude": "magnitude_column_id",
+}
 
 
 class SeriesConfigCard(Card):
