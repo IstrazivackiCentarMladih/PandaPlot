@@ -43,6 +43,7 @@ class ImageDataManager(ItemDataManager[Image]):
             "image_ext": item.image_ext,
             "width": item.width,
             "height": item.height,
+            "size_bytes": item.size_bytes,
         }
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
         self.logger.info("Successfully saved image '%s' (ID: %s)", item.name, item.id)
@@ -62,6 +63,7 @@ class ImageDataManager(ItemDataManager[Image]):
             image_ext=metadata.get("image_ext", ""),
             width=metadata.get("width", 0),
             height=metadata.get("height", 0),
+            size_bytes=metadata.get("size_bytes"),
         )
         image.parent_id = metadata.get("parent_id")
         image.created_at = metadata.get("created_at", image.created_at)

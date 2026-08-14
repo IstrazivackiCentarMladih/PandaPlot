@@ -37,6 +37,18 @@ class TestImage:
 
         assert image.get_bytes() == b"raw-bytes"
 
+    def test_size_bytes_defaults_to_none(self):
+        image = Image(name="Photo")
+
+        assert image.size_bytes is None
+
+    def test_size_bytes_round_trips_through_to_dict_from_dict(self):
+        image = Image(id="img-5", name="Photo", size_bytes=204800)
+
+        restored = Image.from_dict(image.to_dict())
+
+        assert restored.size_bytes == 204800
+
     def test_to_dict_from_dict_round_trip(self):
         image = Image(
             id="img-2",

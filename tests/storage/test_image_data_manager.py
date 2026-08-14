@@ -61,6 +61,15 @@ class TestImageDataManagerCopied:
 
         assert names == ["items/img-5.json"]
 
+    def test_size_bytes_round_trips_through_save_load(self):
+        image = Image(id="img-10", name="Sized", storage_mode="copied", image_ext="png",
+                       width=10, height=10, size_bytes=12345)
+        image.set_bytes(b"x" * 12345)
+
+        loaded = _round_trip(image)
+
+        assert loaded.size_bytes == 12345
+
     def test_load_with_missing_blob_does_not_raise(self):
         """
         Loading a 'copied' image whose blob entry is absent from the zip

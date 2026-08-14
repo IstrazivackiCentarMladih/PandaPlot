@@ -28,13 +28,15 @@ class Image(Item):
 
     def __init__(self, id: Optional[str] = None, name: str = "",
                  source_file: str = "", storage_mode: str = "copied",
-                 image_ext: str = "", width: int = 0, height: int = 0):
+                 image_ext: str = "", width: int = 0, height: int = 0,
+                 size_bytes: Optional[int] = None):
         super().__init__(id, name)
         self.source_file = source_file
         self.storage_mode = storage_mode
         self.image_ext = image_ext
         self.width = width
         self.height = height
+        self.size_bytes = size_bytes
         self._bytes: Optional[bytes] = None
 
     def set_bytes(self, data: Optional[bytes]) -> None:
@@ -54,6 +56,7 @@ class Image(Item):
             "image_ext": self.image_ext,
             "width": self.width,
             "height": self.height,
+            "size_bytes": self.size_bytes,
         })
         return data
 
@@ -68,6 +71,7 @@ class Image(Item):
             image_ext=data.get("image_ext", ""),
             width=data.get("width", 0),
             height=data.get("height", 0),
+            size_bytes=data.get("size_bytes"),
         )
         image.parent_id = data.get("parent_id")
         image.created_at = data.get("created_at", datetime.now().isoformat())

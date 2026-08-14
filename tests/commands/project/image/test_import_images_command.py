@@ -129,6 +129,68 @@ class TestImportImagesCommandErrors:
         assert command.execute() is False
 
 
+class TestImportImagesCommandSizeBytes:
+    def test_copied_local_file_gets_size_bytes(self, app_context_with_project, gallery_id, tmp_path):
+        png_path = tmp_path / "photo.png"
+        _write_test_png(png_path)
+        expected_size = png_path.stat().st_size
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=[str(png_path)], copy_into_project=True,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.size_bytes == expected_size
+
+    def test_external_local_file_gets_size_bytes(self, app_context_with_project, gallery_id, tmp_path):
+        png_path = tmp_path / "photo.png"
+        _write_test_png(png_path)
+        expected_size = png_path.stat().st_size
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=[str(png_path)], copy_into_project=False,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.size_bytes == expected_size
+
+    @patch("pandaplot.commands.project.image.import_images_command.requests.get")
+    def test_external_url_has_no_size_bytes(self, mock_get, app_context_with_project, gallery_id):
+        mock_response = Mock()
+        mock_response.content = _fake_png_bytes()
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=["https://example.com/pic.png"], copy_into_project=False,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.size_bytes is None
+
+    @patch("pandaplot.commands.project.image.import_images_command.requests.get")
+    def test_copied_url_still_has_size_bytes_from_downloaded_data(self, mock_get, app_context_with_project, gallery_id):
+        mock_response = Mock()
+        mock_response.content = _fake_png_bytes()
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=["https://example.com/pic.png"], copy_into_project=True,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.size_bytes == len(_fake_png_bytes())
+
+
 class TestImportImagesCommandUrlSource:
     @patch("pandaplot.commands.project.image.import_images_command.requests.get")
     def test_execute_copy_mode_downloads_url_bytes(self, mock_get, app_context_with_project, gallery_id):

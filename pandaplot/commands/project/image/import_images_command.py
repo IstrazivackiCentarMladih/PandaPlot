@@ -104,11 +104,13 @@ class ImportImagesCommand(Command):
         """Build one Image item from a local path or URL source."""
         data, ext, width, height = self._read_source_bytes_and_size(source)
         name = self._display_name(source)
+        size_bytes = self._size_bytes_for(source, data)
 
         if self.copy_into_project:
             image = Image(
                 id=str(uuid.uuid4()), name=name, source_file=source,
                 storage_mode="copied", image_ext=ext, width=width, height=height,
+                size_bytes=size_bytes,
             )
             image.set_bytes(data)
             return image
@@ -116,7 +118,26 @@ class ImportImagesCommand(Command):
         return Image(
             id=str(uuid.uuid4()), name=name, source_file=source,
             storage_mode="external", image_ext=ext, width=width, height=height,
+            size_bytes=size_bytes,
         )
+
+    def _size_bytes_for(self, source: str, data: bytes) -> Optional[int]:
+        """
+        Size in bytes for the list-view's Size column. For a URL we already
+        downloaded `data` for width/height purposes only when copying; to
+        avoid an extra network request just to learn a size, an
+        external-mode URL import is left as None (rendered as "--" in the
+        list view) rather than reusing the width/height-probe download's
+        byte count, which conflates "we happened to fetch bytes" with
+        "we're keeping them" -- copy mode's `data` IS the same content
+        that gets stored, so len(data) is correct there regardless of
+        source kind.
+        """
+        if self.copy_into_project:
+            return len(data)
+        if _is_url(source):
+            return None
+        return os.path.getsize(source)
 
     def _display_name(self, source: str) -> str:
         if _is_url(source):
