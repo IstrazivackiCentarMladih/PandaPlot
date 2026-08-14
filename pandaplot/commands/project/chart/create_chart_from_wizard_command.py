@@ -206,6 +206,9 @@ class CreateChartFromWizardCommand(Command):
                         x_error_column_id=series_config["x_error_column_id"],
                         y_error_column_id=series_config["y_error_column_id"],
                         error_symmetric=series_config["error_symmetric"],
+                        u_column_id=series_config.get("u_column_id", ""),
+                        v_column_id=series_config.get("v_column_id", ""),
+                        magnitude_column_id=series_config.get("magnitude_column_id", ""),
                         label=self._default_series_label(project, series_config),
                     )
 
