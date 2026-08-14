@@ -31,10 +31,17 @@ def test_histogram_requires_values_and_has_no_error_bars():
     assert spec.supports_error_bars is False
 
 
+def test_vector_requires_x_y_u_v():
+    spec = get_chart_role_spec("vector")
+    assert spec.roles == ("x", "y", "u", "v", "magnitude")
+    assert spec.required_roles == ("x", "y", "u", "v")
+    assert spec.supports_error_bars is False
+
+
 def test_unknown_chart_type_raises_key_error():
     with pytest.raises(KeyError):
         get_chart_role_spec("violin")
 
 
-def test_exactly_four_chart_types_are_registered():
-    assert set(CHART_ROLE_SPECS.keys()) == {"line", "scatter", "bar", "hist"}
+def test_exactly_five_chart_types_are_registered():
+    assert set(CHART_ROLE_SPECS.keys()) == {"line", "scatter", "bar", "hist", "vector"}

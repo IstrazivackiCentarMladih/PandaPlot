@@ -23,6 +23,10 @@ CHART_ROLE_SPECS: dict[str, ChartRoleSpec] = {
     "scatter": ChartRoleSpec("scatter", "Scatter", roles=("x", "y"), required_roles=("y",), supports_error_bars=True),
     "bar": ChartRoleSpec("bar", "Bar", roles=("x", "y"), required_roles=("y",), supports_error_bars=True),
     "hist": ChartRoleSpec("hist", "Histogram", roles=("values",), required_roles=("values",), supports_error_bars=False),
+    "vector": ChartRoleSpec(
+        "vector", "Vector", roles=("x", "y", "u", "v", "magnitude"),
+        required_roles=("x", "y", "u", "v"), supports_error_bars=False,
+    ),
 }
 
 
