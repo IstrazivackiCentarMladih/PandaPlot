@@ -51,7 +51,7 @@ class ImageImportDialog(PDialog):
         mode_row.addWidget(self.url_radio)
         layout.addLayout(mode_row)
 
-        self.browse_button = PButton("Browse...")
+        self.browse_button = PButton("Browse...", on_click=self._browse_files)
         self.selected_files_label = QLabel("No files selected")
         files_row = QHBoxLayout()
         files_row.addWidget(self.browse_button)
@@ -67,16 +67,12 @@ class ImageImportDialog(PDialog):
         layout.addWidget(self.copy_checkbox)
 
         button_row = QHBoxLayout()
-        self.cancel_button = PButton("Cancel")
-        self.import_button = PButton("Import")
-        self.import_button.setEnabled(False)
+        self.cancel_button = PButton("Cancel", role="secondary", on_click=self.reject)
+        self.import_button = PButton("Import", role="primary", on_click=self.accept, enabled=False)
         button_row.addWidget(self.cancel_button)
         button_row.addWidget(self.import_button)
         layout.addLayout(button_row)
 
-        self.browse_button.clicked.connect(self._browse_files)
-        self.cancel_button.clicked.connect(self.reject)
-        self.import_button.clicked.connect(self.accept)
         self.url_edit.textChanged.connect(self._refresh_import_enabled)
         self.files_radio.toggled.connect(self._refresh_import_enabled)
         self.url_radio.toggled.connect(self._refresh_import_enabled)
