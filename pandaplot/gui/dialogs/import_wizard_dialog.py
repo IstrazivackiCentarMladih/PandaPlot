@@ -32,7 +32,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QProxyStyle,
-    QPushButton,
     QSpinBox,
     QStyle,
     QTableWidget,
@@ -41,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.data_import import (
@@ -176,8 +176,7 @@ class ImportWizardDialog(PDialog):
         self.file_path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         row.addWidget(self.file_path_label, 1)
 
-        self.browse_button = QPushButton("Browse…")
-        self.browse_button.clicked.connect(self._browse_file)
+        self.browse_button = PButton("Browse…", role="secondary", on_click=self._browse_file)
         row.addWidget(self.browse_button, 0)
 
         parent_layout.addLayout(row)
@@ -272,13 +271,11 @@ class ImportWizardDialog(PDialog):
         row.setContentsMargins(0, 0, 0, 0)
         row.addStretch(1)
 
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button = PButton("Cancel", role="secondary", on_click=self.reject)
         row.addWidget(self.cancel_button)
 
-        self.import_button = QPushButton("Import")
+        self.import_button = PButton("Import", role="primary", on_click=self.accept)
         self.import_button.setDefault(True)
-        self.import_button.clicked.connect(self.accept)
         row.addWidget(self.import_button)
 
         parent_layout.addWidget(self.button_frame)
@@ -607,18 +604,6 @@ class ImportWizardDialog(PDialog):
                 background-color: {accent};
                 color: white;
             }}
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 7px 18px;
-                font-weight: bold;
-            }}
-            QPushButton:disabled {{
-                background-color: {card_border};
-                color: {secondary_fg};
-            }}
             QTableWidget {{
                 background-color: {card_bg};
                 border: 1px solid {card_border};
@@ -648,9 +633,6 @@ class ImportWizardDialog(PDialog):
             }}
         """)
 
-        self.cancel_button.setStyleSheet(
-            f"QPushButton {{ background-color: {secondary_fg}; color: white; }}"
-        )
         self._style_status()
 
     def _style_status(self):

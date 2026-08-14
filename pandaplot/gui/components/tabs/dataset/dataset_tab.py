@@ -4,11 +4,11 @@ from PySide6.QtCore import QModelIndex
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.tabs.dataset.dataset_table_view import DatasetTableView
 from pandaplot.gui.components.tabs.dataset.pandas_table_model import PandasTableModel
 from pandaplot.gui.core.widget_extension import PWidget
@@ -58,41 +58,8 @@ class DatasetTab(PWidget):
         card_hover = palette.get("card_hover", "#e9ecef")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#000000")
-        secondary_fg = palette.get("secondary_fg", "#555555")
         accent = palette.get("accent", "#4A90E2")
-        
-        # Derive accent color variants for interaction states
-        from PySide6.QtGui import QColor
-        accent_color = QColor(accent)
-        if accent_color.isValid():
-            accent_hover = accent_color.darker(110).name()
-            accent_pressed = accent_color.darker(125).name()
-        else:
-            accent_hover = accent
-            accent_pressed = accent
-        
-        # Apply styling to action buttons
-        for btn in [self.create_chart_btn, self.export_btn]:
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {accent};
-                    color: white;
-                    border: none;
-                    border-radius: 4px;
-                    padding: 6px 12px;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{
-                    background-color: {accent_hover};
-                }}
-                QPushButton:pressed {{
-                    background-color: {accent_pressed};
-                }}
-                QPushButton:disabled {{
-                    background-color: {secondary_fg};
-                }}
-            """)
-        
+
         # Apply styling to table view
         self.table_view.setStyleSheet(f"""
             QTableView {{
@@ -121,41 +88,6 @@ class DatasetTab(PWidget):
                 font-weight: bold;
                 color: {base_fg};
             }}
-        """)
-        
-        # Apply styling to action buttons
-        self.create_chart_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {accent_hover};
-            }}
-            QPushButton:pressed {{
-                background-color: {accent_pressed};
-            }}
-        """)
-        
-        self.export_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #28a745;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1e7e34;
-            }
-            QPushButton:pressed {
-                background-color: #155724;
-            }
         """)
 
     def on_dataset_column_added(self, event_data):
@@ -210,13 +142,13 @@ class DatasetTab(PWidget):
         actions_layout.setContentsMargins(0, 5, 0, 0)
 
         # Create chart button
-        self.create_chart_btn = QPushButton("📈 Create Chart from Data")
-        self.create_chart_btn.clicked.connect(self.create_chart_from_data)
+        self.create_chart_btn = PButton(
+            "Create Chart", role="primary", on_click=self.create_chart_from_data
+        )
         actions_layout.addWidget(self.create_chart_btn)
 
         # Export data button
-        self.export_btn = QPushButton("💾 Export Data")
-        self.export_btn.clicked.connect(self.export_data)
+        self.export_btn = PButton("Export Data", role="secondary", on_click=self.export_data)
         actions_layout.addWidget(self.export_btn)
 
         # Add stretch to push buttons to the left
@@ -281,17 +213,14 @@ class DatasetTab(PWidget):
         return title
 
     def create_chart_from_data(self):
-        """Create a chart from this dataset."""
+        """Create a chart from this dataset, pre-selecting any columns the
+        user has already selected in this tab's table view."""
         if not self.app_context:
             return
 
-        # Request chart creation through the main window's signal system
-        # We can emit a signal that will be handled by the tab container
-        chart_name = f"Chart from {self.dataset.name}"
         self.logger.info(
             "Requesting chart creation from dataset %s", self.dataset.id)
 
-        # Get the tab container from parent hierarchy
         parent_widget = self.parent()
         while parent_widget and not hasattr(parent_widget, "create_chart_from_dataset"):
             parent_widget = parent_widget.parent()
@@ -301,7 +230,10 @@ class DatasetTab(PWidget):
                 create_method = getattr(
                     parent_widget, "create_chart_from_dataset", None)
                 if callable(create_method):
-                    create_method(self.dataset.id, chart_name)
+                    create_method(
+                        self.dataset.id,
+                        preselected_column_ids=self._selected_column_ids(),
+                    )
                 else:
                     self.logger.warning(
                         "create_chart_from_dataset not callable on parent for dataset %s", self.dataset.id)
@@ -311,6 +243,10 @@ class DatasetTab(PWidget):
         else:
             self.logger.warning(
                 "Could not find tab container to create chart for dataset %s", self.dataset.id)
+
+    def _selected_column_ids(self) -> list[str]:
+        """Column ids currently selected in this tab's table view, in column order."""
+        return self.table_view.get_selected_column_ids()
 
     def export_data(self):
         """Export the dataset to a file."""

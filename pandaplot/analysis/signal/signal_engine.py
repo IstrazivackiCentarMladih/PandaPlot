@@ -18,14 +18,6 @@ from .signal_types import (
     SignalAnalysisType,
 )
 
-from .methods import (
-    fft,
-    stft,
-    psd,
-    autocorrelation,
-    peaks,
-)
-
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +33,8 @@ class SignalEngine:
         **kwargs: Any,
     ) -> SignalAnalysisResult:
         """ Run selected signal analysis. """
+
+        from .methods import autocorrelation, fft, peaks, psd, stft
 
         handler = {
             SignalAnalysisType.FFT: fft.run,

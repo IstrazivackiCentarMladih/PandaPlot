@@ -15,10 +15,13 @@ from pandaplot.gui.components.sidebar.panels.panel_conditions import (
     is_chart_tab_active,
     is_dataset_tab_active,
 )
+from pandaplot.gui.components.sidebar.preprocessing.preprocessing_panel import PreprocessingPanel
 from pandaplot.gui.components.sidebar.project.project_view_panel import ProjectViewPanel
+from pandaplot.gui.components.sidebar.search.search_panel import SearchPanel
+from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
+from pandaplot.gui.components.sidebar.statistics.descriptive_panel import DescriptiveStatsPanel
 from pandaplot.gui.components.sidebar.statistics.statistics_panel import StatisticsPanel
 from pandaplot.gui.components.sidebar.transform.transform_panel import TransformPanel
-from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
 from pandaplot.models.state.app_context import AppContext
 
 
@@ -33,9 +36,12 @@ class PanelSetupManager:
         # by app registration and support plugin architecture with 
         # distributed panel registration
         self.register_panel(ProjectViewPanel(app_context=self.app_context), "explorer", "📁", lambda _: True)
+        self.register_panel(SearchPanel(app_context=self.app_context), "search", "🔍", lambda _: True)
         self.register_panel(TransformPanel(self.app_context), "transform", "🔧", is_dataset_tab_active)
+        self.register_panel(PreprocessingPanel(self.app_context), "preprocessing", "⚖️", is_dataset_tab_active)
 
         self.register_panel(AnalysisPanel(self.app_context), "analysis", "📊", is_dataset_tab_active)
+        self.register_panel(DescriptiveStatsPanel(self.app_context), "descriptive", "📋", is_dataset_tab_active)
         self.register_panel(StatisticsPanel(self.app_context), "statistics", "🧪", is_dataset_tab_active)
         self.register_panel(SignalPanel(self.app_context), "signal", "📡", is_dataset_tab_active)
         self.register_panel(ChartPropertiesPanel(self.app_context), "chart_properties", "📈", is_chart_tab_active)

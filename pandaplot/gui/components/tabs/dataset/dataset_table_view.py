@@ -65,6 +65,38 @@ class DatasetTableView(QTableView):
         self.horizontalHeader().setMinimumHeight(50)  # Ensure enough height for two lines
         self.horizontalHeader().setDefaultSectionSize(120)  # Make columns wider to accommodate text
 
+    def get_selected_column_ids(self) -> list[str]:
+        """Stable column ids for the fully selected columns, in column order.
+
+        Single source of truth for "which columns has the user selected?" —
+        used by the chart-creation entry points (dataset tab, project tree)
+        and by the wizard's floating column picker. Columns whose name does
+        not resolve to a stable id are dropped with a warning rather than
+        silently yielding an empty id.
+        """
+        selection_model = self.selectionModel()
+        if selection_model is None:
+            return []
+        dataset = self._model._dataset
+        if dataset is None or dataset.data is None:
+            return []
+        columns = list(dataset.data.columns)
+        indices = sorted(index.column() for index in selection_model.selectedColumns())
+        ids: list[str] = []
+        for i in indices:
+            if i >= len(columns):
+                continue
+            name = columns[i]
+            column_id = dataset.column_id(name)
+            if column_id:
+                ids.append(column_id)
+            else:
+                self.logger.warning(
+                    "Selected column %r did not resolve to a stable column id; excluding it.",
+                    name,
+                )
+        return ids
+
     def keyPressEvent(self, event):
         if event.matches(QKeySequence.StandardKey.Copy):
             self.copySelection()

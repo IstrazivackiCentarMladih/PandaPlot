@@ -8,6 +8,7 @@ from pandaplot.commands.command_executor import CommandExecutor
 from pandaplot.commands.project.project import LoadProjectCommand
 from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
+from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import EventBus
 from pandaplot.models.project.items import Chart, Dataset, Folder, Note
 from pandaplot.models.state import AppContext, AppState
@@ -62,6 +63,7 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     if argv is None:
         argv = sys.argv
     app = QApplication(argv)
+    app.setWindowIcon(create_app_icon())
 
     # Kick off the background import warm-up right after QApplication exists
     # (QObject-based signals -- which the worker uses to report completion --

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -19,6 +18,7 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
@@ -96,6 +96,10 @@ class StyleTab(QWidget):
         # "Chart" as the sticky previously-selected target.
         self._series_list_initialized: bool = False
         self._chart_type = None
+        # Latest data_series list (kept in sync by set_series_list) so the
+        # Fill card's "Fill to" selector can offer the other series to fill
+        # between. Indices into this list are what fill_to_index stores.
+        self._data_series: list = []
         # Whether the Custom size/DPI fields have already been pre-filled
         # for the currently loaded chart (reset on every load_chart_style/
         # clear_chart_style call). Prevents re-filling with defaults if the
@@ -367,6 +371,58 @@ class StyleTab(QWidget):
 
         layout.addWidget(line_card)
 
+        # FILL group -- shade the area under the curve (down to a baseline) or
+        # between this series and another series in the same chart.
+        self.fill_card = Card()
+        fill_card = self.fill_card
+        fill_layout = QGridLayout(fill_card)
+
+        fill_header_row = QHBoxLayout()
+        fill_header_row.addWidget(SectionHeader("Fill"))
+        fill_header_row.addStretch(1)
+        self.fill_enabled_toggle = ToggleSwitch()
+        fill_header_row.addWidget(self.fill_enabled_toggle)
+        fill_layout.addLayout(fill_header_row, 0, 0, 1, 2)
+
+        # Orientation switch: off => vertical fill to a Y baseline
+        # (fill_between); on => horizontal fill to an X baseline
+        # (fill_betweenx). It also flips how the baseline field and "Fill to"
+        # interpolation are interpreted (see _update_fill_controls_visibility).
+        fill_layout.addWidget(QLabel("Horizontal:"), 1, 0)
+        self.fill_horizontal_toggle = ToggleSwitch()
+        fill_layout.addWidget(self.fill_horizontal_toggle, 1, 1)
+
+        # "Fill to" is repopulated per selected series (see load_series_style):
+        # a "Baseline" entry (value -1) plus every *other* series in the chart
+        # (value = its index in data_series). Seeded with just Baseline so the
+        # ValueComboBox has a non-empty initial item list.
+        fill_layout.addWidget(QLabel("Fill to:"), 2, 0)
+        self.fill_to_control = ValueComboBox([("Baseline", -1)])
+        fill_layout.addWidget(self.fill_to_control, 2, 1)
+
+        self.fill_base_label = QLabel("Baseline:")
+        fill_layout.addWidget(self.fill_base_label, 3, 0)
+        self.fill_base_spin = QDoubleSpinBox()
+        self.fill_base_spin.setRange(-1e9, 1e9)
+        self.fill_base_spin.setDecimals(3)
+        fill_layout.addWidget(self.fill_base_spin, 3, 1)
+
+        self.fill_color_label = QLabel("Color:")
+        fill_layout.addWidget(self.fill_color_label, 4, 0)
+        self.fill_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        fill_layout.addWidget(self.fill_color_row, 4, 1)
+
+        self.fill_match_line_label = QLabel("Match line:")
+        fill_layout.addWidget(self.fill_match_line_label, 5, 0)
+        self.fill_match_line_toggle = ToggleSwitch(checked=True)
+        fill_layout.addWidget(self.fill_match_line_toggle, 5, 1)
+
+        fill_layout.addWidget(QLabel("Opacity:"), 6, 0)
+        self.fill_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        fill_layout.addWidget(self.fill_opacity_slider, 6, 1)
+
+        layout.addWidget(fill_card)
+
         # MARKERS group
         self.marker_card = Card()
         marker_card = self.marker_card
@@ -488,6 +544,13 @@ class StyleTab(QWidget):
         self.line_style_control.currentValueChanged.connect(self._on_field_changed)
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
+        self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
+        self.fill_horizontal_toggle.toggled.connect(self._on_fill_orientation_toggled)
+        self.fill_to_control.currentValueChanged.connect(self._on_fill_to_changed)
+        self.fill_base_spin.valueChanged.connect(self._on_field_changed)
+        self.fill_color_row.colorChanged.connect(self._on_field_changed)
+        self.fill_match_line_toggle.toggled.connect(self._on_fill_match_line_toggled)
+        self.fill_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.markers_enabled_toggle.toggled.connect(self._on_markers_enabled_toggled)
         self.marker_shape_control.currentValueChanged.connect(self._on_field_changed)
         self.marker_size_slider.valueChanged.connect(self._on_field_changed)
@@ -571,6 +634,9 @@ class StyleTab(QWidget):
             widget.setVisible(is_axes)
         is_scatter = self._chart_type == ChartType.SCATTER
         self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        # Area fill is only drawn for line charts (see chart_editor.py's "line"
+        # branch), so the Fill card is a series-on-line-chart concern.
+        self.fill_card.setVisible(kind == "series" and self._chart_type == ChartType.LINE)
         self.marker_card.setVisible(kind == "series")
         # Fit data has no error-bar fields at all (DataSeries-only), and even
         # for a series there's nothing to style unless an error column is
@@ -628,6 +694,13 @@ class StyleTab(QWidget):
             color_label.setVisible(False)
             color_row.setVisible(False)
 
+        title_layout.addWidget(QLabel("Rotation:"), 5, 0)
+        rotation_spin = QSpinBox()
+        rotation_spin.setRange(-90, 90)
+        rotation_spin.setSuffix("°")
+        rotation_spin.setValue(90 if prefix in ("y", "y2") else 0)
+        title_layout.addWidget(rotation_spin, 5, 1)
+
         form_layout.addWidget(title_card)
 
         ticks_card = Card()
@@ -658,6 +731,12 @@ class StyleTab(QWidget):
         tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
         ticks_layout.addWidget(tick_color_row, 4, 1)
 
+        ticks_layout.addWidget(QLabel("Rotation:"), 5, 0)
+        tick_rotation_spin = QSpinBox()
+        tick_rotation_spin.setRange(-90, 90)
+        tick_rotation_spin.setSuffix("°")
+        ticks_layout.addWidget(tick_rotation_spin, 5, 1)
+
         form_layout.addWidget(ticks_card)
 
         colors_card = Card()
@@ -687,9 +766,10 @@ class StyleTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy style to Y axis")
-            copy_button.setFlat(True)
-            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
+            copy_button = PButton(
+                "Copy style to Y axis", role="secondary",
+                on_click=lambda _checked=False, p=prefix: self._on_copy_axis_style(p)
+            )
             form_layout.addWidget(copy_button)
 
         self.axes_style_forms[prefix] = {
@@ -698,11 +778,13 @@ class StyleTab(QWidget):
             "bold_check": bold_check, "italic_check": italic_check,
             "color_row": color_row, "color_label": color_label,
             "match_x_toggle": match_x_toggle,
+            "rotation_spin": rotation_spin,
             "ticks_card": ticks_card,
             "tick_font_size_spin": tick_font_size_spin,
             "tick_font_family_combo": tick_font_family_combo,
             "tick_bold_check": tick_bold_check, "tick_italic_check": tick_italic_check,
             "tick_color_row": tick_color_row,
+            "tick_rotation_spin": tick_rotation_spin,
             "colors_card": colors_card,
             "spine_color_row": spine_color_row,
             "major_tick_color_row": major_tick_color_row,
@@ -717,6 +799,7 @@ class StyleTab(QWidget):
         bold_check.toggled.connect(self._on_chart_style_field_changed)
         italic_check.toggled.connect(self._on_chart_style_field_changed)
         color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        rotation_spin.valueChanged.connect(self._on_chart_style_field_changed)
         if match_x_toggle is not None:
             match_x_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked))
 
@@ -725,6 +808,7 @@ class StyleTab(QWidget):
         tick_bold_check.toggled.connect(self._on_chart_style_field_changed)
         tick_italic_check.toggled.connect(self._on_chart_style_field_changed)
         tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        tick_rotation_spin.valueChanged.connect(self._on_chart_style_field_changed)
         spine_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         major_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         minor_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
@@ -786,10 +870,12 @@ class StyleTab(QWidget):
         target["font_family_combo"].setCurrentValue(source["font_family_combo"].currentValue())
         target["bold_check"].setChecked(source["bold_check"].isChecked())
         target["italic_check"].setChecked(source["italic_check"].isChecked())
+        target["rotation_spin"].setValue(source["rotation_spin"].value())
         target["tick_font_size_spin"].setValue(source["tick_font_size_spin"].value())
         target["tick_font_family_combo"].setCurrentValue(source["tick_font_family_combo"].currentValue())
         target["tick_bold_check"].setChecked(source["tick_bold_check"].isChecked())
         target["tick_italic_check"].setChecked(source["tick_italic_check"].isChecked())
+        target["tick_rotation_spin"].setValue(source["tick_rotation_spin"].value())
 
         # Match-X toggles MUST be set before the color swatches they gate
         # (see AxesTab._on_copy_axis_settings for why: setChecked fires
@@ -894,6 +980,7 @@ class StyleTab(QWidget):
         this method's own prior conclusion -- so it survives those
         reflexive reassignments correctly.
         """
+        self._data_series = list(data_series)
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart"), ("Axes", "axes")]
         for index, series in enumerate(data_series):
@@ -1025,6 +1112,80 @@ class StyleTab(QWidget):
         self.error_color_label.setVisible(show_color)
         self.error_color_row.setVisible(show_color)
 
+    # -- Area fill controls ------------------------------------------------
+
+    def _populate_fill_to_options(self, series):
+        """Rebuild the 'Fill to' selector: a 'Baseline' entry (value -1) plus
+        every other series in the chart (value = its index in data_series), so
+        the user can fill the area between this curve and another one. Called
+        while `_updating_controls` is set, so the resulting value change won't
+        write back through `_on_field_changed`."""
+        current_index = None
+        for idx, other in enumerate(self._data_series):
+            if other is series:
+                current_index = idx
+                break
+        items = [("Baseline", -1)]
+        for idx, other in enumerate(self._data_series):
+            if idx == current_index:
+                continue
+            label = other.label or f"Series {idx + 1}"
+            items.append((f"↕ {label}", idx))
+        self.fill_to_control.blockSignals(True)
+        self.fill_to_control.clear()
+        for label, value in items:
+            self.fill_to_control.addItem(label, value)
+        self.fill_to_control.blockSignals(False)
+
+    def _on_fill_enabled_toggled(self, _checked: bool):
+        """Handle the Fill section's on/off toggle."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _on_fill_orientation_toggled(self, _checked: bool):
+        """Handle the vertical/horizontal fill switch: only the baseline
+        label's axis (X vs Y) changes in the UI."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _on_fill_to_changed(self, _value):
+        """Handle a change of the 'Fill to' target (baseline vs. other series):
+        the baseline value field only applies when filling to the baseline."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _on_fill_match_line_toggled(self, _checked: bool):
+        """Handle the Fill 'Match line' toggle for fill color."""
+        self._update_fill_controls_visibility()
+        self._on_field_changed()
+
+    def _update_fill_controls_visibility(self):
+        """Enable the fill sub-controls only while fill is on, hide the color
+        picker while it matches the line color, and hide the constant-baseline
+        field when filling between two curves instead of to a baseline (same
+        hide-not-disable convention as _update_marker_controls_enabled)."""
+        enabled = self.fill_enabled_toggle.isChecked()
+        to_baseline = self.fill_to_control.currentValue() == -1
+        for widget in (
+            self.fill_horizontal_toggle, self.fill_to_control,
+            self.fill_match_line_toggle, self.fill_opacity_slider,
+        ):
+            widget.setEnabled(enabled)
+
+        # The baseline is a Y value for a vertical fill, an X value for a
+        # horizontal one -- label it so the field's meaning is unambiguous.
+        horizontal = self.fill_horizontal_toggle.isChecked()
+        self.fill_base_label.setText("X baseline:" if horizontal else "Y baseline:")
+        show_baseline = enabled and to_baseline
+        self.fill_base_label.setVisible(show_baseline)
+        self.fill_base_spin.setVisible(show_baseline)
+
+        show_color = enabled and not self.fill_match_line_toggle.isChecked()
+        self.fill_color_label.setVisible(show_color)
+        self.fill_color_row.setVisible(show_color)
+        self.fill_match_line_label.setVisible(enabled)
+        self.fill_match_line_toggle.setVisible(enabled)
+
     # -- Background transparent toggles ----------------------------------
 
     def _on_bg_transparent_toggled(self, _checked: bool):
@@ -1076,6 +1237,21 @@ class StyleTab(QWidget):
             else self.error_color_row.currentColor()
         )
         series.error_cap_size = self.error_cap_size_slider.value()
+
+        # Area fill. "Match line" reuses the "" == inherit-series.color
+        # convention. fill_to_index is -1 (fill down to the constant baseline)
+        # or the index of another series to fill between.
+        series.fill_enabled = self.fill_enabled_toggle.isChecked()
+        series.fill_orientation = (
+            "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
+        )
+        series.fill_to_index = self.fill_to_control.currentValue()
+        series.fill_base = self.fill_base_spin.value()
+        series.fill_color = (
+            "" if self.fill_match_line_toggle.isChecked()
+            else self.fill_color_row.currentColor()
+        )
+        series.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
@@ -1136,6 +1312,22 @@ class StyleTab(QWidget):
             self.error_match_line_toggle.blockSignals(False)
             self._update_error_controls_visibility()
             self.error_cap_size_slider.setValue(series.error_cap_size)
+
+            self._populate_fill_to_options(series)
+            self.fill_enabled_toggle.blockSignals(True)
+            self.fill_enabled_toggle.setChecked(series.fill_enabled)
+            self.fill_enabled_toggle.blockSignals(False)
+            self.fill_horizontal_toggle.blockSignals(True)
+            self.fill_horizontal_toggle.setChecked(series.fill_orientation == "horizontal")
+            self.fill_horizontal_toggle.blockSignals(False)
+            self.fill_to_control.setCurrentValue(series.fill_to_index)
+            self.fill_base_spin.setValue(series.fill_base)
+            self.fill_color_row.setCurrentColor(series.fill_color or series.color)
+            self.fill_match_line_toggle.blockSignals(True)
+            self.fill_match_line_toggle.setChecked(series.fill_color == "")
+            self.fill_match_line_toggle.blockSignals(False)
+            self.fill_opacity_slider.setValue(series.fill_alpha)
+            self._update_fill_controls_visibility()
         finally:
             self._updating_controls = previous_guard
 
@@ -1251,6 +1443,8 @@ class StyleTab(QWidget):
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["color_label"].setVisible(not match)
                     axis_form["color_row"].setVisible(not match)
+                default_rotation = 90 if prefix in ("y", "y2") else 0
+                axis_form["rotation_spin"].setValue(chart.config.get(f"{prefix}_label_rotation", default_rotation))
 
                 axis_form["tick_font_size_spin"].setValue(chart.config.get(f"{prefix}_tick_label_font_size", 10))
                 axis_form["tick_font_family_combo"].setCurrentValue(
@@ -1258,6 +1452,7 @@ class StyleTab(QWidget):
                 axis_form["tick_bold_check"].setChecked(chart.config.get(f"{prefix}_tick_label_bold", False))
                 axis_form["tick_italic_check"].setChecked(chart.config.get(f"{prefix}_tick_label_italic", False))
                 axis_form["tick_color_row"].setCurrentColor(chart.config.get(f"{prefix}_tick_label_color", "#000000"))
+                axis_form["tick_rotation_spin"].setValue(chart.config.get(f"{prefix}_tick_label_rotation", 0))
                 match_colors = True
                 if axis_form["match_x_colors_toggle"] is not None:
                     match_colors = chart.config.get(f"{prefix}_match_x_colors", True)
@@ -1315,11 +1510,13 @@ class StyleTab(QWidget):
             chart.config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 chart.config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            chart.config[f"{prefix}_label_rotation"] = axis_form["rotation_spin"].value()
             chart.config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
             chart.config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
             chart.config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
             chart.config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
             chart.config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            chart.config[f"{prefix}_tick_label_rotation"] = axis_form["tick_rotation_spin"].value()
             chart.config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
             chart.config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
             chart.config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
@@ -1372,11 +1569,13 @@ class StyleTab(QWidget):
                 axis_form["color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["match_x_toggle"].setChecked(True)
+                axis_form["rotation_spin"].setValue(90 if prefix in ("y", "y2") else 0)
                 axis_form["tick_font_size_spin"].setValue(10)
                 axis_form["tick_font_family_combo"].setCurrentValue("DejaVu Sans")
                 axis_form["tick_bold_check"].setChecked(False)
                 axis_form["tick_italic_check"].setChecked(False)
                 axis_form["tick_color_row"].setCurrentColor("#000000")
+                axis_form["tick_rotation_spin"].setValue(0)
                 axis_form["spine_color_row"].setCurrentColor("#000000")
                 axis_form["major_tick_color_row"].setCurrentColor("#000000")
                 axis_form["minor_tick_color_row"].setCurrentColor("#000000")
@@ -1498,11 +1697,13 @@ class StyleTab(QWidget):
             config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            config[f"{prefix}_label_rotation"] = axis_form["rotation_spin"].value()
             config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
             config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
             config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
             config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
             config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            config[f"{prefix}_tick_label_rotation"] = axis_form["tick_rotation_spin"].value()
             config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
             config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
             config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()

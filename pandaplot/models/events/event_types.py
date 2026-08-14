@@ -106,6 +106,10 @@ class UIEvents:
     TAB_CLOSED = "ui.tab_closed"
     TAB_TITLE_CHANGED = "ui.tab_title_changed"
     TAB_OPEN_REQUESTED = "ui.tab_open_requested"
+    # Request a note editor to scroll to and select a specific match, used by
+    # note search to jump into a result. Payload: note_id, line_number,
+    # match_start, match_end.
+    NOTE_REVEAL_MATCH = "ui.note_reveal_match"
 
 
 class FitEvents:
@@ -169,6 +173,7 @@ class EventHierarchy:
         "dataset.row_removed": ["dataset.row_removed", "dataset.structure_changed", "dataset.changed"],
         "dataset.row_updated": ["dataset.row_updated", "dataset.data_changed", "dataset.changed"],
         "dataset.bulk_update": ["dataset.bulk_update", "dataset.data_changed", "dataset.changed"],
+        "dataset.data_changed": ["dataset.data_changed", "dataset.changed"],
         "dataset.imported": ["dataset.imported", "dataset.changed"],
         "dataset.exported": ["dataset.exported"],
         "dataset.created": ["dataset.created", "project.item_added", "project.changed"],

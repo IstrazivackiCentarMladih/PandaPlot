@@ -3,7 +3,7 @@ import logging
 from typing import Optional, override
 
 import pandas as pd
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,8 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -32,7 +30,7 @@ from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
 
 
-class FitPanel(PWidget):
+class FitPanel(SidebarPanel):
     """Side panel for performing curve fitting on chart data."""
 
     fit_completed = Signal(dict)  # Emitted when fit is completed with results
@@ -66,21 +64,15 @@ class FitPanel(PWidget):
     @override
     def _init_ui(self):
         """Set up the user interface."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Title
-        self.title_label = QLabel("Curve Fitting")
-        layout.addWidget(self.title_label)
+        self._init_panel_layout()
 
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        # Title
+        self._set_title("📐 Curve Fitting")
+
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(4, 4, 4, 4)
+        content_layout.setSpacing(6)
 
         # Data source section
         self._create_data_source_section(content_layout)
@@ -107,7 +99,6 @@ class FitPanel(PWidget):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         # Apply theme to main widget
         self.setStyleSheet(f"""
@@ -133,80 +124,8 @@ class FitPanel(PWidget):
             }}
         """)
 
-        # Title label with improved styling
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
-
-        # Main action buttons
-        self._apply_button_styling()
-
-    def _apply_button_styling(self):
-        """Apply theme styling to action buttons."""
-        theme_manager = self.app_context.get_manager(ThemeManager)
-        palette = theme_manager.get_surface_palette()
-
-        # Get colors with fallbacks
-        accent = palette.get("accent", "#4CAF50")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        base_fg = palette.get("base_fg", "#333333")
-        card_border = palette.get("card_border", "#dee2e6")
-        card_bg = palette.get("card_bg", "#ffffff")
-
-        # Primary button (Perform Fit)
-        primary_style = f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                padding: 6px 14px;
-                border: none;
-                border-radius: 4px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """
-        self.fit_button.setStyleSheet(primary_style)
-
-        # Secondary buttons (Apply to Chart, Clear Results)
-        secondary_style = f"""
-            QPushButton {{
-                background-color: {card_hover};
-                color: {base_fg};
-                padding: 6px 14px;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {card_hover};
-                color: {secondary_fg};
-            }}
-        """
-        for button in [self.apply_button, self.clear_button]:
-            button.setStyleSheet(secondary_style)
+        # Title label with shared styling
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
     def _apply_menu_styling(self):
             """Apply theme styling to the function menu"""
@@ -218,29 +137,6 @@ class FitPanel(PWidget):
             card_border = palette.get("card_border", "#dee2e6")
             base_fg = palette.get("base_fg", "#333333")
             card_hover = palette.get("card_hover", "#e5f3ff")
-            secondary_fg = palette.get("secondary_fg", "#666666")
-
-            # Function button styling
-            function_button_style = f"""
-            QPushButton {{
-                background-color: {card_hover};
-                color: {base_fg};
-                padding: 6px 14px;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {card_hover};
-                color: {secondary_fg};
-            }}
-        """
-            self.function_button.setStyleSheet(function_button_style)
 
             # Menu styling
             menu_style = f"""
@@ -311,7 +207,10 @@ class FitPanel(PWidget):
         self.custom_function_edit.setPlaceholderText("e.g., a*x**2 + b*x + c")
         custom_layout.addWidget(self.custom_function_edit, 0, 1)
         #show menu
-        self.function_button = QPushButton("Functions")
+        self.function_button = PButton(
+            "Functions", role="secondary",
+            on_click=lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
+        )
         custom_layout.addWidget(self.function_button, 0, 2)
         self.menu = QMenu()
         self.function_names = ["sin", "cos","tan", "sqrt", "exp", "log", "arcsin", "arccos"]
@@ -389,15 +288,15 @@ class FitPanel(PWidget):
         """Create action buttons."""
         button_layout = QHBoxLayout()
 
-        self.fit_button = QPushButton("Perform Fit")
-        self.fit_button.setEnabled(self.scipy_available)
+        self.fit_button = PButton(
+            "Perform Fit", role="primary", on_click=self.fit_command.perform_fit, enabled=self.scipy_available
+        )
         button_layout.addWidget(self.fit_button)
 
-        self.apply_button = QPushButton("Apply to Chart")
-        self.apply_button.setEnabled(False)
+        self.apply_button = PButton("Apply", role="secondary", on_click=self._apply_fit, enabled=False)
         button_layout.addWidget(self.apply_button)
-        
-        self.clear_button = QPushButton("Clear Results")
+
+        self.clear_button = PButton("Clear Results", role="secondary", on_click=self._clear_results)
         button_layout.addWidget(self.clear_button)
         
         layout.addLayout(button_layout)

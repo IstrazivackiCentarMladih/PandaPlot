@@ -7,7 +7,6 @@ for applying transformations to dataset tabs.
 
 from typing import Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -19,20 +18,20 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.transform.transform_controller import TransformController
-from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class TransformPanel(PWidget):
+class TransformPanel(SidebarPanel):
     """
     Transform panel for data transformations, adapted from transform_tab.py.
     Designed for sidebar integration with conditional visibility.
@@ -63,51 +62,40 @@ class TransformPanel(PWidget):
     def _init_ui(self):
         """Create the UI layout optimized for sidebar width constraints."""
         # Main layout with scroll area for long content
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
+        self._init_panel_layout()
+
         # Panel title
-        self.title_label = QLabel("🔧 Transform Operations")
-        # Remove hardcoded styling - will be applied in _apply_theme
-        main_layout.addWidget(self.title_label)
-        
-        # Create scroll area for panel content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        self._set_title("🔧 Transform Operations")
+
         # Content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(4, 4, 4, 4)
         content_layout.setSpacing(6)
-        
+
         # Header section (dataset info)
         self.create_header_section(content_layout)
-        
+
         # Transform type selection
         self.create_transform_type_section(content_layout)
-        
+
         # Column selection section
         self.create_column_selection_section(content_layout)
-        
+
         # Function definition area
         self.create_function_section(content_layout)
-        
+
         # Preview section
         self.create_preview_section(content_layout)
-        
+
         # Action buttons
         self.create_action_buttons(content_layout)
-        
+
         # Add stretch to push content to top
         content_layout.addStretch()
-        
+
         # Set content widget in scroll area
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
     
     @override
     def _apply_theme(self):
@@ -120,9 +108,7 @@ class TransformPanel(PWidget):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        
+
         # Apply theme to main widget (like project view panel)
         self.setStyleSheet(f"""
             TransformPanel {{
@@ -148,16 +134,7 @@ class TransformPanel(PWidget):
         """)
         
         # Style panel title
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Style dataset labels in header
         self.dataset_label.setStyleSheet(f"""
@@ -188,39 +165,6 @@ class TransformPanel(PWidget):
             }}
         """)
         
-        # Style action buttons
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-        
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-        """)
-
     def create_header_section(self, layout):
         """Create header section showing current dataset info."""
         header_group = QGroupBox("Active Dataset")
@@ -294,10 +238,13 @@ class TransformPanel(PWidget):
         quick_buttons_layout = QHBoxLayout()
         
         self.multiply_btn = QPushButton("×2")
+        self.multiply_btn.setProperty("chip", True)
         self.multiply_btn.setMaximumWidth(30)
         self.square_btn = QPushButton("x²")
+        self.square_btn.setProperty("chip", True)
         self.square_btn.setMaximumWidth(30)
         self.upper_btn = QPushButton("ABC")
+        self.upper_btn.setProperty("chip", True)
         self.upper_btn.setMaximumWidth(30)
         
         quick_buttons_layout.addWidget(QLabel("Quick:"))
@@ -324,7 +271,7 @@ class TransformPanel(PWidget):
         
         # Preview controls
         preview_controls = QHBoxLayout()
-        self.preview_btn = QPushButton("Preview")
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.update_preview)
         self.preview_btn.setMaximumWidth(70)
         
         self.preview_rows_combo = QComboBox()
@@ -346,10 +293,10 @@ class TransformPanel(PWidget):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = QPushButton("Apply")
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_transform)
         # Remove hardcoded styling - will be applied in _apply_theme
-        
-        self.clear_btn = QPushButton("Clear")
+
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_panel)
         # Remove hardcoded styling - will be applied in _apply_theme
         
         button_layout.addWidget(self.apply_btn)
@@ -361,10 +308,7 @@ class TransformPanel(PWidget):
         """Set up signal connections."""
         self.transform_type_combo.currentTextChanged.connect(self.on_transform_type_changed)
         self.source_column_list.itemSelectionChanged.connect(self.on_source_column_changed)
-        self.preview_btn.clicked.connect(self.update_preview)
-        self.apply_btn.clicked.connect(self.apply_transform)
-        self.clear_btn.clicked.connect(self.clear_panel)
-        
+
         # Quick function buttons
         self.multiply_btn.clicked.connect(lambda: self.insert_quick_function("x * 2"))
         self.square_btn.clicked.connect(lambda: self.insert_quick_function("x ** 2"))

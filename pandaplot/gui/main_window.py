@@ -9,6 +9,7 @@ from pandaplot.gui.components.main_menu.main_menu import MainMenu
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
 from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSetupManager
 from pandaplot.gui.core.widget_extension import PMainWindow
+from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
@@ -23,6 +24,7 @@ class PandaMainWindow(PMainWindow):
     @override
     def _init_ui(self):
         self.setWindowTitle("PandaPlot")
+        self.setWindowIcon(create_app_icon())
 
         # Set window geometry before showing, but defer showing the window
         # until all widgets are built -- otherwise the OS displays a blank
@@ -84,6 +86,7 @@ class PandaMainWindow(PMainWindow):
         # Create main content area with tab container
         self.tab_container = TabContainer(
             app_context=self.app_context, parent=self.main_splitter)
+        self.app_context.register_manager(self.tab_container)
 
         # Order the panes so the sidebar sits on its configured side
         if sidebar_position == "right":
