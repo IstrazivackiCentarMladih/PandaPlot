@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMessageBox,
+    QStackedWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -23,6 +26,7 @@ from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportIm
 from pandaplot.commands.project.item import DeleteItemCommand, MoveItemCommand, RenameItemCommand
 from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.tabs.image.image_lightbox_dialog import ImageLightboxDialog
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events.event_types import ProjectEvents
@@ -81,6 +85,9 @@ class ImageGalleryTab(PWidget):
         breadcrumb_row.addWidget(self.forward_button)
         breadcrumb_row.addLayout(self.breadcrumb_row_layout)
         breadcrumb_row.addStretch()
+        self.view_toggle = SegmentedControl([("Grid", "grid"), ("List", "list")])
+        self.view_toggle.currentValueChanged.connect(self._on_view_mode_changed)
+        breadcrumb_row.addWidget(self.view_toggle)
         layout.addLayout(breadcrumb_row)
 
         toolbar = QHBoxLayout()
@@ -97,7 +104,17 @@ class ImageGalleryTab(PWidget):
         self.grid.setIconSize(_TILE_SIZE)
         self.grid.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.grid.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        layout.addWidget(self.grid)
+
+        self.list_view = QTreeWidget()
+        self.list_view.setHeaderLabels(["Name", "Type", "Dimensions", "Size", "Date Modified"])
+        self.list_view.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.list_view.setSortingEnabled(True)
+        self.list_view.itemDoubleClicked.connect(self._on_list_item_double_clicked)
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.grid)
+        self.view_stack.addWidget(self.list_view)
+        layout.addWidget(self.view_stack)
 
         self.grid.itemSelectionChanged.connect(self._on_selection_changed)
         self.grid.itemDoubleClicked.connect(self._on_item_double_clicked)
@@ -244,6 +261,8 @@ class ImageGalleryTab(PWidget):
             self.grid.addItem(item)
         self._last_child_ids = {child.id for child in self.current_gallery.get_items()}
         self._refresh_toolbar_state()
+        if hasattr(self, "view_stack") and self.view_stack.currentWidget() is self.list_view:
+            self._populate_list_view()
 
     def _current_tokens(self) -> dict:
         from pandaplot.services.theme.theme_manager import ThemeManager
@@ -446,6 +465,49 @@ class ImageGalleryTab(PWidget):
         if child is None:
             return
 
+        if isinstance(child, ImageGallery):
+            self._navigate_to(child)
+        elif isinstance(child, Image):
+            pixmap = QPixmap()
+            data = child.get_bytes() or self._load_external_bytes(child.source_file)
+            if data and pixmap.loadFromData(data):
+                ImageLightboxDialog(pixmap, child.name, parent=self).exec()
+
+    def _on_view_mode_changed(self, mode: str) -> None:
+        if mode == "list":
+            self._populate_list_view()
+            self.view_stack.setCurrentWidget(self.list_view)
+        else:
+            self.view_stack.setCurrentWidget(self.grid)
+
+    def _populate_list_view(self) -> None:
+        self.list_view.clear()
+        for child in self.current_gallery.get_items():
+            if isinstance(child, ImageGallery):
+                dimensions, size_text = "", ""
+                type_text = "Album"
+            else:
+                dimensions = f"{child.width}×{child.height}"
+                size_text = self._format_size(child.size_bytes)
+                type_text = "Image"
+            row = QTreeWidgetItem([child.name, type_text, dimensions, size_text, child.modified_at])
+            row.setData(0, Qt.ItemDataRole.UserRole, child.id)
+            self.list_view.addTopLevelItem(row)
+
+    def _format_size(self, size_bytes: Optional[int]) -> str:
+        if size_bytes is None:
+            return "—"
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        if size_bytes < 1024 * 1024:
+            return f"{size_bytes / 1024:.1f} KB"
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+    def _on_list_item_double_clicked(self, tree_item: QTreeWidgetItem, column: int) -> None:
+        child_id = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        child = self.current_gallery.get_item_by_id(child_id)
+        if child is None:
+            return
         if isinstance(child, ImageGallery):
             self._navigate_to(child)
         elif isinstance(child, Image):

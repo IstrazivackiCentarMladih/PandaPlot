@@ -356,6 +356,60 @@ class TestImageGalleryTabContextMenu:
         assert args[1]["item_id"] == album.id
 
 
+class TestImageGalleryTabViewToggle:
+    def test_defaults_to_grid_view_visible(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        assert tab.grid.isVisible() or not tab.isVisible()  # visibility only meaningful once shown; check stacked index instead
+        assert tab.view_stack.currentWidget() is tab.grid
+
+    def test_switching_to_list_shows_list_view(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab.view_toggle.setCurrentValue("list")
+        tab._on_view_mode_changed("list")
+
+        assert tab.view_stack.currentWidget() is tab.list_view
+
+    def test_list_view_has_one_row_per_child_with_expected_columns(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach", width=1920, height=1080, size_bytes=204800))
+        gallery.add_item(ImageGallery(name="Day 1"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._populate_list_view()
+
+        assert tab.list_view.topLevelItemCount() == 2
+        names = {tab.list_view.topLevelItem(i).text(0) for i in range(2)}
+        assert names == {"Beach", "Day 1"}
+
+        beach_row = next(
+            tab.list_view.topLevelItem(i) for i in range(2)
+            if tab.list_view.topLevelItem(i).text(0) == "Beach"
+        )
+        assert beach_row.text(1) == "Image"
+        assert beach_row.text(2) == "1920×1080"
+
+        album_row = next(
+            tab.list_view.topLevelItem(i) for i in range(2)
+            if tab.list_view.topLevelItem(i).text(0) == "Day 1"
+        )
+        assert album_row.text(1) == "Album"
+        assert album_row.text(2) == ""
+
+    def test_list_view_shows_dash_for_unknown_size(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Linked", size_bytes=None))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._populate_list_view()
+
+        row = tab.list_view.topLevelItem(0)
+        assert row.text(3) == "—"
+
+
 class TestImageGalleryTabMovedEvent:
     def test_subscribes_to_project_item_moved(self, app_context):
         gallery = ImageGallery(name="Trip")
