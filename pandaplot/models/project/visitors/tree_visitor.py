@@ -146,18 +146,17 @@ class ProjectTreeBuilder:
         )
     
     def visit_image_gallery(self, gallery: ImageGallery, parent_context: Any = None) -> Any:
-        """Visit an image gallery (or nested album) and recursively build its children."""
-        tree_item = self.tree_item_factory(
+        """
+        Visit an image gallery (or nested album). Unlike Folder/generic
+        ItemCollection, this does NOT recurse into children -- galleries can
+        hold many images, and browsing their contents happens in the
+        gallery's own tab (breadcrumb navigation), not the sidebar tree.
+        """
+        return self.tree_item_factory(
             f"🖼️ {gallery.name}",
             "imagegallery",
             {"type": "imagegallery", "id": gallery.id, "data": gallery}
         )
-
-        for child_item in gallery.get_items():
-            child_tree_item = self.visit(child_item, tree_item)
-            self.attach_tree_item(tree_item, child_tree_item)
-
-        return tree_item
 
     def visit_image(self, image: Image, parent_context: Any = None) -> Any:
         """Visit an image item."""
