@@ -1204,6 +1204,7 @@ class DataTab(QWidget):
             x_column_id = self.x_column_combo.currentData()
             y_column_id = self.y_column_combo.currentData()
             y_column_name = self.y_column_combo.currentText()
+            is_vector = chart.chart_type == "vector"
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,
@@ -1216,6 +1217,9 @@ class DataTab(QWidget):
                     x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
                     y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
                     error_symmetric=not self.error_asymmetric_check.isChecked(),
+                    u_column_id=self.u_column_combo.currentData() or "" if is_vector else "",
+                    v_column_id=self.v_column_combo.currentData() or "" if is_vector else "",
+                    magnitude_column_id=self.magnitude_column_combo.currentData() or "" if is_vector else "",
                 )
 
     def clear(self):

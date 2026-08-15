@@ -139,3 +139,28 @@ def test_refresh_vector_fields_preserves_the_selected_series_u_v_magnitude():
     assert series.u_column_id == dataset.column_id("u")
     assert series.v_column_id == dataset.column_id("v")
     assert series.magnitude_column_id == dataset.column_id("x")
+
+
+def test_apply_to_creates_a_default_vector_series_with_u_and_v():
+    """apply_to's "create a default series if none exist yet" path (used
+    when an empty chart is Applied without ever clicking + Add series) must
+    include U/V, or the created series can never render."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    # An empty chart has no series yet, so load() alone leaves the x/y/u/v
+    # combos empty; _on_dataset_changed (fired by a user picking a dataset)
+    # is what populates them.
+    tab._on_dataset_changed()
+    tab.u_column_combo.setCurrentIndex(tab.u_column_combo.findData(dataset.column_id("u")))
+    tab.v_column_combo.setCurrentIndex(tab.v_column_combo.findData(dataset.column_id("v")))
+
+    tab.apply_to(chart)
+
+    assert len(chart.data_series) == 1
+    assert chart.data_series[0].u_column_id == dataset.column_id("u")
+    assert chart.data_series[0].v_column_id == dataset.column_id("v")
