@@ -521,10 +521,11 @@ class ImageGalleryTab(PWidget):
 
     def _refresh_toolbar_state(self):
         selected = self._selected_children()
+        has_image = any(isinstance(c, Image) for c in selected)
         self.rename_button.setEnabled(len(selected) == 1)
         self.delete_button.setEnabled(len(selected) >= 1)
-        self.move_button.setEnabled(len(selected) >= 1)
-        self.copy_button.setEnabled(len(selected) >= 1)
+        self.move_button.setEnabled(has_image)
+        self.copy_button.setEnabled(has_image)
         self.group_into_album_button.setEnabled(
             len(selected) >= 2 and all(isinstance(c, Image) for c in selected)
         )
@@ -586,6 +587,7 @@ class ImageGalleryTab(PWidget):
 
         menu = QMenu(self)
         selected = self._selected_children()
+        has_image = any(isinstance(c, Image) for c in selected)
 
         rename_action = QAction("Rename", self)
         rename_action.setEnabled(len(selected) == 1)
@@ -598,12 +600,12 @@ class ImageGalleryTab(PWidget):
         menu.addAction(delete_action)
 
         move_action = QAction("Move...", self)
-        move_action.setEnabled(len(selected) >= 1)
+        move_action.setEnabled(has_image)
         move_action.triggered.connect(self._on_move_clicked)
         menu.addAction(move_action)
 
         copy_action = QAction("Copy to...", self)
-        copy_action.setEnabled(len(selected) >= 1)
+        copy_action.setEnabled(has_image)
         copy_action.triggered.connect(self._on_copy_clicked)
         menu.addAction(copy_action)
 
@@ -689,8 +691,19 @@ class ImageGalleryTab(PWidget):
         self._move_images_to([image.id for image in selected], target_gallery_id)
 
     def _move_images_to(self, image_ids: list[str], target_gallery_id: str) -> None:
-        """Move each image (by id) from this tab's current gallery into target_gallery_id."""
+        """Move each image (by id) from this tab's current gallery into target_gallery_id.
+
+        Guards against data loss: an id is only ever moved if it is not the
+        target itself (never move an item into itself) and it resolves to an
+        Image instance (albums are never a valid drag/move payload here --
+        moving an ImageGallery through MoveItemCommand would recursively
+        strip and delete its descendants from the project index)."""
         for image_id in image_ids:
+            if image_id == target_gallery_id:
+                continue
+            child = self.current_gallery.get_item_by_id(image_id)
+            if not isinstance(child, Image):
+                continue
             move_command = MoveItemCommand(
                 self.app_context, item_id=image_id, item_type="image",
                 source_folder_id=self.current_gallery.id, target_folder_id=target_gallery_id,
@@ -741,12 +754,7 @@ class ImageGalleryTab(PWidget):
         if album_id is None:
             return
 
-        for image in selected:
-            move_command = MoveItemCommand(
-                self.app_context, item_id=image.id, item_type="image",
-                source_folder_id=self.current_gallery.id, target_folder_id=album_id,
-            )
-            self.app_context.get_command_executor().execute_command(move_command)
+        self._move_images_to([image.id for image in selected], album_id)
 
     def _on_item_double_clicked(self, list_item: QListWidgetItem):
         child_id = list_item.data(Qt.ItemDataRole.UserRole)

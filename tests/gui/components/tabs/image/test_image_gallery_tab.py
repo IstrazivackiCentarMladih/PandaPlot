@@ -624,6 +624,55 @@ class TestImageGalleryTabMoveCopy:
         assert tab.move_button.isEnabled() is True
         assert tab.copy_button.isEnabled() is True
 
+    def test_move_and_copy_disabled_for_album_only_selection(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(ImageGallery(name="Day 1"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        assert tab.move_button.isEnabled() is False
+        assert tab.copy_button.isEnabled() is False
+
+    def test_move_and_copy_enabled_for_mixed_image_and_album_selection(self, app_context, monkeypatch):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        album = ImageGallery(name="Day 1")
+        gallery.add_item(image)
+        gallery.add_item(album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        for i in range(tab.grid.count()):
+            tab.grid.item(i).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        assert tab.move_button.isEnabled() is True
+        assert tab.copy_button.isEnabled() is True
+
+        target_gallery_id = "some-other-gallery-id"
+
+        class _FakeDialog:
+            def __init__(self, *a, **kw):
+                pass
+            def exec(self):
+                from PySide6.QtWidgets import QDialog
+                return QDialog.DialogCode.Accepted
+            def get_selected_gallery_id(self):
+                return target_gallery_id
+
+        monkeypatch.setattr(
+            "pandaplot.gui.dialogs.image.gallery_destination_picker_dialog.GalleryDestinationPickerDialog",
+            _FakeDialog,
+        )
+
+        tab._on_move_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.call_count == 1
+        move_command = executor.execute_command.call_args.args[0]
+        assert move_command.item_id == image.id
+
     def test_move_executes_move_item_command_per_selected_image(self, app_context, monkeypatch):
         gallery = ImageGallery(name="Trip")
         image = Image(name="Beach")
@@ -810,6 +859,54 @@ class TestImageGalleryTabDragDropOntoAlbum:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.call_count == 2
+
+    def test_dropping_an_album_id_onto_another_album_does_not_destroy_its_contents(self, app_context):
+        """Regression: a drag payload can contain an album id (e.g. an album
+        tile was part of the selection when the drag started). Moving an
+        ImageGallery through MoveItemCommand would recursively strip its
+        descendants from the project index first, permanently destroying
+        them (undo only re-parents the now-empty album). _move_images_to
+        must skip any dragged id that isn't an Image."""
+        gallery = ImageGallery(name="Trip")
+        source_album = ImageGallery(name="Day 1")
+        image_in_album = Image(name="Beach")
+        source_album.add_item(image_in_album)
+        target_album = ImageGallery(name="Day 2")
+        gallery.add_item(source_album)
+        gallery.add_item(target_album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        target_index = next(i for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Day 2")
+        target_item = tab.grid.item(target_index)
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", source_album.id.encode("utf-8"))
+
+        tab.grid._handle_drop_on_item(target_item, mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert not executor.execute_command.called
+        assert image_in_album in source_album.get_items()
+
+    def test_dropping_an_album_id_onto_itself_is_a_no_op(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        image_in_album = Image(name="Beach")
+        album.add_item(image_in_album)
+        gallery.add_item(album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        album_index = next(i for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Day 1")
+        album_item = tab.grid.item(album_index)
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", album.id.encode("utf-8"))
+
+        tab.grid._handle_drop_on_item(album_item, mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert not executor.execute_command.called
+        assert image_in_album in album.get_items()
 
 
 class TestImageGalleryTabDragDropOntoBreadcrumb:
