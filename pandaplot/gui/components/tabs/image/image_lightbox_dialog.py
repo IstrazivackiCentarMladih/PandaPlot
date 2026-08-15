@@ -4,8 +4,8 @@ Previous/Next navigation across the list without closing the dialog."""
 from typing import Callable, List, Optional
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QFontMetrics, QKeyEvent, QPixmap
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PySide6.QtGui import QFontMetrics, QKeyEvent, QPixmap, QResizeEvent
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 from pandaplot.gui.components.common.p_button import PButton
@@ -45,6 +45,8 @@ class ImageLightboxDialog(QDialog):
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.mousePressEvent = lambda event: self.close()  # noqa: ARG005 - Qt event signature
+        self.image_label.setMinimumSize(1, 1)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
 
         self.previous_button = PButton("◀ Previous", on_click=self._go_previous)
         self.next_button = PButton("Next ▶", on_click=self._go_next)
@@ -75,13 +77,11 @@ class ImageLightboxDialog(QDialog):
         never changes the size away from the initial constants), use the
         label's actual current size to honor their chosen window size."""
         if not self._user_has_resized:
-            return QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT)
-        label_size = self.image_label.size()
-        if label_size.width() > 0 and label_size.height() > 0:
-            return label_size
-        return QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT)
+            nav_row_height = self.previous_button.sizeHint().height()
+            return QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT - nav_row_height)
+        return self.image_label.size()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         if self.size() != QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT):
             self._user_has_resized = True

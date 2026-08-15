@@ -1,4 +1,5 @@
 import pytest
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication
 
@@ -91,8 +92,10 @@ class TestImageLightboxDialogFixedSize:
         # -- NOT (0, 0) -- so _content_area_size() must not rely on the
         # label's reported size to detect "not laid out yet" for the very
         # first image. A 2000x1500 (4:3) pixmap scaled with KeepAspectRatio
-        # into the 1200x900 (4:3) initial content area lands exactly at
-        # 1200x900; if the bug regresses, it would instead scale to fit
+        # into the initial content area (the dialog's fixed 1200x900 size,
+        # minus the nav row's height, since the label only gets the
+        # remaining vertical space in the QVBoxLayout) lands at that area's
+        # exact size; if the bug regresses, it would instead scale to fit
         # Qt's default pre-layout QLabel size of 640x480.
         big_pixmap = QPixmap(2000, 1500)
         big_pixmap.fill(QColor("blue"))
@@ -100,9 +103,27 @@ class TestImageLightboxDialogFixedSize:
 
         dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: big_pixmap)
 
+        nav_row_height = dialog.previous_button.sizeHint().height()
+        expected_area = QSize(1200, 900 - nav_row_height)
+        expected = big_pixmap.size().scaled(expected_area, Qt.AspectRatioMode.KeepAspectRatio)
+
         scaled = dialog.image_label.pixmap()
-        assert scaled.width() == 1200
-        assert scaled.height() == 900
+        assert scaled.width() == expected.width()
+        assert scaled.height() == expected.height()
+
+    def test_dialog_can_be_shrunk_by_user_after_showing(self, qapp):
+        big_pixmap = QPixmap(2000, 1500)
+        big_pixmap.fill(QColor("red"))
+        images = [Image(name="First"), Image(name="Second")]
+        dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: big_pixmap)
+        dialog.show()
+        qapp.processEvents()
+
+        dialog.resize(700, 600)
+        qapp.processEvents()
+
+        assert dialog.size().width() <= 750
+        assert dialog.size().height() <= 650
 
     def test_long_title_is_elided(self):
         long_name = "vacation_photo_from_the_summer_trip_final_edited_version_2026_extra_long_suffix"
