@@ -37,6 +37,11 @@ _TILE_SIZE = QSize(120, 120)
 
 _IMAGE_MIME_TYPE = "application/x-pandaplot-image-ids"
 
+# Fixed pixel width used to elide the Name column in list view. A
+# fixed-width elision is acceptable for this pass rather than measuring the
+# actual column width at render time.
+_LIST_NAME_COLUMN_ELIDE_WIDTH = 200
+
 
 class _ImageGalleryGrid(QListWidget):
     """
@@ -430,11 +435,18 @@ class ImageGalleryTab(PWidget):
         children.sort(key=_key, reverse=not self._sort_ascending)
         return children
 
+    def _elided_text(self, text: str, max_width: int) -> str:
+        from PySide6.QtGui import QFontMetrics
+
+        metrics = QFontMetrics(self.font())
+        return metrics.elidedText(text, Qt.TextElideMode.ElideRight, max_width)
+
     def _populate_grid(self):
         self.grid.clear()
         tokens = self._current_tokens()
         for child in self._sorted_children():
-            item = QListWidgetItem(child.name)
+            item = QListWidgetItem(self._elided_text(child.name, _TILE_SIZE.width() - 8))
+            item.setToolTip(child.name)
             item.setData(Qt.ItemDataRole.UserRole, child.id)
             item.setIcon(self._tile_icon_for(child, False, tokens))
             self.grid.addItem(item)
@@ -823,7 +835,11 @@ class ImageGalleryTab(PWidget):
                 dimensions = f"{child.width}×{child.height}"
                 size_text = self._format_size(child.size_bytes)
                 type_text = "Image"
-            row = QTreeWidgetItem([child.name, type_text, dimensions, size_text, child.modified_at])
+            row = QTreeWidgetItem([
+                self._elided_text(child.name, _LIST_NAME_COLUMN_ELIDE_WIDTH),
+                type_text, dimensions, size_text, child.modified_at,
+            ])
+            row.setToolTip(0, child.name)
             row.setData(0, Qt.ItemDataRole.UserRole, child.id)
             row.setIcon(0, self._tile_icon_for(child, False, tokens, size=QSize(16, 16)))
             self.list_view.addTopLevelItem(row)

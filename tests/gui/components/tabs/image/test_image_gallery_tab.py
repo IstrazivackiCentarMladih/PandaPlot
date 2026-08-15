@@ -1062,3 +1062,36 @@ class TestImageGalleryTabSort:
         types = [tab.list_view.topLevelItem(i).text(1) for i in range(tab.list_view.topLevelItemCount())]
         assert names == ["Photo", "Album"]
         assert types == ["Image", "Album"]
+
+
+class TestImageGalleryTabLongNameTruncation:
+    def test_short_name_displayed_verbatim_in_grid(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        assert tab.grid.item(0).text() == "Beach"
+
+    def test_long_name_elided_in_grid_with_full_name_as_tooltip(self, app_context):
+        long_name = "vacation_photo_from_the_summer_trip_final_edited_version_2026"
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name=long_name))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        displayed = tab.grid.item(0).text()
+        assert displayed != long_name
+        assert displayed.endswith("…") or displayed.endswith("...")
+        assert tab.grid.item(0).toolTip() == long_name
+
+    def test_long_name_elided_in_list_view_with_full_name_as_tooltip(self, app_context):
+        long_name = "vacation_photo_from_the_summer_trip_final_edited_version_2026"
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name=long_name))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._populate_list_view()
+        row = tab.list_view.topLevelItem(0)
+
+        displayed = row.text(0)
+        assert displayed != long_name
+        assert row.toolTip(0) == long_name
