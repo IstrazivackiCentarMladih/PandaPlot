@@ -114,6 +114,12 @@ class _BreadcrumbSegmentButton(PButton):
         else:
             event.ignore()
 
+    def dragMoveEvent(self, event):  # noqa: N802 - Qt override
+        if event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
     def dropEvent(self, event):  # noqa: N802 - Qt override
         if not event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
             event.ignore()
