@@ -165,6 +165,8 @@ class ImageGalleryTab(PWidget):
         # changes (a stale snapshot from a different gallery level must not
         # leak into this one's filter).
         self._last_child_ids: set[str] = set()
+        self._sort_field: str = "name"
+        self._sort_ascending: bool = True
         self._initialize()
         self._rebuild_breadcrumb()
         self._populate_grid()
@@ -199,6 +201,20 @@ class ImageGalleryTab(PWidget):
             self.group_into_album_button, self.move_button, self.copy_button,
         ):
             toolbar.addWidget(button)
+
+        from pandaplot.gui.components.common.drop_down_combo_box import DropDownComboBox
+
+        self.sort_field_combo = DropDownComboBox()
+        self._sort_field_values = ["name", "type", "dimensions", "size", "modified"]
+        self.sort_field_combo.addItems(["Name", "Type", "Dimensions", "Size", "Date Modified"])
+        self.sort_field_combo.currentIndexChanged.connect(
+            lambda index: self._on_sort_field_changed(self._sort_field_values[index])
+        )
+        toolbar.addWidget(self.sort_field_combo)
+
+        self.sort_direction_button = PButton("▲", on_click=self._on_sort_direction_toggled)
+        toolbar.addWidget(self.sort_direction_button)
+
         layout.addLayout(toolbar)
 
         self.grid = _ImageGalleryGrid(self)
@@ -211,6 +227,7 @@ class ImageGalleryTab(PWidget):
         self.list_view.setHeaderLabels(["Name", "Type", "Dimensions", "Size", "Date Modified"])
         self.list_view.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.list_view.setSortingEnabled(True)
+        self.list_view.header().sortIndicatorChanged.connect(self._on_list_header_sort_changed)
         self.list_view.itemDoubleClicked.connect(self._on_list_item_double_clicked)
 
         self.view_stack = QStackedWidget()
@@ -355,10 +372,55 @@ class ImageGalleryTab(PWidget):
         current_child_ids = {child.id for child in self.current_gallery.get_items()}
         return bool(candidate_ids & (current_child_ids | self._last_child_ids))
 
+    def _on_sort_field_changed(self, field: str) -> None:
+        self._sort_field = field
+        self._populate_grid()
+
+    def _on_sort_direction_toggled(self) -> None:
+        self._sort_ascending = not self._sort_ascending
+        self.sort_direction_button.setText("▲" if self._sort_ascending else "▼")
+        self._populate_grid()
+
+    def _on_list_header_sort_changed(self, column: int, order) -> None:
+        from PySide6.QtCore import Qt as _Qt
+
+        column_to_field = {0: "name", 1: "type", 2: "dimensions", 3: "size", 4: "modified"}
+        field = column_to_field.get(column)
+        if field is None:
+            return
+        self._sort_field = field
+        self._sort_ascending = order == _Qt.SortOrder.AscendingOrder
+        self.sort_field_combo.setCurrentIndex(self._sort_field_values.index(field))
+        self.sort_direction_button.setText("▲" if self._sort_ascending else "▼")
+        self._populate_grid()
+
+    def _sorted_children(self) -> list:
+        children = list(self.current_gallery.get_items())
+
+        def _key(child):
+            if self._sort_field == "name":
+                return child.name.lower()
+            if self._sort_field == "type":
+                return (isinstance(child, ImageGallery), child.name.lower())
+            if self._sort_field == "dimensions":
+                if isinstance(child, Image):
+                    return (child.width, child.height)
+                return (0, 0)
+            if self._sort_field == "size":
+                if isinstance(child, Image):
+                    return child.size_bytes if child.size_bytes is not None else -1
+                return -1
+            if self._sort_field == "modified":
+                return child.modified_at
+            return child.name.lower()
+
+        children.sort(key=_key, reverse=not self._sort_ascending)
+        return children
+
     def _populate_grid(self):
         self.grid.clear()
         tokens = self._current_tokens()
-        for child in self.current_gallery.get_items():
+        for child in self._sorted_children():
             item = QListWidgetItem(child.name)
             item.setData(Qt.ItemDataRole.UserRole, child.id)
             item.setIcon(self._tile_icon_for(child, False, tokens))
@@ -714,10 +776,27 @@ class ImageGalleryTab(PWidget):
             self.view_stack.setCurrentWidget(self.grid)
         self._refresh_toolbar_state()
 
+    _SORT_FIELD_TO_COLUMN = {"name": 0, "type": 1, "dimensions": 2, "size": 3, "modified": 4}
+
     def _populate_list_view(self) -> None:
+        # QTreeWidget with setSortingEnabled(True) re-sorts on every
+        # addTopLevelItem call, using its header's *own* (text-based) column
+        # comparison rather than our _sorted_children() ordering -- which
+        # would otherwise scramble the desired shared order while rows are
+        # being added one at a time (and, before any explicit indicator is
+        # set, Qt's un-set default is column 0 descending, not our "name
+        # ascending" default). Sorting is disabled for the rebuild so rows
+        # land in exactly the order _sorted_children() produced, then the
+        # header's indicator is resynced to the current shared sort field
+        # (signals blocked so this doesn't loop back into
+        # _on_list_header_sort_changed) before re-enabling sorting, purely to
+        # keep the header's arrow glyph accurate for the next genuine user
+        # click.
+        header = self.list_view.header()
+        self.list_view.setSortingEnabled(False)
         self.list_view.clear()
         tokens = self._current_tokens()
-        for child in self.current_gallery.get_items():
+        for child in self._sorted_children():
             if isinstance(child, ImageGallery):
                 dimensions, size_text = "", ""
                 type_text = "Album"
@@ -729,6 +808,13 @@ class ImageGalleryTab(PWidget):
             row.setData(0, Qt.ItemDataRole.UserRole, child.id)
             row.setIcon(0, self._tile_icon_for(child, False, tokens, size=QSize(16, 16)))
             self.list_view.addTopLevelItem(row)
+
+        header.blockSignals(True)
+        column = self._SORT_FIELD_TO_COLUMN.get(self._sort_field, 0)
+        order = Qt.SortOrder.AscendingOrder if self._sort_ascending else Qt.SortOrder.DescendingOrder
+        header.setSortIndicator(column, order)
+        header.blockSignals(False)
+        self.list_view.setSortingEnabled(True)
 
     def _format_size(self, size_bytes: Optional[int]) -> str:
         if size_bytes is None:

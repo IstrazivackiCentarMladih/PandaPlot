@@ -844,3 +844,84 @@ class TestImageGalleryTabDragDropOntoBreadcrumb:
         assert move_command.item_id == image.id
         assert move_command.target_folder_id == gallery.id
         assert move_command.source_folder_id == album.id
+
+
+class TestImageGalleryTabSort:
+    def test_default_sort_is_name_ascending(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        assert tab._sort_field == "name"
+        assert tab._sort_ascending is True
+
+    def test_grid_sorted_by_name_ascending_by_default(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Zebra"))
+        gallery.add_item(Image(name="Apple"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        assert names == ["Apple", "Zebra"]
+
+    def test_sort_by_name_descending(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Apple"))
+        gallery.add_item(Image(name="Zebra"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._sort_ascending = False
+        tab._populate_grid()
+
+        names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        assert names == ["Zebra", "Apple"]
+
+    def test_sort_by_size(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Big", storage_mode="external", size_bytes=1000))
+        gallery.add_item(Image(name="Small", storage_mode="external", size_bytes=10))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._sort_field = "size"
+        tab._populate_grid()
+
+        names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        assert names == ["Small", "Big"]
+
+    def test_sort_by_modified(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        older = Image(name="Older")
+        newer = Image(name="Newer")
+        older.modified_at = "2026-01-01T00:00:00"
+        newer.modified_at = "2026-02-01T00:00:00"
+        gallery.add_item(newer)
+        gallery.add_item(older)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._sort_field = "modified"
+        tab._populate_grid()
+
+        names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        assert names == ["Older", "Newer"]
+
+    def test_grid_and_list_view_share_the_same_order(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Zebra"))
+        gallery.add_item(Image(name="Apple"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._populate_list_view()
+        grid_names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        list_names = [tab.list_view.topLevelItem(i).text(0) for i in range(tab.list_view.topLevelItemCount())]
+        assert grid_names == list_names == ["Apple", "Zebra"]
+
+    def test_sort_field_dropdown_change_repopulates_both_views(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Big", storage_mode="external", size_bytes=1000))
+        gallery.add_item(Image(name="Small", storage_mode="external", size_bytes=10))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._on_sort_field_changed("size")
+
+        assert tab._sort_field == "size"
+        names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
+        assert names == ["Small", "Big"]
