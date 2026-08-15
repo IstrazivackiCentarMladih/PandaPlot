@@ -30,6 +30,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 norecursedirs = ["pandaplot_storybook"]
 
 [tool.ruff]
