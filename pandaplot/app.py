@@ -91,7 +91,8 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
 
 def _warm_up_heavy_imports(progress_callback=None) -> None:
     """Pre-import dependencies that are otherwise lazily loaded on first use
-    (running a fit, opening a chart tab, opening a note tab). Each of those
+    (running a fit, opening a chart tab, opening a note tab, running signal
+    analysis or LOWESS smoothing). Each of those
     imports costs 1+ seconds; without warm-up, that cost is paid synchronously
     on the UI thread the first time the user triggers the feature, which
     looks like a freeze. Runs on a background thread, so import errors here
@@ -103,7 +104,9 @@ def _warm_up_heavy_imports(progress_callback=None) -> None:
         from matplotlib.backends.backend_qt import NavigationToolbar2QT  # noqa: F401
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: F401
         from matplotlib.figure import Figure  # noqa: F401
+        from scipy import signal  # noqa: F401
         from scipy.optimize import curve_fit  # noqa: F401
+        from statsmodels.nonparametric.smoothers_lowess import lowess  # noqa: F401
     except Exception:
         logging.getLogger(__name__).exception("Background import warm-up failed (non-fatal)")
 
