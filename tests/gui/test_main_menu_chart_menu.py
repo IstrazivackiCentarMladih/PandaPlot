@@ -33,7 +33,6 @@ def _fake_app_context(datasets):
 def test_chart_menu_sits_between_data_and_settings():
     parent = QWidget()
     menu = MainMenu(parent=parent, app_context=_fake_app_context(datasets=[]))
-    titles = [action.text() for action in menu.actions() if action.menu() is not None]
     menu_titles = [action.menu().title() for action in menu.actions() if action.menu() is not None]
 
     assert menu_titles.index("Chart") == menu_titles.index("Data") + 1

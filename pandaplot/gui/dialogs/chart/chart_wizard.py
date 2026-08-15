@@ -224,7 +224,7 @@ class ChartWizard(PWizard):
         if len(column_ids) == 1:
             card.apply_picked_columns("y" if "y" in card._role_combos else "values", column_ids)
         else:
-            for role, column_id in zip(roles, column_ids):
+            for role, column_id in zip(roles, column_ids, strict=False):
                 card.apply_picked_columns(role, [column_id])
         # The initial selection stays available for the wizard's lifetime so it
         # can be re-applied whenever a fresh card set is built (e.g. the user

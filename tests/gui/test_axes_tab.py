@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AxesTab
 from pandaplot.models.chart.chart_configuration import ScaleType
-from pandaplot.models.project.items.chart import Chart, DataSeries
+from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
 
 

@@ -5,14 +5,13 @@ marker concept at all).
 """
 import sys
 
+import numpy as np
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_configuration import ChartType
-from pandaplot.models.project.items.chart import FitData
-from pandaplot.models.project.items.chart import DataSeries
-import numpy as np
+from pandaplot.models.project.items.chart import DataSeries, FitData
 
 
 def _qapp():

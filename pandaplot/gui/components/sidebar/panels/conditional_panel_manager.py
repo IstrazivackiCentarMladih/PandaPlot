@@ -57,11 +57,11 @@ class ConditionalPanelManager(QObject):
             "is_visible": None  # Initially unknown
         }
         
-        # Sort by priority (descending)
+        # Sort by priority (ascending) so lower-priority (earlier-registered)
+        # panels are evaluated first and win ties for the default active panel.
         self.registered_panels = dict(
-            sorted(self.registered_panels.items(), 
-                  key=lambda x: x[1]["priority"], 
-                  reverse=True)
+            sorted(self.registered_panels.items(),
+                  key=lambda x: x[1]["priority"])
         )
         
         self.logger.debug("Registered panel '%s' priority=%s", panel_name, priority)

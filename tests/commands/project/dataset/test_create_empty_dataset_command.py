@@ -5,7 +5,6 @@ import pytest
 
 from pandaplot.commands.project.dataset.create_empty_dataset_command import CreateEmptyDatasetCommand
 from pandaplot.gui.controllers.ui_controller import UIController
-from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project import Project
 from pandaplot.models.state import AppContext, AppState
 
