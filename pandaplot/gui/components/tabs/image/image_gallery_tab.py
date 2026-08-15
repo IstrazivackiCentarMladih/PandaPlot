@@ -98,6 +98,35 @@ class _ImageGalleryGrid(QListWidget):
         self._tab._move_images_to(image_ids, target_child.id)
 
 
+class _BreadcrumbSegmentButton(PButton):
+    """PButton breadcrumb segment that also accepts a drop of dragged image
+    ids, moving them into this segment's gallery."""
+
+    def __init__(self, gallery: ImageGallery, tab: "ImageGalleryTab", **kwargs):
+        super().__init__(**kwargs)
+        self._gallery = gallery
+        self._tab = tab
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):  # noqa: N802 - Qt override
+        if event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):  # noqa: N802 - Qt override
+        if not event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.ignore()
+            return
+        self._handle_breadcrumb_drop(event.mimeData())
+        event.acceptProposedAction()
+
+    def _handle_breadcrumb_drop(self, mime: QMimeData) -> None:
+        raw = bytes(mime.data(_IMAGE_MIME_TYPE)).decode("utf-8")
+        image_ids = [line for line in raw.split("\n") if line]
+        self._tab._move_images_to(image_ids, self._gallery.id)
+
+
 class ImageGalleryTab(PWidget):
     """Thumbnail-grid tab for browsing and managing one ImageGallery's contents."""
 
@@ -264,8 +293,8 @@ class ImageGalleryTab(PWidget):
             if index == last_index:
                 segment: QWidget = QLabel(gallery.name)
             else:
-                segment = PButton(
-                    gallery.name, role="secondary",
+                segment = _BreadcrumbSegmentButton(
+                    gallery, self, text=gallery.name, role="secondary",
                     on_click=lambda _checked=False, g=gallery: self._navigate_to(g),
                 )
             self.breadcrumb_row_layout.addWidget(segment)

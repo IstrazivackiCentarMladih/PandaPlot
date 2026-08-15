@@ -810,3 +810,37 @@ class TestImageGalleryTabDragDropOntoAlbum:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.call_count == 2
+
+
+class TestImageGalleryTabDragDropOntoBreadcrumb:
+    def test_dropping_on_ancestor_breadcrumb_segment_moves_image_up(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        album = ImageGallery(name="Day 1")
+        image = Image(name="Beach")
+        gallery.add_item(album)
+        album.add_item(image)
+        app_context.get_app_state.return_value.current_project = _project_stub(gallery, album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._navigate_to(album)
+        assert tab.current_gallery is album
+
+        # The root "Trip" segment is the only clickable ancestor at this depth.
+        ancestor_segment = next(
+            tab.breadcrumb_row_layout.itemAt(i).widget()
+            for i in range(tab.breadcrumb_row_layout.count())
+            if hasattr(tab.breadcrumb_row_layout.itemAt(i).widget(), "text")
+            and tab.breadcrumb_row_layout.itemAt(i).widget().text() == "Trip"
+        )
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", image.id.encode("utf-8"))
+
+        ancestor_segment._handle_breadcrumb_drop(mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.called
+        move_command = executor.execute_command.call_args.args[0]
+        assert move_command.item_id == image.id
+        assert move_command.target_folder_id == gallery.id
+        assert move_command.source_folder_id == album.id
