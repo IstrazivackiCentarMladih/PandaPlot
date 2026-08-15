@@ -6,8 +6,8 @@ multi-select rename/delete/group-into-album and a double-click lightbox.
 
 from typing import Optional, override
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QMimeData, QSize, Qt
+from PySide6.QtGui import QDrag, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
@@ -34,6 +34,68 @@ from pandaplot.models.project.items import Image, ImageGallery
 from pandaplot.models.state.app_context import AppContext
 
 _TILE_SIZE = QSize(120, 120)
+
+_IMAGE_MIME_TYPE = "application/x-pandaplot-image-ids"
+
+
+class _ImageGalleryGrid(QListWidget):
+    """
+    QListWidget with custom drag-and-drop: dragging selected tiles produces
+    a MIME payload of their ids (_IMAGE_MIME_TYPE); dropping that payload
+    onto an ImageGallery (album) tile moves the dragged images into it via
+    the owning ImageGalleryTab's move handler. Dropping onto anything else
+    (an image tile, empty space) is a no-op.
+    """
+
+    def __init__(self, tab: "ImageGalleryTab"):
+        super().__init__()
+        self._tab = tab
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QListWidget.DragDropMode.DragDrop)
+
+    def startDrag(self, supportedActions):  # noqa: N802 - Qt override
+        selected_ids = self._tab._selected_ids()
+        if not selected_ids:
+            return
+        mime = QMimeData()
+        mime.setData(_IMAGE_MIME_TYPE, "\n".join(selected_ids).encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.exec(Qt.DropAction.MoveAction)
+
+    def dragEnterEvent(self, event):  # noqa: N802 - Qt override
+        if event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):  # noqa: N802 - Qt override
+        if event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):  # noqa: N802 - Qt override
+        target_item = self.itemAt(event.position().toPoint())
+        if target_item is None or not event.mimeData().hasFormat(_IMAGE_MIME_TYPE):
+            event.ignore()
+            return
+        self._handle_drop_on_item(target_item, event.mimeData())
+        event.acceptProposedAction()
+
+    def _handle_drop_on_item(self, target_item: QListWidgetItem, mime: QMimeData) -> None:
+        """Testable core of dropEvent: given the drop target tile and the
+        dragged MIME data, moves the dragged images into the target if
+        it's an album, no-ops otherwise."""
+        target_id = target_item.data(Qt.ItemDataRole.UserRole)
+        target_child = self._tab.current_gallery.get_item_by_id(target_id)
+        if not isinstance(target_child, ImageGallery):
+            return
+
+        raw = bytes(mime.data(_IMAGE_MIME_TYPE)).decode("utf-8")
+        image_ids = [line for line in raw.split("\n") if line]
+        self._tab._move_images_to(image_ids, target_child.id)
 
 
 class ImageGalleryTab(PWidget):
@@ -104,7 +166,7 @@ class ImageGalleryTab(PWidget):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
 
-        self.grid = QListWidget()
+        self.grid = _ImageGalleryGrid(self)
         self.grid.setViewMode(QListWidget.ViewMode.IconMode)
         self.grid.setIconSize(_TILE_SIZE)
         self.grid.setResizeMode(QListWidget.ResizeMode.Adjust)
@@ -514,9 +576,13 @@ class ImageGalleryTab(PWidget):
         if target_gallery_id is None:
             return
 
-        for image in selected:
+        self._move_images_to([image.id for image in selected], target_gallery_id)
+
+    def _move_images_to(self, image_ids: list[str], target_gallery_id: str) -> None:
+        """Move each image (by id) from this tab's current gallery into target_gallery_id."""
+        for image_id in image_ids:
             move_command = MoveItemCommand(
-                self.app_context, item_id=image.id, item_type="image",
+                self.app_context, item_id=image_id, item_type="image",
                 source_folder_id=self.current_gallery.id, target_folder_id=target_gallery_id,
             )
             self.app_context.get_command_executor().execute_command(move_command)

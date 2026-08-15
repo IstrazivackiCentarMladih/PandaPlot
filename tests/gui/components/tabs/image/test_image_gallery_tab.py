@@ -2,7 +2,7 @@
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtCore import QBuffer, QIODevice
+from PySide6.QtCore import QBuffer, QIODevice, QMimeData
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QLabel
 
@@ -745,3 +745,68 @@ class TestImageGalleryTabBrokenThumbnails:
         assert good_pixmap != bad_pixmap
         assert tab._thumbnail_for(bad_image) is None
         assert tab._thumbnail_for(good_image) is not None
+
+
+class TestImageGalleryTabDragDropOntoAlbum:
+    def test_dropping_image_mime_data_on_album_tile_moves_image(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        album = ImageGallery(name="Day 1")
+        gallery.add_item(image)
+        gallery.add_item(album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        album_index = next(i for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Day 1")
+        album_item = tab.grid.item(album_index)
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", image.id.encode("utf-8"))
+
+        tab.grid._handle_drop_on_item(album_item, mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.called
+        move_command = executor.execute_command.call_args.args[0]
+        assert move_command.item_id == image.id
+        assert move_command.target_folder_id == album.id
+        assert move_command.source_folder_id == gallery.id
+
+    def test_dropping_on_image_tile_is_a_no_op(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        image_a = Image(name="Beach")
+        image_b = Image(name="Mountain")
+        gallery.add_item(image_a)
+        gallery.add_item(image_b)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        target_index = next(i for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Mountain")
+        target_item = tab.grid.item(target_index)
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", image_a.id.encode("utf-8"))
+
+        tab.grid._handle_drop_on_item(target_item, mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert not executor.execute_command.called
+
+    def test_dropping_multiple_selected_images_moves_all(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        image_a = Image(name="Beach")
+        image_b = Image(name="Mountain")
+        album = ImageGallery(name="Day 1")
+        gallery.add_item(image_a)
+        gallery.add_item(image_b)
+        gallery.add_item(album)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        album_index = next(i for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Day 1")
+        album_item = tab.grid.item(album_index)
+
+        mime = QMimeData()
+        mime.setData("application/x-pandaplot-image-ids", f"{image_a.id}\n{image_b.id}".encode("utf-8"))
+
+        tab.grid._handle_drop_on_item(album_item, mime)
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.call_count == 2
