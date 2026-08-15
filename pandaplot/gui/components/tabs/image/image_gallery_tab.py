@@ -319,6 +319,8 @@ class ImageGalleryTab(PWidget):
             return build_gallery_tile_icon(None, "album", is_selected, tokens, size=size)
         if isinstance(child, Image):
             thumbnail = self._thumbnail_for(child)
+            if thumbnail is not None and (thumbnail.width() > size.width() or thumbnail.height() > size.height()):
+                thumbnail = thumbnail.scaled(size, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             tile_type = "image" if thumbnail is not None else "broken"
             return build_gallery_tile_icon(thumbnail, tile_type, is_selected, tokens, size=size)
         return build_gallery_tile_icon(None, "broken", is_selected, tokens, size=size)

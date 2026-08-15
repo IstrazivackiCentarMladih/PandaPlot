@@ -42,6 +42,26 @@ def _real_png_bytes() -> bytes:
     return bytes(buffer.data())
 
 
+def _bordered_png_bytes(size: int = 120, border: int = 20) -> bytes:
+    """A large, genuinely decodable PNG with a distinct-colored border and a
+    different-colored center -- large enough that _thumbnail_for's own
+    120x120 scaling still leaves both colors present. Used to prove a
+    resulting small icon was actually produced by downscaling the whole
+    image, rather than by center-cropping a small patch that would land
+    entirely inside just one of the two regions."""
+    from PySide6.QtGui import QPainter
+
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor("red"))
+    painter = QPainter(pixmap)
+    painter.fillRect(border, border, size - 2 * border, size - 2 * border, QColor("green"))
+    painter.end()
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    return bytes(buffer.data())
+
+
 _FAKE_TOKENS = {
     "text_muted": "#6B7280",
     "border_subtle": "#ECEEF2",
@@ -550,6 +570,43 @@ class TestImageGalleryTabThemeRefresh:
         # _apply_theme should have pulled fresh tokens (via _current_tokens)
         # to rebuild every tile icon, not been a no-op.
         assert tab.app_context.get_manager.call_count > calls_before
+
+
+class TestImageGalleryTabListViewIconScaling:
+    def test_list_view_icon_is_scaled_thumbnail_not_center_crop(self, app_context):
+        """Regression: build_gallery_tile_icon() only centers the pixmap it's
+        given on the target canvas -- it does not scale it. The grid (120x120
+        icon size) happens to work because _thumbnail_for already scales to
+        exactly 120x120, but the list view asks for a 16x16 icon using that
+        same already-120x120 pixmap. Before the fix, centering a 120x120
+        pixmap on a 16x16 canvas produces a large negative offset, so the
+        visible 16x16 icon is really a 1:1 center-crop of the middle 16x16
+        pixels of the thumbnail -- landing entirely inside this image's solid
+        green interior and showing a single uniform color instead of a
+        genuine small rendering of the whole (red-bordered, green-centered)
+        image.
+        """
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        image.set_bytes(_bordered_png_bytes(size=120, border=20))
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._on_view_mode_changed("list")
+        row = tab.list_view.topLevelItem(0)
+
+        from PySide6.QtCore import QSize
+        icon_image = row.icon(0).pixmap(QSize(16, 16)).toImage()
+        colors = {
+            icon_image.pixelColor(x, y).getRgb()
+            for x in range(icon_image.width())
+            for y in range(icon_image.height())
+        }
+
+        assert len(colors) > 1, (
+            "list-view row icon is a single uniform color -- looks like a "
+            "center-crop of the thumbnail rather than a genuine downscale"
+        )
 
 
 class TestImageGalleryTabBrokenThumbnails:
