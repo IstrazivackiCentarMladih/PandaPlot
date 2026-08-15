@@ -925,3 +925,43 @@ class TestImageGalleryTabSort:
         assert tab._sort_field == "size"
         names = [tab.grid.item(i).text() for i in range(tab.grid.count())]
         assert names == ["Small", "Big"]
+
+    def test_list_view_sorted_by_size_is_numeric_not_lexical(self, app_context):
+        # Regression test: "9 B" and "10 B" are formatted text whose lexical
+        # order ("10 B" < "9 B") disagrees with numeric order (9 < 10). If
+        # QTreeWidget's native setSortingEnabled(True) resort were still in
+        # effect, this would come back lexically sorted ("10 B" before "9 B")
+        # instead of numerically ("9 B" before "10 B").
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Ten", storage_mode="external", size_bytes=10))
+        gallery.add_item(Image(name="Nine", storage_mode="external", size_bytes=9))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._on_view_mode_changed("list")
+        tab._sort_field = "size"
+        tab._populate_list_view()
+
+        names = [tab.list_view.topLevelItem(i).text(0) for i in range(tab.list_view.topLevelItemCount())]
+        sizes = [tab.list_view.topLevelItem(i).text(3) for i in range(tab.list_view.topLevelItemCount())]
+        assert names == ["Nine", "Ten"]
+        assert sizes == ["9 B", "10 B"]
+
+    def test_list_view_sorted_by_type_matches_sorted_children_order(self, app_context):
+        # Regression test: _sorted_children()'s "type" key sorts images
+        # before albums, but QTreeWidget's native text-based sort would put
+        # the literal string "Album" before "Image" -- exactly reversed. If
+        # the native resort were still in effect, this would come back
+        # album-first instead of image-first.
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(ImageGallery(name="Album"))
+        gallery.add_item(Image(name="Photo"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab._on_view_mode_changed("list")
+        tab._sort_field = "type"
+        tab._populate_list_view()
+
+        names = [tab.list_view.topLevelItem(i).text(0) for i in range(tab.list_view.topLevelItemCount())]
+        types = [tab.list_view.topLevelItem(i).text(1) for i in range(tab.list_view.topLevelItemCount())]
+        assert names == ["Photo", "Album"]
+        assert types == ["Image", "Album"]

@@ -226,7 +226,15 @@ class ImageGalleryTab(PWidget):
         self.list_view = QTreeWidget()
         self.list_view.setHeaderLabels(["Name", "Type", "Dimensions", "Size", "Date Modified"])
         self.list_view.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
-        self.list_view.setSortingEnabled(True)
+        # Deliberately NOT setSortingEnabled(True): that would make Qt
+        # natively re-sort rows on every insertion/toggle using
+        # QTreeWidgetItem's own text-based column comparison, which
+        # discards _sorted_children()'s numeric/canonical order (see
+        # _populate_list_view). We only want the header's clickable
+        # sort-indicator behavior, which is independent of the
+        # sortingEnabled flag.
+        self.list_view.header().setSectionsClickable(True)
+        self.list_view.header().setSortIndicatorShown(True)
         self.list_view.header().sortIndicatorChanged.connect(self._on_list_header_sort_changed)
         self.list_view.itemDoubleClicked.connect(self._on_list_item_double_clicked)
 
@@ -390,7 +398,12 @@ class ImageGalleryTab(PWidget):
             return
         self._sort_field = field
         self._sort_ascending = order == _Qt.SortOrder.AscendingOrder
+        # Block signals: setCurrentIndex would otherwise emit
+        # currentIndexChanged -> _on_sort_field_changed -> a redundant
+        # _populate_grid() call, on top of the explicit one below.
+        self.sort_field_combo.blockSignals(True)
         self.sort_field_combo.setCurrentIndex(self._sort_field_values.index(field))
+        self.sort_field_combo.blockSignals(False)
         self.sort_direction_button.setText("▲" if self._sort_ascending else "▼")
         self._populate_grid()
 
@@ -779,21 +792,19 @@ class ImageGalleryTab(PWidget):
     _SORT_FIELD_TO_COLUMN = {"name": 0, "type": 1, "dimensions": 2, "size": 3, "modified": 4}
 
     def _populate_list_view(self) -> None:
-        # QTreeWidget with setSortingEnabled(True) re-sorts on every
-        # addTopLevelItem call, using its header's *own* (text-based) column
-        # comparison rather than our _sorted_children() ordering -- which
-        # would otherwise scramble the desired shared order while rows are
-        # being added one at a time (and, before any explicit indicator is
-        # set, Qt's un-set default is column 0 descending, not our "name
-        # ascending" default). Sorting is disabled for the rebuild so rows
-        # land in exactly the order _sorted_children() produced, then the
-        # header's indicator is resynced to the current shared sort field
-        # (signals blocked so this doesn't loop back into
-        # _on_list_header_sort_changed) before re-enabling sorting, purely to
-        # keep the header's arrow glyph accurate for the next genuine user
-        # click.
+        # setSortingEnabled is never turned on for self.list_view (see
+        # _init_ui) -- native QTreeWidget sorting compares displayed
+        # Qt::DisplayRole text (QTreeWidgetItem::operator<), which gives
+        # wrong results for several of our columns (e.g. "10 B" < "2.4 MB"
+        # lexically, or "Album" before "Image" for type), scrambling the
+        # shared _sorted_children() order that both grid and list view are
+        # supposed to agree on. So rows are simply inserted in
+        # _sorted_children()'s order below, and the header's indicator is
+        # resynced to the current shared sort field (signals blocked so
+        # this doesn't loop back into _on_list_header_sort_changed) purely
+        # to keep the header's arrow glyph accurate for the next genuine
+        # user click.
         header = self.list_view.header()
-        self.list_view.setSortingEnabled(False)
         self.list_view.clear()
         tokens = self._current_tokens()
         for child in self._sorted_children():
@@ -814,7 +825,6 @@ class ImageGalleryTab(PWidget):
         order = Qt.SortOrder.AscendingOrder if self._sort_ascending else Qt.SortOrder.DescendingOrder
         header.setSortIndicator(column, order)
         header.blockSignals(False)
-        self.list_view.setSortingEnabled(True)
 
     def _format_size(self, size_bytes: Optional[int]) -> str:
         if size_bytes is None:
