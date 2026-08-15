@@ -67,3 +67,29 @@ class TestImageLightboxDialogNavigation:
 
         assert dialog.image_label.pixmap() is not None
         assert not dialog.image_label.pixmap().isNull()
+
+
+class TestImageLightboxDialogFixedSize:
+    def test_dialog_size_unchanged_across_images_of_different_dimensions(self):
+        small_pixmap = _colored_pixmap("red")  # 10x10, from existing test helper
+        big_pixmap = QPixmap(2000, 1500)
+        big_pixmap.fill(QColor("blue"))
+
+        images = [Image(name="Small"), Image(name="Big")]
+        pixmaps = {images[0].id: small_pixmap, images[1].id: big_pixmap}
+
+        dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: pixmaps[img.id])
+        size_before = dialog.size()
+
+        dialog._go_next()
+
+        assert dialog.size() == size_before
+
+    def test_long_title_is_elided(self):
+        long_name = "vacation_photo_from_the_summer_trip_final_edited_version_2026_extra_long_suffix"
+        images = [Image(name=long_name)]
+
+        dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: _colored_pixmap("red"))
+
+        assert dialog.windowTitle() != long_name
+        assert len(dialog.windowTitle()) < len(long_name)
