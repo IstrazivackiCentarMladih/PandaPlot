@@ -95,7 +95,12 @@ class ImageGalleryTab(PWidget):
         self.rename_button = PButton("Rename", on_click=self._on_rename_clicked, enabled=False)
         self.delete_button = PButton("Delete", role="destructive", on_click=self._on_delete_clicked, enabled=False)
         self.group_into_album_button = PButton("Group into Album", on_click=self._on_group_into_album_clicked, enabled=False)
-        for button in (self.import_button, self.rename_button, self.delete_button, self.group_into_album_button):
+        self.move_button = PButton("Move...", on_click=self._on_move_clicked, enabled=False)
+        self.copy_button = PButton("Copy to...", on_click=self._on_copy_clicked, enabled=False)
+        for button in (
+            self.import_button, self.rename_button, self.delete_button,
+            self.group_into_album_button, self.move_button, self.copy_button,
+        ):
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
 
@@ -346,6 +351,8 @@ class ImageGalleryTab(PWidget):
         selected = self._selected_children()
         self.rename_button.setEnabled(len(selected) == 1)
         self.delete_button.setEnabled(len(selected) >= 1)
+        self.move_button.setEnabled(len(selected) >= 1)
+        self.copy_button.setEnabled(len(selected) >= 1)
         self.group_into_album_button.setEnabled(
             len(selected) >= 2 and all(isinstance(c, Image) for c in selected)
         )
@@ -418,6 +425,16 @@ class ImageGalleryTab(PWidget):
         delete_action.triggered.connect(self._on_delete_clicked)
         menu.addAction(delete_action)
 
+        move_action = QAction("Move...", self)
+        move_action.setEnabled(len(selected) >= 1)
+        move_action.triggered.connect(self._on_move_clicked)
+        menu.addAction(move_action)
+
+        copy_action = QAction("Copy to...", self)
+        copy_action.setEnabled(len(selected) >= 1)
+        copy_action.triggered.connect(self._on_copy_clicked)
+        menu.addAction(copy_action)
+
         child_id = self._child_id_for_item(item)
         child = self.current_gallery.get_item_by_id(child_id)
         if isinstance(child, ImageGallery) and len(selected) == 1:
@@ -475,6 +492,62 @@ class ImageGalleryTab(PWidget):
         for item in selected:
             command = DeleteItemCommand(self.app_context, item_id=item.id, confirm=False)
             self.app_context.get_command_executor().execute_command(command)
+
+    def _on_move_clicked(self) -> None:
+        selected = [c for c in self._selected_children() if isinstance(c, Image)]
+        if not selected:
+            return
+
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.gui.dialogs.image.gallery_destination_picker_dialog import (
+            GalleryDestinationPickerDialog,
+        )
+
+        dialog = GalleryDestinationPickerDialog(
+            self.app_context, self.app_state.current_project,
+            current_gallery_id=self.current_gallery.id, parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        target_gallery_id = dialog.get_selected_gallery_id()
+        if target_gallery_id is None:
+            return
+
+        for image in selected:
+            move_command = MoveItemCommand(
+                self.app_context, item_id=image.id, item_type="image",
+                source_folder_id=self.current_gallery.id, target_folder_id=target_gallery_id,
+            )
+            self.app_context.get_command_executor().execute_command(move_command)
+
+    def _on_copy_clicked(self) -> None:
+        selected = [c for c in self._selected_children() if isinstance(c, Image)]
+        if not selected:
+            return
+
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.gui.dialogs.image.gallery_destination_picker_dialog import (
+            GalleryDestinationPickerDialog,
+        )
+
+        dialog = GalleryDestinationPickerDialog(
+            self.app_context, self.app_state.current_project,
+            current_gallery_id=self.current_gallery.id, parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        target_gallery_id = dialog.get_selected_gallery_id()
+        if target_gallery_id is None:
+            return
+
+        from pandaplot.commands.project.image import CopyImagesCommand
+
+        copy_command = CopyImagesCommand(
+            self.app_context, image_ids=[image.id for image in selected], target_gallery_id=target_gallery_id,
+        )
+        self.app_context.get_command_executor().execute_command(copy_command)
 
     def _on_group_into_album_clicked(self):
         selected = [c for c in self._selected_children() if isinstance(c, Image)]

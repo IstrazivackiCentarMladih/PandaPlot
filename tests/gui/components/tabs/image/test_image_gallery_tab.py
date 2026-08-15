@@ -609,6 +609,117 @@ class TestImageGalleryTabListViewIconScaling:
         )
 
 
+class TestImageGalleryTabMoveCopy:
+    def test_move_button_enabled_for_any_non_empty_selection(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        assert tab.move_button.isEnabled() is False
+        assert tab.copy_button.isEnabled() is False
+
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        assert tab.move_button.isEnabled() is True
+        assert tab.copy_button.isEnabled() is True
+
+    def test_move_executes_move_item_command_per_selected_image(self, app_context, monkeypatch):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        target_gallery_id = "some-other-gallery-id"
+
+        class _FakeDialog:
+            def __init__(self, *a, **kw):
+                pass
+            def exec(self):
+                from PySide6.QtWidgets import QDialog
+                return QDialog.DialogCode.Accepted
+            def get_selected_gallery_id(self):
+                return target_gallery_id
+
+        monkeypatch.setattr(
+            "pandaplot.gui.dialogs.image.gallery_destination_picker_dialog.GalleryDestinationPickerDialog",
+            _FakeDialog,
+        )
+
+        tab._on_move_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.called
+        move_command = executor.execute_command.call_args.args[0]
+        assert move_command.item_id == image.id
+        assert move_command.target_folder_id == target_gallery_id
+        assert move_command.source_folder_id == gallery.id
+
+    def test_copy_executes_copy_images_command_once_for_whole_selection(self, app_context, monkeypatch):
+        gallery = ImageGallery(name="Trip")
+        image1 = Image(name="Beach")
+        image2 = Image(name="Mountain")
+        gallery.add_item(image1)
+        gallery.add_item(image2)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.item(1).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        target_gallery_id = "some-other-gallery-id"
+
+        class _FakeDialog:
+            def __init__(self, *a, **kw):
+                pass
+            def exec(self):
+                from PySide6.QtWidgets import QDialog
+                return QDialog.DialogCode.Accepted
+            def get_selected_gallery_id(self):
+                return target_gallery_id
+
+        monkeypatch.setattr(
+            "pandaplot.gui.dialogs.image.gallery_destination_picker_dialog.GalleryDestinationPickerDialog",
+            _FakeDialog,
+        )
+
+        tab._on_copy_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.called
+        copy_command = executor.execute_command.call_args.args[0]
+        assert set(copy_command.image_ids) == {image1.id, image2.id}
+        assert copy_command.target_gallery_id == target_gallery_id
+
+    def test_move_does_nothing_when_dialog_cancelled(self, app_context, monkeypatch):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        class _FakeDialog:
+            def __init__(self, *a, **kw):
+                pass
+            def exec(self):
+                from PySide6.QtWidgets import QDialog
+                return QDialog.DialogCode.Rejected
+            def get_selected_gallery_id(self):
+                return None
+
+        monkeypatch.setattr(
+            "pandaplot.gui.dialogs.image.gallery_destination_picker_dialog.GalleryDestinationPickerDialog",
+            _FakeDialog,
+        )
+
+        tab._on_move_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert not executor.execute_command.called
+
+
 class TestImageGalleryTabBrokenThumbnails:
     def test_failed_thumbnail_load_produces_broken_icon_distinct_from_success(self, app_context):
         gallery = ImageGallery(name="Trip")
