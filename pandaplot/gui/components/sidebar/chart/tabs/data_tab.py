@@ -1094,10 +1094,38 @@ class DataTab(QWidget):
         Called by ChartPropertiesPanel when the Chart tab's type combo
         changes live, since that combo writes straight to
         `self.current_chart.chart_type` without going through `load()`.
+
+        Repopulating clears every combo back to its first entry, which would
+        otherwise silently desync from the still-selected series' actual
+        u_column_id/v_column_id/magnitude_column_id -- the next unrelated
+        edit (`_on_series_config_changed`) would then overwrite those fields
+        with whatever the cleared combos happen to show. Re-select the
+        current series' values afterward (guarded by `_updating_controls`,
+        same as `_load_series_into_controls`) so nothing is silently lost.
         """
         self._update_vector_field_visibility()
-        if self.current_chart and self.dataset_combo.currentData():
-            self._populate_vector_column_combos(self.dataset_combo.currentData())
+        if not self.current_chart or not self.dataset_combo.currentData():
+            return
+        self._populate_vector_column_combos(self.dataset_combo.currentData())
+
+        current_row = self._expanded_series_index
+        if current_row < 0 or current_row >= len(self.current_chart.data_series):
+            return
+        series = self.current_chart.data_series[current_row]
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            for combo, column_id in (
+                (self.u_column_combo, series.u_column_id),
+                (self.v_column_combo, series.v_column_id),
+                (self.magnitude_column_combo, series.magnitude_column_id),
+            ):
+                combo.blockSignals(True)
+                index = combo.findData(column_id)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+                combo.blockSignals(False)
+        finally:
+            self._updating_controls = previous_guard
 
     def _on_dataset_changed(self):
         """Handle dataset selection change."""

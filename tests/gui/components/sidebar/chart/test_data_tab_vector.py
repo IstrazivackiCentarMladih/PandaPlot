@@ -103,3 +103,39 @@ def test_refresh_vector_fields_shows_combos_after_a_live_type_switch():
     QApplication.processEvents()
 
     assert tab.u_column_combo.isVisible() is True
+
+
+def test_refresh_vector_fields_preserves_the_selected_series_u_v_magnitude():
+    """Regression test: repopulating the U/V/magnitude combos (which clears
+    them back to their first entry) must not desync from the still-selected
+    series' actual column ids -- otherwise the next unrelated edit
+    (_on_series_config_changed writes every combo's current value back to
+    the series) silently overwrites a correctly-configured vector series."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+        magnitude_column_id=dataset.column_id("x"), label="v1",
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    tab.refresh_vector_fields()
+
+    assert tab.u_column_combo.currentData() == dataset.column_id("u")
+    assert tab.v_column_combo.currentData() == dataset.column_id("v")
+    assert tab.magnitude_column_combo.currentData() == dataset.column_id("x")
+
+    # An unrelated edit (e.g. toggling the Y axis) re-reads every combo's
+    # current value via _on_series_config_changed -- it must not clobber
+    # u/v/magnitude via now-desynced combos.
+    tab._on_series_config_changed()
+
+    series = chart.data_series[0]
+    assert series.u_column_id == dataset.column_id("u")
+    assert series.v_column_id == dataset.column_id("v")
+    assert series.magnitude_column_id == dataset.column_id("x")
