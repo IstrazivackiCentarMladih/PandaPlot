@@ -881,10 +881,10 @@ class ChartEditorWidget(PWidget):
                             "label": series.label,
                             "alpha": alpha,
                         }
-                        if series_data.magnitude_data is not None:
+                        if series_data.magnitude_data is not None and series.vector_colormap:
                             target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
                                                series_data.magnitude_data,
-                                               cmap=series.vector_colormap or "viridis",
+                                               cmap=series.vector_colormap,
                                                **quiver_kwargs)
                         else:
                             target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,

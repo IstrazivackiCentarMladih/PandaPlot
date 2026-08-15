@@ -68,3 +68,30 @@ def test_vector_chart_with_magnitude_column_uses_a_colormap():
     quivers = [c for c in editor.chart_canvas.axes.collections if isinstance(c, Quiver)]
     assert len(quivers) == 1
     assert quivers[0].get_cmap().name == "plasma"
+
+
+def test_vector_chart_with_magnitude_column_but_solid_colormap_ignores_magnitude():
+    """vector_colormap == "" ("Solid color" in the Style tab) must render a
+    flat vector_color even when a magnitude column is configured -- the
+    magnitude column only drives coloring once the user actually picks a
+    colormap, matching the Style tab's "Solid color" label."""
+    _qapp()
+    app_context = build_app_context()
+    project, dataset = _project_and_dataset()
+    app_context.app_state.load_project(project)
+
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+        magnitude_column_id=dataset.column_id("mag"), vector_colormap="", vector_color="#00ff00",
+        label="Field",
+    )
+    project.add_item(chart)
+
+    editor = ChartEditorWidget(app_context=app_context, chart=chart, parent=None)
+    editor.update_chart()
+
+    quivers = [c for c in editor.chart_canvas.axes.collections if isinstance(c, Quiver)]
+    assert len(quivers) == 1
+    assert quivers[0].get_facecolor().tolist()[0][:3] == [0.0, 1.0, 0.0]

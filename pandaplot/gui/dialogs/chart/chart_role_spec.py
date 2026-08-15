@@ -1,9 +1,10 @@
 """Per-chart-type column-role requirements for the chart creation wizard.
 
 Chart-type strings mirror the literals `chart_editor.py` checks against
-(`chart.chart_type == "line" / "scatter" / "bar" / "hist"`), not the
-`ChartType` enum in `chart_configuration.py` (whose `HISTOGRAM = "histogram"`
-value the renderer never checks) — the wizard must always emit `"hist"`.
+(`chart.chart_type == "line" / "scatter" / "bar" / "hist" / "vector"`), not
+the `ChartType` enum in `chart_configuration.py` (whose `HISTOGRAM =
+"histogram"` value the renderer never checks) — the wizard must always emit
+`"hist"`.
 """
 from dataclasses import dataclass
 
@@ -34,6 +35,6 @@ def get_chart_role_spec(chart_type: str) -> ChartRoleSpec:
     """Return the role spec for `chart_type`.
 
     Raises:
-        KeyError: if `chart_type` is not one of the wizard's 4 supported types.
+        KeyError: if `chart_type` is not one of the wizard's 5 supported types.
     """
     return CHART_ROLE_SPECS[chart_type]

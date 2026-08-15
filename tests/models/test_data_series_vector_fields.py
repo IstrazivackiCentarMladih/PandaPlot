@@ -69,3 +69,13 @@ def test_assign_series_column_ids_fills_u_and_v():
     assign_series_column_ids(series, _FakeDataset())
     assert series.u_column_id == "u-id"
     assert series.v_column_id == "v-id"
+
+
+def test_assign_series_column_ids_fills_magnitude():
+    class _FakeDataset:
+        def column_id(self, name):
+            return {"mag_name": "mag-id"}.get(name)
+
+    series = DataSeries(dataset_id="ds1", magnitude_column="mag_name")
+    assign_series_column_ids(series, _FakeDataset())
+    assert series.magnitude_column_id == "mag-id"

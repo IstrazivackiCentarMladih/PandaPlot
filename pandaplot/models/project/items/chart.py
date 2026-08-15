@@ -662,6 +662,7 @@ def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
         ("y_error_minus_column", "y_error_minus_column_id"),
         ("u_column", "u_column_id"),
         ("v_column", "v_column_id"),
+        ("magnitude_column", "magnitude_column_id"),
     )
     for name_field, id_field in pairs:
         name = getattr(series, name_field, "")
