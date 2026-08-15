@@ -85,6 +85,25 @@ class TestImageLightboxDialogFixedSize:
 
         assert dialog.size() == size_before
 
+    def test_first_shown_image_scales_to_initial_frame_not_default_label_size(self):
+        # Regression test: a freshly-constructed QLabel that hasn't been
+        # shown/laid out yet reports Qt's default widget size, QSize(640, 480)
+        # -- NOT (0, 0) -- so _content_area_size() must not rely on the
+        # label's reported size to detect "not laid out yet" for the very
+        # first image. A 2000x1500 (4:3) pixmap scaled with KeepAspectRatio
+        # into the 1200x900 (4:3) initial content area lands exactly at
+        # 1200x900; if the bug regresses, it would instead scale to fit
+        # Qt's default pre-layout QLabel size of 640x480.
+        big_pixmap = QPixmap(2000, 1500)
+        big_pixmap.fill(QColor("blue"))
+        images = [Image(name="Big")]
+
+        dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: big_pixmap)
+
+        scaled = dialog.image_label.pixmap()
+        assert scaled.width() == 1200
+        assert scaled.height() == 900
+
     def test_long_title_is_elided(self):
         long_name = "vacation_photo_from_the_summer_trip_final_edited_version_2026_extra_long_suffix"
         images = [Image(name=long_name)]

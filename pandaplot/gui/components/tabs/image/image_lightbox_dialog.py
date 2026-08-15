@@ -40,6 +40,7 @@ class ImageLightboxDialog(QDialog):
         self._load_pixmap = load_pixmap
 
         self.resize(_INITIAL_WIDTH, _INITIAL_HEIGHT)
+        self._user_has_resized = False
 
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -63,13 +64,27 @@ class ImageLightboxDialog(QDialog):
         return self._images[self._index]
 
     def _content_area_size(self) -> QSize:
-        """The image_label's current size -- the actual space available to
-        scale into, honoring a user-resized dialog rather than the
-        original fixed constants."""
+        """The available space to scale an image into. Before the user has
+        manually resized the dialog, always use the known initial fixed
+        size directly rather than trusting the label's reported size --
+        Qt's default pre-layout QLabel size (640x480) is NOT (0, 0), so it
+        can't be used to detect "not laid out yet". Once the user has
+        resized the window (detected via resizeEvent, since Qt also fires
+        resizeEvent for our own constructor-time self.resize() call with
+        the initial size -- which we can distinguish because that call
+        never changes the size away from the initial constants), use the
+        label's actual current size to honor their chosen window size."""
+        if not self._user_has_resized:
+            return QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT)
         label_size = self.image_label.size()
         if label_size.width() > 0 and label_size.height() > 0:
             return label_size
         return QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if self.size() != QSize(_INITIAL_WIDTH, _INITIAL_HEIGHT):
+            self._user_has_resized = True
 
     def _elided_title(self, name: str) -> str:
         metrics = QFontMetrics(self.font())
