@@ -2,6 +2,8 @@
 from unittest.mock import Mock
 
 import pytest
+from PySide6.QtCore import QBuffer, QIODevice
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QLabel
 
 from pandaplot.gui.components.common.p_button import PButton
@@ -27,6 +29,17 @@ def _project_stub(*items):
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
+
+
+def _real_png_bytes() -> bytes:
+    """A small but genuinely decodable PNG, for tests that need
+    `_thumbnail_for` to succeed rather than fail."""
+    pixmap = QPixmap(4, 4)
+    pixmap.fill(QColor("blue"))
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    pixmap.save(buffer, "PNG")
+    return bytes(buffer.data())
 
 
 _FAKE_TOKENS = {
@@ -438,3 +451,129 @@ class TestImageGalleryTabMovedEvent:
         assert tab._event_concerns_this_gallery(event_data) is True
         tab._on_project_item_changed(event_data)
         assert tab.grid.count() == 0
+
+
+class TestImageGalleryTabListViewSelection:
+    """Regression coverage for the toolbar/context-menu acting on stale grid
+    selection after the user has switched to (and selected in) list view."""
+
+    def test_switching_view_mode_clears_selection_on_both_widgets(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+        assert tab.delete_button.isEnabled() is True
+
+        tab._on_view_mode_changed("list")
+        assert tab.grid.selectedItems() == []
+        assert tab.list_view.selectedItems() == []
+        assert tab.delete_button.isEnabled() is False
+
+        tab.list_view.topLevelItem(0).setSelected(True)
+        tab.list_view.itemSelectionChanged.emit()
+        assert tab.delete_button.isEnabled() is True
+
+        tab._on_view_mode_changed("grid")
+        assert tab.grid.selectedItems() == []
+        assert tab.list_view.selectedItems() == []
+        assert tab.delete_button.isEnabled() is False
+
+    def test_selecting_in_list_view_enables_toolbar(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab._on_view_mode_changed("list")
+
+        assert tab.delete_button.isEnabled() is False
+
+        tab.list_view.topLevelItem(0).setSelected(True)
+        tab.list_view.itemSelectionChanged.emit()
+
+        assert tab.delete_button.isEnabled() is True
+        assert tab.rename_button.isEnabled() is True
+
+    def test_delete_acts_on_list_selection_not_stale_grid_selection(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        beach = Image(name="Beach")
+        mountain = Image(name="Mountain")
+        gallery.add_item(beach)
+        gallery.add_item(mountain)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        # Select "Beach" in grid view, then switch to list view and select a
+        # DIFFERENT row there. Selection should reset on switch, so only the
+        # list-view pick is live.
+        beach_grid_item = next(
+            tab.grid.item(i) for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Beach"
+        )
+        beach_grid_item.setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        tab._on_view_mode_changed("list")
+        mountain_row = next(
+            tab.list_view.topLevelItem(i) for i in range(tab.list_view.topLevelItemCount())
+            if tab.list_view.topLevelItem(i).text(0) == "Mountain"
+        )
+        mountain_row.setSelected(True)
+        tab.list_view.itemSelectionChanged.emit()
+
+        selected = tab._selected_children()
+        assert [c.name for c in selected] == ["Mountain"]
+
+    def test_context_menu_from_list_view_uses_list_selection(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(ImageGallery(name="Day 1"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab._on_view_mode_changed("list")
+
+        row = tab.list_view.topLevelItem(0)
+        row.setSelected(True)
+        tab.list_view.itemSelectionChanged.emit()
+
+        menu = tab._build_context_menu(row)
+        action_texts = [a.text() for a in menu.actions()]
+
+        assert "Open in New Tab" in action_texts
+
+
+class TestImageGalleryTabThemeRefresh:
+    def test_apply_theme_refreshes_grid_tile_icons(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        calls_before = tab.app_context.get_manager.call_count
+        tab._apply_theme()
+
+        # _apply_theme should have pulled fresh tokens (via _current_tokens)
+        # to rebuild every tile icon, not been a no-op.
+        assert tab.app_context.get_manager.call_count > calls_before
+
+
+class TestImageGalleryTabBrokenThumbnails:
+    def test_failed_thumbnail_load_produces_broken_icon_distinct_from_success(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        good_image = Image(name="Beach")
+        good_image.set_bytes(_real_png_bytes())
+        bad_image = Image(name="Corrupt")
+        bad_image.set_bytes(b"not a real image")
+        gallery.add_item(good_image)
+        gallery.add_item(bad_image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        good_item = next(
+            tab.grid.item(i) for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Beach"
+        )
+        bad_item = next(
+            tab.grid.item(i) for i in range(tab.grid.count()) if tab.grid.item(i).text() == "Corrupt"
+        )
+
+        from PySide6.QtCore import QSize
+        good_pixmap = good_item.icon().pixmap(QSize(120, 120)).toImage()
+        bad_pixmap = bad_item.icon().pixmap(QSize(120, 120)).toImage()
+
+        assert good_pixmap != bad_pixmap
+        assert tab._thumbnail_for(bad_image) is None
+        assert tab._thumbnail_for(good_image) is not None

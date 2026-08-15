@@ -121,9 +121,14 @@ class ImageGalleryTab(PWidget):
         self.grid.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.grid.customContextMenuRequested.connect(self._on_grid_context_menu)
 
+        self.list_view.itemSelectionChanged.connect(self._on_selection_changed)
+        self.list_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_view.customContextMenuRequested.connect(self._on_list_context_menu)
+
     @override
     def _apply_theme(self):
-        pass
+        if hasattr(self, "grid"):
+            self._refresh_tile_icons()
 
     def setup_connections(self):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, self._on_project_item_changed)
@@ -254,10 +259,7 @@ class ImageGalleryTab(PWidget):
         for child in self.current_gallery.get_items():
             item = QListWidgetItem(child.name)
             item.setData(Qt.ItemDataRole.UserRole, child.id)
-            if isinstance(child, ImageGallery):
-                item.setIcon(build_gallery_tile_icon(None, "album", False, tokens))
-            elif isinstance(child, Image):
-                item.setIcon(build_gallery_tile_icon(self._thumbnail_for(child), "image", False, tokens))
+            item.setIcon(self._tile_icon_for(child, False, tokens))
             self.grid.addItem(item)
         self._last_child_ids = {child.id for child in self.current_gallery.get_items()}
         self._refresh_toolbar_state()
@@ -269,16 +271,15 @@ class ImageGalleryTab(PWidget):
 
         return self.app_context.get_manager(ThemeManager).get_design_tokens()
 
-    def _thumbnail_for(self, image: Image) -> QPixmap:
-        """Load (or fetch) image bytes and downscale in memory; broken placeholder on any failure.
+    def _thumbnail_for(self, image: Image) -> Optional[QPixmap]:
+        """Load (or fetch) image bytes and downscale in memory; None on any failure.
 
         Results (including failures) are cached for the tab's lifetime, keyed
         by image id, so external URL images in particular are not
         re-downloaded on every grid repopulation within the same session.
         """
         if image.id in self._thumbnail_cache:
-            cached = self._thumbnail_cache[image.id]
-            return cached if cached is not None else self._broken_placeholder()
+            return self._thumbnail_cache[image.id]
 
         try:
             data = image.get_bytes()
@@ -296,7 +297,7 @@ class ImageGalleryTab(PWidget):
         except Exception:
             self.logger.warning("Failed to load thumbnail for image '%s' (id=%s)", image.name, image.id)
             self._thumbnail_cache[image.id] = None
-            return self._broken_placeholder()
+            return None
 
     def _load_external_bytes(self, source_file: str) -> Optional[bytes]:
         import os
@@ -312,12 +313,27 @@ class ImageGalleryTab(PWidget):
                 return f.read()
         return None
 
-    def _broken_placeholder(self) -> QPixmap:
-        pixmap = QPixmap(_TILE_SIZE)
-        pixmap.fill(Qt.GlobalColor.lightGray)
-        return pixmap
+    def _tile_icon_for(self, child, is_selected: bool, tokens: dict, size: QSize = _TILE_SIZE):
+        """Build the themed tile icon for a gallery child (album/image/broken-image)."""
+        if isinstance(child, ImageGallery):
+            return build_gallery_tile_icon(None, "album", is_selected, tokens, size=size)
+        if isinstance(child, Image):
+            thumbnail = self._thumbnail_for(child)
+            tile_type = "image" if thumbnail is not None else "broken"
+            return build_gallery_tile_icon(thumbnail, tile_type, is_selected, tokens, size=size)
+        return build_gallery_tile_icon(None, "broken", is_selected, tokens, size=size)
+
+    def _active_view_widget(self):
+        """The currently-visible of grid/list_view (falls back to grid before
+        view_stack exists, e.g. during construction)."""
+        if hasattr(self, "view_stack"):
+            return self.view_stack.currentWidget()
+        return self.grid
 
     def _selected_ids(self) -> list[str]:
+        widget = self._active_view_widget()
+        if widget is getattr(self, "list_view", None):
+            return [item.data(0, Qt.ItemDataRole.UserRole) for item in self.list_view.selectedItems()]
         return [item.data(Qt.ItemDataRole.UserRole) for item in self.grid.selectedItems()]
 
     def _selected_children(self):
@@ -346,10 +362,15 @@ class ImageGalleryTab(PWidget):
             if child is None:
                 continue
             is_selected = child_id in selected_ids
-            if isinstance(child, ImageGallery):
-                item.setIcon(build_gallery_tile_icon(None, "album", is_selected, tokens))
-            elif isinstance(child, Image):
-                item.setIcon(build_gallery_tile_icon(self._thumbnail_for(child), "image", is_selected, tokens))
+            item.setIcon(self._tile_icon_for(child, is_selected, tokens))
+        if hasattr(self, "list_view"):
+            for i in range(self.list_view.topLevelItemCount()):
+                row = self.list_view.topLevelItem(i)
+                child_id = row.data(0, Qt.ItemDataRole.UserRole)
+                child = self.current_gallery.get_item_by_id(child_id)
+                if child is None:
+                    continue
+                row.setIcon(0, self._tile_icon_for(child, False, tokens, size=QSize(16, 16)))
 
     def _on_grid_context_menu(self, position) -> None:
         item = self.grid.itemAt(position)
@@ -361,7 +382,24 @@ class ImageGalleryTab(PWidget):
         menu = self._build_context_menu(item)
         menu.exec(self.grid.viewport().mapToGlobal(position))
 
-    def _build_context_menu(self, item: QListWidgetItem):
+    def _on_list_context_menu(self, position) -> None:
+        item = self.list_view.itemAt(position)
+        if item is None:
+            return
+        if not item.isSelected():
+            self.list_view.clearSelection()
+            item.setSelected(True)
+        menu = self._build_context_menu(item)
+        menu.exec(self.list_view.viewport().mapToGlobal(position))
+
+    def _child_id_for_item(self, item) -> str:
+        """Read the stored child id from either a grid tile (QListWidgetItem)
+        or a list-view row (QTreeWidgetItem, id stored on column 0)."""
+        if isinstance(item, QTreeWidgetItem):
+            return item.data(0, Qt.ItemDataRole.UserRole)
+        return item.data(Qt.ItemDataRole.UserRole)
+
+    def _build_context_menu(self, item):
         from PySide6.QtGui import QAction
         from PySide6.QtWidgets import QMenu
 
@@ -378,7 +416,7 @@ class ImageGalleryTab(PWidget):
         delete_action.triggered.connect(self._on_delete_clicked)
         menu.addAction(delete_action)
 
-        child_id = item.data(Qt.ItemDataRole.UserRole)
+        child_id = self._child_id_for_item(item)
         child = self.current_gallery.get_item_by_id(child_id)
         if isinstance(child, ImageGallery) and len(selected) == 1:
             menu.addSeparator()
@@ -486,14 +524,23 @@ class ImageGalleryTab(PWidget):
         ImageLightboxDialog(images, start_index, load_pixmap=_load, parent=self).exec()
 
     def _on_view_mode_changed(self, mode: str) -> None:
+        # Switching views is a scope simplification that resets selection
+        # entirely, rather than trying to sync selection between the two
+        # widgets -- so the toolbar is correctly disabled immediately after
+        # a switch, and stale selection in the hidden widget can never be
+        # acted on by the toolbar/context menu.
+        self.grid.clearSelection()
+        self.list_view.clearSelection()
         if mode == "list":
             self._populate_list_view()
             self.view_stack.setCurrentWidget(self.list_view)
         else:
             self.view_stack.setCurrentWidget(self.grid)
+        self._refresh_toolbar_state()
 
     def _populate_list_view(self) -> None:
         self.list_view.clear()
+        tokens = self._current_tokens()
         for child in self.current_gallery.get_items():
             if isinstance(child, ImageGallery):
                 dimensions, size_text = "", ""
@@ -504,6 +551,7 @@ class ImageGalleryTab(PWidget):
                 type_text = "Image"
             row = QTreeWidgetItem([child.name, type_text, dimensions, size_text, child.modified_at])
             row.setData(0, Qt.ItemDataRole.UserRole, child.id)
+            row.setIcon(0, self._tile_icon_for(child, False, tokens, size=QSize(16, 16)))
             self.list_view.addTopLevelItem(row)
 
     def _format_size(self, size_bytes: Optional[int]) -> str:
