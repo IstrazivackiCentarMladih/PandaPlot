@@ -54,3 +54,27 @@ class TestBuildGalleryTileIcon:
 
         pixmap = icon.pixmap(QSize(64, 64))
         assert pixmap.size() == QSize(64, 64)
+
+
+class TestBuildGalleryTileIconCheckmarkPosition:
+    def test_checkmark_badge_is_in_top_left_not_bottom_right(self):
+        size = QSize(120, 120)
+        unselected = build_gallery_tile_icon(_sample_pixmap(), "image", False, _TOKENS, size=size)
+        selected = build_gallery_tile_icon(_sample_pixmap(), "image", True, _TOKENS, size=size)
+
+        unselected_image = unselected.pixmap(size).toImage()
+        selected_image = selected.pixmap(size).toImage()
+
+        # Top-left corner should differ (badge is there when selected)
+        top_left_differs = any(
+            unselected_image.pixelColor(x, y) != selected_image.pixelColor(x, y)
+            for x in range(0, 30) for y in range(0, 30)
+        )
+        assert top_left_differs, "expected the checkmark badge to appear in the top-left region"
+
+        # Bottom-right corner should NOT differ (badge is no longer there)
+        bottom_right_differs = any(
+            unselected_image.pixelColor(x, y) != selected_image.pixelColor(x, y)
+            for x in range(size.width() - 30, size.width()) for y in range(size.height() - 30, size.height())
+        )
+        assert not bottom_right_differs, "expected no badge remnant in the bottom-right region"

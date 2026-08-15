@@ -34,7 +34,7 @@ def build_gallery_tile_icon(
 
     `pixmap` is the already-decoded/scaled image thumbnail; ignored for
     "album"/"broken" tile_type (those draw a themed glyph instead). Set
-    `selected=True` to composite a checkmark badge in the bottom-right
+    `selected=True` to composite a checkmark badge in the top-left
     corner.
     """
     canvas = QPixmap(size)
@@ -98,12 +98,12 @@ def _draw_broken_glyph(painter: QPainter, size: QSize, tokens: dict) -> None:
 
 
 def _draw_selection_badge(painter: QPainter, size: QSize, tokens: dict) -> None:
-    """Filled accent-colored circle with a white checkmark, bottom-right corner."""
+    """Filled accent-colored circle with a white checkmark, top-left corner."""
     accent = QColor(tokens.get("accent", "#4A56C6"))
     check_color = QColor(tokens.get("surface_white", "#FFFFFF"))
 
-    cx = size.width() - _BADGE_MARGIN - _BADGE_DIAMETER / 2
-    cy = size.height() - _BADGE_MARGIN - _BADGE_DIAMETER / 2
+    cx = _BADGE_MARGIN + _BADGE_DIAMETER / 2
+    cy = _BADGE_MARGIN + _BADGE_DIAMETER / 2
 
     painter.setBrush(QBrush(accent))
     painter.setPen(QPen(check_color, 2))
