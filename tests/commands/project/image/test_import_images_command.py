@@ -1,3 +1,6 @@
+import datetime
+import os
+
 import pytest
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QImage
@@ -127,6 +130,56 @@ class TestImportImagesCommandErrors:
         )
 
         assert command.execute() is False
+
+
+class TestImportImagesCommandModifiedTime:
+    def test_copied_local_file_uses_file_mtime(self, app_context_with_project, gallery_id, tmp_path):
+        png_path = tmp_path / "photo.png"
+        _write_test_png(png_path)
+        expected_mtime_iso = datetime.datetime.fromtimestamp(os.path.getmtime(png_path)).isoformat()
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=[str(png_path)], copy_into_project=True,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.modified_at == expected_mtime_iso
+        assert image.created_at == expected_mtime_iso
+
+    def test_external_local_file_uses_file_mtime(self, app_context_with_project, gallery_id, tmp_path):
+        png_path = tmp_path / "photo.png"
+        _write_test_png(png_path)
+        expected_mtime_iso = datetime.datetime.fromtimestamp(os.path.getmtime(png_path)).isoformat()
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=[str(png_path)], copy_into_project=False,
+        )
+        command.execute()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        assert image.modified_at == expected_mtime_iso
+
+    @patch("pandaplot.commands.project.image.import_images_command.requests.get")
+    def test_url_import_keeps_constructor_default_time(self, mock_get, app_context_with_project, gallery_id):
+        mock_response = Mock()
+        mock_response.content = _fake_png_bytes()
+        mock_response.raise_for_status = Mock()
+        mock_get.return_value = mock_response
+
+        before = datetime.datetime.now()
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id,
+            sources=["https://example.com/pic.png"], copy_into_project=True,
+        )
+        command.execute()
+        after = datetime.datetime.now()
+
+        image = app_context_with_project.get_app_state().current_project.find_item(gallery_id).get_items()[0]
+        modified = datetime.datetime.fromisoformat(image.modified_at)
+        assert before <= modified <= after
 
 
 class TestImportImagesCommandSizeBytes:

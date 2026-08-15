@@ -4,6 +4,7 @@ image gallery, either copying the bytes into the project or storing just the
 reference (a local path or URL) as an external image.
 """
 
+import datetime
 import os
 import uuid
 from typing import List, Optional, override
@@ -113,13 +114,29 @@ class ImportImagesCommand(Command):
                 size_bytes=size_bytes,
             )
             image.set_bytes(data)
-            return image
+        else:
+            image = Image(
+                id=str(uuid.uuid4()), name=name, source_file=source,
+                storage_mode="external", image_ext=ext, width=width, height=height,
+                size_bytes=size_bytes,
+            )
 
-        return Image(
-            id=str(uuid.uuid4()), name=name, source_file=source,
-            storage_mode="external", image_ext=ext, width=width, height=height,
-            size_bytes=size_bytes,
-        )
+        self._apply_source_mtime(image, source)
+        return image
+
+    def _apply_source_mtime(self, image: Image, source: str) -> None:
+        """
+        Set modified_at/created_at from the local file's real mtime when
+        available, so imported images reflect when the original photo was
+        actually taken/modified rather than the import time. URL sources
+        have no local mtime to read, so they keep the constructor-default
+        "now" value.
+        """
+        if _is_url(source):
+            return
+        mtime_iso = datetime.datetime.fromtimestamp(os.path.getmtime(source)).isoformat()
+        image.modified_at = mtime_iso
+        image.created_at = mtime_iso
 
     def _size_bytes_for(self, source: str, data: bytes) -> Optional[int]:
         """
