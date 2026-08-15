@@ -757,7 +757,7 @@ class TabContainer(PWidget):
         """Handle analysis completion events."""
         dataset_id = event_data.get("dataset_id")
         # Find and refresh the relevant dataset tab
-        for tab_id, tab_widget in self.tabs.items():
+        for tab_widget in self.tabs.values():
             if hasattr(tab_widget, "dataset") and tab_widget.dataset.id == dataset_id:
                 if hasattr(tab_widget, "load_dataset_data"):
                     tab_widget.load_dataset_data()  # Refresh to show new analysis column

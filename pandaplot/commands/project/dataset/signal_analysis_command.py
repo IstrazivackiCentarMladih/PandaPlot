@@ -4,14 +4,13 @@ as a new dataset, with undo/redo support.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional, override
+from typing import Any, Dict, Optional, override
 
 from pandaplot.analysis import (
     SignalAnalysisResult,
     SignalAnalysisType,
     SignalEngine,
 )
-
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset

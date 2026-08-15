@@ -59,8 +59,9 @@ def test_error_bars_card_hidden_for_fit():
     style_tab.set_selected("series", series)
     assert style_tab.error_bars_card.isVisible()
 
-    from pandaplot.models.project.items.chart import FitData
     import numpy as np
+
+    from pandaplot.models.project.items.chart import FitData
     fit = FitData(
         source_dataset_id="ds1", fit_type="linear",
         x_data=np.array([1.0]), y_data=np.array([2.0]), label="Fit",

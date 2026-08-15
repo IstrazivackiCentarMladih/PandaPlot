@@ -141,7 +141,6 @@ class ChartTab(PWidget):
         if fit_chart_id == self.chart.id:
             fit_results = event_data.get("fit_results")
             fit_type = fit_results.fit_type if fit_results else "Unknown"
-            source_dataset_name = event_data.get("dataset_name", "Unknown")
 
             # Get the source dataset info from the fit results
             source_dataset_id = fit_results.source_dataset_id if fit_results else ""
