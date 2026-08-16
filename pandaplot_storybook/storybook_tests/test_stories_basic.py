@@ -17,6 +17,7 @@ EXPECTED_STORY_NAMES = [
     "ValueComboBox",
     "LineStyleIcons",
     "FontFamilyOptions",
+    "ImageGalleryTile",
 ]
 
 

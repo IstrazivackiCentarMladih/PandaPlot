@@ -93,7 +93,7 @@ class ProjectTreeManager:
         def check_item(item):
             if item.isExpanded():
                 item_data = item.data(0, Qt.ItemDataRole.UserRole)
-                if item_data and item_data.get("type") in ["project", "folder"]:
+                if item_data and item_data.get("type") in ["project", "folder", "imagegallery"]:
                     expanded.add(item_data.get("id", ""))
 
             # Check children
@@ -144,7 +144,7 @@ class ProjectTreeManager:
         if not selected_info:
             return None
 
-        if selected_info["type"] == "folder":
+        if selected_info["type"] in ("folder", "imagegallery"):
             return selected_info["id"]
         elif selected_info["type"] == "project":
             return None  # Root level

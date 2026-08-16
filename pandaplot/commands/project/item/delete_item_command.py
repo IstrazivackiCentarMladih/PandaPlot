@@ -13,13 +13,14 @@ class DeleteItemCommand(Command):
     This command works with any item type that extends the Item base class.
     """
 
-    def __init__(self, app_context: AppContext, item_id: str):
+    def __init__(self, app_context: AppContext, item_id: str, confirm: bool = True):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
         self.ui_controller: UIController = app_context.get_ui_controller()
 
         self.item_id = item_id
+        self.confirm = confirm
 
         # Store state for undo
         self.deleted_item_data: Optional[Dict[str, Any]] = None
@@ -63,13 +64,15 @@ class DeleteItemCommand(Command):
             item_name = getattr(item, "name", self.item_id)
             item_type = self.deleted_item_class.__name__.lower()
 
-            # Confirm deletion
-            response = self.ui_controller.show_question(
-                "Delete Item",
-                f"Are you sure you want to delete the {item_type} '{item_name}'?\nThis action cannot be undone."
-            )
-            if not response:
-                return False
+            # Confirm deletion (skipped when the caller already confirmed a
+            # batch operation, e.g. bulk delete in the gallery tab)
+            if self.confirm:
+                response = self.ui_controller.show_question(
+                    "Delete Item",
+                    f"Are you sure you want to delete the {item_type} '{item_name}'?\nThis action cannot be undone."
+                )
+                if not response:
+                    return False
 
             # Remove the item from the project
             project.remove_item(item)

@@ -9,6 +9,7 @@ from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
 from pandaplot.commands.project.folder import CreateFolderCommand
+from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
 from pandaplot.commands.project.item import DeleteItemCommand
 from pandaplot.commands.project.note import CreateNoteCommand
 from pandaplot.commands.project.project import RenameProjectCommand
@@ -63,6 +64,47 @@ class ProjectPanelCommandManager:
 
         command = ImportDataCommand(self.app_context, folder_id=folder_id)
         self.app_context.get_command_executor().execute_command(command)
+
+    def add_image_gallery(self):
+        """Add a new image gallery."""
+        if not self.app_state.has_project:
+            return
+
+        folder_id = self.get_target_folder_id()
+
+        command = CreateImageGalleryCommand(self.app_context, parent_id=folder_id)
+        self.app_context.get_command_executor().execute_command(command)
+
+    def import_images(self):
+        """Import images into the selected image gallery, creating one first if none is selected."""
+        if not self.app_state.has_project:
+            return
+
+        selected_info = self.get_selected_item_info()
+        gallery_id = None
+        if selected_info and selected_info["type"] == "imagegallery":
+            gallery_id = selected_info["id"]
+
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
+
+        dialog = ImageImportDialog(self.app_context, parent=self.parent_widget)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if gallery_id is None:
+            create_command = CreateImageGalleryCommand(self.app_context, parent_id=self.get_target_folder_id())
+            self.app_context.get_command_executor().execute_command(create_command)
+            gallery_id = create_command.created_gallery_id
+            if gallery_id is None:
+                return
+
+        import_command = ImportImagesCommand(
+            self.app_context, gallery_id=gallery_id,
+            sources=dialog.get_sources(), copy_into_project=dialog.get_copy_into_project(),
+        )
+        self.app_context.get_command_executor().execute_command(import_command)
 
     def create_empty_dataset(self):
         """Create a new empty dataset."""
@@ -199,6 +241,15 @@ class ProjectPanelCommandManager:
             # For folders, toggle expansion
             if item_type == "folder":
                 item.setExpanded(not item.isExpanded())
+            # Image galleries (and nested albums) open their grid-view tab
+            # rather than merely expanding, since that's how you browse them.
+            elif item_type == "imagegallery":
+                self.open_selected_item()
+                return
+            # Images have no standalone tab; open their parent gallery instead.
+            elif item_type == "image":
+                self._open_parent_gallery(item_data)
+                return
             # For other items that can be opened, don't start editing
             elif item_type in ["note", "dataset", "chart"]:
                 self.open_selected_item()
@@ -206,3 +257,22 @@ class ProjectPanelCommandManager:
 
         # For project root or items without actions, do nothing
         # Inline editing is triggered by single click when item is selected
+
+    def _open_parent_gallery(self, item_data):
+        """Open the tab for an Image's parent ImageGallery (images have no own tab)."""
+        image = item_data.get("data")
+        if image is None or not image.parent_id:
+            return
+
+        project = self.app_state.current_project
+        if not project:
+            return
+
+        gallery = project.find_item(image.parent_id)
+        if gallery is None:
+            return
+
+        self.app_state.event_bus.emit(UIEvents.TAB_OPEN_REQUESTED, TabOpenRequestedData(
+            item_id=gallery.id,
+            item_name=gallery.name
+        ).to_dict())
