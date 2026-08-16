@@ -2,6 +2,7 @@ import json
 from typing import override
 from zipfile import ZipFile
 
+from pandaplot.models.migrations.per_item.chart import migrate_chart
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.storage.item_data_manager import ItemDataManager
 
@@ -28,6 +29,8 @@ class ChartDataManager(ItemDataManager[Chart]):
         # Read JSON data
         chart_data = json.loads(zip_file.read(
             f"{path_in_zip}.json").decode("utf-8"))
+
+        chart_data = migrate_chart(chart_data, schema_version)
 
         # Reconstruct chart using from_dict class method
         chart = item_class.from_dict(chart_data)
