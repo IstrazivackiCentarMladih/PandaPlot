@@ -14,6 +14,7 @@ from pandaplot.models.project.project import Project
 
 def run_cross_item_migrations(project: Project) -> None:
     while project.schema_version < CURRENT_SCHEMA_VERSION:
-        migrate = CROSS_ITEM_MIGRATIONS[project.schema_version]
-        migrate(project)
+        migrate = CROSS_ITEM_MIGRATIONS.get(project.schema_version)
+        if migrate is not None:
+            migrate(project)
         project.schema_version += 1

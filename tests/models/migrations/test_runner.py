@@ -54,3 +54,18 @@ def test_chains_through_multiple_versions():
 
     assert calls == ["0->1", "1->2"]
     assert project.schema_version == 2
+
+
+def test_skips_a_version_with_no_registered_migration():
+    project = Project(name="P")
+    project.schema_version = 0
+    calls = []
+
+    with patch(
+        "pandaplot.models.migrations.runner.CROSS_ITEM_MIGRATIONS",
+        {1: lambda p: calls.append("1->2")},  # nothing registered for version 0
+    ), patch("pandaplot.models.migrations.runner.CURRENT_SCHEMA_VERSION", 2):
+        run_cross_item_migrations(project)
+
+    assert calls == ["1->2"]
+    assert project.schema_version == 2

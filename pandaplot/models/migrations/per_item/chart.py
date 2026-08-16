@@ -16,8 +16,7 @@ PER_ITEM_CHART_MIGRATIONS: dict[int, Callable[[dict], dict]] = {}
 def migrate_chart(raw: dict, schema_version: int) -> dict:
     while schema_version < CURRENT_SCHEMA_VERSION:
         migrate = PER_ITEM_CHART_MIGRATIONS.get(schema_version)
-        if migrate is None:
-            break
-        raw = migrate(raw)
+        if migrate is not None:
+            raw = migrate(raw)
         schema_version += 1
     return raw

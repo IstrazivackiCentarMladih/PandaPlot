@@ -57,3 +57,20 @@ def test_starts_from_the_given_schema_version_not_zero():
         migrate_chart({}, schema_version=1)
 
     assert calls == ["b"]
+
+
+def test_skips_a_version_with_no_registered_migration():
+    calls = []
+
+    def step_b(raw):
+        calls.append("b")
+        return {**raw, "b": True}
+
+    with patch(
+        "pandaplot.models.migrations.per_item.chart.PER_ITEM_CHART_MIGRATIONS",
+        {1: step_b},  # nothing registered for version 0
+    ), patch("pandaplot.models.migrations.per_item.chart.CURRENT_SCHEMA_VERSION", 2):
+        result = migrate_chart({}, schema_version=0)
+
+    assert calls == ["b"]
+    assert result == {"b": True}
