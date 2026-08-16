@@ -126,12 +126,14 @@ class RenameColumnCommand(Command):
         def series_refs(series) -> bool:
             id_fields = (series.x_column_id, series.y_column_id,
                          series.x_error_column_id, series.y_error_column_id,
-                         series.x_error_minus_column_id, series.y_error_minus_column_id)
+                         series.x_error_minus_column_id, series.y_error_minus_column_id,
+                         series.u_column_id, series.v_column_id, series.magnitude_column_id)
             if column_id and column_id in id_fields:
                 return True
             name_fields = (series.x_column, series.y_column,
                            series.x_error_column, series.y_error_column,
-                           series.x_error_minus_column, series.y_error_minus_column)
+                           series.x_error_minus_column, series.y_error_minus_column,
+                           series.u_column, series.v_column, series.magnitude_column)
             return current_name in name_fields or self.old_name in name_fields
 
         def fit_refs(fit) -> bool:

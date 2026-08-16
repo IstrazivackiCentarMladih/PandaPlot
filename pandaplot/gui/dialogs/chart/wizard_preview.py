@@ -20,6 +20,8 @@ from pandaplot.models.project.items.chart import DataSeries
 
 _SAMPLE_X = [1, 2, 3, 4, 5]
 _SAMPLE_Y = [2, 3, 1, 4, 3]
+_SAMPLE_U = [1.0, 0.5, -1.0, 0.5, -0.5]
+_SAMPLE_V = [0.5, -1.0, 0.5, 1.0, -0.5]
 
 
 def _series_label(project, config: dict) -> str:
@@ -60,6 +62,9 @@ def render_wizard_preview(
             x_error_column_id=config.get("x_error_column_id", ""),
             y_error_column_id=config.get("y_error_column_id", ""),
             error_symmetric=config.get("error_symmetric", True),
+            u_column_id=config.get("u_column_id", ""),
+            v_column_id=config.get("v_column_id", ""),
+            magnitude_column_id=config.get("magnitude_column_id", ""),
         )
         data = resolve_series_data(project, series, chart_type)
         if data.error is not None:
@@ -74,6 +79,8 @@ def render_wizard_preview(
             axes.bar(data.x_data, data.y_data, label=label)
         elif chart_type == "hist":
             axes.hist(data.y_data, bins=10, label=label)
+        elif chart_type == "vector":
+            axes.quiver(data.x_data, data.y_data, data.u_data, data.v_data, label=label)
 
     if not any_plotted:
         # No resolvable series yet (wizard just opened, or the user hasn't
@@ -87,6 +94,8 @@ def render_wizard_preview(
             axes.bar(_SAMPLE_X, _SAMPLE_Y)
         elif chart_type == "hist":
             axes.hist(_SAMPLE_Y, bins=5)
+        elif chart_type == "vector":
+            axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
 
     axes.set_title(f"{title}\n{subtitle}" if subtitle else title)
     axes.set_xlabel(x_label)

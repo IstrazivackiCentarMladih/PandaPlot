@@ -146,3 +146,58 @@ def test_events_emitted_only_for_affected_charts(env):
     updated = _chart_updated_calls(app_context)
     assert len(updated) == 1  # 'untouched_chart' has no reference to column 'a'
     assert updated[0].args[1]["chart_id"] == chart.id
+
+
+def test_delete_u_column_removes_vector_series(env):
+    """A vector series' U/V columns are required (like x/y), so deleting
+    either removes the whole series rather than just clearing a reference."""
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b"), label="v1",
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert vector_chart.data_series == []
+
+
+def test_delete_magnitude_column_clears_reference_but_keeps_series(env):
+    """magnitude is optional -- a vector series still renders without it, so
+    deleting its column only clears the reference (mirrors error columns)."""
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+        magnitude_column_id=dataset.column_id("a"), label="v1",
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert len(vector_chart.data_series) == 1
+    series = vector_chart.data_series[0]
+    assert series.magnitude_column_id == ""
+    assert series.magnitude_column == ""
+
+
+def test_undo_restores_a_cleared_magnitude_reference(env):
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+        magnitude_column_id=dataset.column_id("a"), label="v1",
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    assert command.undo() is True
+    series = vector_chart.data_series[0]
+    assert resolve_series_column(dataset, series.magnitude_column_id, series.magnitude_column) == "a"

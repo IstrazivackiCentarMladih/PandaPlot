@@ -190,6 +190,28 @@ class DataTab(QWidget):
         self.y_error_minus_column_combo = QComboBox()
         series_config_layout.addWidget(self.y_error_minus_column_combo, 9, 1)
 
+        self.u_column_label = QLabel("U Column:")
+        series_config_layout.addWidget(self.u_column_label, 10, 0)
+        self.u_column_combo = QComboBox()
+        series_config_layout.addWidget(self.u_column_combo, 10, 1)
+
+        self.v_column_label = QLabel("V Column:")
+        series_config_layout.addWidget(self.v_column_label, 11, 0)
+        self.v_column_combo = QComboBox()
+        series_config_layout.addWidget(self.v_column_combo, 11, 1)
+
+        self.magnitude_column_label = QLabel("Color-by Column (optional):")
+        series_config_layout.addWidget(self.magnitude_column_label, 12, 0)
+        self.magnitude_column_combo = QComboBox()
+        series_config_layout.addWidget(self.magnitude_column_combo, 12, 1)
+
+        for widget in (
+            self.u_column_label, self.u_column_combo,
+            self.v_column_label, self.v_column_combo,
+            self.magnitude_column_label, self.magnitude_column_combo,
+        ):
+            widget.setVisible(False)
+
         self._rebuild_series_cards()
 
     def _connect_signals(self):
@@ -202,6 +224,9 @@ class DataTab(QWidget):
         self.y_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.x_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.y_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.u_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.v_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.magnitude_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
@@ -549,8 +574,14 @@ class DataTab(QWidget):
         x_column_id = self.x_column_combo.currentData() if self.x_column_combo.count() > 0 else ""
         y_column_id = self.y_column_combo.currentData() if self.y_column_combo.count() > 0 else ""
         y_column_name = self.y_column_combo.currentText() if self.y_column_combo.count() > 0 else ""
+        u_column_id = self.u_column_combo.currentData() if self.u_column_combo.count() > 0 else ""
+        v_column_id = self.v_column_combo.currentData() if self.v_column_combo.count() > 0 else ""
+        magnitude_column_id = self.magnitude_column_combo.currentData() if self.magnitude_column_combo.count() > 0 else ""
 
-        if dataset_id and x_column_id and y_column_id:
+        is_vector = self._is_vector_chart()
+        vector_ready = (not is_vector) or (u_column_id and v_column_id)
+
+        if dataset_id and x_column_id and y_column_id and vector_ready:
             command = AddSeriesCommand(
                 self.app_context,
                 chart_id=self.current_chart.id,
@@ -559,6 +590,9 @@ class DataTab(QWidget):
                 y_column_id=y_column_id,
                 label=f"{dataset_name}:{y_column_name}",
                 color=self._get_next_series_color(),
+                u_column_id=u_column_id if is_vector else "",
+                v_column_id=v_column_id if is_vector else "",
+                magnitude_column_id=magnitude_column_id if is_vector else "",
             )
             self.command_executor.execute_command(command)
 
@@ -646,6 +680,10 @@ class DataTab(QWidget):
             series.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
             series.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
             series.error_symmetric = not self.error_asymmetric_check.isChecked()
+            if self._is_vector_chart():
+                series.u_column_id = self.u_column_combo.currentData() or ""
+                series.v_column_id = self.v_column_combo.currentData() or ""
+                series.magnitude_column_id = self.magnitude_column_combo.currentData() or ""
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
             # to the secondary axis is reflected without waiting for Apply
@@ -742,6 +780,8 @@ class DataTab(QWidget):
             # don't linger.
             self._populate_column_combos(series.dataset_id)
             self._populate_error_column_combos(series.dataset_id)
+            self._populate_vector_column_combos(series.dataset_id)
+            self._update_vector_field_visibility()
 
             # Set columns by stable id (combos carry the id as itemData)
             x_index = self.x_column_combo.findData(series.x_column_id)
@@ -762,6 +802,16 @@ class DataTab(QWidget):
                 (self.y_error_column_combo, series.y_error_column_id),
                 (self.x_error_minus_column_combo, series.x_error_minus_column_id),
                 (self.y_error_minus_column_combo, series.y_error_minus_column_id),
+            ):
+                combo.blockSignals(True)
+                index = combo.findData(column_id)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+                combo.blockSignals(False)
+
+            for combo, column_id in (
+                (self.u_column_combo, series.u_column_id),
+                (self.v_column_combo, series.v_column_id),
+                (self.magnitude_column_combo, series.magnitude_column_id),
             ):
                 combo.blockSignals(True)
                 index = combo.findData(column_id)
@@ -793,6 +843,10 @@ class DataTab(QWidget):
             self.series_y_axis_control.setEnabled(False)
             self.x_error_column_combo.setEnabled(False)
             self.y_error_column_combo.setEnabled(False)
+            self.u_column_combo.setEnabled(False)
+            self.v_column_combo.setEnabled(False)
+            self.magnitude_column_combo.setEnabled(False)
+            self._update_vector_field_visibility()
             self.error_asymmetric_check.setEnabled(False)
             self._update_error_bar_mode_controls()
 
@@ -870,6 +924,9 @@ class DataTab(QWidget):
         self.series_y_axis_control.setEnabled(True)
         self.x_error_column_combo.setEnabled(True)
         self.y_error_column_combo.setEnabled(True)
+        self.u_column_combo.setEnabled(True)
+        self.v_column_combo.setEnabled(True)
+        self.magnitude_column_combo.setEnabled(True)
         self.error_asymmetric_check.setEnabled(True)
 
     def _get_next_series_color(self) -> str:
@@ -988,11 +1045,94 @@ class DataTab(QWidget):
             for combo in combos:
                 combo.blockSignals(False)
 
+    def _populate_vector_column_combos(self, dataset_id):
+        """Fill the U/V column combos (required, no "None" entry) and the
+        magnitude combo (optional, leading "None" entry) with the given
+        dataset's columns -- mirrors _populate_column_combos/
+        _populate_error_column_combos' item-data convention (column id, or
+        "" for "None")."""
+        combos = (self.u_column_combo, self.v_column_combo)
+        optional_combos = (self.magnitude_column_combo,)
+        for combo in combos + optional_combos:
+            combo.blockSignals(True)
+        try:
+            for combo in combos:
+                combo.clear()
+            for combo in optional_combos:
+                combo.clear()
+                combo.addItem("None", "")
+
+            if dataset_id and self.current_project:
+                dataset = self.current_project.find_item(dataset_id)
+                if isinstance(dataset, Dataset) and dataset.data is not None:
+                    for column in dataset.data.columns:
+                        column_id = dataset.column_id(column) or ""
+                        for combo in combos + optional_combos:
+                            combo.addItem(column, column_id)
+        finally:
+            for combo in combos + optional_combos:
+                combo.blockSignals(False)
+
+    def _is_vector_chart(self) -> bool:
+        return bool(self.current_chart) and self.current_chart.chart_type == "vector"
+
+    def _update_vector_field_visibility(self):
+        """Show the U/V/magnitude rows only when editing a series on a
+        Vector chart -- every other chart type has no use for them."""
+        is_vector = self._is_vector_chart()
+        for widget in (
+            self.u_column_label, self.u_column_combo,
+            self.v_column_label, self.v_column_combo,
+            self.magnitude_column_label, self.magnitude_column_combo,
+        ):
+            widget.setVisible(is_vector)
+
+    def refresh_vector_fields(self):
+        """Re-evaluate vector-field visibility and repopulate the U/V/
+        magnitude combos for whatever dataset is currently selected.
+
+        Called by ChartPropertiesPanel when the Chart tab's type combo
+        changes live, since that combo writes straight to
+        `self.current_chart.chart_type` without going through `load()`.
+
+        Repopulating clears every combo back to its first entry, which would
+        otherwise silently desync from the still-selected series' actual
+        u_column_id/v_column_id/magnitude_column_id -- the next unrelated
+        edit (`_on_series_config_changed`) would then overwrite those fields
+        with whatever the cleared combos happen to show. Re-select the
+        current series' values afterward (guarded by `_updating_controls`,
+        same as `_load_series_into_controls`) so nothing is silently lost.
+        """
+        self._update_vector_field_visibility()
+        if not self.current_chart or not self.dataset_combo.currentData():
+            return
+        self._populate_vector_column_combos(self.dataset_combo.currentData())
+
+        current_row = self._expanded_series_index
+        if current_row < 0 or current_row >= len(self.current_chart.data_series):
+            return
+        series = self.current_chart.data_series[current_row]
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            for combo, column_id in (
+                (self.u_column_combo, series.u_column_id),
+                (self.v_column_combo, series.v_column_id),
+                (self.magnitude_column_combo, series.magnitude_column_id),
+            ):
+                combo.blockSignals(True)
+                index = combo.findData(column_id)
+                combo.setCurrentIndex(index if index >= 0 else 0)
+                combo.blockSignals(False)
+        finally:
+            self._updating_controls = previous_guard
+
     def _on_dataset_changed(self):
         """Handle dataset selection change."""
         dataset_id = self.dataset_combo.currentData()
         columns = self._populate_column_combos(dataset_id)
         self._populate_error_column_combos(dataset_id)
+        self._populate_vector_column_combos(dataset_id)
 
         # Set defaults if possible
         if columns:
@@ -1064,6 +1204,7 @@ class DataTab(QWidget):
             x_column_id = self.x_column_combo.currentData()
             y_column_id = self.y_column_combo.currentData()
             y_column_name = self.y_column_combo.currentText()
+            is_vector = chart.chart_type == "vector"
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,
@@ -1076,6 +1217,9 @@ class DataTab(QWidget):
                     x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
                     y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
                     error_symmetric=not self.error_asymmetric_check.isChecked(),
+                    u_column_id=self.u_column_combo.currentData() or "" if is_vector else "",
+                    v_column_id=self.v_column_combo.currentData() or "" if is_vector else "",
+                    magnitude_column_id=self.magnitude_column_combo.currentData() or "" if is_vector else "",
                 )
 
     def clear(self):

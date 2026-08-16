@@ -201,8 +201,9 @@ class DeleteColumnsCommand(Command):
         Returns a list of (chart, data_series indices, fit_data indices,
         error-only data_series indices) for every chart with at least one
         matching reference. A series lands in error-only indices (instead of
-        data_series indices) when the only matching reference is its
-        optional x_error_column/y_error_column, since that series still
+        data_series indices) when the only matching reference is one of its
+        optional columns (x_error_column/y_error_column/magnitude_column),
+        since that series still
         renders fine without error bars and shouldn't be removed.
         """
         if not self.project:
@@ -227,7 +228,9 @@ class DeleteColumnsCommand(Command):
                 i for i, series in enumerate(item.data_series)
                 if series.dataset_id == self.dataset_id
                 and (refs(series.x_column_id, series.x_column)
-                     or refs(series.y_column_id, series.y_column))
+                     or refs(series.y_column_id, series.y_column)
+                     or refs(series.u_column_id, series.u_column)
+                     or refs(series.v_column_id, series.v_column))
             ]
             error_only_idx = [
                 i for i, series in enumerate(item.data_series)
@@ -235,7 +238,8 @@ class DeleteColumnsCommand(Command):
                 and (refs(series.x_error_column_id, series.x_error_column)
                      or refs(series.y_error_column_id, series.y_error_column)
                      or refs(series.x_error_minus_column_id, series.x_error_minus_column)
-                     or refs(series.y_error_minus_column_id, series.y_error_minus_column))
+                     or refs(series.y_error_minus_column_id, series.y_error_minus_column)
+                     or refs(series.magnitude_column_id, series.magnitude_column))
             ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
@@ -290,6 +294,7 @@ class DeleteColumnsCommand(Command):
                 ("y_error_column_id", "y_error_column"),
                 ("x_error_minus_column_id", "x_error_minus_column"),
                 ("y_error_minus_column_id", "y_error_minus_column"),
+                ("magnitude_column_id", "magnitude_column"),
             )
             cleared_series = []
             for i in error_only_idx:

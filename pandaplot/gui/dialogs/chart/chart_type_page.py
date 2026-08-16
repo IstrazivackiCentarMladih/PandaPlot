@@ -29,6 +29,8 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 
 _SAMPLE_X = [1, 2, 3, 4, 5]
 _SAMPLE_Y = [2, 3, 1, 4, 3]
+_SAMPLE_U = [1.0, 0.5, -1.0, 0.5, -0.5]
+_SAMPLE_V = [0.5, -1.0, 0.5, 1.0, -0.5]
 
 
 class ChartTypePage(PWizardPage):
@@ -148,6 +150,8 @@ class ChartTypePage(PWizardPage):
             axes.bar(_SAMPLE_X, _SAMPLE_Y)
         elif chart_type == "hist":
             axes.hist(_SAMPLE_Y, bins=5)
+        elif chart_type == "vector":
+            axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
         canvas.draw()
 
         self.preview_container.layout().addWidget(canvas)

@@ -323,6 +323,9 @@ class SeriesData:
     x_err_minus: Optional[Any]
     y_err_minus: Optional[Any]
     error: Optional[str]
+    u_data: Optional[Any] = None
+    v_data: Optional[Any] = None
+    magnitude_data: Optional[Any] = None
 
 
 def resolve_series_data(project, series, chart_type=None) -> SeriesData:
@@ -335,7 +338,9 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     x_column is ignored when chart_type == "hist". The error columns are
     resolved leniently (see _resolve_error_column) since they're optional;
     x_err_minus/y_err_minus are only meaningful when series.error_symmetric
-    is False.
+    is False. When chart_type == "vector", u_data/v_data are also resolved
+    (required -- missing either is an error) and magnitude_data leniently
+    (optional -- unset/unresolved never causes an error).
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -368,7 +373,25 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
-    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+
+    u_data = v_data = magnitude_data = None
+    if chart_type == "vector":
+        u_column = resolve_series_column(dataset, series.u_column_id, series.u_column)
+        v_column = resolve_series_column(dataset, series.v_column_id, series.v_column)
+        if not u_column or not v_column:
+            return SeriesData(None, None, None, None, None, None, "no U/V column configured")
+        missing_uv = [c for c in (u_column, v_column) if c not in df.columns]
+        if missing_uv:
+            cols = ", ".join(f"'{c}'" for c in missing_uv)
+            return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
+        u_data = df[u_column]
+        v_data = df[v_column]
+        magnitude_column = resolve_series_column(dataset, series.magnitude_column_id, series.magnitude_column)
+        if magnitude_column and magnitude_column in df.columns:
+            magnitude_data = df[magnitude_column]
+
+    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None,
+                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data)
 
 
 def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
@@ -848,6 +871,25 @@ class ChartEditorWidget(PWidget):
                                          color=series.color,
                                          label=series.label,
                                          alpha=alpha)
+                    elif self.chart.chart_type == "vector":
+                        quiver_kwargs = {
+                            "scale": series.vector_scale if series.vector_scale > 0 else None,
+                            "width": series.vector_width,
+                            "headwidth": series.vector_head_width,
+                            "headlength": series.vector_head_length,
+                            "headaxislength": series.vector_head_axis_length,
+                            "label": series.label,
+                            "alpha": alpha,
+                        }
+                        if series_data.magnitude_data is not None and series.vector_colormap:
+                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
+                                               series_data.magnitude_data,
+                                               cmap=series.vector_colormap,
+                                               **quiver_kwargs)
+                        else:
+                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
+                                               color=series.vector_color,
+                                               **quiver_kwargs)
 
                     if self.chart.chart_type in ("line", "scatter", "bar"):
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)

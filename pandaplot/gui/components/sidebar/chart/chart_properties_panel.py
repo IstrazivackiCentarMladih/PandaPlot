@@ -72,6 +72,7 @@ class ChartPropertiesPanel(SidebarPanel):
         self.chart_tab = ChartTab(self)
         self.chart_tab.configChanged.connect(self._on_any_tab_config_changed)
         self.chart_tab.chartTypeChanged.connect(self.style_tab.set_chart_type)
+        self.chart_tab.chartTypeChanged.connect(lambda _value: self.data_tab.refresh_vector_fields())
         self.tab_widget.addTab(self._wrap_in_scroll_area(self.chart_tab), "Chart")
 
         # Axes tab: constructed before the Data tab (though added to the tab
