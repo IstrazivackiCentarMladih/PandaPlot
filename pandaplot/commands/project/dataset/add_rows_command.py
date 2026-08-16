@@ -129,7 +129,7 @@ class AddRowsCommand(Command):
             
             # Validate reference positions
             num_rows = len(self.dataset.data)
-            for i, pos in enumerate(self.reference_positions):
+            for pos in self.reference_positions:
                 if pos < 0 or pos >= num_rows:
                     self.ui_controller.show_error_message(
                         "Add Rows", 

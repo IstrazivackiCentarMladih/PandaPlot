@@ -12,7 +12,13 @@ import pandas as pd
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 
 from pandaplot.commands.project.dataset.edit_command import EditCommand
-from pandaplot.models.events.event_data import DatasetColumnRenamedData, DatasetColumnsAddedData, DatasetColumnsRemovedData, DatasetRowsAddedData, DatasetRowsRemovedData
+from pandaplot.models.events.event_data import (
+    DatasetColumnRenamedData,
+    DatasetColumnsAddedData,
+    DatasetColumnsRemovedData,
+    DatasetRowsAddedData,
+    DatasetRowsRemovedData,
+)
 from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationEvents
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -29,12 +35,12 @@ class PandasTableModel(QAbstractTableModel):
         self.setup_event_subscriptions()
     
     @override
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
         """Return the number of rows in the DataFrame."""
         return len(self._dataset.data)
-    
+
     @override
-    def columnCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def columnCount(self, parent: QModelIndex | None = None) -> int:
         """Return the number of columns in the DataFrame."""
         return len(self._dataset.data.columns)
     

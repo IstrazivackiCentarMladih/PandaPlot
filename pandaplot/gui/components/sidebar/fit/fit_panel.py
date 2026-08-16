@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.models.events import FitEvents, ChartEvents, UIEvents
+from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
@@ -409,7 +409,6 @@ class FitPanel(SidebarPanel):
         
         results = self.fit_command.fit_results
         fit_type = results.fit_type
-        popt = results.parameters
         perr = results.errors
         param_names = results.param_names
         r_squared = results.r_squared

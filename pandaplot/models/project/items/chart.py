@@ -83,6 +83,22 @@ class DataSeries:
     fill_orientation: str = "vertical"  # "vertical" | "horizontal"
     fill_base: float = 0.0  # constant baseline, used when fill_to_index < 0
     fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
+    # Vector-plot ("quiver") fields. u/v are the vector components at each
+    # (x, y); magnitude is optional and, when resolved, colors each arrow via
+    # vector_colormap instead of the flat vector_color.
+    u_column_id: str = ""
+    v_column_id: str = ""
+    u_column: str = ""
+    v_column: str = ""
+    magnitude_column_id: str = ""
+    magnitude_column: str = ""
+    vector_color: str = "#1f77b4"
+    vector_colormap: str = ""  # "" => solid vector_color; else a matplotlib colormap name
+    vector_scale: float = 0.0  # 0 => matplotlib autoscale (quiver's scale=None)
+    vector_width: float = 0.005
+    vector_head_width: float = 3.0
+    vector_head_length: float = 5.0
+    vector_head_axis_length: float = 4.5
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -465,7 +481,20 @@ class Chart(Item):
                     "fill_alpha": series.fill_alpha,
                     "fill_orientation": series.fill_orientation,
                     "fill_base": series.fill_base,
-                    "fill_to_index": series.fill_to_index
+                    "fill_to_index": series.fill_to_index,
+                    "u_column_id": series.u_column_id,
+                    "v_column_id": series.v_column_id,
+                    "u_column": series.u_column,
+                    "v_column": series.v_column,
+                    "magnitude_column_id": series.magnitude_column_id,
+                    "magnitude_column": series.magnitude_column,
+                    "vector_color": series.vector_color,
+                    "vector_colormap": series.vector_colormap,
+                    "vector_scale": series.vector_scale,
+                    "vector_width": series.vector_width,
+                    "vector_head_width": series.vector_head_width,
+                    "vector_head_length": series.vector_head_length,
+                    "vector_head_axis_length": series.vector_head_axis_length
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -551,7 +580,20 @@ class Chart(Item):
                 fill_alpha=series_dict.get("fill_alpha", 0.3),
                 fill_orientation=series_dict.get("fill_orientation", "vertical"),
                 fill_base=series_dict.get("fill_base", 0.0),
-                fill_to_index=series_dict.get("fill_to_index", -1)
+                fill_to_index=series_dict.get("fill_to_index", -1),
+                u_column_id=series_dict.get("u_column_id", ""),
+                v_column_id=series_dict.get("v_column_id", ""),
+                u_column=series_dict.get("u_column", ""),
+                v_column=series_dict.get("v_column", ""),
+                magnitude_column_id=series_dict.get("magnitude_column_id", ""),
+                magnitude_column=series_dict.get("magnitude_column", ""),
+                vector_color=series_dict.get("vector_color", "#1f77b4"),
+                vector_colormap=series_dict.get("vector_colormap", ""),
+                vector_scale=series_dict.get("vector_scale", 0.0),
+                vector_width=series_dict.get("vector_width", 0.005),
+                vector_head_width=series_dict.get("vector_head_width", 3.0),
+                vector_head_length=series_dict.get("vector_head_length", 5.0),
+                vector_head_axis_length=series_dict.get("vector_head_axis_length", 4.5)
             )
             chart.data_series.append(series)
         
@@ -618,6 +660,9 @@ def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
         ("y_error_column", "y_error_column_id"),
         ("x_error_minus_column", "x_error_minus_column_id"),
         ("y_error_minus_column", "y_error_minus_column_id"),
+        ("u_column", "u_column_id"),
+        ("v_column", "v_column_id"),
+        ("magnitude_column", "magnitude_column_id"),
     )
     for name_field, id_field in pairs:
         name = getattr(series, name_field, "")

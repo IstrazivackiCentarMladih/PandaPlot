@@ -689,3 +689,47 @@ def test_redo_reinserts_the_chart_into_its_original_folder(mock_wizard_cls, app_
     command.redo()
 
     assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_vector_series_config_passes_through_u_v_magnitude(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-x", "y_column_id": "col-y",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        "u_column_id": "col-u", "v_column_id": "col-v", "magnitude_column_id": "col-m",
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="vector", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.chart_type == "vector"
+    series = created_chart.data_series[0]
+    assert series.u_column_id == "col-u"
+    assert series.v_column_id == "col-v"
+    assert series.magnitude_column_id == "col-m"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    series = project.add_item.call_args[0][0].data_series[0]
+    assert series.u_column_id == ""
+    assert series.v_column_id == ""
+    assert series.magnitude_column_id == ""

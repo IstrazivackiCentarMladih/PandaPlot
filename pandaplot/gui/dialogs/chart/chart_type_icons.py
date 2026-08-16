@@ -5,6 +5,8 @@ ship or theme separately -- `color` is passed in by the caller (typically the
 current design token's `accent` or `text_secondary`) each time the theme
 changes.
 """
+import math
+
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QIcon, QPainter, QPen, QPixmap
 
@@ -35,11 +37,44 @@ def _paint_hist(painter: QPainter, size: int):
         painter.drawRect(QRectF(x, y, w, h))
 
 
+def _vector_arrow_geometry(size: int):
+    """Compute the (start, end, [wing1, wing2]) points for each arrow.
+
+    Pulled out of `_paint_vector` so tests can assert the geometry stays
+    within the [0, size] icon canvas without needing to inspect pixels.
+    """
+    arrows = []
+    for start_frac, end_frac in (
+        ((0.15, 0.85), (0.55, 0.35)),
+        ((0.35, 0.9), (0.8, 0.3)),
+    ):
+        start = QPointF(size * start_frac[0], size * start_frac[1])
+        end = QPointF(size * end_frac[0], size * end_frac[1])
+        angle = math.atan2(end.y() - start.y(), end.x() - start.x())
+        head_len = size * 0.2
+        wings = []
+        for delta in (2.6, -2.6):
+            wings.append(QPointF(
+                end.x() - head_len * math.cos(angle + delta),
+                end.y() - head_len * math.sin(angle + delta),
+            ))
+        arrows.append((start, end, wings))
+    return arrows
+
+
+def _paint_vector(painter: QPainter, size: int):
+    for start, end, wings in _vector_arrow_geometry(size):
+        painter.drawLine(start, end)
+        for head_point in wings:
+            painter.drawLine(end, head_point)
+
+
 _PAINTERS = {
     "line": _paint_line,
     "scatter": _paint_scatter,
     "bar": _paint_bar,
     "hist": _paint_hist,
+    "vector": _paint_vector,
 }
 
 
@@ -47,7 +82,7 @@ def chart_type_icon(chart_type: str, color: str, size: int = 14) -> QIcon:
     """Render `chart_type`'s icon at `size`x`size` in `color`.
 
     Raises:
-        KeyError: if `chart_type` isn't one of "line"/"scatter"/"bar"/"hist".
+        KeyError: if `chart_type` isn't one of "line"/"scatter"/"bar"/"hist"/"vector".
     """
     paint_fn = _PAINTERS[chart_type]
 

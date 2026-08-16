@@ -5,8 +5,8 @@ import pandas as pd
 import pytest
 
 from pandaplot.analysis import (
-    SignalEngine,
     SignalAnalysisType,
+    SignalEngine,
 )
 
 

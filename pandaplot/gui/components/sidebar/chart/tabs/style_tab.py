@@ -41,6 +41,17 @@ from pandaplot.services.config.config_manager import ConfigManager
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
 
+# Common matplotlib colormaps offered for vector-plot magnitude coloring.
+# "" (Solid color) means: ignore magnitude, use vector_color for every arrow.
+VECTOR_COLORMAPS = [
+    ("Solid color", ""),
+    ("Viridis", "viridis"),
+    ("Plasma", "plasma"),
+    ("Cool", "cool"),
+    ("Autumn", "autumn"),
+    ("Jet", "jet"),
+]
+
 
 def _make_bold_italic_checks_standalone() -> tuple[QCheckBox, QCheckBox]:
     """Same as the local closure `_make_bold_italic_checks` defined inside
@@ -512,6 +523,44 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
+        # VECTOR group -- shown instead of Line/Fill/Marker/Error Bars for a
+        # series on a Vector (quiver) chart, which has no line/marker/fill/
+        # error-bar concept of its own.
+        self.vector_card = Card()
+        vector_card = self.vector_card
+        vector_layout = QGridLayout(vector_card)
+        vector_layout.addWidget(SectionHeader("Vector"), 0, 0, 1, 2)
+
+        vector_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.vector_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        vector_layout.addWidget(self.vector_color_row, 1, 1)
+
+        vector_layout.addWidget(QLabel("Color by magnitude:"), 2, 0)
+        self.vector_colormap_control = ValueComboBox(VECTOR_COLORMAPS)
+        vector_layout.addWidget(self.vector_colormap_control, 2, 1)
+
+        vector_layout.addWidget(QLabel("Scale:"), 3, 0)
+        self.vector_scale_slider = SliderWithSpinbox(minimum=0.0, maximum=50.0, decimals=2)
+        vector_layout.addWidget(self.vector_scale_slider, 3, 1)
+
+        vector_layout.addWidget(QLabel("Width:"), 4, 0)
+        self.vector_width_slider = SliderWithSpinbox(minimum=0.0005, maximum=0.05, decimals=4)
+        vector_layout.addWidget(self.vector_width_slider, 4, 1)
+
+        vector_layout.addWidget(QLabel("Head width:"), 5, 0)
+        self.vector_head_width_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_width_slider, 5, 1)
+
+        vector_layout.addWidget(QLabel("Head length:"), 6, 0)
+        self.vector_head_length_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_length_slider, 6, 1)
+
+        vector_layout.addWidget(QLabel("Head axis length:"), 7, 0)
+        self.vector_head_axis_length_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_axis_length_slider, 7, 1)
+
+        layout.addWidget(vector_card)
+
         # -- Axes (appearance) section: its own top-level selection in
         # style_series_chips (sibling to "Chart"/series/fit), not nested
         # under "Chart" -- axis appearance is a chart-wide concern like the
@@ -562,6 +611,13 @@ class StyleTab(QWidget):
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_color_row.colorChanged.connect(self._on_field_changed)
+        self.vector_colormap_control.currentValueChanged.connect(self._on_field_changed)
+        self.vector_scale_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_width_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_width_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_length_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_axis_length_slider.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -633,18 +689,22 @@ class StyleTab(QWidget):
         for widget in self.axes_style_widgets:
             widget.setVisible(is_axes)
         is_scatter = self._chart_type == ChartType.SCATTER
-        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
+        is_vector = self._chart_type == ChartType.VECTOR
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter and not is_vector))
         # Area fill is only drawn for line charts (see chart_editor.py's "line"
         # branch), so the Fill card is a series-on-line-chart concern.
         self.fill_card.setVisible(kind == "series" and self._chart_type == ChartType.LINE)
-        self.marker_card.setVisible(kind == "series")
+        self.marker_card.setVisible(kind == "series" and not is_vector)
         # Fit data has no error-bar fields at all (DataSeries-only), and even
         # for a series there's nothing to style unless an error column is
         # actually configured (on the Data tab) -- otherwise the card's
         # controls (direction/color/cap size) have no error bars to apply to.
+        # A vector series has no error-bar concept at all (supports_error_bars
+        # is False in its role spec), regardless of has_error_data.
         self.error_bars_card.setVisible(
-            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and not is_vector
         )
+        self.vector_card.setVisible(kind == "series" and is_vector)
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
@@ -1211,6 +1271,15 @@ class StyleTab(QWidget):
         self.configChanged.emit()
 
     def apply_series_style_to(self, series):
+        if self._chart_type == ChartType.VECTOR:
+            series.vector_color = self.vector_color_row.currentColor()
+            series.vector_colormap = self.vector_colormap_control.currentValue()
+            series.vector_scale = self.vector_scale_slider.value()
+            series.vector_width = self.vector_width_slider.value()
+            series.vector_head_width = self.vector_head_width_slider.value()
+            series.vector_head_length = self.vector_head_length_slider.value()
+            series.vector_head_axis_length = self.vector_head_axis_length_slider.value()
+            return
         series.color = self.line_color_row.currentColor()
         series.line_style = self.line_style_control.currentValue().value
         series.line_width = self.line_width_slider.value()
@@ -1265,6 +1334,14 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self.vector_color_row.setCurrentColor(series.vector_color)
+            self.vector_colormap_control.setCurrentValue(series.vector_colormap)
+            self.vector_scale_slider.setValue(series.vector_scale)
+            self.vector_width_slider.setValue(series.vector_width)
+            self.vector_head_width_slider.setValue(series.vector_head_width)
+            self.vector_head_length_slider.setValue(series.vector_head_length)
+            self.vector_head_axis_length_slider.setValue(series.vector_head_axis_length)
+
             self.line_color_row.setCurrentColor(series.color)
             self.line_width_slider.setValue(series.line_width)
             self.line_opacity_slider.setValue(series.alpha)
@@ -1736,6 +1813,14 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.vector_card.set_tokens(tokens)
+        self.vector_color_row.set_tokens(tokens)
+        self.vector_colormap_control.set_tokens(tokens)
+        self.vector_scale_slider.set_tokens(tokens)
+        self.vector_width_slider.set_tokens(tokens)
+        self.vector_head_width_slider.set_tokens(tokens)
+        self.vector_head_length_slider.set_tokens(tokens)
+        self.vector_head_axis_length_slider.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)

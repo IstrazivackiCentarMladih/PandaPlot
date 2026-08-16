@@ -6,6 +6,7 @@ import pandas as pd
 
 from pandaplot.services.fit.fit_service import FitService
 
+
 def test_extract_sigma_y_missing_column_returns_none():
     """Return None when selected error column does not exist."""
 

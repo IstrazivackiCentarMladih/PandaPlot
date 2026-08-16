@@ -13,6 +13,7 @@ class ChartType(Enum):
     HISTOGRAM = "histogram"
     BOX = "box"
     VIOLIN = "violin"
+    VECTOR = "vector"
 
 
 class LineStyleType(Enum):

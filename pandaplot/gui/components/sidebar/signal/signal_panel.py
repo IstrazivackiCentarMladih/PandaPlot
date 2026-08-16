@@ -1,25 +1,25 @@
-from typing import Optional, override, List
+from typing import List, Optional, override
 
 from PySide6.QtWidgets import (
     QComboBox,
-    QGroupBox,
-    QLabel,
-    QFormLayout,
-    QVBoxLayout,
-    QWidget,
     QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QSpinBox,
     QTextEdit,
-    QHBoxLayout,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.models.state.app_context import AppContext
-from pandaplot.models.project.items import Dataset
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 

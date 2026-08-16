@@ -120,7 +120,7 @@ class MainMenu(PMenuBar):
         settings_menu = QMenu("Settings", self)
         self.addMenu(settings_menu)
 
-        preferences_action = QAction("⚙️ Preferences...", self)
+        preferences_action = QAction("Preferences...", self)
         # TODO: consider showing settings dialog by triggering event which invokes a command
         preferences_action.triggered.connect(self.show_settings_dialog)
         settings_menu.addAction(preferences_action)
