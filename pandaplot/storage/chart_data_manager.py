@@ -20,7 +20,7 @@ class ChartDataManager(ItemDataManager[Chart]):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(chart_data, indent=2))
 
     @override
-    def load(self, item_class: type[Chart], zip_file: ZipFile, path_in_zip: str) -> Chart:
+    def load(self, item_class: type[Chart], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> Chart:
         """
         Load chart from JSON configuration.
         path_in_zip is without extension.

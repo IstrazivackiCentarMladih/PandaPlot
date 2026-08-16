@@ -12,7 +12,7 @@ def _round_trip(image: Image) -> Image:
 
     buffer.seek(0)
     with ZipFile(buffer, "r") as zf:
-        return ImageDataManager().load(Image, zf, "items/test-image")
+        return ImageDataManager().load(Image, zf, "items/test-image", schema_version=1)
 
 
 class TestImageDataManagerCopied:
@@ -87,7 +87,7 @@ class TestImageDataManagerCopied:
 
         buffer.seek(0)
         with ZipFile(buffer, "r") as zf:
-            loaded = ImageDataManager().load(Image, zf, "items/img-6")  # must not raise
+            loaded = ImageDataManager().load(Image, zf, "items/img-6", schema_version=1)  # must not raise
 
         assert loaded.get_bytes() is None
         assert loaded.name == "Ghost"

@@ -16,7 +16,7 @@ class TestImageGalleryDataManager:
 
         buffer.seek(0)
         with ZipFile(buffer, "r") as zf:
-            loaded = ImageGalleryDataManager().load(ImageGallery, zf, "items/gal-1")
+            loaded = ImageGalleryDataManager().load(ImageGallery, zf, "items/gal-1", schema_version=1)
 
         assert loaded.id == "gal-1"
         assert loaded.name == "Vacation"

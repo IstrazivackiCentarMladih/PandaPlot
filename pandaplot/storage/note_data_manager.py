@@ -29,7 +29,7 @@ class NoteDataManager(ItemDataManager[Note]):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
 
     @override
-    def load(self, item_class: type[Note], zip_file: ZipFile, path_in_zip: str) -> Note:
+    def load(self, item_class: type[Note], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> Note:
         """
         Load note from markdown + metadata json.
         path_in_zip is without extension.

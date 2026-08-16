@@ -109,7 +109,7 @@ class ProjectDataManager:
             path = info["path"]
             manager = self.data_factory.get_manager(info["type"])
 
-            item = manager.load(item_class, zip_file, path)
+            item = manager.load(item_class, zip_file, path, schema_version=1)
             self.logger.info(
                 f"Loaded item {item_id} of type {info['type']} from {path}")
             return item
