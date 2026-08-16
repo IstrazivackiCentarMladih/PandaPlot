@@ -2,6 +2,7 @@ import json
 import logging
 import zipfile
 
+from pandaplot.models.migrations.runner import run_cross_item_migrations
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Item
 from pandaplot.storage.item_data_manager_factory import ItemDataManagerFactory
@@ -61,55 +62,27 @@ class ProjectDataManager:
         zip_proxy = _ZipBytesProxy(raw_data)
         project_dict = json.loads(raw_data["project.json"].decode("utf-8"))
         project = Project.from_dict(project_dict)
+        schema_version = project_dict.get("schema_version", 0)
 
         items = {}
         for item_id, info in project_dict.get("item_files", {}).items():
-            curr_item = self._load_item(item_id, info, zip_proxy)
+            curr_item = self._load_item(item_id, info, zip_proxy, schema_version)
             if curr_item is not None:
                 items[item_id] = curr_item
 
         project_root = project_dict.get("root", {})
         project.root.id = project_root.get("id", project.root.id)
         self._add_items_to_project(project, items, project_root.get("items", []))
-        self._migrate_series_column_ids(project)
+        run_cross_item_migrations(project)
         return project
 
-    def _migrate_series_column_ids(self, project) -> None:
-        """Backfill chart series/fit column ids from their names.
-
-        Legacy projects (and any references saved with an empty id) stored
-        column references by name only. Now that datasets are loaded and carry
-        a column-id registry, resolve each reference's name to a stable id so a
-        later column rename doesn't break the reference. assign_* only fills
-        ids for names that still match a column; unmatched names keep an empty
-        id and fall back to the name at resolve time.
-        """
-        from pandaplot.models.project.items.chart import (
-            Chart,
-            assign_fit_column_ids,
-            assign_series_column_ids,
-        )
-        from pandaplot.models.project.items.dataset import Dataset
-
-        for item in project.get_all_items():
-            if not isinstance(item, Chart):
-                continue
-            for series in item.data_series:
-                dataset = project.find_item(series.dataset_id)
-                if isinstance(dataset, Dataset):
-                    assign_series_column_ids(series, dataset)
-            for fit in item.fit_data:
-                dataset = project.find_item(fit.source_dataset_id)
-                if isinstance(dataset, Dataset):
-                    assign_fit_column_ids(fit, dataset)
-
-    def _load_item(self, item_id: str, info, zip_file) -> Item | None:
+    def _load_item(self, item_id: str, info, zip_file, schema_version: int) -> Item | None:
         try:
             item_class = self.data_factory.resolve_item_class(info["type"])
             path = info["path"]
             manager = self.data_factory.get_manager(info["type"])
 
-            item = manager.load(item_class, zip_file, path, schema_version=1)
+            item = manager.load(item_class, zip_file, path, schema_version)
             self.logger.info(
                 f"Loaded item {item_id} of type {info['type']} from {path}")
             return item
