@@ -485,5 +485,40 @@ class TestComplexScenarios:
         assert restored_project.metadata["custom_fields"]["priority"] == "high"
 
 
+class TestProjectSchemaVersion:
+    """New projects start at the current schema version; projects loaded
+    from a dict that predates this field default to version 0, so the
+    migration runner (added in a later task) knows to bring them up to
+    date."""
+
+    def test_new_project_defaults_to_current_schema_version(self):
+        from pandaplot.models.migrations.schema_version import CURRENT_SCHEMA_VERSION
+
+        project = Project(name="Fresh Project")
+
+        assert project.schema_version == CURRENT_SCHEMA_VERSION
+
+    def test_to_dict_includes_schema_version(self):
+        from pandaplot.models.migrations.schema_version import CURRENT_SCHEMA_VERSION
+
+        project = Project(name="Fresh Project")
+
+        data = project.to_dict()
+
+        assert data["schema_version"] == CURRENT_SCHEMA_VERSION
+
+    def test_from_dict_defaults_missing_schema_version_to_zero(self):
+        legacy_data = {"name": "Old Project", "description": ""}
+
+        project = Project.from_dict(legacy_data)
+
+        assert project.schema_version == 0
+
+    def test_from_dict_round_trips_schema_version(self):
+        project = Project.from_dict({"name": "P", "description": "", "schema_version": 3})
+
+        assert project.schema_version == 3
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
