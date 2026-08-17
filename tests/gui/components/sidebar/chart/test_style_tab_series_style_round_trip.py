@@ -160,3 +160,44 @@ def test_error_bar_fields_stay_on_dataseries_not_style():
 
     assert not hasattr(series.style, "error_color")
     assert series.error_color == ""  # unchanged default, still a top-level field
+
+
+def test_card_visibility_uses_the_selected_series_own_type_not_the_chart_type():
+    """A Line-typed chart with a Scatter-typed series selected must show
+    Scatter's spec (marker required, no fill card) for that series --
+    not Line's (marker optional, fill card visible)."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    # Qt only reports isVisible() truthfully for a widget whose top-level
+    # ancestor has actually been shown (see test_style_tab_vector.py's
+    # _tab() helper for the same pattern) -- without this, isVisible() is
+    # always False regardless of setVisible() calls.
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(series_type=SeriesType.SCATTER, color="#112233")
+    tab._current_target = ("series", series)
+
+    tab._update_target_cards_visibility()
+
+    assert tab.fill_card.isVisible() is False  # Scatter has no fill support
+    assert tab.marker_card.isVisible() is True  # Scatter's marker is required, not optional
+
+
+def test_is_scatter_series_target_uses_the_selected_series_own_type():
+    """_is_scatter_series_target must read the SELECTED SERIES' type, not
+    the chart's -- a Scatter-typed series inside a Line-typed chart is
+    still a scatter series for "match line" purposes (no line drawn for
+    it), and a Line-typed series inside a Scatter-typed chart is not."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.LINE)
+    scatter_series = _line_series(series_type=SeriesType.SCATTER)
+    tab._current_target = ("series", scatter_series)
+
+    assert tab._is_scatter_series_target() is True
+
+    tab.set_chart_type(ChartType.SCATTER)
+    line_series = _line_series(series_type=SeriesType.LINE)
+    tab._current_target = ("series", line_series)
+
+    assert tab._is_scatter_series_target() is False

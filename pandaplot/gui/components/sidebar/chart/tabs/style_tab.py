@@ -28,7 +28,6 @@ from pandaplot.models.chart.chart_configuration import (
     LineStyleType,
     MarkerType,
 )
-from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_style import LineSeriesStyle, ScatterSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -671,11 +670,13 @@ class StyleTab(QWidget):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
         Style-tab chip is currently selected. Line/Fill/Marker/ErrorBars
         visibility for a selected series is driven by SERIES_TYPE_SPECS for
-        the chart's current type -- the single source of truth this design
-        introduces, replacing the is_scatter/is_vector booleans this method
-        used to compute locally (which had already drifted out of sync with
-        chart_editor.py's own per-type rendering, e.g. showing error-bar
-        controls for a histogram series the renderer never draws).
+        the selected series' own type (falling back to the chart's type for
+        the Chart/Axes chips, which have no specific series) -- the single
+        source of truth this design introduces, replacing the is_scatter/
+        is_vector booleans this method used to compute locally (which had
+        already drifted out of sync with chart_editor.py's own per-type
+        rendering, e.g. showing error-bar controls for a histogram series
+        the renderer never draws).
 
         A selected *fit* entry is unaffected by the series' spec -- a fit is
         always rendered as a line (chart_editor.py plots it unconditionally),
@@ -692,7 +693,12 @@ class StyleTab(QWidget):
         is_axes = kind == "axes"
         for widget in self.axes_style_widgets:
             widget.setVisible(is_axes)
-        spec = SERIES_TYPE_SPECS[SeriesType(self._chart_type)] if self._chart_type else None
+        if kind == "series" and isinstance(obj, DataSeries):
+            spec = SERIES_TYPE_SPECS[obj.series_type]
+        elif self._chart_type:
+            spec = SERIES_TYPE_SPECS[SeriesType(self._chart_type)]
+        else:
+            spec = None
         marker_supported = spec is not None and spec.marker_mode != "unsupported"
         color_supported = spec is not None and spec.supports_color
         fill_supported = spec is not None and spec.supports_fill
@@ -999,12 +1005,12 @@ class StyleTab(QWidget):
         self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
 
     def _is_scatter_series_target(self) -> bool:
-        """Whether the current target is a data series on a Scatter chart --
+        """Whether the current target is a data series of scatter type --
         i.e. there is no drawn line at all (Line card is hidden; see
         _update_target_cards_visibility), so "match line" has nothing to
         refer to and marker colors must always be set explicitly."""
-        kind, _obj = self._current_target
-        return kind == "series" and self._chart_type == ChartType.SCATTER
+        kind, obj = self._current_target
+        return kind == "series" and isinstance(obj, DataSeries) and obj.series_type == SeriesType.SCATTER
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type

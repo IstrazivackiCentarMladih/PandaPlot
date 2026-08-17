@@ -28,7 +28,7 @@ def _tab():
 
 def test_vector_card_is_shown_only_for_a_vector_series_target():
     tab = _tab()
-    series = DataSeries(dataset_id="ds1")
+    series = DataSeries(dataset_id="ds1", series_type=SeriesType.VECTOR)
     tab.set_chart_type(ChartType.VECTOR)
     tab.set_selected("series", series)
 

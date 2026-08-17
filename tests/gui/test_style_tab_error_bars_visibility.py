@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries
 
 
@@ -59,6 +60,7 @@ def test_error_bars_card_hidden_for_histogram_series_even_with_error_columns_con
 
     series = DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.HIST,
         y_error_column_id="err-col-id",
     )
     style_tab.set_selected("series", series)

@@ -49,7 +49,10 @@ def test_series_line_card_hidden_on_scatter_chart():
     style_tab.show()
     style_tab.set_chart_type(ChartType.SCATTER)
 
-    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.SCATTER,
+    )
     style_tab.set_selected("series", series)
 
     assert not style_tab.line_card.isVisible()
@@ -91,7 +94,10 @@ def test_series_line_card_visible_marker_card_hidden_on_bar_chart():
     style_tab.show()
     style_tab.set_chart_type(ChartType.BAR)
 
-    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.BAR,
+    )
     style_tab.set_selected("series", series)
 
     assert style_tab.line_card.isVisible()
@@ -109,7 +115,10 @@ def test_series_line_card_visible_marker_card_hidden_on_histogram_chart():
     style_tab.show()
     style_tab.set_chart_type(ChartType.HIST)
 
-    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.HIST,
+    )
     style_tab.set_selected("series", series)
 
     assert style_tab.line_card.isVisible()
