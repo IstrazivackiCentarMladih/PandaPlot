@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.series_style import SeriesStyleBase
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -241,34 +242,39 @@ class Chart(Item):
         }
     
     def set_chart_type(self, chart_type: "str | ChartType") -> None:
-        """Set the chart type, retyping every existing series to match.
+        """Set the chart type, retyping only series not allowed under it.
 
         chart_editor.py's renderer picks its dispatch function AND its
-        style-field expectations from the chart's own type -- if a
-        series' `.style` stayed the class it was originally constructed
-        with (e.g. LineSeriesStyle) while the chart's type changed (e.g.
-        to "vector"), the renderer would try to read fields the wrong
-        style class doesn't declare and crash, silently rendering an
-        empty chart. Retyping here, once, at the point the chart's type
-        actually changes, is what used to happen implicitly every render
-        via the now-deleted derive_style() -- this restores that
-        invariant without resurrecting derive_style itself.
+        style-field expectations from each series' own `series_type` --
+        so a series only needs retyping when its current type falls
+        OUTSIDE the new chart type's `allowed_series_types` (e.g. a HIST
+        series can't stay on a chart that just became "line", since
+        Line's spec only allows {LINE, SCATTER}). A series whose type is
+        already allowed (e.g. a LINE series when the chart becomes
+        "vector", since Vector's spec allows {VECTOR, LINE}) is left
+        completely untouched -- mixed series types are legitimate for
+        that combination. Retyped series become the new chart type's own
+        `default_series_type`, carrying over a base color the same way
+        `add_data_series`/`AddSeriesCommand` do.
         """
         new_type = ChartType(chart_type)
         if new_type == self.chart_type:
             return
         self.chart_type = new_type
-        new_series_type = SeriesType(new_type)
-        style_cls = SERIES_TYPE_SPECS[new_series_type].style_cls
+        spec = CHART_TYPE_SPECS[new_type]
+        default_series_type = spec.default_series_type
+        style_cls = SERIES_TYPE_SPECS[default_series_type].style_cls
         for series in self.data_series:
+            if series.series_type in spec.allowed_series_types:
+                continue
             old_style = series.style
             base_color = (
                 getattr(old_style, "vector_color", None)
                 or getattr(old_style, "color", None)
                 or "#1f77b4"
             )
-            series.series_type = new_series_type
-            if new_series_type == SeriesType.VECTOR:
+            series.series_type = default_series_type
+            if default_series_type == SeriesType.VECTOR:
                 series.style = style_cls(vector_color=base_color)
             else:
                 series.style = style_cls(color=base_color)

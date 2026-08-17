@@ -1,7 +1,7 @@
 """Tests for the Chart model (pandaplot.models.project.items.chart.Chart)."""
 
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.chart.series_style import BarSeriesStyle, LineSeriesStyle, VectorSeriesStyle
+from pandaplot.models.chart.series_style import BarSeriesStyle, HistSeriesStyle, LineSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart, DataSeries, restore_chart_state, snapshot_chart_state
 
@@ -216,23 +216,28 @@ class TestDataSeriesAutoDerivesStyle:
 
 
 class TestSetChartTypeRetypesSeries:
-    """set_chart_type must retype every existing series' style class to
-    match the new chart type -- otherwise chart_editor.py's renderer picks
-    its dispatch function from the chart's new type but still finds series
-    whose .style is the OLD style class, and crashes trying to read fields
-    the wrong class doesn't declare (the derive_style-removal regression)."""
+    """set_chart_type must retype only series whose current type is NOT
+    allowed under the new chart type -- otherwise chart_editor.py's
+    renderer picks its dispatch function from the chart's new type but
+    still finds series whose .style is the OLD style class, and crashes
+    trying to read fields the wrong class doesn't declare (the
+    derive_style-removal regression fixed in Phase 3c). Series whose type
+    IS allowed under the new chart type (e.g. a LINE series when the
+    chart becomes "vector", since Vector's spec allows {VECTOR, LINE})
+    must be left completely untouched, since mixed series types are
+    legitimate under that combination."""
 
-    def test_line_to_vector_retypes_series_and_carries_color(self):
+    def test_disallowed_series_type_gets_retyped_to_the_new_chart_defaults(self):
         chart = Chart(name="C", chart_type="line")
         chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
                                style=LineSeriesStyle(color="#112233"))
 
-        chart.set_chart_type("vector")
+        chart.set_chart_type("hist")
 
         series = chart.data_series[0]
-        assert series.series_type == SeriesType.VECTOR
-        assert isinstance(series.style, VectorSeriesStyle)
-        assert series.style.vector_color == "#112233"
+        assert series.series_type == SeriesType.HIST
+        assert isinstance(series.style, HistSeriesStyle)
+        assert series.style.color == "#112233"
 
     def test_vector_to_line_carries_vector_color_into_color(self):
         chart = Chart(name="C", chart_type="vector")
@@ -245,6 +250,30 @@ class TestSetChartTypeRetypesSeries:
         assert series.series_type == SeriesType.LINE
         assert isinstance(series.style, LineSeriesStyle)
         assert series.style.color == "#445566"
+
+    def test_line_series_stays_line_when_chart_becomes_vector_since_line_is_allowed(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#112233"))
+        original_style = chart.data_series[0].style
+
+        chart.set_chart_type("vector")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.LINE
+        assert series.style is original_style
+
+    def test_scatter_series_stays_scatter_across_line_and_bar_since_both_allow_it(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               series_type=SeriesType.SCATTER)
+        original_style = chart.data_series[0].style
+
+        chart.set_chart_type("bar")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.SCATTER
+        assert series.style is original_style
 
     def test_setting_the_same_type_is_a_no_op(self):
         chart = Chart(name="C", chart_type="line")
@@ -271,6 +300,28 @@ class TestSetChartTypeRetypesSeries:
         assert chart.data_series[1].series_type == SeriesType.BAR
         assert isinstance(chart.data_series[1].style, BarSeriesStyle)
         assert chart.data_series[1].style.color == "#222222"
+
+    def test_mixed_chart_only_retypes_the_disallowed_series(self):
+        """A chart with one LINE and one HIST series switching to "vector"
+        (allowed_series_types = {VECTOR, LINE}): the LINE series stays
+        untouched, the HIST series (not allowed) gets retyped to VECTOR."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#111111"))
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               series_type=SeriesType.HIST,
+                               style=HistSeriesStyle(color="#222222"))
+        line_style = chart.data_series[0].style
+
+        chart.set_chart_type("vector")
+
+        assert chart.data_series[0].series_type == SeriesType.LINE
+        assert chart.data_series[0].style is line_style
+
+        retyped = chart.data_series[1]
+        assert retyped.series_type == SeriesType.VECTOR
+        assert isinstance(retyped.style, VectorSeriesStyle)
+        assert retyped.style.vector_color == "#222222"
 
 
 class TestChartAddDataSeriesDefaultsSeriesType:
