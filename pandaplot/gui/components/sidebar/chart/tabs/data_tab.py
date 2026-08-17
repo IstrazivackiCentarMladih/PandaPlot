@@ -27,8 +27,10 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.series_swatch_color import series_swatch_color
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import YAxis
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -207,6 +209,10 @@ class DataTab(QWidget):
         self.magnitude_column_combo = QComboBox()
         series_config_layout.addWidget(self.magnitude_column_combo, 12, 1)
 
+        series_config_layout.addWidget(QLabel("Series Type:"), 13, 0)
+        self.series_type_combo = QComboBox()
+        series_config_layout.addWidget(self.series_type_combo, 13, 1)
+
         for widget in (
             self.u_column_label, self.u_column_combo,
             self.v_column_label, self.v_column_combo,
@@ -230,6 +236,7 @@ class DataTab(QWidget):
         self.v_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.magnitude_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
+        self.series_type_combo.currentIndexChanged.connect(self._on_series_type_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
         self.series_label_edit.textChanged.connect(self._on_label_typing)
         self.series_label_edit.editingFinished.connect(self._on_label_committed)
@@ -580,8 +587,11 @@ class DataTab(QWidget):
         v_column_id = self.v_column_combo.currentData() if self.v_column_combo.count() > 0 else ""
         magnitude_column_id = self.magnitude_column_combo.currentData() if self.magnitude_column_combo.count() > 0 else ""
 
-        is_vector = self._is_vector_chart()
-        vector_ready = (not is_vector) or (u_column_id and v_column_id)
+        new_series_type = self.series_type_combo.currentData()
+        if new_series_type is None and self.current_chart:
+            new_series_type = CHART_TYPE_SPECS[self.current_chart.chart_type].default_series_type
+        needs_secondary_columns = bool(new_series_type) and SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
+        vector_ready = (not needs_secondary_columns) or (u_column_id and v_column_id)
 
         if dataset_id and x_column_id and y_column_id and vector_ready:
             command = AddSeriesCommand(
@@ -592,9 +602,10 @@ class DataTab(QWidget):
                 y_column_id=y_column_id,
                 label=f"{dataset_name}:{y_column_name}",
                 color=self._get_next_series_color(),
-                u_column_id=u_column_id if is_vector else "",
-                v_column_id=v_column_id if is_vector else "",
-                magnitude_column_id=magnitude_column_id if is_vector else "",
+                series_type=new_series_type,
+                u_column_id=u_column_id if needs_secondary_columns else "",
+                v_column_id=v_column_id if needs_secondary_columns else "",
+                magnitude_column_id=magnitude_column_id if needs_secondary_columns else "",
             )
             self.command_executor.execute_command(command)
 
@@ -729,6 +740,26 @@ class DataTab(QWidget):
         # which is a behavior change the refactor isn't meant to introduce.
         self.dirtyOnly.emit()
 
+    def _on_series_type_changed(self):
+        """Retype the selected, already-existing series to the combo's
+        newly chosen value (Chart.retype_series), then fully reload it
+        into the controls -- this naturally refreshes vector-field
+        visibility and the U/V/magnitude combos for the new type, the
+        same as selecting a different series does."""
+        if self._updating_controls or not self.current_chart:
+            return
+        current_row = self._expanded_series_index
+        if current_row < 0 or current_row >= len(self.current_chart.data_series):
+            return
+        new_type = self.series_type_combo.currentData()
+        if new_type is None:
+            return
+        self.current_chart.retype_series(current_row, new_type)
+        series = self.current_chart.data_series[current_row]
+        self._load_series_into_controls(series)
+        self.seriesSelected.emit("series", series)
+        self.dirtyOnly.emit()
+
     def _on_error_symmetry_toggled(self):
         """Handle the Asymmetric error-bars checkbox: persist and refresh
         control enablement."""
@@ -820,6 +851,11 @@ class DataTab(QWidget):
                 combo.setCurrentIndex(index if index >= 0 else 0)
                 combo.blockSignals(False)
 
+            type_index = self.series_type_combo.findData(series.series_type)
+            self.series_type_combo.blockSignals(True)
+            self.series_type_combo.setCurrentIndex(type_index if type_index >= 0 else 0)
+            self.series_type_combo.blockSignals(False)
+
             self.error_asymmetric_check.blockSignals(True)
             self.error_asymmetric_check.setChecked(not series.error_symmetric)
             self.error_asymmetric_check.blockSignals(False)
@@ -848,6 +884,7 @@ class DataTab(QWidget):
             self.u_column_combo.setEnabled(False)
             self.v_column_combo.setEnabled(False)
             self.magnitude_column_combo.setEnabled(False)
+            self.series_type_combo.setEnabled(False)
             self._update_vector_field_visibility()
             self.error_asymmetric_check.setEnabled(False)
             self._update_error_bar_mode_controls()
@@ -929,6 +966,7 @@ class DataTab(QWidget):
         self.u_column_combo.setEnabled(True)
         self.v_column_combo.setEnabled(True)
         self.magnitude_column_combo.setEnabled(True)
+        self.series_type_combo.setEnabled(True)
         self.error_asymmetric_check.setEnabled(True)
 
     def _get_next_series_color(self) -> str:
@@ -1094,6 +1132,23 @@ class DataTab(QWidget):
             return False
         return self.current_chart.data_series[row].series_type == SeriesType.VECTOR
 
+    def _populate_series_type_combo(self):
+        """(Re)populate the Series Type combo with the types the current
+        chart's own type allows (CHART_TYPE_SPECS[chart_type].
+        allowed_series_types) -- called on load() and whenever the
+        chart's own type changes live (see refresh_vector_fields), since
+        the allowed set depends on it."""
+        self.series_type_combo.blockSignals(True)
+        try:
+            self.series_type_combo.clear()
+            if not self.current_chart:
+                return
+            spec = CHART_TYPE_SPECS[self.current_chart.chart_type]
+            for series_type in sorted(spec.allowed_series_types, key=lambda t: t.value):
+                self.series_type_combo.addItem(series_type.value.title(), series_type)
+        finally:
+            self.series_type_combo.blockSignals(False)
+
     def _update_vector_field_visibility(self):
         """Show the U/V/magnitude rows only when editing a series whose
         own type is Vector -- every other series type has no use for
@@ -1108,44 +1163,24 @@ class DataTab(QWidget):
             widget.setVisible(is_vector)
 
     def refresh_vector_fields(self):
-        """Re-evaluate vector-field visibility and repopulate the U/V/
-        magnitude combos for whatever dataset is currently selected.
+        """Re-evaluate the Series Type combo's options and the selected
+        series' vector-field visibility/combos after the chart's own
+        type changes live.
 
         Called by ChartPropertiesPanel when the Chart tab's type combo
-        changes live, since that combo writes straight to
-        `self.current_chart.chart_type` without going through `load()`.
-
-        Repopulating clears every combo back to its first entry, which would
-        otherwise silently desync from the still-selected series' actual
-        u_column_id/v_column_id/magnitude_column_id -- the next unrelated
-        edit (`_on_series_config_changed`) would then overwrite those fields
-        with whatever the cleared combos happen to show. Re-select the
-        current series' values afterward (guarded by `_updating_controls`,
-        same as `_load_series_into_controls`) so nothing is silently lost.
+        changes live, via `chartTypeChanged` -- which now fires only
+        after `Chart.set_chart_type()` has already run (Task 1's
+        ordering fix), so the model here is always already retyped.
         """
-        self._update_vector_field_visibility()
-        if not self.current_chart or not self.dataset_combo.currentData():
+        self._populate_series_type_combo()
+        if not self.current_chart:
+            self._update_vector_field_visibility()
             return
-        self._populate_vector_column_combos(self.dataset_combo.currentData())
-
         current_row = self._expanded_series_index
         if current_row < 0 or current_row >= len(self.current_chart.data_series):
+            self._update_vector_field_visibility()
             return
-        series = self.current_chart.data_series[current_row]
-        previous_guard = self._updating_controls
-        self._updating_controls = True
-        try:
-            for combo, column_id in (
-                (self.u_column_combo, series.u_column_id),
-                (self.v_column_combo, series.v_column_id),
-                (self.magnitude_column_combo, series.magnitude_column_id),
-            ):
-                combo.blockSignals(True)
-                index = combo.findData(column_id)
-                combo.setCurrentIndex(index if index >= 0 else 0)
-                combo.blockSignals(False)
-        finally:
-            self._updating_controls = previous_guard
+        self._load_series_into_controls(self.current_chart.data_series[current_row])
 
     def _on_dataset_changed(self):
         """Handle dataset selection change."""
@@ -1187,6 +1222,7 @@ class DataTab(QWidget):
         same_chart = chart is not None and chart is self.current_chart
         self.current_chart = chart
         if chart:
+            self._populate_series_type_combo()
             previous_guard = self._updating_controls
             self._updating_controls = True
             try:
@@ -1224,7 +1260,8 @@ class DataTab(QWidget):
             x_column_id = self.x_column_combo.currentData()
             y_column_id = self.y_column_combo.currentData()
             y_column_name = self.y_column_combo.currentText()
-            is_vector = chart.chart_type == "vector"
+            new_series_type = self.series_type_combo.currentData() or CHART_TYPE_SPECS[chart.chart_type].default_series_type
+            needs_secondary_columns = SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,
@@ -1232,14 +1269,15 @@ class DataTab(QWidget):
                     y_column_id=y_column_id,
                     label=f"{dataset_name}:{y_column_name}",
                     y_axis=self.series_y_axis_control.currentValue(),
+                    series_type=new_series_type,
                     x_error_column_id=self.x_error_column_combo.currentData() or "",
                     y_error_column_id=self.y_error_column_combo.currentData() or "",
                     x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
                     y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
                     error_symmetric=not self.error_asymmetric_check.isChecked(),
-                    u_column_id=self.u_column_combo.currentData() or "" if is_vector else "",
-                    v_column_id=self.v_column_combo.currentData() or "" if is_vector else "",
-                    magnitude_column_id=self.magnitude_column_combo.currentData() or "" if is_vector else "",
+                    u_column_id=self.u_column_combo.currentData() or "" if needs_secondary_columns else "",
+                    v_column_id=self.v_column_combo.currentData() or "" if needs_secondary_columns else "",
+                    magnitude_column_id=self.magnitude_column_combo.currentData() or "" if needs_secondary_columns else "",
                 )
 
     def clear(self):
