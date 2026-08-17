@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.p_button import PButton
-from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
+from pandaplot.models.chart.chart_type_spec import ChartTypeSpec
 
 _ROLE_LABELS = {
     "x": "X column", "y": "Y column", "values": "Values column",
@@ -36,7 +36,7 @@ class SeriesConfigCard(Card):
     configChanged = Signal()
     datasetChanged = Signal(str)
 
-    def __init__(self, role_spec: ChartRoleSpec, parent: Optional[QWidget] = None, index: int = 0):
+    def __init__(self, role_spec: ChartTypeSpec, parent: Optional[QWidget] = None, index: int = 0):
         super().__init__(parent)
         self._role_spec = role_spec
         self._role_combos: dict[str, QComboBox] = {}

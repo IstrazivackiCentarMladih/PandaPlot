@@ -2,7 +2,7 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
 
 
@@ -13,7 +13,7 @@ def qapp():
 
 
 def _line_card() -> SeriesConfigCard:
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("line"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("line"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
     card.show()
@@ -43,7 +43,7 @@ def test_x_role_is_optional_for_line():
 
 
 def test_histogram_card_has_no_error_bar_toggle():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     assert card.error_bars_check is None
 
 
@@ -93,7 +93,7 @@ def test_remove_button_emits_remove_requested():
 
 
 def test_histogram_values_role_maps_to_y_column_id():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
     card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))
@@ -148,7 +148,7 @@ def test_display_names_uses_display_text_not_column_id():
 
 
 def test_display_names_for_histogram_uses_the_values_role():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-rev", "Revenue")])
     card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))

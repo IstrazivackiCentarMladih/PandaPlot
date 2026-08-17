@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
-from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
@@ -111,7 +111,7 @@ class ChartDataPage(PWizardPage):
             self._refresh_card_columns(card)
 
     def _add_card(self) -> SeriesConfigCard:
-        card = SeriesConfigCard(role_spec=get_chart_role_spec(self._chart_type), index=len(self.cards))
+        card = SeriesConfigCard(role_spec=get_chart_type_spec(self._chart_type), index=len(self.cards))
         card.set_datasets(self._datasets)
         card.removeRequested.connect(lambda c=card: self._remove_card(c))
         card.datasetChanged.connect(lambda _dataset_id, c=card: self._refresh_card_columns(c))
