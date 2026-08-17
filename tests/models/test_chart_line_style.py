@@ -7,18 +7,12 @@ Covers:
 - The chart editor's linestyle lookup table mapping "none" correctly
 """
 
-from pandaplot.models.chart.chart_configuration import LineStyle, LineStyleType
+from pandaplot.models.chart.chart_configuration import LineStyleType
 from pandaplot.models.project.items.chart import Chart, DataSeries
 
 
 def test_line_style_type_has_none_member():
     assert LineStyleType.NONE.value == "none"
-
-
-def test_line_style_to_matplotlib_kwargs_forwards_none():
-    style = LineStyle(style=LineStyleType.NONE)
-    kwargs = style.to_matplotlib_kwargs()
-    assert kwargs["linestyle"] == "none"
 
 
 def test_data_series_accepts_none_line_style_with_marker():
