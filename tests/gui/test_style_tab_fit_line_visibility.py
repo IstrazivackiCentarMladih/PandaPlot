@@ -169,4 +169,4 @@ def test_scatter_series_marker_color_applied_explicitly_even_when_match_line_che
 
     style_tab.apply_series_style_to(series)
 
-    assert series.marker_color == "#123456"
+    assert series.style.marker_color == "#123456"

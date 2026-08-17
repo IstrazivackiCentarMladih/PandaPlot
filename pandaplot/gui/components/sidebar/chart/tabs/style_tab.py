@@ -29,6 +29,7 @@ from pandaplot.models.chart.chart_configuration import (
     MarkerType,
 )
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_style import LineSeriesStyle, ScatterSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
@@ -1280,35 +1281,44 @@ class StyleTab(QWidget):
         self.configChanged.emit()
 
     def apply_series_style_to(self, series):
-        if self._chart_type == ChartType.VECTOR:
-            series.vector_color = self.vector_color_row.currentColor()
-            series.vector_colormap = self.vector_colormap_control.currentValue()
-            series.vector_scale = self.vector_scale_slider.value()
-            series.vector_width = self.vector_width_slider.value()
-            series.vector_head_width = self.vector_head_width_slider.value()
-            series.vector_head_length = self.vector_head_length_slider.value()
-            series.vector_head_axis_length = self.vector_head_axis_length_slider.value()
+        style = series.style
+        if isinstance(style, VectorSeriesStyle):
+            style.vector_color = self.vector_color_row.currentColor()
+            style.vector_colormap = self.vector_colormap_control.currentValue()
+            style.vector_scale = self.vector_scale_slider.value()
+            style.vector_width = self.vector_width_slider.value()
+            style.vector_head_width = self.vector_head_width_slider.value()
+            style.vector_head_length = self.vector_head_length_slider.value()
+            style.vector_head_axis_length = self.vector_head_axis_length_slider.value()
             return
-        series.color = self.line_color_row.currentColor()
-        series.line_style = self.line_style_control.currentValue().value
-        series.line_width = self.line_width_slider.value()
+
+        style.color = self.line_color_row.currentColor()
+        if isinstance(style, LineSeriesStyle):
+            style.line_style = self.line_style_control.currentValue().value
+            style.line_width = self.line_width_slider.value()
         series.alpha = self.line_opacity_slider.value()
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
         # the existing MarkerType.NONE member. "Match line" reuses the
-        # existing "" == inherit-series.color convention for both
+        # existing "" == inherit-style.color convention for both
         # marker_color and marker_edge_color (rendering already falls back
-        # to series.color for either field when empty -- see chart_editor.py).
-        if self.markers_enabled_toggle.isChecked():
-            series.marker_style = self.marker_shape_control.currentValue().value
-            series.marker_size = self.marker_size_slider.value()
-            match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
-            series.marker_color = "" if match_line else self.marker_color_row.currentColor()
-            series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
-            series.marker_edge_width = self.marker_edge_width_slider.value()
-        else:
-            series.marker_style = MarkerType.NONE.value
+        # to style.color for either field when empty -- see
+        # series_renderers/line.py and scatter.py). Only LineSeriesStyle
+        # and ScatterSeriesStyle declare marker fields at all.
+        if isinstance(style, (LineSeriesStyle, ScatterSeriesStyle)):
+            if self.markers_enabled_toggle.isChecked():
+                style.marker_style = self.marker_shape_control.currentValue().value
+                style.marker_size = self.marker_size_slider.value()
+                match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
+                style.marker_color = "" if match_line else self.marker_color_row.currentColor()
+                style.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
+                style.marker_edge_width = self.marker_edge_width_slider.value()
+            else:
+                style.marker_style = MarkerType.NONE.value
 
+        # Error-bar fields were never moved into the typed style classes
+        # (Phase 3a) -- every series type keeps them directly, regardless
+        # of which style class `style` is.
         series.error_direction = self.error_direction_control.currentValue()
         series.error_color = (
             "" if self.error_match_line_toggle.isChecked()
@@ -1316,20 +1326,22 @@ class StyleTab(QWidget):
         )
         series.error_cap_size = self.error_cap_size_slider.value()
 
-        # Area fill. "Match line" reuses the "" == inherit-series.color
+        # Area fill. "Match line" reuses the "" == inherit-style.color
         # convention. fill_to_index is -1 (fill down to the constant baseline)
-        # or the index of another series to fill between.
-        series.fill_enabled = self.fill_enabled_toggle.isChecked()
-        series.fill_orientation = (
-            "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
-        )
-        series.fill_to_index = self.fill_to_control.currentValue()
-        series.fill_base = self.fill_base_spin.value()
-        series.fill_color = (
-            "" if self.fill_match_line_toggle.isChecked()
-            else self.fill_color_row.currentColor()
-        )
-        series.fill_alpha = self.fill_opacity_slider.value()
+        # or the index of another series to fill between. Only
+        # LineSeriesStyle declares fill fields.
+        if isinstance(style, LineSeriesStyle):
+            style.fill_enabled = self.fill_enabled_toggle.isChecked()
+            style.fill_orientation = (
+                "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
+            )
+            style.fill_to_index = self.fill_to_control.currentValue()
+            style.fill_base = self.fill_base_spin.value()
+            style.fill_color = (
+                "" if self.fill_match_line_toggle.isChecked()
+                else self.fill_color_row.currentColor()
+            )
+            style.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
         fit.color = self.line_color_row.currentColor()
@@ -1339,23 +1351,31 @@ class StyleTab(QWidget):
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
-        """Populate the Line/Marker cards from a data series' style fields."""
+        """Populate the Line/Marker/Fill/Vector cards from a data series'
+        typed style object. Reads use getattr(..., default) throughout --
+        safe regardless of which of the 5 typed style classes `series.style`
+        actually is, since a hidden card's controls still get *some* value
+        (never shown, never applied back unless that card becomes visible
+        for a different series/chart-type selection)."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.vector_color_row.setCurrentColor(series.vector_color)
-            self.vector_colormap_control.setCurrentValue(series.vector_colormap)
-            self.vector_scale_slider.setValue(series.vector_scale)
-            self.vector_width_slider.setValue(series.vector_width)
-            self.vector_head_width_slider.setValue(series.vector_head_width)
-            self.vector_head_length_slider.setValue(series.vector_head_length)
-            self.vector_head_axis_length_slider.setValue(series.vector_head_axis_length)
+            style = series.style
 
-            self.line_color_row.setCurrentColor(series.color)
-            self.line_width_slider.setValue(series.line_width)
+            self.vector_color_row.setCurrentColor(getattr(style, "vector_color", "#1f77b4"))
+            self.vector_colormap_control.setCurrentValue(getattr(style, "vector_colormap", ""))
+            self.vector_scale_slider.setValue(getattr(style, "vector_scale", 0.0))
+            self.vector_width_slider.setValue(getattr(style, "vector_width", 0.005))
+            self.vector_head_width_slider.setValue(getattr(style, "vector_head_width", 3.0))
+            self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
+            self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
+
+            color = getattr(style, "color", "#1f77b4")
+            self.line_color_row.setCurrentColor(color)
+            self.line_width_slider.setValue(getattr(style, "line_width", 2.0))
             self.line_opacity_slider.setValue(series.alpha)
             try:
-                self.line_style_control.setCurrentValue(LineStyleType(series.line_style))
+                self.line_style_control.setCurrentValue(LineStyleType(getattr(style, "line_style", "solid")))
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 
@@ -1364,35 +1384,40 @@ class StyleTab(QWidget):
             # shape control keeps showing the last remembered shape
             # (defaulting to circle) rather than "none", since "none" isn't
             # offered as a selectable shape here.
-            markers_enabled = series.marker_style != MarkerType.NONE.value
+            marker_style_value = getattr(style, "marker_style", MarkerType.NONE.value)
+            markers_enabled = marker_style_value != MarkerType.NONE.value
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(markers_enabled)
             self.markers_enabled_toggle.blockSignals(False)
 
-            shape_value = series.marker_style if markers_enabled else MarkerType.CIRCLE.value
+            shape_value = marker_style_value if markers_enabled else MarkerType.CIRCLE.value
             try:
                 self.marker_shape_control.setCurrentValue(MarkerType(shape_value))
             except ValueError:
                 self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
 
-            self.marker_size_slider.setValue(series.marker_size)
+            self.marker_size_slider.setValue(getattr(style, "marker_size", 2.0))
 
             # marker_color == "" is the existing "match line color"
             # convention, now shared by marker_edge_color too.
-            self.marker_color_row.setCurrentColor(series.marker_color or series.color)
+            marker_color = getattr(style, "marker_color", "")
+            self.marker_color_row.setCurrentColor(marker_color or color)
             self.marker_match_line_toggle.blockSignals(True)
-            self.marker_match_line_toggle.setChecked(series.marker_color == "")
+            self.marker_match_line_toggle.setChecked(marker_color == "")
             self.marker_match_line_toggle.blockSignals(False)
-            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or series.color)
-            self.marker_edge_width_slider.setValue(series.marker_edge_width)
+            marker_edge_color = getattr(style, "marker_edge_color", "")
+            self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
+            self.marker_edge_width_slider.setValue(getattr(style, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
 
+            # Error-bar fields were never moved into the typed style classes
+            # (Phase 3a) -- read them straight off the series.
             try:
                 self.error_direction_control.setCurrentValue(ErrorDirection(series.error_direction))
             except ValueError:
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
-            self.error_color_row.setCurrentColor(series.error_color or series.color)
+            self.error_color_row.setCurrentColor(series.error_color or color)
             self.error_match_line_toggle.blockSignals(True)
             self.error_match_line_toggle.setChecked(series.error_color == "")
             self.error_match_line_toggle.blockSignals(False)
@@ -1401,18 +1426,19 @@ class StyleTab(QWidget):
 
             self._populate_fill_to_options(series)
             self.fill_enabled_toggle.blockSignals(True)
-            self.fill_enabled_toggle.setChecked(series.fill_enabled)
+            self.fill_enabled_toggle.setChecked(getattr(style, "fill_enabled", False))
             self.fill_enabled_toggle.blockSignals(False)
             self.fill_horizontal_toggle.blockSignals(True)
-            self.fill_horizontal_toggle.setChecked(series.fill_orientation == "horizontal")
+            self.fill_horizontal_toggle.setChecked(getattr(style, "fill_orientation", "vertical") == "horizontal")
             self.fill_horizontal_toggle.blockSignals(False)
-            self.fill_to_control.setCurrentValue(series.fill_to_index)
-            self.fill_base_spin.setValue(series.fill_base)
-            self.fill_color_row.setCurrentColor(series.fill_color or series.color)
+            self.fill_to_control.setCurrentValue(getattr(style, "fill_to_index", -1))
+            self.fill_base_spin.setValue(getattr(style, "fill_base", 0.0))
+            fill_color = getattr(style, "fill_color", "")
+            self.fill_color_row.setCurrentColor(fill_color or color)
             self.fill_match_line_toggle.blockSignals(True)
-            self.fill_match_line_toggle.setChecked(series.fill_color == "")
+            self.fill_match_line_toggle.setChecked(fill_color == "")
             self.fill_match_line_toggle.blockSignals(False)
-            self.fill_opacity_slider.setValue(series.fill_alpha)
+            self.fill_opacity_slider.setValue(getattr(style, "fill_alpha", 0.3))
             self._update_fill_controls_visibility()
         finally:
             self._updating_controls = previous_guard

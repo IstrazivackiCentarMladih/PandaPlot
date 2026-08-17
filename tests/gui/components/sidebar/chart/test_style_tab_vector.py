@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries
 
 
@@ -48,7 +49,7 @@ def test_vector_card_is_hidden_for_a_line_series_target():
 
 def test_apply_series_style_to_writes_vector_fields():
     tab = _tab()
-    series = DataSeries(dataset_id="ds1")
+    series = DataSeries(dataset_id="ds1", series_type=SeriesType.VECTOR)
     tab.set_chart_type(ChartType.VECTOR)
     tab.set_selected("series", series)
 
@@ -62,19 +63,20 @@ def test_apply_series_style_to_writes_vector_fields():
 
     tab.apply_series_style_to(series)
 
-    assert series.vector_color == "#123456"
-    assert series.vector_scale == 3.0
-    assert series.vector_width == 0.02
-    assert series.vector_head_width == 4.0
-    assert series.vector_head_length == 7.0
-    assert series.vector_head_axis_length == 6.0
-    assert series.vector_colormap == "plasma"
+    assert series.style.vector_color == "#123456"
+    assert series.style.vector_scale == 3.0
+    assert series.style.vector_width == 0.02
+    assert series.style.vector_head_width == 4.0
+    assert series.style.vector_head_length == 7.0
+    assert series.style.vector_head_axis_length == 6.0
+    assert series.style.vector_colormap == "plasma"
 
 
 def test_load_series_style_populates_vector_card_from_series():
     tab = _tab()
     series = DataSeries(
-        dataset_id="ds1", vector_color="#abcdef", vector_scale=2.0, vector_width=0.03,
+        dataset_id="ds1", series_type=SeriesType.VECTOR,
+        vector_color="#abcdef", vector_scale=2.0, vector_width=0.03,
         vector_head_width=5.0, vector_head_length=8.0, vector_head_axis_length=7.0,
         vector_colormap="cool",
     )
