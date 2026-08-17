@@ -3,7 +3,7 @@
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_style import LineSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
-from pandaplot.models.project.items.chart import Chart, DataSeries
+from pandaplot.models.project.items.chart import Chart, DataSeries, restore_chart_state, snapshot_chart_state
 
 
 class TestChartTypeIsChartTypeEnum:
@@ -140,3 +140,37 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         restored = Chart.from_dict(raw)
 
         assert restored.data_series[0].series_type == SeriesType.VECTOR
+
+
+class TestSnapshotRestorePreservesStyleType:
+    """snapshot_chart_state/restore_chart_state back the properties-panel
+    cancel/undo flow. dataclasses.asdict(series) recursively flattens
+    nested dataclasses to plain dicts -- DataSeries(**d) then constructs a
+    DataSeries whose .style field holds that plain dict, not a
+    reconstructed SeriesStyleBase instance, unless restore explicitly
+    rebuilds it via style_cls."""
+
+    def test_restore_reconstructs_style_as_a_dataclass_not_a_dict(self):
+        chart = Chart(name="C", chart_type="line")
+        style = LineSeriesStyle(color="#123456")
+        chart.data_series.append(DataSeries(
+            dataset_id="ds1", x_column="x", y_column="y",
+            series_type=SeriesType.LINE, style=style,
+        ))
+
+        snapshot = snapshot_chart_state(chart)
+        chart.data_series[0].style = LineSeriesStyle(color="#ffffff")  # simulate an in-progress edit
+        restore_chart_state(chart, snapshot)
+
+        restored_style = chart.data_series[0].style
+        assert isinstance(restored_style, LineSeriesStyle)
+        assert restored_style.color == "#123456"
+
+    def test_restore_handles_a_series_with_no_style(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.data_series.append(DataSeries(dataset_id="ds1", x_column="x", y_column="y"))
+
+        snapshot = snapshot_chart_state(chart)
+        restore_chart_state(chart, snapshot)
+
+        assert chart.data_series[0].style is None

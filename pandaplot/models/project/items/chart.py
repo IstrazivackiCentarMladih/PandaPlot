@@ -726,7 +726,15 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     chart.style = copy.deepcopy(snapshot["style"])
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
-    chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
+    restored_series = []
+    for series_data in snapshot["data_series"]:
+        series_data = dict(series_data)
+        style_data = series_data.pop("style", None)
+        series = DataSeries(**series_data)
+        if style_data is not None:
+            series.style = SERIES_TYPE_SPECS[series.series_type].style_cls(**style_data)
+        restored_series.append(series)
+    chart.data_series = restored_series
     for i, fit_style in enumerate(snapshot["fit_data_styles"]):
         if i < len(chart.fit_data):
             chart.fit_data[i].color = fit_style["color"]
