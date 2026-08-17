@@ -11,6 +11,9 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_style import SeriesStyleBase
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.item import Item
 
 
@@ -100,6 +103,8 @@ class DataSeries:
     vector_head_width: float = 3.0
     vector_head_length: float = 5.0
     vector_head_axis_length: float = 4.5
+    series_type: SeriesType = SeriesType.LINE
+    style: Optional[SeriesStyleBase] = None
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -107,6 +112,8 @@ class DataSeries:
                 self.y_axis = YAxis(self.y_axis)
             except ValueError:
                 self.y_axis = YAxis.PRIMARY
+        if isinstance(self.series_type, str):
+            self.series_type = SeriesType(self.series_type)
 
     @property
     def has_error_data(self) -> bool:
@@ -495,7 +502,9 @@ class Chart(Item):
                     "vector_width": series.vector_width,
                     "vector_head_width": series.vector_head_width,
                     "vector_head_length": series.vector_head_length,
-                    "vector_head_axis_length": series.vector_head_axis_length
+                    "vector_head_axis_length": series.vector_head_axis_length,
+                    "series_type": series.series_type.value,
+                    "style": asdict(series.style) if series.style is not None else None,
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -546,6 +555,9 @@ class Chart(Item):
         # Load data series
         series_data = data.get("data_series", [])
         for series_dict in series_data:
+            series_type = SeriesType(series_dict.get("series_type", chart.chart_type))
+            style_dict = series_dict.get("style")
+            style = SERIES_TYPE_SPECS[series_type].style_cls(**style_dict) if style_dict is not None else None
             series = DataSeries(
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
@@ -594,7 +606,9 @@ class Chart(Item):
                 vector_width=series_dict.get("vector_width", 0.005),
                 vector_head_width=series_dict.get("vector_head_width", 3.0),
                 vector_head_length=series_dict.get("vector_head_length", 5.0),
-                vector_head_axis_length=series_dict.get("vector_head_axis_length", 4.5)
+                vector_head_axis_length=series_dict.get("vector_head_axis_length", 4.5),
+                series_type=series_type,
+                style=style,
             )
             chart.data_series.append(series)
         

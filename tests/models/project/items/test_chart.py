@@ -1,7 +1,9 @@
 """Tests for the Chart model (pandaplot.models.project.items.chart.Chart)."""
 
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.chart.series_style import LineSeriesStyle, VectorSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.project.items.chart import Chart, DataSeries
 
 
 class TestChartTypeIsChartTypeEnum:
@@ -62,3 +64,79 @@ class TestChartTypeIsChartTypeEnum:
         restored = Chart.from_dict({"name": "C"})
 
         assert restored.chart_type == ChartType.LINE
+
+
+class TestDataSeriesTypeAndStyle:
+    """series_type/style are new, optional, additive fields -- every
+    existing DataSeries(...) construction site (none of which pass these
+    two new kwargs) keeps working via their defaults."""
+
+    def test_defaults_when_not_specified(self):
+        series = DataSeries(dataset_id="ds1", x_column="x", y_column="y")
+
+        assert series.series_type == SeriesType.LINE
+        assert series.style is None
+
+    def test_accepts_a_seriestype_instance(self):
+        series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", series_type=SeriesType.VECTOR)
+
+        assert series.series_type == SeriesType.VECTOR
+
+    def test_coerces_a_string_series_type(self):
+        series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", series_type="scatter")
+
+        assert series.series_type == SeriesType.SCATTER
+
+    def test_accepts_an_explicit_style_object(self):
+        style = VectorSeriesStyle(vector_color="#ff0000")
+        series = DataSeries(dataset_id="ds1", x_column="x", y_column="y",
+                             series_type=SeriesType.VECTOR, style=style)
+
+        assert series.style is style
+        assert series.style.vector_color == "#ff0000"
+
+
+class TestChartSeriesTypeAndStyleRoundTrip:
+    """A save-then-load cycle must reproduce series_type/style exactly --
+    otherwise a migrated project's new fields would be silently dropped on
+    the very next save."""
+
+    def test_round_trips_series_type_and_style(self):
+        chart = Chart(name="C", chart_type="line")
+        style = LineSeriesStyle(color="#abcdef", line_width=3.5)
+        chart.data_series.append(DataSeries(
+            dataset_id="ds1", x_column="x", y_column="y",
+            series_type=SeriesType.LINE, style=style,
+        ))
+
+        data = chart.to_dict()
+        restored = Chart.from_dict(data)
+
+        restored_series = restored.data_series[0]
+        assert restored_series.series_type == SeriesType.LINE
+        assert isinstance(restored_series.style, LineSeriesStyle)
+        assert restored_series.style.color == "#abcdef"
+        assert restored_series.style.line_width == 3.5
+
+    def test_round_trips_a_series_with_no_style(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.data_series.append(DataSeries(dataset_id="ds1", x_column="x", y_column="y"))
+
+        data = chart.to_dict()
+        restored = Chart.from_dict(data)
+
+        assert restored.data_series[0].style is None
+
+    def test_from_dict_defaults_series_type_to_chart_type_when_absent(self):
+        # Simulates a v1 project not yet through migrate_chart_v1_to_v2
+        # (Task 5) -- from_dict must still produce a usable series_type.
+        chart = Chart(name="C", chart_type="vector")
+        raw = chart.to_dict()
+        raw["data_series"] = [{
+            "dataset_id": "ds1", "x_column": "x", "y_column": "y",
+            # no "series_type" key at all.
+        }]
+
+        restored = Chart.from_dict(raw)
+
+        assert restored.data_series[0].series_type == SeriesType.VECTOR
