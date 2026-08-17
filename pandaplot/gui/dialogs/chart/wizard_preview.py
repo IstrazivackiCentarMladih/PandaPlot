@@ -15,6 +15,10 @@ still only ever set via Chart Properties after Finish, exactly as today.
 """
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
 from pandaplot.gui.components.tabs.chart.chart_editor import resolve_series_data
+from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
 
@@ -53,6 +57,11 @@ def render_wizard_preview(
     axes = canvas.axes
     axes.clear()
 
+    series_type = SeriesType(chart_type)
+    style = SERIES_TYPE_SPECS[series_type].style_cls()
+    render = SERIES_RENDERERS[series_type]
+    extra = {"bins": 10} if series_type == SeriesType.HIST else {}
+
     any_plotted = False
     for config in series_configs:
         series = DataSeries(
@@ -71,31 +80,18 @@ def render_wizard_preview(
             continue
         any_plotted = True
         label = _series_label(project, config)
-        if chart_type == "line":
-            axes.plot(data.x_data, data.y_data, label=label)
-        elif chart_type == "scatter":
-            axes.scatter(data.x_data, data.y_data, label=label)
-        elif chart_type == "bar":
-            axes.bar(data.x_data, data.y_data, label=label)
-        elif chart_type == "hist":
-            axes.hist(data.y_data, bins=10, label=label)
-        elif chart_type == "vector":
-            axes.quiver(data.x_data, data.y_data, data.u_data, data.v_data, label=label)
+        render(axes, data, style, label, 1.0, True, extra)
 
     if not any_plotted:
         # No resolvable series yet (wizard just opened, or the user hasn't
         # picked columns) -- fall back to the same sample data the Type
         # step's own preview uses, so the panel never renders empty axes.
-        if chart_type == "line":
-            axes.plot(_SAMPLE_X, _SAMPLE_Y)
-        elif chart_type == "scatter":
-            axes.scatter(_SAMPLE_X, _SAMPLE_Y)
-        elif chart_type == "bar":
-            axes.bar(_SAMPLE_X, _SAMPLE_Y)
-        elif chart_type == "hist":
-            axes.hist(_SAMPLE_Y, bins=5)
-        elif chart_type == "vector":
-            axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
+        sample_data = SeriesData(
+            x_data=_SAMPLE_X, y_data=_SAMPLE_Y,
+            x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
+            u_data=_SAMPLE_U, v_data=_SAMPLE_V,
+        )
+        render(axes, sample_data, style, "", 1.0, True, extra)
 
     axes.set_title(f"{title}\n{subtitle}" if subtitle else title)
     axes.set_xlabel(x_label)
