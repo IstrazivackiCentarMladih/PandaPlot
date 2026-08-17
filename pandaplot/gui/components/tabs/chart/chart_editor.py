@@ -28,6 +28,8 @@ from shiboken6 import isValid
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
@@ -334,11 +336,15 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
     success, or all-None with a message when the dataset or a required
     column can't be found. An empty x_column means "plot against the
-    DataFrame index". Histograms only ever plot y_column, so a stale/unused
-    x_column is ignored when chart_type == "hist". The error columns are
-    resolved leniently (see _resolve_error_column) since they're optional;
-    x_err_minus/y_err_minus are only meaningful when series.error_symmetric
-    is False. When chart_type == "vector", u_data/v_data are also resolved
+    DataFrame index" for series types that need one -- per
+    SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_x_column. Histograms
+    only ever plot y_column, so a stale/unused x_column is ignored (never
+    resolved, never missing-column-checked) and x_data comes back None
+    when chart_type == "hist". The error columns are resolved leniently
+    (see _resolve_error_column) since they're optional; x_err_minus/
+    y_err_minus are only meaningful when series.error_symmetric is False.
+    When SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_secondary_columns
+    (chart_type == "vector" today), u_data/v_data are also resolved
     (required -- missing either is an error) and magnitude_data leniently
     (optional -- unset/unresolved never causes an error).
     """
@@ -359,7 +365,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     if not y_column:
         return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
-    needs_x_column = chart_type != "hist"
+    needs_x_column = SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_x_column if chart_type else True
     x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
     missing = [c for c in (x_column, y_column)
@@ -368,14 +374,14 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         cols = ", ".join(f"'{c}'" for c in missing)
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
-    x_data = df[x_column] if x_column else df.index
+    x_data = (df[x_column] if x_column else df.index) if needs_x_column else None
     x_err = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_column_id, series.x_error_column))
     y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
 
     u_data = v_data = magnitude_data = None
-    if chart_type == "vector":
+    if chart_type and SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_secondary_columns:
         u_column = resolve_series_column(dataset, series.u_column_id, series.u_column)
         v_column = resolve_series_column(dataset, series.v_column_id, series.v_column)
         if not u_column or not v_column:
@@ -394,7 +400,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
                       u_data=u_data, v_data=v_data, magnitude_data=magnitude_data)
 
 
-def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
+def compute_axis_data_range(project, data_series, prefix: str, chart_type=None, positive_only: bool = False) -> Optional[tuple[float, float]]:
     """Compute (min, max) across every series plotted against the given
     axis (`prefix` in "x", "y", "y2"). All series contribute to "x"
     regardless of which y-axis they use; "y"/"y2" are filtered by
@@ -415,7 +421,7 @@ def compute_axis_data_range(project, data_series, prefix: str, positive_only: bo
             wants_secondary = prefix == "y2"
             if (series.y_axis == YAxis.SECONDARY) != wants_secondary:
                 continue
-        data = resolve_series_data(project, series)
+        data = resolve_series_data(project, series, chart_type)
         if data.error:
             continue
         arr = data.x_data if prefix == "x" else data.y_data
@@ -891,7 +897,7 @@ class ChartEditorWidget(PWidget):
                                                color=series.vector_color,
                                                **quiver_kwargs)
 
-                    if self.chart.chart_type in ("line", "scatter", "bar"):
+                    if SERIES_TYPE_SPECS[SeriesType(self.chart.chart_type)].supports_error_bars:
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
                         yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
                         if xerr is not None or yerr is not None:

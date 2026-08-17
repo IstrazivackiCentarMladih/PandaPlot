@@ -29,6 +29,8 @@ from pandaplot.models.chart.chart_configuration import (
     MarkerType,
 )
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
@@ -666,20 +668,21 @@ class StyleTab(QWidget):
 
     def _update_target_cards_visibility(self):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
-        Style-tab chip is currently selected.
+        Style-tab chip is currently selected. Line/Fill/Marker/ErrorBars
+        visibility for a selected series is driven by SERIES_TYPE_SPECS for
+        the chart's current type -- the single source of truth this design
+        introduces, replacing the is_scatter/is_vector booleans this method
+        used to compute locally (which had already drifted out of sync with
+        chart_editor.py's own per-type rendering, e.g. showing error-bar
+        controls for a histogram series the renderer never draws).
 
-        The Line card is hidden for a selected *series* on Scatter charts: a
-        scatter plot draws independent markers with no connecting line
-        (unlike Line's ordered, connected points), so line color/style/
-        width/opacity have nothing to apply to there. A selected *fit* entry
-        is unaffected by that -- a fit is always rendered as a line
-        (chart_editor.py plots it unconditionally), regardless of the
-        chart's own type -- so the Line card stays visible for fit even on
-        Scatter charts.
+        A selected *fit* entry is unaffected by the series' spec -- a fit is
+        always rendered as a line (chart_editor.py plots it unconditionally),
+        regardless of the chart's own type -- so the Line card stays visible
+        for fit even on Scatter charts.
 
         The Marker card only applies to a series: fit data has no marker
-        concept at all (see load_fit_style/apply_fit_style_to), so it's
-        hidden whenever a fit entry is selected, not just for "chart".
+        concept at all (see load_fit_style/apply_fit_style_to).
         """
         kind, obj = self._current_target
         is_chart = kind == "chart"
@@ -688,23 +691,22 @@ class StyleTab(QWidget):
         is_axes = kind == "axes"
         for widget in self.axes_style_widgets:
             widget.setVisible(is_axes)
-        is_scatter = self._chart_type == ChartType.SCATTER
-        is_vector = self._chart_type == ChartType.VECTOR
-        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter and not is_vector))
-        # Area fill is only drawn for line charts (see chart_editor.py's "line"
-        # branch), so the Fill card is a series-on-line-chart concern.
-        self.fill_card.setVisible(kind == "series" and self._chart_type == ChartType.LINE)
-        self.marker_card.setVisible(kind == "series" and not is_vector)
+        spec = SERIES_TYPE_SPECS[SeriesType(self._chart_type)] if self._chart_type else None
+        marker_supported = spec is not None and spec.marker_mode != "unsupported"
+        line_supported = spec is not None and spec.supports_line_style
+        fill_supported = spec is not None and spec.supports_fill
+        error_bars_supported = spec is not None and spec.supports_error_bars
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and line_supported))
+        self.fill_card.setVisible(kind == "series" and fill_supported)
+        self.marker_card.setVisible(kind == "series" and marker_supported)
         # Fit data has no error-bar fields at all (DataSeries-only), and even
         # for a series there's nothing to style unless an error column is
         # actually configured (on the Data tab) -- otherwise the card's
         # controls (direction/color/cap size) have no error bars to apply to.
-        # A vector series has no error-bar concept at all (supports_error_bars
-        # is False in its role spec), regardless of has_error_data.
         self.error_bars_card.setVisible(
-            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and not is_vector
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and error_bars_supported
         )
-        self.vector_card.setVisible(kind == "series" and is_vector)
+        self.vector_card.setVisible(kind == "series" and spec is not None and spec.needs_secondary_columns)
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
