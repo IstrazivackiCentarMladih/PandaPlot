@@ -13,6 +13,7 @@ import numpy as np
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_style import SeriesStyleBase
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_style_derivation import derive_style
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.item import Item
 
@@ -114,6 +115,8 @@ class DataSeries:
                 self.y_axis = YAxis.PRIMARY
         if isinstance(self.series_type, str):
             self.series_type = SeriesType(self.series_type)
+        if self.style is None:
+            self.style = derive_style(self, SERIES_TYPE_SPECS[self.series_type].style_cls)
 
     @property
     def has_error_data(self) -> bool:
@@ -282,7 +285,15 @@ class Chart(Item):
         resolves names to ids against the dataset; this model holds no
         :class:`Dataset` reference — the renderer resolves ids back to live
         names with :func:`resolve_series_column`.
+
+        ``series_type`` defaults to this chart's own type when the caller
+        doesn't pass one explicitly -- every series in a chart still shares
+        the chart's type today (mixed series types don't exist until a
+        later phase), so a series added without an explicit type should
+        never silently default to SeriesType.LINE regardless of what kind
+        of chart it's being added to.
         """
+        kwargs.setdefault("series_type", SeriesType(self.chart_type))
         series = DataSeries(
             dataset_id=dataset_id,
             x_column_id=x_column_id,
