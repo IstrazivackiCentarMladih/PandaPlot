@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.project.items.item import Item
 
 
@@ -162,13 +163,13 @@ class Chart(Item):
     Supports multiple data series from different datasets.
     """
     
-    def __init__(self, id: Optional[str] = None, name: str = "", 
-                 chart_type: str = "line"):
+    def __init__(self, id: Optional[str] = None, name: str = "",
+                 chart_type: "str | ChartType" = ChartType.LINE):
         # Call parent constructor with CHART item type
         super().__init__(id, name)
-        
+
         # Set chart-specific attributes
-        self.chart_type: str = chart_type
+        self.chart_type: ChartType = ChartType(chart_type)
         self.data_series: List[DataSeries] = []
         self.fit_data: List[FitData] = []
         self.config: Dict[str, Any] = {}
@@ -260,9 +261,9 @@ class Chart(Item):
             "dpi": 100
         }
     
-    def set_chart_type(self, chart_type: str) -> None:
+    def set_chart_type(self, chart_type: "str | ChartType") -> None:
         """Set the chart type."""
-        self.chart_type = chart_type
+        self.chart_type = ChartType(chart_type)
         self.update_modified_time()
     
     def add_data_series(self, dataset_id: str, x_column_id: str = "",
