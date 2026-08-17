@@ -33,6 +33,13 @@ Source of truth for each value, as it exists today:
 - needs_secondary_columns: resolve_series_data's `if chart_type == "vector"`
   block (chart_editor.py:378) -- true only for vector.
 """
+from pandaplot.models.chart.series_style import (
+    BarSeriesStyle,
+    HistSeriesStyle,
+    LineSeriesStyle,
+    ScatterSeriesStyle,
+    VectorSeriesStyle,
+)
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 
@@ -97,3 +104,11 @@ def test_vector_spec():
     assert spec.supports_error_bars is False
     assert spec.needs_x_column is True
     assert spec.needs_secondary_columns is True
+
+
+def test_style_cls_matches_each_series_type():
+    assert SERIES_TYPE_SPECS[SeriesType.LINE].style_cls is LineSeriesStyle
+    assert SERIES_TYPE_SPECS[SeriesType.SCATTER].style_cls is ScatterSeriesStyle
+    assert SERIES_TYPE_SPECS[SeriesType.BAR].style_cls is BarSeriesStyle
+    assert SERIES_TYPE_SPECS[SeriesType.HIST].style_cls is HistSeriesStyle
+    assert SERIES_TYPE_SPECS[SeriesType.VECTOR].style_cls is VectorSeriesStyle

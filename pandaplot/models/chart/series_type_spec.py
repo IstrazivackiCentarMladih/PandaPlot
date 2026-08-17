@@ -12,6 +12,14 @@ the same SeriesType.
 from dataclasses import dataclass
 from typing import Literal
 
+from pandaplot.models.chart.series_style import (
+    BarSeriesStyle,
+    HistSeriesStyle,
+    LineSeriesStyle,
+    ScatterSeriesStyle,
+    SeriesStyleBase,
+    VectorSeriesStyle,
+)
 from pandaplot.models.chart.series_type import SeriesType
 
 
@@ -32,27 +40,33 @@ class SeriesTypeSpec:
     supports_error_bars: bool
     needs_x_column: bool
     needs_secondary_columns: bool
+    style_cls: type[SeriesStyleBase]
 
 
 SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
     SeriesType.LINE: SeriesTypeSpec(
         marker_mode="optional", supports_line_style=True, supports_color=True, supports_fill=True,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        style_cls=LineSeriesStyle,
     ),
     SeriesType.SCATTER: SeriesTypeSpec(
         marker_mode="required", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        style_cls=ScatterSeriesStyle,
     ),
     SeriesType.BAR: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        style_cls=BarSeriesStyle,
     ),
     SeriesType.HIST: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=False, needs_x_column=False, needs_secondary_columns=False,
+        style_cls=HistSeriesStyle,
     ),
     SeriesType.VECTOR: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=True,
+        style_cls=VectorSeriesStyle,
     ),
 }
