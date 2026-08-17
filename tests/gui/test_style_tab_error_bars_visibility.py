@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
-from pandaplot.models.chart.chart_configuration import ChartType
+from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.project.items.chart import DataSeries
 
 

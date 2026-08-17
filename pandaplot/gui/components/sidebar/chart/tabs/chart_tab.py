@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
-from pandaplot.models.chart.chart_configuration import ChartType
+from pandaplot.models.chart.chart_type import ChartType
 
 
 class ChartTab(QWidget):
@@ -64,7 +64,7 @@ class ChartTab(QWidget):
                 ("Scatter", ChartType.SCATTER),
                 ("Line", ChartType.LINE),
                 ("Bar", ChartType.BAR),
-                ("Histogram", ChartType.HISTOGRAM),
+                ("Histogram", ChartType.HIST),
                 ("Vector", ChartType.VECTOR),
             ]
         )
@@ -101,7 +101,7 @@ class ChartTab(QWidget):
 
     def _update_hist_bins_visibility(self):
         """Show the Histogram Bins control only when the chart type is Histogram."""
-        is_histogram = self.chart_type_control.currentValue() == ChartType.HISTOGRAM
+        is_histogram = self.chart_type_control.currentValue() == ChartType.HIST
         self.hist_bins_label.setVisible(is_histogram)
         self.hist_bins_spin.setVisible(is_histogram)
 
@@ -112,19 +112,9 @@ class ChartTab(QWidget):
         config["title"] = self.title_edit.text()
         config["subtitle"] = self.subtitle_edit.text()
         config["hist_bins"] = self.hist_bins_spin.value()
-        if self.chart_type_control.currentValue():
-            chart_type_map = {
-                ChartType.LINE: "line",
-                ChartType.SCATTER: "scatter",
-                ChartType.BAR: "bar",
-                ChartType.HISTOGRAM: "hist",
-                ChartType.VECTOR: "vector",
-            }
-            chart_type = self.chart_type_control.currentValue()
-            if chart_type in chart_type_map and (
-                self._loaded_chart_type_supported or self._chart_type_touched_by_user
-            ):
-                self._chart.chart_type = chart_type_map[chart_type]
+        chart_type = self.chart_type_control.currentValue()
+        if chart_type and (self._loaded_chart_type_supported or self._chart_type_touched_by_user):
+            self._chart.chart_type = chart_type
         self.configChanged.emit()
 
     def load(self, chart):
@@ -140,15 +130,16 @@ class ChartTab(QWidget):
             self.title_edit.setText(chart.config.get("title", chart.name))
             self.subtitle_edit.setText(chart.config.get("subtitle", ""))
 
-            chart_type_map = {
-                "line": ChartType.LINE,
-                "scatter": ChartType.SCATTER,
-                "bar": ChartType.BAR,
-                "hist": ChartType.HISTOGRAM,
-                "vector": ChartType.VECTOR,
-            }
-            self._loaded_chart_type_supported = chart.chart_type in chart_type_map
-            chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
+            try:
+                chart_type = ChartType(chart.chart_type)
+                self._loaded_chart_type_supported = True
+            except ValueError:
+                # A saved chart type this combo can't represent (e.g. a
+                # legacy "box"/"violin" value, if one ever existed) --
+                # don't silently overwrite it with Line just because
+                # that's the combo's fallback display value.
+                chart_type = ChartType.LINE
+                self._loaded_chart_type_supported = False
             self.chart_type_control.setCurrentValue(chart_type)
             self._update_hist_bins_visibility()
 
@@ -161,16 +152,9 @@ class ChartTab(QWidget):
         chart.config["subtitle"] = self.subtitle_edit.text()
         chart.config["hist_bins"] = self.hist_bins_spin.value()
 
-        chart_type_map = {
-            ChartType.LINE: "line",
-            ChartType.SCATTER: "scatter",
-            ChartType.BAR: "bar",
-            ChartType.HISTOGRAM: "hist",
-            ChartType.VECTOR: "vector",
-        }
         chart_type = self.chart_type_control.currentValue()
-        if chart_type in chart_type_map:
-            chart.chart_type = chart_type_map[chart_type]
+        if chart_type:
+            chart.chart_type = chart_type
 
     def clear(self):
         self._chart = None

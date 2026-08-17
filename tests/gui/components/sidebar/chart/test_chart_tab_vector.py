@@ -5,7 +5,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.chart_tab import ChartTab
-from pandaplot.models.chart.chart_configuration import ChartType
+from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.project.items.chart import Chart
 
 

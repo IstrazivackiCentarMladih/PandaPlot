@@ -25,10 +25,10 @@ from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AXES_SWATCH_PALETTE
 from pandaplot.models.chart.chart_configuration import (
-    ChartType,
     LineStyleType,
     MarkerType,
 )
+from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
