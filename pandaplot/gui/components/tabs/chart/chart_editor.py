@@ -325,16 +325,18 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     success, or all-None with a message when the dataset or a required
     column can't be found. An empty x_column means "plot against the
     DataFrame index" for series types that need one -- per
-    SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_x_column. Histograms
-    only ever plot y_column, so a stale/unused x_column is ignored (never
-    resolved, never missing-column-checked) and x_data comes back None
-    when chart_type == "hist". The error columns are resolved leniently
-    (see _resolve_error_column) since they're optional; x_err_minus/
+    SERIES_TYPE_SPECS[...].needs_x_column, keyed by `chart_type` when
+    explicitly passed (used by wizard_preview.py, whose throwaway
+    DataSeries objects don't yet carry a reliable series_type of their
+    own), otherwise by the series' own `series_type` -- the correct
+    source once every real caller has one. Histograms only ever plot
+    y_column, so a stale/unused x_column is ignored (never resolved,
+    never missing-column-checked) and x_data comes back None for a hist
+    series. The error columns are resolved leniently (see
+    _resolve_error_column) since they're optional; x_err_minus/
     y_err_minus are only meaningful when series.error_symmetric is False.
-    When SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_secondary_columns
-    (chart_type == "vector" today), u_data/v_data are also resolved
-    (required -- missing either is an error) and magnitude_data leniently
-    (optional -- unset/unresolved never causes an error).
+    Secondary columns (u_data/v_data, required; magnitude_data, optional)
+    are resolved the same way, keyed off needs_secondary_columns.
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -353,7 +355,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     if not y_column:
         return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
-    needs_x_column = SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_x_column if chart_type else True
+    needs_x_column = SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_x_column
     x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
     missing = [c for c in (x_column, y_column)
@@ -369,7 +371,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
 
     u_data = v_data = magnitude_data = None
-    if chart_type and SERIES_TYPE_SPECS[SeriesType(chart_type)].needs_secondary_columns:
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_secondary_columns:
         u_column = resolve_series_column(dataset, series.u_column_id, series.u_column)
         v_column = resolve_series_column(dataset, series.v_column_id, series.v_column)
         if not u_column or not v_column:
@@ -388,13 +390,19 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
                       u_data=u_data, v_data=v_data, magnitude_data=magnitude_data)
 
 
-def compute_axis_data_range(project, data_series, prefix: str, chart_type=None, positive_only: bool = False) -> Optional[tuple[float, float]]:
+def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
     """Compute (min, max) across every series plotted against the given
     axis (`prefix` in "x", "y", "y2"). All series contribute to "x"
     regardless of which y-axis they use; "y"/"y2" are filtered by
     `series.y_axis`. Returns None if no series have resolvable data for
     this axis (no series yet, or every reference is broken) -- callers
     fall back to a fixed default range in that case.
+
+    Each series' own `series_type` (not one chart-wide type) governs
+    whether it needs an x-column when contributing to the "x" range --
+    a chart containing series of different types (once Phase 4c allows
+    that) must not have one type's column requirements silently applied
+    to another series that doesn't share it.
 
     `positive_only` should be True when the axis is Log-scaled: matplotlib's
     own autoscale ignores non-positive data points when computing log-scale
@@ -409,7 +417,7 @@ def compute_axis_data_range(project, data_series, prefix: str, chart_type=None, 
             wants_secondary = prefix == "y2"
             if (series.y_axis == YAxis.SECONDARY) != wants_secondary:
                 continue
-        data = resolve_series_data(project, series, chart_type)
+        data = resolve_series_data(project, series)
         if data.error:
             continue
         arr = data.x_data if prefix == "x" else data.y_data

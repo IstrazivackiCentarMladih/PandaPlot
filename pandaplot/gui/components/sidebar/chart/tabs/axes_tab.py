@@ -277,7 +277,7 @@ class AxesTab(QWidget):
             # gets shown here and later rejected/ignored by set_xlim/set_ylim.
             is_log = form["scale_control"].currentValue() == ScaleType.LOG
             computed = compute_axis_data_range(
-                project, self._chart.data_series, prefix, chart_type=self._chart.chart_type, positive_only=is_log
+                project, self._chart.data_series, prefix, positive_only=is_log
             )
         else:
             computed = None
