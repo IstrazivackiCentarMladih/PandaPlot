@@ -16,7 +16,8 @@ class AddSeriesCommand(Command):
     def __init__(self, app_context: AppContext, chart_id: str,
                  dataset_id: str, x_column_id: str, y_column_id: str,
                  label: str = "", color: str = "#1f77b4",
-                 u_column_id: str = "", v_column_id: str = "", magnitude_column_id: str = ""):
+                 u_column_id: str = "", v_column_id: str = "", magnitude_column_id: str = "",
+                 series_type: Optional[SeriesType] = None):
         super().__init__()
         self.app_context = app_context
         self.chart_id = chart_id
@@ -28,6 +29,7 @@ class AddSeriesCommand(Command):
         self.u_column_id = u_column_id
         self.v_column_id = v_column_id
         self.magnitude_column_id = magnitude_column_id
+        self.series_type = series_type
         self.added_index: Optional[int] = None
 
     def _find_chart(self) -> Optional[Chart]:
@@ -42,7 +44,7 @@ class AddSeriesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
-        series_type = SeriesType(chart.chart_type)
+        series_type = self.series_type or SeriesType(chart.chart_type)
         style_cls = SERIES_TYPE_SPECS[series_type].style_cls
         style = (
             style_cls(vector_color=self.color)
@@ -56,6 +58,7 @@ class AddSeriesCommand(Command):
             y_column_id=self.y_column_id,
             label=self.label,
             style=style,
+            series_type=series_type,
             u_column_id=self.u_column_id,
             v_column_id=self.v_column_id,
             magnitude_column_id=self.magnitude_column_id,

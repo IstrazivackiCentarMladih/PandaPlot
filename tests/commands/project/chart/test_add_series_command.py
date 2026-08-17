@@ -92,3 +92,39 @@ def test_execute_builds_typed_vector_color_style_for_vector_chart(app_context_wi
     series = chart.data_series[-1]
     assert series.style.vector_color == "#112233"
     assert not hasattr(series.style, "color")
+
+
+def test_execute_uses_the_explicit_series_type_over_the_chart_type(app_context_with_line_chart):
+    """A vector series added to a Line chart (allowed under Line's spec
+    only via {LINE, SCATTER} -- but this test exercises passing an
+    explicit type regardless of allow-listing, since AddSeriesCommand
+    itself doesn't enforce allowed_series_types; that's a UI-layer
+    concern for whatever calls this command) gets the passed type, not
+    the chart's own."""
+    app_context, chart = app_context_with_line_chart
+    from pandaplot.models.chart.series_type import SeriesType
+
+    command = AddSeriesCommand(
+        app_context, chart_id=chart.id, dataset_id="ds-1",
+        x_column_id="col-x", y_column_id="col-y", color="#112233",
+        series_type=SeriesType.SCATTER,
+    )
+    assert command.execute() is True
+    series = chart.data_series[-1]
+    assert series.series_type == SeriesType.SCATTER
+    assert series.style.color == "#112233"
+
+
+def test_execute_still_derives_from_chart_type_when_series_type_is_not_passed(app_context_with_chart):
+    """Existing call sites that don't pass series_type keep today's
+    behavior exactly: derive from the chart's own type."""
+    app_context, chart = app_context_with_chart  # vector chart
+
+    command = AddSeriesCommand(
+        app_context, chart_id=chart.id, dataset_id="ds-1",
+        x_column_id="col-x", y_column_id="col-y",
+    )
+    assert command.execute() is True
+    series = chart.data_series[-1]
+    from pandaplot.models.chart.series_type import SeriesType
+    assert series.series_type == SeriesType.VECTOR
