@@ -18,7 +18,12 @@ def test_noop_when_registry_is_empty():
 
     with patch(
         "pandaplot.models.migrations.per_item.chart.PER_ITEM_CHART_MIGRATIONS", {}
-    ), patch("pandaplot.models.migrations.per_item.chart.CURRENT_SCHEMA_VERSION", 1):
+    ), patch("pandaplot.models.migrations.per_item.chart.CURRENT_SCHEMA_VERSION", 2):
+        # schema_version=1 < CURRENT_SCHEMA_VERSION=2, so the dispatcher's
+        # while loop genuinely runs at least once and exercises the
+        # `.get(...) is not None` skip-on-empty path against the
+        # patched-empty registry -- not a vacuous pass from the loop never
+        # executing (which would happen if schema_version >= CURRENT_SCHEMA_VERSION).
         result = migrate_chart(raw, schema_version=1)
 
     assert result == {"chart_type": "line"}
@@ -189,3 +194,22 @@ class TestMigrateChartV1ToV2:
         migrated = migrate_chart_v1_to_v2(raw)
 
         assert migrated["data_series"] == []
+
+
+def test_style_field_names_match_the_real_style_dataclasses():
+    """Guards against pandaplot/models/migrations/per_item/chart.py's
+    _STYLE_FIELDS_BY_CHART_TYPE silently drifting out of sync with the
+    real style dataclasses (pandaplot/models/chart/series_style/) -- a
+    drift here produces a TypeError at project-load time that gets
+    silently swallowed by ProjectDataManager._load_item()'s bare except,
+    dropping the whole chart from the loaded project."""
+    import dataclasses
+
+    from pandaplot.models.chart.series_type import SeriesType
+    from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
+    from pandaplot.models.migrations.per_item.chart import _STYLE_FIELDS_BY_CHART_TYPE
+
+    for series_type, spec in SERIES_TYPE_SPECS.items():
+        expected = {f.name for f in dataclasses.fields(spec.style_cls)}
+        actual = set(_STYLE_FIELDS_BY_CHART_TYPE[series_type.value])
+        assert actual == expected, f"{series_type.value}: {actual} != {expected}"

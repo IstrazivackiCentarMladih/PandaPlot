@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.project.items.chart import Chart, DataSeries
+from pandaplot.models.project.items.chart import Chart, series_from_flat_dict
 from pandaplot.models.state import AppContext
 
 
@@ -54,7 +54,7 @@ class RemoveSeriesCommand(Command):
             return
 
         # Re-create and insert at original position
-        series = DataSeries(**self.removed_series_data)
+        series = series_from_flat_dict(self.removed_series_data)
         chart.data_series.insert(self.series_index, series)
         chart.update_modified_time()
 
