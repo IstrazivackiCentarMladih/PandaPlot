@@ -114,3 +114,46 @@ def test_line_chart_with_fill_enabled_draws_a_fill():
     editor = _editor_for(project, chart)
 
     assert len(editor.chart_canvas.axes.collections) == 1
+
+
+def test_line_chart_with_fill_to_index_fills_between_the_two_curves():
+    """Regression test for the final-review fix routing fill_base/
+    fill_to_index through the derived LineSeriesStyle instead of reading
+    them off the raw DataSeries in _resolve_fill_baseline. Uses two series
+    with clearly different, non-constant y-values so a baseline of the
+    literal fill_base=0.0 default would produce different fill geometry
+    than genuinely interpolating series 2's curve -- this checks the fill
+    polygon actually reaches up to series 2's y-values, not just down to 0.
+    """
+    _qapp()
+    project = Project(name="Fill To Index Project")
+    df = pd.DataFrame({
+        "x": [1, 2, 3, 4, 5],
+        "y1": [10, 11, 9, 12, 10],
+        "y2": [20, 22, 19, 23, 21],
+    })
+    dataset = Dataset(name="ds1", data=df)
+    project.add_item(dataset)
+
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y1"),
+        color="#123456", label="Series 1", fill_enabled=True, fill_to_index=1,
+    )
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y2"),
+        color="#654321", label="Series 2",
+    )
+
+    editor = _editor_for(project, chart)
+
+    fills = editor.chart_canvas.axes.collections
+    assert len(fills) == 1
+
+    # The fill polygon's vertices should span from series 1's y-values up to
+    # series 2's y-values, not down to the fill_base default of 0.0.
+    vertices = fills[0].get_paths()[0].vertices
+    max_y = vertices[:, 1].max()
+    min_y = vertices[:, 1].min()
+    assert min_y >= 5  # nowhere near the unused fill_base=0.0 baseline
+    assert max_y >= 19  # reaches up toward series 2's y-values

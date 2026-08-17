@@ -6,6 +6,8 @@ shape (bins for hist, resolve_fill_baseline for line), ignored by the
 renderers that don't need them, so callers can dispatch through one call
 site instead of branching to decide which arguments to gather.
 """
+from typing import Callable
+
 from pandaplot.gui.components.tabs.chart.series_renderers.bar import render_bar_series
 from pandaplot.gui.components.tabs.chart.series_renderers.hist import render_hist_series
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
@@ -13,7 +15,7 @@ from pandaplot.gui.components.tabs.chart.series_renderers.scatter import render_
 from pandaplot.gui.components.tabs.chart.series_renderers.vector import render_vector_series
 from pandaplot.models.chart.series_type import SeriesType
 
-SERIES_RENDERERS = {
+SERIES_RENDERERS: dict[SeriesType, Callable] = {
     SeriesType.LINE: render_line_series,
     SeriesType.SCATTER: render_scatter_series,
     SeriesType.BAR: render_bar_series,

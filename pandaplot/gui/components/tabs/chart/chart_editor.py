@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any, Optional, override
+from typing import Optional, override
 
 import numpy as np
 from matplotlib.ticker import (
@@ -714,13 +713,14 @@ class ChartEditorWidget(PWidget):
         # No configuration UI to load since it's now in the side panel
         pass
 
-    def _resolve_fill_baseline(self, project, series, series_index, query, horizontal=False):
+    def _resolve_fill_baseline(self, project, series_index, fill_base, fill_to_index, query, horizontal=False):
         """Resolve the second bound for a series' area fill.
 
-        Returns either the constant ``series.fill_base`` (fill down/across to a
-        straight baseline) or, when ``series.fill_to_index`` points at another
-        series in the chart, that series' curve interpolated onto this series'
-        sampling grid so the region *between* the two curves is filled.
+        Returns either the constant ``fill_base`` (fill down/across to a
+        straight baseline) or, when ``fill_to_index`` points at another
+        series in the chart, that series' curve interpolated onto this
+        series' sampling grid so the region *between* the two curves is
+        filled.
 
         ``query`` is this series' independent-axis samples: its x-values for a
         vertical fill (interpolating the other series' y over x), or its
@@ -730,13 +730,12 @@ class ChartEditorWidget(PWidget):
         the constant baseline if the referenced series is missing or fails to
         resolve.
         """
-        idx = series.fill_to_index
-        if idx is None or idx < 0 or idx == series_index or idx >= len(self.chart.data_series):
-            return series.fill_base
-        other = self.chart.data_series[idx]
+        if fill_to_index is None or fill_to_index < 0 or fill_to_index == series_index or fill_to_index >= len(self.chart.data_series):
+            return fill_base
+        other = self.chart.data_series[fill_to_index]
         other_data = resolve_series_data(project, other, self.chart.chart_type)
         if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
-            return series.fill_base
+            return fill_base
         # Interpolate the other curve over its own independent axis (x when
         # vertical, y when horizontal). np.interp needs that axis increasing.
         if horizontal:
@@ -808,8 +807,8 @@ class ChartEditorWidget(PWidget):
                     renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
                         "bins": self.chart.config.get("hist_bins", 20),
                         "resolve_fill_baseline": (
-                            lambda query, horizontal, _i=i, _series=series: self._resolve_fill_baseline(
-                                project, _series, _i, query, horizontal=horizontal)
+                            lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
+                                project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
                         ),
                     })
 
