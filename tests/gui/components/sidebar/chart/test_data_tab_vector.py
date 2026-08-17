@@ -167,12 +167,6 @@ def test_apply_to_creates_a_default_vector_series_with_u_and_v():
     tab._on_dataset_changed()
     tab.u_column_combo.setCurrentIndex(tab.u_column_combo.findData(dataset.column_id("u")))
     tab.v_column_combo.setCurrentIndex(tab.v_column_combo.findData(dataset.column_id("v")))
-    # The Series Type combo defaults to the vector chart's first allowed type
-    # in alphabetical order ("line" < "vector"), not necessarily VECTOR --
-    # explicitly select VECTOR so apply_to's needs_secondary_columns check
-    # (which now governs U/V inclusion instead of chart-type-only gating)
-    # evaluates True for this default-series-creation path.
-    tab.series_type_combo.setCurrentIndex(tab.series_type_combo.findData(SeriesType.VECTOR))
 
     tab.apply_to(chart)
 

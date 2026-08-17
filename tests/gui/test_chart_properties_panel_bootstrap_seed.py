@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.chart_properties_panel import ChartPropertiesPanel
-from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
@@ -80,13 +79,6 @@ def test_bootstrap_seed_is_noop_for_vector_chart_style_fields():
     panel.set_project(project)
     panel.load_chart_object(chart)
     panel.data_tab._on_dataset_changed()
-    # The Series Type combo defaults to the vector chart's first allowed type
-    # in alphabetical order ("line" < "vector"), not necessarily VECTOR --
-    # explicitly select VECTOR so the bootstrap-created series actually gets
-    # a VectorSeriesStyle (the thing this test is verifying is a safe no-op).
-    panel.data_tab.series_type_combo.setCurrentIndex(
-        panel.data_tab.series_type_combo.findData(SeriesType.VECTOR)
-    )
 
     assert not chart.data_series
 

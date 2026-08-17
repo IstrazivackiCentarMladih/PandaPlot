@@ -1113,18 +1113,15 @@ class DataTab(QWidget):
             for combo in combos + optional_combos:
                 combo.blockSignals(False)
 
-    def _is_vector_chart(self) -> bool:
-        return bool(self.current_chart) and self.current_chart.chart_type == "vector"
-
     def _selected_series_is_vector(self) -> bool:
         """Whether the currently expanded, already-existing series is
-        itself a VECTOR series -- distinct from `_is_vector_chart()`,
-        which only reflects the chart's own type and is used solely for
-        series that don't exist yet (a new series about to be created
-        defaults to the chart's type, so chart-type gating is correct
-        there). An existing series can hold a different type than its
-        chart's (see Chart.set_chart_type), so per-series field
-        visibility/write-back must read the series' own type."""
+        itself a VECTOR series. This exists specifically for the
+        currently-selected, already-existing series -- distinct from the
+        type chosen for a not-yet-created new series, which is read from
+        the Series Type combo instead. An existing series can hold a
+        different type than its chart's (see Chart.set_chart_type), so
+        per-series field visibility/write-back must read the series' own
+        type."""
         if not self.current_chart:
             return False
         row = self._expanded_series_index
@@ -1146,6 +1143,8 @@ class DataTab(QWidget):
             spec = CHART_TYPE_SPECS[self.current_chart.chart_type]
             for series_type in sorted(spec.allowed_series_types, key=lambda t: t.value):
                 self.series_type_combo.addItem(series_type.value.title(), series_type)
+            default_index = self.series_type_combo.findData(spec.default_series_type)
+            self.series_type_combo.setCurrentIndex(default_index if default_index >= 0 else 0)
         finally:
             self.series_type_combo.blockSignals(False)
 

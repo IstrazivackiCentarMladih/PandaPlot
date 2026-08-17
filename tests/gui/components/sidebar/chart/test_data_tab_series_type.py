@@ -73,6 +73,25 @@ def test_changing_the_combo_retypes_the_selected_series():
     assert chart.data_series[0].series_type == SeriesType.SCATTER
 
 
+def test_series_type_combo_defaults_to_the_chart_types_own_default_series_type():
+    """Regression test: an untouched combo on a Vector chart must default
+    to VECTOR (CHART_TYPE_SPECS["vector"].default_series_type), not
+    whatever sorts alphabetically first among allowed_series_types
+    ({LINE, VECTOR} -- "line" sorts before "vector"). A user who never
+    touches this combo before creating a series on an empty Vector chart
+    must still get a Vector series, not a Line one missing its U/V
+    columns."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    assert tab.series_type_combo.currentData() == SeriesType.VECTOR
+
+
 def test_changing_the_combo_to_vector_shows_the_uv_fields_for_that_series():
     app_context, project, dataset = _app_context_with_project()
     chart = Chart(name="Vector Chart", chart_type="vector")
