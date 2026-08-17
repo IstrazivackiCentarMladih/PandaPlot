@@ -14,6 +14,7 @@ from PySide6.QtWidgets import QApplication
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.models.chart.series_style import BarSeriesStyle, HistSeriesStyle, LineSeriesStyle, ScatterSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
@@ -180,3 +181,45 @@ def test_switching_chart_type_after_creation_still_renders():
     editor = _editor_for(project, chart)
 
     assert len(editor.chart_canvas.axes.patches) == 5  # one Rectangle per bar (5 x-values)
+
+
+def test_renderer_dispatch_uses_each_series_own_type_not_the_chart_type():
+    """A chart whose nominal type is "line" but whose one series was
+    deliberately constructed with series_type=SeriesType.BAR must render
+    using the bar renderer -- proving dispatch reads the series' own
+    type. Not yet reachable through the UI (that's Phase 4c), but the
+    underlying dispatch must already be wired correctly."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Mixed Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        label="Series 1", series_type=SeriesType.BAR,
+    )
+
+    editor = _editor_for(project, chart)
+
+    assert len(editor.chart_canvas.axes.patches) == 5  # bar renderer draws Rectangles
+    assert len(editor.chart_canvas.axes.lines) == 0    # NOT the line renderer
+
+
+def test_error_bars_gating_uses_each_series_own_type_not_the_chart_type():
+    """A hist-typed chart (which never supports error bars at the chart
+    level) containing a line-typed series (which does) must still draw
+    that series' error bars -- proving the gate reads the series' own
+    type, not the chart's."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Mixed Chart", chart_type="hist")
+    series = chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        label="Series 1", series_type=SeriesType.LINE,
+        y_error_column_id=dataset.column_id("y"),
+    )
+    assert series.has_error_data
+
+    editor = _editor_for(project, chart)
+
+    from matplotlib.container import ErrorbarContainer
+    error_containers = [c for c in editor.chart_canvas.axes.containers if isinstance(c, ErrorbarContainer)]
+    assert len(error_containers) == 1

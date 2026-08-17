@@ -740,7 +740,7 @@ class ChartEditorWidget(PWidget):
         if fill_to_index is None or fill_to_index < 0 or fill_to_index == series_index or fill_to_index >= len(self.chart.data_series):
             return fill_base
         other = self.chart.data_series[fill_to_index]
-        other_data = resolve_series_data(project, other, self.chart.chart_type)
+        other_data = resolve_series_data(project, other)
         if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
             return fill_base
         # Interpolate the other curve over its own independent axis (x when
@@ -794,7 +794,7 @@ class ChartEditorWidget(PWidget):
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    series_data = resolve_series_data(project, series, self.chart.chart_type)
+                    series_data = resolve_series_data(project, series)
                     x_data = series_data.x_data
                     y_data = series_data.y_data
                     x_err = series_data.x_err
@@ -808,7 +808,7 @@ class ChartEditorWidget(PWidget):
                         continue
 
                     alpha = series.alpha if series.visible else 0.3
-                    series_type = SeriesType(self.chart.chart_type)
+                    series_type = series.series_type
                     style = series.style
                     renderer = SERIES_RENDERERS[series_type]
                     renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
@@ -819,7 +819,7 @@ class ChartEditorWidget(PWidget):
                         ),
                     })
 
-                    if SERIES_TYPE_SPECS[SeriesType(self.chart.chart_type)].supports_error_bars:
+                    if SERIES_TYPE_SPECS[series.series_type].supports_error_bars:
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
                         yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
                         if xerr is not None or yerr is not None:
