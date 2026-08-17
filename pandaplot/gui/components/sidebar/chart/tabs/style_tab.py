@@ -693,10 +693,17 @@ class StyleTab(QWidget):
             widget.setVisible(is_axes)
         spec = SERIES_TYPE_SPECS[SeriesType(self._chart_type)] if self._chart_type else None
         marker_supported = spec is not None and spec.marker_mode != "unsupported"
-        line_supported = spec is not None and spec.supports_line_style
+        color_supported = spec is not None and spec.supports_color
         fill_supported = spec is not None and spec.supports_fill
         error_bars_supported = spec is not None and spec.supports_error_bars
-        self.line_card.setVisible(kind == "fit" or (kind == "series" and line_supported))
+        # The Line card holds both color/opacity controls (series.color/
+        # series.alpha, rendered for line/bar/hist) and line_style/line_width
+        # controls (rendered only for "line" -- see SeriesTypeSpec.supports_
+        # line_style's docstring). Gating the whole card on supports_color
+        # keeps color/opacity available for bar/hist even though their
+        # line_style/line_width controls have no effect for those types,
+        # matching pre-Phase-2 behavior exactly.
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and color_supported))
         self.fill_card.setVisible(kind == "series" and fill_supported)
         self.marker_card.setVisible(kind == "series" and marker_supported)
         # Fit data has no error-bar fields at all (DataSeries-only), and even

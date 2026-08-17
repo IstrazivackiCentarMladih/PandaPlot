@@ -19,6 +19,15 @@ from pandaplot.models.chart.series_type import SeriesType
 class SeriesTypeSpec:
     marker_mode: Literal["required", "optional", "unsupported"]
     supports_line_style: bool
+    # Whether the series' color/opacity controls (line_color_row,
+    # line_opacity_slider -- writing series.color/series.alpha) apply to
+    # this type. True for line/bar/hist (all read series.color/alpha in
+    # chart_editor.py's render branches); False for scatter/vector, which
+    # rely on marker_color/marker_edge_color instead. Distinct from
+    # supports_line_style, which is specifically about line_style/line_width
+    # (only true for "line") -- a bar/hist series has no line style but
+    # still needs its color/opacity card shown.
+    supports_color: bool
     supports_fill: bool
     supports_error_bars: bool
     needs_x_column: bool
@@ -27,23 +36,23 @@ class SeriesTypeSpec:
 
 SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
     SeriesType.LINE: SeriesTypeSpec(
-        marker_mode="optional", supports_line_style=True, supports_fill=True,
+        marker_mode="optional", supports_line_style=True, supports_color=True, supports_fill=True,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
     ),
     SeriesType.SCATTER: SeriesTypeSpec(
-        marker_mode="required", supports_line_style=False, supports_fill=False,
+        marker_mode="required", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
     ),
     SeriesType.BAR: SeriesTypeSpec(
-        marker_mode="unsupported", supports_line_style=False, supports_fill=False,
+        marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
     ),
     SeriesType.HIST: SeriesTypeSpec(
-        marker_mode="unsupported", supports_line_style=False, supports_fill=False,
+        marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=False, needs_x_column=False, needs_secondary_columns=False,
     ),
     SeriesType.VECTOR: SeriesTypeSpec(
-        marker_mode="unsupported", supports_line_style=False, supports_fill=False,
+        marker_mode="unsupported", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=True,
     ),
 }

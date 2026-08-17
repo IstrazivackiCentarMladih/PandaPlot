@@ -76,6 +76,44 @@ def test_fit_line_card_visible_on_line_chart():
     assert not style_tab.marker_card.isVisible()
 
 
+def test_series_line_card_visible_marker_card_hidden_on_bar_chart():
+    """Regression test: Task 7's SERIES_TYPE_SPECS-driven rewrite of
+    _update_target_cards_visibility must keep the Line card visible for a
+    Bar series -- it houses the color/opacity controls (series.color/
+    series.alpha), which chart_editor.py's bar() branch does read -- even
+    though bar has no line_style/line_width concept. The Marker card must
+    stay hidden since bar has no marker concept at all."""
+    _qapp()
+    app_context = build_app_context()
+    style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
+    style_tab.set_chart_type(ChartType.BAR)
+
+    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    style_tab.set_selected("series", series)
+
+    assert style_tab.line_card.isVisible()
+    assert not style_tab.marker_card.isVisible()
+
+
+def test_series_line_card_visible_marker_card_hidden_on_histogram_chart():
+    """Same regression as the Bar case above, for Histogram: chart_editor.py's
+    hist() branch also reads series.color/series.alpha, so the Line card
+    (which houses those controls) must stay visible even though hist has no
+    line_style concept or marker concept."""
+    _qapp()
+    app_context = build_app_context()
+    style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
+    style_tab.set_chart_type(ChartType.HIST)
+
+    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    style_tab.set_selected("series", series)
+
+    assert style_tab.line_card.isVisible()
+    assert not style_tab.marker_card.isVisible()
+
+
 def test_match_line_toggle_hidden_for_scatter_series():
     """A scatter-chart series has no drawn line at all (see above), so
     "Match line" is meaningless: it must be hidden and the marker color

@@ -34,12 +34,6 @@ class ChartTab(QWidget):
         super().__init__(parent)
         self._chart = None
         self._updating_controls = False
-        # Tracks whether the loaded chart's type is one the combo can
-        # represent, so an unsupported/hidden type (e.g. a saved "box" or
-        # "violin" chart) isn't silently overwritten with "line" just
-        # because that's what the combo defaults to for display.
-        self._loaded_chart_type_supported: bool = True
-        self._chart_type_touched_by_user: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -88,13 +82,7 @@ class ChartTab(QWidget):
         self.hist_bins_spin.valueChanged.connect(self._on_field_changed)
 
     def _on_chart_type_index_changed(self):
-        """Handle chart type combo changes, tracking explicit user intent.
-
-        Distinguishes a user picking a chart type from the combo being set
-        programmatically while loading a chart (see _loaded_chart_type_supported).
-        """
-        if not self._updating_controls:
-            self._chart_type_touched_by_user = True
+        """Handle chart type combo changes."""
         self._update_hist_bins_visibility()
         self.chartTypeChanged.emit(self.chart_type_control.currentValue())
         self._on_field_changed()
@@ -113,7 +101,7 @@ class ChartTab(QWidget):
         config["subtitle"] = self.subtitle_edit.text()
         config["hist_bins"] = self.hist_bins_spin.value()
         chart_type = self.chart_type_control.currentValue()
-        if chart_type and (self._loaded_chart_type_supported or self._chart_type_touched_by_user):
+        if chart_type:
             self._chart.chart_type = chart_type
         self.configChanged.emit()
 
@@ -121,7 +109,6 @@ class ChartTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         self._chart = chart
-        self._chart_type_touched_by_user = False
         try:
             # Note: the Title field only affects config["title"] (what
             # renders on the chart) -- it must NOT rename the chart item in
@@ -130,17 +117,12 @@ class ChartTab(QWidget):
             self.title_edit.setText(chart.config.get("title", chart.name))
             self.subtitle_edit.setText(chart.config.get("subtitle", ""))
 
-            try:
-                chart_type = ChartType(chart.chart_type)
-                self._loaded_chart_type_supported = True
-            except ValueError:
-                # A saved chart type this combo can't represent (e.g. a
-                # legacy "box"/"violin" value, if one ever existed) --
-                # don't silently overwrite it with Line just because
-                # that's the combo's fallback display value.
-                chart_type = ChartType.LINE
-                self._loaded_chart_type_supported = False
-            self.chart_type_control.setCurrentValue(chart_type)
+            # chart.chart_type is already a ChartType instance -- Chart's
+            # constructor coerces via ChartType(...) and raises ValueError
+            # for anything the combo can't represent, so a Chart reaching
+            # this method is guaranteed to carry a value setCurrentValue can
+            # display (no defensive except-ValueError fallback needed here).
+            self.chart_type_control.setCurrentValue(chart.chart_type)
             self._update_hist_bins_visibility()
 
             self.hist_bins_spin.setValue(chart.config.get("hist_bins", 20))
