@@ -495,7 +495,7 @@ class ChartPropertiesPanel(SidebarPanel):
 
                     self.logger.debug(
                         "Applied style to fit data %d: %s (color=%s)",
-                        fit_index, fit.label, fit.color
+                        fit_index, fit.label, fit.style.color
                     )
 
         # Data-tab-owned fields: re-asserts the selected series' y_axis, and

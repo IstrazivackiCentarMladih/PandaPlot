@@ -11,6 +11,7 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
 from pandaplot.models.project.items import Chart, Dataset
@@ -175,9 +176,7 @@ class ChartTab(PWidget):
                 source_x_column_id=source_x_column_id or "",
                 source_y_column_id=source_y_column_id or "",
                 label = f"{short_fit_name} Fit: ({fit_results.equation})",
-                color=fit_color,
-                line_style="dashed",
-                line_width=2.0,
+                style=FitStyle(color=fit_color, line_style="dashed", line_width=2.0),
                 fit_params=fit_params,
                 fit_stats=fit_stats,
                 confidence_lower=fit_results.confidence_lower,

@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from pandaplot.models.migrations.per_item.chart import migrate_chart
 from pandaplot.models.migrations.per_item.chart import migrate_chart_v1_to_v2
+from pandaplot.models.migrations.per_item.chart import migrate_chart_v2_to_v3
 
 
 def test_noop_when_registry_is_empty():
@@ -194,6 +195,63 @@ class TestMigrateChartV1ToV2:
         migrated = migrate_chart_v1_to_v2(raw)
 
         assert migrated["data_series"] == []
+
+
+class TestMigrateChartV2ToV3:
+    """The real v2->v3 per-item migration: moves each fit's flat
+    color/line_style/line_width/alpha fields into a nested "style" dict,
+    the same shape data_series already got in v1->v2. Unlike v1->v2, this
+    migration removes the old flat fields once moved (there's no
+    consumer left that still needs them once FitData.style is
+    authoritative)."""
+
+    def test_migrate_chart_v2_to_v3_moves_fit_style_fields_into_a_nested_style_dict(self):
+        raw = {
+            "chart_type": "line",
+            "data_series": [],
+            "fit_data": [{
+                "source_dataset_id": "ds1", "fit_type": "linear",
+                "color": "#112233", "line_style": "dotted", "line_width": 3.0, "alpha": 0.5,
+                "confidence_lower": [1.0], "confidence_upper": [2.0],
+            }],
+        }
+
+        migrated = migrate_chart_v2_to_v3(raw)
+
+        fit = migrated["fit_data"][0]
+        assert fit["style"] == {"color": "#112233", "line_style": "dotted", "line_width": 3.0, "alpha": 0.5}
+        assert "color" not in fit
+        assert "line_style" not in fit
+        assert "line_width" not in fit
+        assert "alpha" not in fit
+        assert fit["confidence_lower"] == [1.0]  # untouched
+        assert fit["confidence_upper"] == [2.0]  # untouched
+
+    def test_migrate_chart_v2_to_v3_handles_a_fit_missing_some_style_fields(self):
+        raw = {"chart_type": "line", "data_series": [],
+               "fit_data": [{"source_dataset_id": "ds1", "fit_type": "linear"}]}
+
+        migrated = migrate_chart_v2_to_v3(raw)
+
+        assert migrated["fit_data"][0]["style"] == {}
+
+    def test_handles_a_chart_with_no_fit_data(self):
+        raw = {"chart_type": "line", "data_series": []}
+
+        migrated = migrate_chart_v2_to_v3(raw)
+
+        assert migrated["fit_data"] == []
+
+    def test_does_not_mutate_the_input_dict(self):
+        raw = {
+            "chart_type": "line",
+            "data_series": [],
+            "fit_data": [{"source_dataset_id": "ds1", "fit_type": "linear", "color": "#112233"}],
+        }
+
+        migrate_chart_v2_to_v3(raw)
+
+        assert "style" not in raw["fit_data"][0]
 
 
 def test_style_field_names_match_the_real_style_dataclasses():

@@ -402,7 +402,7 @@ class DataTab(QWidget):
         self._install_select_on_click(card, index)
         row = QHBoxLayout(card)
 
-        row.addWidget(self._make_swatch(fit.color, tokens))
+        row.addWidget(self._make_swatch(fit.style.color, tokens))
 
         name_label = QLabel(f"\U0001f527 {fit.label}")  # wrench emoji
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
@@ -477,7 +477,7 @@ class DataTab(QWidget):
         outer = QVBoxLayout(card)
 
         header = QHBoxLayout()
-        header.addWidget(self._make_swatch(fit.color, tokens))
+        header.addWidget(self._make_swatch(fit.style.color, tokens))
         name_label = QLabel(f"\U0001f527 {fit.label}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         header.addWidget(name_label, 1)

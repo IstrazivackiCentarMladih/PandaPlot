@@ -1350,10 +1350,10 @@ class StyleTab(QWidget):
             style.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
-        fit.color = self.line_color_row.currentColor()
-        fit.line_style = self.line_style_control.currentValue().value
-        fit.line_width = self.line_width_slider.value()
-        fit.alpha = self.line_opacity_slider.value()
+        fit.style.color = self.line_color_row.currentColor()
+        fit.style.line_style = self.line_style_control.currentValue().value
+        fit.style.line_width = self.line_width_slider.value()
+        fit.style.alpha = self.line_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
@@ -1456,11 +1456,11 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.line_color_row.setCurrentColor(fit.color)
-            self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(fit.alpha)
+            self.line_color_row.setCurrentColor(fit.style.color)
+            self.line_width_slider.setValue(fit.style.line_width)
+            self.line_opacity_slider.setValue(fit.style.alpha)
             try:
-                self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
+                self.line_style_control.setCurrentValue(LineStyleType(fit.style.line_style))
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 

@@ -83,3 +83,19 @@ def test_redo_removes_fit_data_again(app_context_with_chart):
     command.redo()
 
     assert len(chart.fit_data) == 0
+
+
+def test_undo_restores_the_fit_with_its_typed_style_object_intact(app_context_with_chart):
+    from pandaplot.models.chart.fit_style import FitStyle
+
+    app_context, chart = app_context_with_chart
+    chart.fit_data[0].style = FitStyle(color="#abcdef", band_fill_enabled=False)
+    command = RemoveFitDataCommand(app_context, chart_id="chart-1", fit_index=0)
+    command.execute()
+
+    command.undo()
+
+    restored = chart.fit_data[0]
+    assert isinstance(restored.style, FitStyle)
+    assert restored.style.color == "#abcdef"
+    assert restored.style.band_fill_enabled is False

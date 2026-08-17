@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
+from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
@@ -34,7 +35,7 @@ def _chart_with_one_fit(project, dataset):
         x_data=np.array([1.0, 2.0, 3.0]),
         y_data=np.array([1.0, 2.0, 3.0]),
         label="Linear Fit",
-        color="#ff0000",
+        style=FitStyle(color="#ff0000"),
     )
     project.add_item(chart)
     return chart
@@ -78,7 +79,7 @@ def test_confidence_band_for_a_secondary_axis_fit_is_drawn_on_that_axis():
         x_data=np.array([1.0, 2.0, 3.0]),
         y_data=np.array([1.0, 2.0, 3.0]),
         label="Linear Fit",
-        color="#00ff00",
+        style=FitStyle(color="#00ff00"),
         confidence_lower=np.array([0.5, 1.5, 2.5]),
         confidence_upper=np.array([1.5, 2.5, 3.5]),
     )
@@ -118,8 +119,7 @@ def test_fit_line_alpha_is_rendered():
         x_data=np.array([1.0, 2.0, 3.0]),
         y_data=np.array([1.0, 2.0, 3.0]),
         label="Linear Fit",
-        color="#ff0000",
-        alpha=0.4,
+        style=FitStyle(color="#ff0000", alpha=0.4),
     )
     project.add_item(chart)
 

@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.project.items.chart import (
     Chart,
@@ -67,17 +68,17 @@ def test_restore_only_touches_fit_style_fields():
     chart.add_fit_data(
         "ds1", "Linear",
         np.array([1.0]), np.array([2.0]),
-        color="#ff0000", line_width=2.0,
+        style=FitStyle(color="#ff0000", line_width=2.0),
     )
     snap = snapshot_chart_state(chart)
 
-    chart.fit_data[0].color = "#00ff00"
-    chart.fit_data[0].line_width = 5.0
+    chart.fit_data[0].style.color = "#00ff00"
+    chart.fit_data[0].style.line_width = 5.0
 
     restore_chart_state(chart, snap)
 
-    assert chart.fit_data[0].color == "#ff0000"
-    assert chart.fit_data[0].line_width == 2.0
+    assert chart.fit_data[0].style.color == "#ff0000"
+    assert chart.fit_data[0].style.line_width == 2.0
 
 
 def test_restore_reverts_fit_alpha():
@@ -88,12 +89,31 @@ def test_restore_reverts_fit_alpha():
     chart.add_fit_data(
         "ds1", "Linear",
         np.array([1.0]), np.array([2.0]),
-        alpha=1.0,
+        style=FitStyle(alpha=1.0),
     )
     snap = snapshot_chart_state(chart)
 
-    chart.fit_data[0].alpha = 0.3
+    chart.fit_data[0].style.alpha = 0.3
 
     restore_chart_state(chart, snap)
 
-    assert chart.fit_data[0].alpha == 1.0
+    assert chart.fit_data[0].style.alpha == 1.0
+
+
+def test_restore_reverts_fit_line_style():
+    """Regression test for a bug that survived until this phase: only
+    color/line_width/alpha were snapshotted, so line_style silently kept
+    whatever the user changed it to even after Revert/Cancel."""
+    chart = _make_chart()
+    chart.add_fit_data(
+        "ds1", "Linear",
+        np.array([1.0]), np.array([2.0]),
+        style=FitStyle(line_style="solid"),
+    )
+    snap = snapshot_chart_state(chart)
+
+    chart.fit_data[0].style.line_style = "dotted"
+
+    restore_chart_state(chart, snap)
+
+    assert chart.fit_data[0].style.line_style == "solid"

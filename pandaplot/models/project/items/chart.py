@@ -12,6 +12,7 @@ import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
+from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.chart.series_style import SeriesStyleBase
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -117,21 +118,20 @@ class FitData:
     source_y_column_id: str = ""
     source_x_column: str = ""
     source_y_column: str = ""
-    color: str = "#ff7f0e"
-    line_style: str = "dashed"
-    line_width: float = 2.0
-    alpha: float = 1.0
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
     confidence_lower: np.ndarray | None = None
     confidence_upper: np.ndarray | None = None
+    style: Optional[FitStyle] = None
 
     def __post_init__(self):
         if self.fit_params is None:
             self.fit_params = {}
         if self.fit_stats is None:
             self.fit_stats = {}
+        if self.style is None:
+            self.style = FitStyle()
 
 
 class Chart(Item):
@@ -526,13 +526,10 @@ class Chart(Item):
                     "x_data": fit.x_data.tolist(),
                     "y_data": fit.y_data.tolist(),
                     "label": fit.label,
-                    "color": fit.color,
-                    "line_style": fit.line_style,
-                    "line_width": fit.line_width,
-                    "alpha": fit.alpha,
                     "visible": fit.visible,
                     "fit_params": fit.fit_params,
-                    "fit_stats": fit.fit_stats
+                    "fit_stats": fit.fit_stats,
+                    "style": asdict(fit.style) if fit.style is not None else None,
                 } for fit in self.fit_data
             ],
             "config": self.config,
@@ -602,6 +599,8 @@ class Chart(Item):
         # Load fit data
         fit_data_list = data.get("fit_data", [])
         for fit_dict in fit_data_list:
+            style_dict = fit_dict.get("style")
+            style = FitStyle(**style_dict) if style_dict is not None else None
             fit = FitData(
                 source_dataset_id=fit_dict["source_dataset_id"],
                 source_x_column=fit_dict["source_x_column"],
@@ -612,13 +611,10 @@ class Chart(Item):
                 x_data=np.array(fit_dict["x_data"]),
                 y_data=np.array(fit_dict["y_data"]),
                 label=fit_dict.get("label", ""),
-                color=fit_dict.get("color", "#ff7f0e"),
-                line_style=fit_dict.get("line_style", "dashed"),
-                line_width=fit_dict.get("line_width", 2.0),
-                alpha=fit_dict.get("alpha", 1.0),
                 visible=fit_dict.get("visible", True),
                 fit_params=fit_dict.get("fit_params", {}),
-                fit_stats=fit_dict.get("fit_stats", {})
+                fit_stats=fit_dict.get("fit_stats", {}),
+                style=style,
             )
             chart.fit_data.append(fit)
 
@@ -700,10 +696,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "chart_type": chart.chart_type,
         "name": chart.name,
         "data_series": [asdict(s) for s in chart.data_series],
-        "fit_data_styles": [
-            {"color": f.color, "line_width": f.line_width, "alpha": f.alpha}
-            for f in chart.fit_data
-        ],
+        "fit_data_styles": [copy.deepcopy(f.style) for f in chart.fit_data],
     }
 
 
@@ -723,6 +716,19 @@ def series_from_flat_dict(series_data: Dict[str, Any]) -> "DataSeries":
     return series
 
 
+def fit_from_flat_dict(fit_data: dict) -> FitData:
+    """Reconstruct a FitData from a flattened dict (e.g. the output of
+    dataclasses.asdict()), rebuilding ``style`` as a FitStyle instance
+    rather than the plain dict asdict() flattens it into. Mirrors
+    series_from_flat_dict's identical fix for the same DataSeries bug
+    (RemoveSeriesCommand.undo -- see Phase 3a)."""
+    data = dict(fit_data)
+    style = data.get("style")
+    if isinstance(style, dict):
+        data["style"] = FitStyle(**style)
+    return FitData(**data)
+
+
 def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     """Restore chart state captured by snapshot_chart_state."""
     chart.config = copy.deepcopy(snapshot["config"])
@@ -732,8 +738,6 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     chart.data_series = [series_from_flat_dict(series_data) for series_data in snapshot["data_series"]]
     for i, fit_style in enumerate(snapshot["fit_data_styles"]):
         if i < len(chart.fit_data):
-            chart.fit_data[i].color = fit_style["color"]
-            chart.fit_data[i].line_width = fit_style["line_width"]
-            chart.fit_data[i].alpha = fit_style.get("alpha", 1.0)
+            chart.fit_data[i].style = copy.deepcopy(fit_style)
     chart.update_modified_time()
 

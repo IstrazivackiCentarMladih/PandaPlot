@@ -57,8 +57,33 @@ def migrate_chart_v1_to_v2(raw: dict) -> dict:
     return new_raw
 
 
+_FIT_STYLE_FIELDS = ("color", "line_style", "line_width", "alpha")
+
+
+def migrate_chart_v2_to_v3(raw: dict) -> dict:
+    """v2 -> v3: move each fit's flat color/line_style/line_width/alpha
+    fields into a nested "style" dict, matching v1->v2's identical move
+    for data_series. confidence_lower/confidence_upper are untouched --
+    they were already correct, just never had a UI to control how their
+    band renders (see FitStyle.band_fill_enabled/band_fill_alpha/
+    band_color, new in this version)."""
+    new_raw = dict(raw)
+    new_fit_data = []
+    for fit in raw.get("fit_data", []):
+        new_fit = dict(fit)
+        new_fit["style"] = {
+            name: fit[name] for name in _FIT_STYLE_FIELDS if name in fit
+        }
+        for name in _FIT_STYLE_FIELDS:
+            new_fit.pop(name, None)
+        new_fit_data.append(new_fit)
+    new_raw["fit_data"] = new_fit_data
+    return new_raw
+
+
 PER_ITEM_CHART_MIGRATIONS: dict[int, Callable[[dict], dict]] = {
     1: migrate_chart_v1_to_v2,
+    2: migrate_chart_v2_to_v3,
 }
 
 
