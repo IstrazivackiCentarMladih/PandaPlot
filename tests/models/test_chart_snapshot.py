@@ -2,6 +2,7 @@
 
 import numpy as np
 
+from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.project.items.chart import (
     Chart,
     restore_chart_state,
@@ -11,7 +12,7 @@ from pandaplot.models.project.items.chart import (
 
 def _make_chart():
     chart = Chart(name="My Chart")
-    chart.add_data_series("ds1", "x", "y", label="s1", color="#112233")
+    chart.add_data_series("ds1", "x", "y", label="s1", style=LineSeriesStyle(color="#112233"))
     return chart
 
 
@@ -22,14 +23,14 @@ def test_restore_reverts_config_type_name_and_series():
     chart.config["x_label"] = "changed"
     chart.chart_type = "scatter"
     chart.name = "Renamed"
-    chart.data_series[0].color = "#ffffff"
+    chart.data_series[0].style.color = "#ffffff"
 
     restore_chart_state(chart, snap)
 
     assert chart.config["x_label"] == ""
     assert chart.chart_type == "line"
     assert chart.name == "My Chart"
-    assert chart.data_series[0].color == "#112233"
+    assert chart.data_series[0].style.color == "#112233"
 
 
 def test_snapshot_is_a_deep_copy_of_config():

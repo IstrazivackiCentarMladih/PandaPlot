@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QApplication
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_style import ScatterSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries, FitData
 
 
@@ -126,7 +128,8 @@ def test_match_line_toggle_hidden_for_scatter_series():
 
     series = DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", label="Series A",
-        marker_color="",  # "" == inherit, i.e. "match line" was on
+        series_type=SeriesType.SCATTER,
+        style=ScatterSeriesStyle(marker_color=""),  # "" == inherit, i.e. "match line" was on
     )
     style_tab.set_selected("series", series)
 
@@ -162,7 +165,8 @@ def test_scatter_series_marker_color_applied_explicitly_even_when_match_line_che
 
     series = DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", label="Series A",
-        color="#123456", marker_color="",
+        series_type=SeriesType.SCATTER,
+        style=ScatterSeriesStyle(color="#123456", marker_color=""),
     )
     style_tab.set_selected("series", series)
     assert style_tab.marker_match_line_toggle.isChecked()  # stored state preserved

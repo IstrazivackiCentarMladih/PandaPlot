@@ -185,27 +185,32 @@ class TestSnapshotRestorePreservesStyleType:
 class TestDataSeriesAutoDerivesStyle:
     """.style is auto-populated in __post_init__ whenever not explicitly
     given -- closing the gap Phase 3a's final review flagged (nothing
-    populated .style for a series created after Phase 3a shipped)."""
+    populated .style for a series created after Phase 3a shipped).
 
-    def test_fresh_line_series_gets_a_derived_style(self):
+    Since Phase 3c Task 4 deleted the flat styling fields (and the
+    `derive_style` bridge that read them), a fresh series with no explicit
+    `style=` now gets its style class's own defaults rather than anything
+    derived from flat kwargs -- there are no flat kwargs left to derive
+    from."""
+
+    def test_fresh_line_series_gets_default_line_style(self):
         series = DataSeries(dataset_id="ds1", x_column="x", y_column="y",
-                             series_type=SeriesType.LINE, color="#112233")
+                             series_type=SeriesType.LINE)
 
         assert isinstance(series.style, LineSeriesStyle)
-        assert series.style.color == "#112233"
+        assert series.style == LineSeriesStyle()
 
-    def test_fresh_vector_series_gets_a_derived_vector_style(self):
+    def test_fresh_vector_series_gets_default_vector_style(self):
         series = DataSeries(dataset_id="ds1", x_column="x", y_column="y",
-                             series_type=SeriesType.VECTOR, vector_color="#00ff00")
+                             series_type=SeriesType.VECTOR)
 
         assert isinstance(series.style, VectorSeriesStyle)
-        assert series.style.vector_color == "#00ff00"
+        assert series.style == VectorSeriesStyle()
 
     def test_explicit_style_is_not_overwritten(self):
         explicit = LineSeriesStyle(color="#explicit")
         series = DataSeries(dataset_id="ds1", x_column="x", y_column="y",
-                             series_type=SeriesType.LINE, color="#derived-would-be-this",
-                             style=explicit)
+                             series_type=SeriesType.LINE, style=explicit)
 
         assert series.style is explicit
 
@@ -236,7 +241,7 @@ class TestChartAddDataSeriesDefaultsSeriesType:
         chart = Chart(name="C", chart_type="vector")
 
         series = chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
-                                        vector_color="#abcdef")
+                                        style=VectorSeriesStyle(vector_color="#abcdef"))
 
         assert series.series_type == SeriesType.VECTOR
         assert isinstance(series.style, VectorSeriesStyle)

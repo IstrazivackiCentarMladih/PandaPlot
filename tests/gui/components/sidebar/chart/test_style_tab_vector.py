@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_style import VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries
 
@@ -76,9 +77,11 @@ def test_load_series_style_populates_vector_card_from_series():
     tab = _tab()
     series = DataSeries(
         dataset_id="ds1", series_type=SeriesType.VECTOR,
-        vector_color="#abcdef", vector_scale=2.0, vector_width=0.03,
-        vector_head_width=5.0, vector_head_length=8.0, vector_head_axis_length=7.0,
-        vector_colormap="cool",
+        style=VectorSeriesStyle(
+            vector_color="#abcdef", vector_scale=2.0, vector_width=0.03,
+            vector_head_width=5.0, vector_head_length=8.0, vector_head_axis_length=7.0,
+            vector_colormap="cool",
+        ),
     )
     tab.set_chart_type(ChartType.VECTOR)
 

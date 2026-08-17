@@ -30,7 +30,6 @@ from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
 from pandaplot.gui.components.tabs.chart.style_maps import LINESTYLE_MAP
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.chart.series_style_derivation import derive_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
@@ -802,7 +801,7 @@ class ChartEditorWidget(PWidget):
 
                     alpha = series.alpha if series.visible else 0.3
                     series_type = SeriesType(self.chart.chart_type)
-                    style = derive_style(series, SERIES_TYPE_SPECS[series_type].style_cls)
+                    style = series.style
                     renderer = SERIES_RENDERERS[series_type]
                     renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
                         "bins": self.chart.config.get("hist_bins", 20),
@@ -816,14 +815,14 @@ class ChartEditorWidget(PWidget):
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
                         yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
                         if xerr is not None or yerr is not None:
-                            err_color = series.error_color or series.color
+                            err_color = series.error_color or getattr(style, "color", "#1f77b4")
                             target_axes.errorbar(
                                 x_data, y_data,
                                 xerr=xerr,
                                 yerr=yerr,
                                 fmt="none",
                                 ecolor=err_color,
-                                elinewidth=series.line_width,
+                                elinewidth=getattr(style, "line_width", 2.0),
                                 capsize=series.error_cap_size,
                                 alpha=alpha)
 

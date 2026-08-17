@@ -13,7 +13,6 @@ import numpy as np
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_style import SeriesStyleBase
 from pandaplot.models.chart.series_type import SeriesType
-from pandaplot.models.chart.series_style_derivation import derive_style
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.item import Item
 
@@ -54,14 +53,6 @@ class DataSeries:
     x_column: str = ""
     y_column: str = ""
     label: str = ""
-    color: str = "#1f77b4"
-    marker_color: str = ""
-    marker_edge_color: str = "#000000"
-    marker_edge_width: float = 1.0
-    line_style: str = "solid"
-    marker_style: str = "circle"
-    line_width: float = 2.0
-    marker_size: float = 2.0
     visible: bool = True
     y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
     alpha: float = 1.0
@@ -71,39 +62,17 @@ class DataSeries:
     y_error_minus_column: str = ""  # only used when error_symmetric is False
     error_symmetric: bool = True
     error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
-    error_color: str = ""  # "" => inherit series.color
+    error_color: str = ""  # "" => inherit series.style.color
     error_cap_size: float = 3.0
-    # Area fill under/between curves (line charts). When fill_enabled, the
-    # region between this series' curve and a baseline is shaded. The baseline
-    # is a constant y (fill_base) unless fill_to_index points at another series
-    # in the same chart, in which case the region *between* the two curves is
-    # filled.
-    fill_enabled: bool = False
-    fill_color: str = ""  # "" => inherit series.color
-    fill_alpha: float = 0.3
-    # Orientation of the fill. "vertical" fills between the curve and a y
-    # baseline (matplotlib fill_between); "horizontal" fills between the curve
-    # and an x baseline (fill_betweenx). fill_base is interpreted on the
-    # corresponding axis (a y value when vertical, an x value when horizontal).
-    fill_orientation: str = "vertical"  # "vertical" | "horizontal"
-    fill_base: float = 0.0  # constant baseline, used when fill_to_index < 0
-    fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
-    # Vector-plot ("quiver") fields. u/v are the vector components at each
-    # (x, y); magnitude is optional and, when resolved, colors each arrow via
-    # vector_colormap instead of the flat vector_color.
+    # Vector-plot ("quiver") column references. u/v are the vector components
+    # at each (x, y); magnitude is optional and, when resolved, colors each
+    # arrow via the vector style's colormap instead of a flat color.
     u_column_id: str = ""
     v_column_id: str = ""
     u_column: str = ""
     v_column: str = ""
     magnitude_column_id: str = ""
     magnitude_column: str = ""
-    vector_color: str = "#1f77b4"
-    vector_colormap: str = ""  # "" => solid vector_color; else a matplotlib colormap name
-    vector_scale: float = 0.0  # 0 => matplotlib autoscale (quiver's scale=None)
-    vector_width: float = 0.005
-    vector_head_width: float = 3.0
-    vector_head_length: float = 5.0
-    vector_head_axis_length: float = 4.5
     series_type: SeriesType = SeriesType.LINE
     style: Optional[SeriesStyleBase] = None
 
@@ -116,7 +85,7 @@ class DataSeries:
         if isinstance(self.series_type, str):
             self.series_type = SeriesType(self.series_type)
         if self.style is None:
-            self.style = derive_style(self, SERIES_TYPE_SPECS[self.series_type].style_cls)
+            self.style = SERIES_TYPE_SPECS[self.series_type].style_cls()
 
     @property
     def has_error_data(self) -> bool:
@@ -476,14 +445,6 @@ class Chart(Item):
                     "x_error_minus_column_id": series.x_error_minus_column_id,
                     "y_error_minus_column_id": series.y_error_minus_column_id,
                     "label": series.label,
-                    "color": series.color,
-                    "marker_color": series.marker_color,
-                    "marker_edge_color": series.marker_edge_color,
-                    "marker_edge_width": series.marker_edge_width,
-                    "line_style": series.line_style,
-                    "marker_style": series.marker_style,
-                    "line_width": series.line_width,
-                    "marker_size": series.marker_size,
                     "visible": series.visible,
                     "y_axis": series.y_axis,
                     "alpha": series.alpha,
@@ -495,25 +456,12 @@ class Chart(Item):
                     "error_direction": series.error_direction,
                     "error_color": series.error_color,
                     "error_cap_size": series.error_cap_size,
-                    "fill_enabled": series.fill_enabled,
-                    "fill_color": series.fill_color,
-                    "fill_alpha": series.fill_alpha,
-                    "fill_orientation": series.fill_orientation,
-                    "fill_base": series.fill_base,
-                    "fill_to_index": series.fill_to_index,
                     "u_column_id": series.u_column_id,
                     "v_column_id": series.v_column_id,
                     "u_column": series.u_column,
                     "v_column": series.v_column,
                     "magnitude_column_id": series.magnitude_column_id,
                     "magnitude_column": series.magnitude_column,
-                    "vector_color": series.vector_color,
-                    "vector_colormap": series.vector_colormap,
-                    "vector_scale": series.vector_scale,
-                    "vector_width": series.vector_width,
-                    "vector_head_width": series.vector_head_width,
-                    "vector_head_length": series.vector_head_length,
-                    "vector_head_axis_length": series.vector_head_axis_length,
                     "series_type": series.series_type.value,
                     "style": asdict(series.style) if series.style is not None else None,
                 } for series in self.data_series
@@ -580,14 +528,6 @@ class Chart(Item):
                 x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
                 y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
                 label=series_dict.get("label", ""),
-                color=series_dict.get("color", "#1f77b4"),
-                marker_color=series_dict.get("marker_color", ""),
-                marker_edge_color=series_dict.get("marker_edge_color", "#000000"),
-                marker_edge_width=series_dict.get("marker_edge_width", 1.0),
-                line_style=series_dict.get("line_style", "solid"),
-                marker_style=series_dict.get("marker_style", "circle"),
-                line_width=series_dict.get("line_width", 2.0),
-                marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0),
@@ -599,25 +539,12 @@ class Chart(Item):
                 error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
                 error_color=series_dict.get("error_color", ""),
                 error_cap_size=series_dict.get("error_cap_size", 3.0),
-                fill_enabled=series_dict.get("fill_enabled", False),
-                fill_color=series_dict.get("fill_color", ""),
-                fill_alpha=series_dict.get("fill_alpha", 0.3),
-                fill_orientation=series_dict.get("fill_orientation", "vertical"),
-                fill_base=series_dict.get("fill_base", 0.0),
-                fill_to_index=series_dict.get("fill_to_index", -1),
                 u_column_id=series_dict.get("u_column_id", ""),
                 v_column_id=series_dict.get("v_column_id", ""),
                 u_column=series_dict.get("u_column", ""),
                 v_column=series_dict.get("v_column", ""),
                 magnitude_column_id=series_dict.get("magnitude_column_id", ""),
                 magnitude_column=series_dict.get("magnitude_column", ""),
-                vector_color=series_dict.get("vector_color", "#1f77b4"),
-                vector_colormap=series_dict.get("vector_colormap", ""),
-                vector_scale=series_dict.get("vector_scale", 0.0),
-                vector_width=series_dict.get("vector_width", 0.005),
-                vector_head_width=series_dict.get("vector_head_width", 3.0),
-                vector_head_length=series_dict.get("vector_head_length", 5.0),
-                vector_head_axis_length=series_dict.get("vector_head_axis_length", 4.5),
                 series_type=series_type,
                 style=style,
             )

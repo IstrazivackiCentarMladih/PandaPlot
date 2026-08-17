@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
+from pandaplot.models.chart.series_style import BarSeriesStyle, HistSeriesStyle, LineSeriesStyle, ScatterSeriesStyle
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
@@ -45,7 +46,7 @@ def test_line_chart_draws_a_line_with_style_fields():
     chart = Chart(name="Line Chart", chart_type="line")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        color="#ff0000", line_width=3.0, label="Series 1",
+        style=LineSeriesStyle(color="#ff0000", line_width=3.0), label="Series 1",
     )
 
     editor = _editor_for(project, chart)
@@ -63,7 +64,7 @@ def test_scatter_chart_draws_a_scatter_collection():
     chart = Chart(name="Scatter Chart", chart_type="scatter")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        color="#00ff00", label="Series 1",
+        style=ScatterSeriesStyle(color="#00ff00"), label="Series 1",
     )
 
     editor = _editor_for(project, chart)
@@ -80,7 +81,7 @@ def test_bar_chart_draws_bars_with_color():
     chart = Chart(name="Bar Chart", chart_type="bar")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        color="#0000ff", label="Series 1",
+        style=BarSeriesStyle(color="#0000ff"), label="Series 1",
     )
 
     editor = _editor_for(project, chart)
@@ -94,7 +95,8 @@ def test_hist_chart_draws_bins_with_color():
     chart = Chart(name="Hist Chart", chart_type="hist")
     chart.config["hist_bins"] = 3
     chart.add_data_series(
-        dataset.id, y_column_id=dataset.column_id("y"), color="#ffaa00", label="Series 1",
+        dataset.id, y_column_id=dataset.column_id("y"),
+        style=HistSeriesStyle(color="#ffaa00"), label="Series 1",
     )
 
     editor = _editor_for(project, chart)
@@ -108,7 +110,7 @@ def test_line_chart_with_fill_enabled_draws_a_fill():
     chart = Chart(name="Line Chart", chart_type="line")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        color="#123456", fill_enabled=True, fill_color="#654321", fill_alpha=0.5,
+        style=LineSeriesStyle(color="#123456", fill_enabled=True, fill_color="#654321", fill_alpha=0.5),
     )
 
     editor = _editor_for(project, chart)
@@ -138,11 +140,11 @@ def test_line_chart_with_fill_to_index_fills_between_the_two_curves():
     chart = Chart(name="Line Chart", chart_type="line")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y1"),
-        color="#123456", label="Series 1", fill_enabled=True, fill_to_index=1,
+        style=LineSeriesStyle(color="#123456", fill_enabled=True, fill_to_index=1), label="Series 1",
     )
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y2"),
-        color="#654321", label="Series 2",
+        style=LineSeriesStyle(color="#654321"), label="Series 2",
     )
 
     editor = _editor_for(project, chart)

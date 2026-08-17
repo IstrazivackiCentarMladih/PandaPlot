@@ -3,6 +3,8 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext
@@ -40,12 +42,20 @@ class AddSeriesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
+        series_type = SeriesType(chart.chart_type)
+        style_cls = SERIES_TYPE_SPECS[series_type].style_cls
+        style = (
+            style_cls(vector_color=self.color)
+            if series_type == SeriesType.VECTOR
+            else style_cls(color=self.color)
+        )
+
         chart.add_data_series(
             self.dataset_id,
             x_column_id=self.x_column_id,
             y_column_id=self.y_column_id,
             label=self.label,
-            color=self.color,
+            style=style,
             u_column_id=self.u_column_id,
             v_column_id=self.v_column_id,
             magnitude_column_id=self.magnitude_column_id,

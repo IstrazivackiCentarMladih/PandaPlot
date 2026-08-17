@@ -4,6 +4,7 @@ flat-field reads/writes. Covers the 4 non-vector types' shared path plus
 vector's separate branch, and the "match line color" "" -sentinel
 convention that must survive the .style migration unchanged.
 """
+import dataclasses
 import sys
 
 from PySide6.QtWidgets import QApplication
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.chart import DataSeries
 
 
@@ -18,16 +20,30 @@ def _qapp():
     return QApplication.instance() or QApplication(sys.argv)
 
 
+def _make_series(series_type, **overrides):
+    """Build a DataSeries of the given type, routing any style-class field
+    name in ``overrides`` into a freshly constructed typed `style=` object
+    -- the flat kwargs these used to be passed as directly to DataSeries no
+    longer exist post-Phase-3c-Task-4 -- and passing everything else
+    (DataSeries' own fields) straight through."""
+    style_cls = SERIES_TYPE_SPECS[series_type].style_cls
+    style_field_names = {f.name for f in dataclasses.fields(style_cls)}
+    style_kwargs = {k: v for k, v in overrides.items() if k in style_field_names}
+    series_kwargs = {k: v for k, v in overrides.items() if k not in style_field_names}
+    return DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", series_type=series_type,
+        style=style_cls(**style_kwargs),
+        **series_kwargs,
+    )
+
+
 def _line_series(**overrides):
-    defaults = dict(dataset_id="ds1", x_column="x", y_column="y", series_type=SeriesType.LINE)
-    defaults.update(overrides)
-    return DataSeries(**defaults)
+    series_type = overrides.pop("series_type", SeriesType.LINE)
+    return _make_series(series_type, **overrides)
 
 
 def _vector_series(**overrides):
-    defaults = dict(dataset_id="ds1", x_column="x", y_column="y", series_type=SeriesType.VECTOR)
-    defaults.update(overrides)
-    return DataSeries(**defaults)
+    return _make_series(SeriesType.VECTOR, **overrides)
 
 
 def test_load_then_apply_round_trips_line_series_color_and_line_style():

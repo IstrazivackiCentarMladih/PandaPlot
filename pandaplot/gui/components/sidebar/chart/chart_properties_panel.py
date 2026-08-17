@@ -482,7 +482,9 @@ class ChartPropertiesPanel(SidebarPanel):
 
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
-                    current_row, series.label, series.color, series.marker_color
+                    current_row, series.label,
+                    getattr(series.style, "color", None),
+                    getattr(series.style, "marker_color", None),
                 )
             else:
                 # Update fit data
@@ -513,9 +515,12 @@ class ChartPropertiesPanel(SidebarPanel):
             # DataSeries dataclass defaults rather than being overwritten
             # from whatever the Style tab happens to be showing.
             new_series = chart.data_series[-1]
-            new_series.color = self.style_tab.line_color_row.currentColor()
-            new_series.line_width = self.style_tab.line_width_slider.value()
-            new_series.marker_size = self.style_tab.marker_size_slider.value()
+            if hasattr(new_series.style, "color"):
+                new_series.style.color = self.style_tab.line_color_row.currentColor()
+            if hasattr(new_series.style, "line_width"):
+                new_series.style.line_width = self.style_tab.line_width_slider.value()
+            if hasattr(new_series.style, "marker_size"):
+                new_series.style.marker_size = self.style_tab.marker_size_slider.value()
 
         chart.update_modified_time()
     
