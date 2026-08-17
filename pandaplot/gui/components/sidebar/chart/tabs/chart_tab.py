@@ -82,9 +82,23 @@ class ChartTab(QWidget):
         self.hist_bins_spin.valueChanged.connect(self._on_field_changed)
 
     def _on_chart_type_index_changed(self):
-        """Handle chart type combo changes."""
+        """Handle chart type combo changes.
+
+        Retypes the chart's model (`set_chart_type`) BEFORE emitting
+        `chartTypeChanged` -- listeners (style_tab's card visibility,
+        data_tab's per-series fields) must see the already-retyped
+        series when they react to this signal, or they read stale
+        series_type/style state until an unrelated full reload happens
+        to run later. `_on_field_changed()` still runs afterward for its
+        other responsibilities (title/subtitle/hist_bins); its own
+        `set_chart_type` call is a no-op by then since the type already
+        matches.
+        """
+        chart_type = self.chart_type_control.currentValue()
+        if self._chart is not None and chart_type:
+            self._chart.set_chart_type(chart_type)
         self._update_hist_bins_visibility()
-        self.chartTypeChanged.emit(self.chart_type_control.currentValue())
+        self.chartTypeChanged.emit(chart_type)
         self._on_field_changed()
 
     def _update_hist_bins_visibility(self):
