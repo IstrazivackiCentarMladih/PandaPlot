@@ -27,7 +27,11 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
+from pandaplot.gui.components.tabs.chart.style_maps import LINESTYLE_MAP
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.series_style_derivation import derive_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
@@ -314,20 +318,6 @@ def _resolve_error_column(df, column_name):
     if not column_name or column_name not in df.columns:
         return None
     return df[column_name].to_numpy()
-
-
-@dataclass
-class SeriesData:
-    x_data: Any
-    y_data: Any
-    x_err: Optional[Any]
-    y_err: Optional[Any]
-    x_err_minus: Optional[Any]
-    y_err_minus: Optional[Any]
-    error: Optional[str]
-    u_data: Optional[Any] = None
-    v_data: Optional[Any] = None
-    magnitude_data: Optional[Any] = None
 
 
 def resolve_series_data(project, series, chart_type=None) -> SeriesData:
@@ -765,15 +755,6 @@ class ChartEditorWidget(PWidget):
             self.logger.debug("Chart canvas already deleted, skipping update")
             return
 
-        # Mapping from model string values to matplotlib parameters
-        _marker_map = {
-            "circle": "o", "square": "s", "triangle": "^", "diamond": "D",
-            "star": "*", "plus": "+", "cross": "x", "none": "",
-        }
-        _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
-        }
-
         try:
             # Clear the current plot
             self.chart_canvas.axes.clear()
@@ -821,81 +802,16 @@ class ChartEditorWidget(PWidget):
                         continue
 
                     alpha = series.alpha if series.visible else 0.3
-                    if self.chart.chart_type == "line":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.plot(x_data, y_data,
-                                         color=series.color,
-                                         linewidth=series.line_width,
-                                         linestyle=_linestyle_map.get(series.line_style, "-"),
-                                         marker=_marker_map.get(series.marker_style, "o"),
-                                         markersize=series.marker_size,
-                                         markerfacecolor=mfc,
-                                         markeredgecolor=mec,
-                                         markeredgewidth=series.marker_edge_width,
-                                         label=series.label,
-                                         alpha=alpha)
-                        # Fill the area under this curve (or between it and
-                        # another series) when enabled.
-                        if series.fill_enabled:
-                            fill_color = series.fill_color or series.color
-                            fill_alpha = series.fill_alpha if series.visible else 0.3 * series.fill_alpha
-                            if series.fill_orientation == "horizontal":
-                                # fill_betweenx: shade between the curve and an
-                                # x baseline, indexed by this series' y-values.
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, y_data, horizontal=True)
-                                target_axes.fill_betweenx(
-                                    y_data, x_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                            else:
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, x_data)
-                                target_axes.fill_between(
-                                    x_data, y_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                    elif self.chart.chart_type == "scatter":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.scatter(x_data, y_data,
-                                            c=mfc,
-                                            edgecolors=mec,
-                                            linewidths=series.marker_edge_width,
-                                            marker=_marker_map.get(series.marker_style, "o"),
-                                            s=series.marker_size ** 2,
-                                            label=series.label,
-                                            alpha=alpha)
-                    elif self.chart.chart_type == "bar":
-                        target_axes.bar(x_data, y_data,
-                                        color=series.color,
-                                        label=series.label,
-                                        alpha=alpha)
-                    elif self.chart.chart_type == "hist":
-                        target_axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
-                                         color=series.color,
-                                         label=series.label,
-                                         alpha=alpha)
-                    elif self.chart.chart_type == "vector":
-                        quiver_kwargs = {
-                            "scale": series.vector_scale if series.vector_scale > 0 else None,
-                            "width": series.vector_width,
-                            "headwidth": series.vector_head_width,
-                            "headlength": series.vector_head_length,
-                            "headaxislength": series.vector_head_axis_length,
-                            "label": series.label,
-                            "alpha": alpha,
-                        }
-                        if series_data.magnitude_data is not None and series.vector_colormap:
-                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
-                                               series_data.magnitude_data,
-                                               cmap=series.vector_colormap,
-                                               **quiver_kwargs)
-                        else:
-                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
-                                               color=series.vector_color,
-                                               **quiver_kwargs)
+                    series_type = SeriesType(self.chart.chart_type)
+                    style = derive_style(series, SERIES_TYPE_SPECS[series_type].style_cls)
+                    renderer = SERIES_RENDERERS[series_type]
+                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                        "bins": self.chart.config.get("hist_bins", 20),
+                        "resolve_fill_baseline": (
+                            lambda query, horizontal, _i=i, _series=series: self._resolve_fill_baseline(
+                                project, _series, _i, query, horizontal=horizontal)
+                        ),
+                    })
 
                     if SERIES_TYPE_SPECS[SeriesType(self.chart.chart_type)].supports_error_bars:
                         xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
@@ -941,7 +857,7 @@ class ChartEditorWidget(PWidget):
                         fit_axes.plot(fit.x_data, fit.y_data,
                                      color=fit.color,
                                      linewidth=fit.line_width,
-                                     linestyle=_linestyle_map.get(fit.line_style, "--"),
+                                     linestyle=LINESTYLE_MAP.get(fit.line_style, "--"),
                                      label=fit.label,
                                      alpha=fit.alpha)
                         # Plot confidence band if available
