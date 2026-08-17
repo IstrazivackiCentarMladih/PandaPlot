@@ -1086,19 +1086,21 @@ class DataTab(QWidget):
                 combo.blockSignals(False)
 
     def _populate_vector_column_combos(self, dataset_id):
-        """Fill the U/V column combos (required, no "None" entry) and the
-        magnitude combo (optional, leading "None" entry) with the given
-        dataset's columns -- mirrors _populate_column_combos/
-        _populate_error_column_combos' item-data convention (column id, or
-        "" for "None")."""
-        combos = (self.u_column_combo, self.v_column_combo)
-        optional_combos = (self.magnitude_column_combo,)
-        for combo in combos + optional_combos:
+        """Fill the U/V/magnitude column combos with the given dataset's
+        columns, each preceded by a leading "None" entry (itemData "") --
+        mirrors _populate_column_combos/_populate_error_column_combos'
+        item-data convention (column id, or "" for "None"). All three
+        combos get the same blank entry: even though U/V are conceptually
+        "required" for a vector series, an untouched model field is
+        genuinely "" (e.g. right after retyping an existing series to
+        VECTOR via the Series Type combo), and the combo must be able to
+        display that instead of being forced onto a real column that was
+        never chosen."""
+        combos = (self.u_column_combo, self.v_column_combo, self.magnitude_column_combo)
+        for combo in combos:
             combo.blockSignals(True)
         try:
             for combo in combos:
-                combo.clear()
-            for combo in optional_combos:
                 combo.clear()
                 combo.addItem("None", "")
 
@@ -1107,10 +1109,10 @@ class DataTab(QWidget):
                 if isinstance(dataset, Dataset) and dataset.data is not None:
                     for column in dataset.data.columns:
                         column_id = dataset.column_id(column) or ""
-                        for combo in combos + optional_combos:
+                        for combo in combos:
                             combo.addItem(column, column_id)
         finally:
-            for combo in combos + optional_combos:
+            for combo in combos:
                 combo.blockSignals(False)
 
     def _selected_series_is_vector(self) -> bool:

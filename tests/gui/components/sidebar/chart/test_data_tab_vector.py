@@ -221,3 +221,26 @@ def test_editing_u_column_does_not_write_to_a_non_vector_series_on_a_vector_type
     assert series.u_column_id == ""
     assert series.v_column_id == ""
     assert series.magnitude_column_id == ""
+
+
+def test_retyping_an_existing_series_to_vector_does_not_default_uv_to_the_same_real_column():
+    """Regression test: the U/V combos must show a blank/unset entry when
+    the model's u_column_id/v_column_id are genuinely empty (e.g. right
+    after retyping an existing series to VECTOR) -- not silently land on
+    the dataset's first real column, which the next unrelated edit would
+    then commit as a meaningless u==v vector field."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    chart.set_chart_type("vector")
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    vector_index = tab.series_type_combo.findData(SeriesType.VECTOR)
+    tab.series_type_combo.setCurrentIndex(vector_index)
+
+    assert tab.u_column_combo.currentData() == ""
+    assert tab.v_column_combo.currentData() == ""
