@@ -102,7 +102,7 @@ class ChartTab(QWidget):
         config["hist_bins"] = self.hist_bins_spin.value()
         chart_type = self.chart_type_control.currentValue()
         if chart_type:
-            self._chart.chart_type = chart_type
+            self._chart.set_chart_type(chart_type)
         self.configChanged.emit()
 
     def load(self, chart):
@@ -136,7 +136,7 @@ class ChartTab(QWidget):
 
         chart_type = self.chart_type_control.currentValue()
         if chart_type:
-            chart.chart_type = chart_type
+            chart.set_chart_type(chart_type)
 
     def clear(self):
         self._chart = None

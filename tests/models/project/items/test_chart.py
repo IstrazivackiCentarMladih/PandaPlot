@@ -215,6 +215,64 @@ class TestDataSeriesAutoDerivesStyle:
         assert series.style is explicit
 
 
+class TestSetChartTypeRetypesSeries:
+    """set_chart_type must retype every existing series' style class to
+    match the new chart type -- otherwise chart_editor.py's renderer picks
+    its dispatch function from the chart's new type but still finds series
+    whose .style is the OLD style class, and crashes trying to read fields
+    the wrong class doesn't declare (the derive_style-removal regression)."""
+
+    def test_line_to_vector_retypes_series_and_carries_color(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#112233"))
+
+        chart.set_chart_type("vector")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.VECTOR
+        assert isinstance(series.style, VectorSeriesStyle)
+        assert series.style.vector_color == "#112233"
+
+    def test_vector_to_line_carries_vector_color_into_color(self):
+        chart = Chart(name="C", chart_type="vector")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=VectorSeriesStyle(vector_color="#445566"))
+
+        chart.set_chart_type("line")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.LINE
+        assert isinstance(series.style, LineSeriesStyle)
+        assert series.style.color == "#445566"
+
+    def test_setting_the_same_type_is_a_no_op(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#112233"))
+        original_style = chart.data_series[0].style
+
+        chart.set_chart_type("line")
+
+        assert chart.data_series[0].style is original_style
+
+    def test_multi_series_chart_each_keeps_its_own_color(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#111111"))
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#222222"))
+
+        chart.set_chart_type("bar")
+
+        assert chart.data_series[0].series_type == SeriesType.BAR
+        assert isinstance(chart.data_series[0].style, BarSeriesStyle)
+        assert chart.data_series[0].style.color == "#111111"
+        assert chart.data_series[1].series_type == SeriesType.BAR
+        assert isinstance(chart.data_series[1].style, BarSeriesStyle)
+        assert chart.data_series[1].style.color == "#222222"
+
+
 class TestChartAddDataSeriesDefaultsSeriesType:
     """add_data_series defaults series_type from the chart's own type when
     the caller doesn't pass one -- without this, every series added via

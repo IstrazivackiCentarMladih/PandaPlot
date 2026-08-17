@@ -159,3 +159,24 @@ def test_line_chart_with_fill_to_index_fills_between_the_two_curves():
     min_y = vertices[:, 1].min()
     assert min_y >= 5  # nowhere near the unused fill_base=0.0 baseline
     assert max_y >= 19  # reaches up toward series 2's y-values
+
+
+def test_switching_chart_type_after_creation_still_renders():
+    """Regression test: changing an existing chart's type via
+    Chart.set_chart_type must not leave any series' .style mismatched
+    with the new type -- chart_editor.py's renderer would otherwise
+    raise AttributeError trying to read a field the old style class
+    doesn't declare, and render a silently empty chart."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        style=LineSeriesStyle(color="#112233"), label="Series 1",
+    )
+
+    chart.set_chart_type("bar")
+
+    editor = _editor_for(project, chart)
+
+    assert len(editor.chart_canvas.axes.patches) == 5  # one Rectangle per bar (5 x-values)
