@@ -28,6 +28,7 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.models.chart.series_swatch_color import series_swatch_color
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import YAxis
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -681,7 +682,7 @@ class DataTab(QWidget):
             series.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
             series.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
             series.error_symmetric = not self.error_asymmetric_check.isChecked()
-            if self._is_vector_chart():
+            if self._selected_series_is_vector():
                 series.u_column_id = self.u_column_combo.currentData() or ""
                 series.v_column_id = self.v_column_combo.currentData() or ""
                 series.magnitude_column_id = self.magnitude_column_combo.currentData() or ""
@@ -1077,10 +1078,28 @@ class DataTab(QWidget):
     def _is_vector_chart(self) -> bool:
         return bool(self.current_chart) and self.current_chart.chart_type == "vector"
 
+    def _selected_series_is_vector(self) -> bool:
+        """Whether the currently expanded, already-existing series is
+        itself a VECTOR series -- distinct from `_is_vector_chart()`,
+        which only reflects the chart's own type and is used solely for
+        series that don't exist yet (a new series about to be created
+        defaults to the chart's type, so chart-type gating is correct
+        there). An existing series can hold a different type than its
+        chart's (see Chart.set_chart_type), so per-series field
+        visibility/write-back must read the series' own type."""
+        if not self.current_chart:
+            return False
+        row = self._expanded_series_index
+        if row < 0 or row >= len(self.current_chart.data_series):
+            return False
+        return self.current_chart.data_series[row].series_type == SeriesType.VECTOR
+
     def _update_vector_field_visibility(self):
-        """Show the U/V/magnitude rows only when editing a series on a
-        Vector chart -- every other chart type has no use for them."""
-        is_vector = self._is_vector_chart()
+        """Show the U/V/magnitude rows only when editing a series whose
+        own type is Vector -- every other series type has no use for
+        them, regardless of the chart's own type (see
+        _selected_series_is_vector)."""
+        is_vector = self._selected_series_is_vector()
         for widget in (
             self.u_column_label, self.u_column_combo,
             self.v_column_label, self.v_column_combo,

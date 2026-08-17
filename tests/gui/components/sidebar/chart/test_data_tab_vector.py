@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
 
@@ -86,8 +87,16 @@ def test_editing_u_column_updates_the_series():
 
 
 def test_refresh_vector_fields_shows_combos_after_a_live_type_switch():
+    """Uses a starting chart type of "scatter" rather than "line": Vector's
+    spec allows {VECTOR, LINE} series to pass through set_chart_type
+    untouched (see Chart.set_chart_type), so a LINE series would NOT be
+    retyped to VECTOR by this switch and the fields would correctly stay
+    hidden (that's the scenario the two "non_vector_series" tests below
+    cover). A SCATTER series isn't in Vector's allowed set, so it IS
+    retyped to VECTOR, which is what this test needs to exercise the
+    fields actually appearing after a live switch."""
     app_context, project, dataset = _app_context_with_project()
-    chart = Chart(name="Chart", chart_type="line")
+    chart = Chart(name="Chart", chart_type="scatter")
     chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
     project.add_item(chart)
 
@@ -98,7 +107,7 @@ def test_refresh_vector_fields_shows_combos_after_a_live_type_switch():
     QApplication.processEvents()
     assert tab.u_column_combo.isVisible() is False
 
-    chart.chart_type = "vector"  # simulates the Chart tab combo writing directly to chart_type
+    chart.set_chart_type("vector")  # matches how chart_tab.py drives live type switches
     tab.refresh_vector_fields()
     QApplication.processEvents()
 
@@ -164,3 +173,51 @@ def test_apply_to_creates_a_default_vector_series_with_u_and_v():
     assert len(chart.data_series) == 1
     assert chart.data_series[0].u_column_id == dataset.column_id("u")
     assert chart.data_series[0].v_column_id == dataset.column_id("v")
+
+
+def test_vector_fields_hidden_for_a_non_vector_series_on_a_vector_typed_chart():
+    """Regression test for the Phase 4b set_chart_type redesign: a LINE
+    series left on a chart that switched to "vector" (Vector's spec
+    allows {VECTOR, LINE}, so set_chart_type leaves it untouched) must
+    NOT show U/V/magnitude fields when selected -- those fields are
+    driven by the series' own type, not the chart's."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Mixed Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    chart.set_chart_type("vector")
+    assert chart.data_series[0].series_type == SeriesType.LINE  # sanity: still LINE, per Phase 4b
+
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.show()
+    tab.set_project(project)
+    tab.load(chart)
+    QApplication.processEvents()
+
+    assert tab.u_column_combo.isVisible() is False
+    assert tab.v_column_combo.isVisible() is False
+    assert tab.magnitude_column_combo.isVisible() is False
+
+
+def test_editing_u_column_does_not_write_to_a_non_vector_series_on_a_vector_typed_chart():
+    """Companion to the visibility test above: even if the (hidden) U/V
+    combos hold stale data from a previously-selected vector series,
+    _on_series_config_changed must not write it onto a LINE series just
+    because the chart itself is vector-typed."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Mixed Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    chart.set_chart_type("vector")
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    tab._on_series_config_changed()
+
+    series = chart.data_series[0]
+    assert series.u_column_id == ""
+    assert series.v_column_id == ""
+    assert series.magnitude_column_id == ""
