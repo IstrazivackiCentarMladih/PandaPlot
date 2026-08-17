@@ -324,6 +324,61 @@ class TestSetChartTypeRetypesSeries:
         assert retyped.style.vector_color == "#222222"
 
 
+class TestRetypeSeries:
+    """Chart.retype_series retypes a single series explicitly -- the same
+    per-series logic set_chart_type applies in bulk when a chart-type
+    change makes a series' type disallowed, but callable directly for an
+    explicit per-series type change (Phase 4c's Series Type selector)."""
+
+    def test_retypes_a_single_series_and_carries_color(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#112233"))
+
+        chart.retype_series(0, "hist")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.HIST
+        assert isinstance(series.style, HistSeriesStyle)
+        assert series.style.color == "#112233"
+
+    def test_retyping_to_vector_carries_color_into_vector_color(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#445566"))
+
+        chart.retype_series(0, "vector")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.VECTOR
+        assert isinstance(series.style, VectorSeriesStyle)
+        assert series.style.vector_color == "#445566"
+
+    def test_retyping_to_the_same_type_is_a_no_op(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#112233"))
+        original_style = chart.data_series[0].style
+
+        chart.retype_series(0, "line")
+
+        assert chart.data_series[0].style is original_style
+
+    def test_only_the_targeted_series_is_retyped(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#111111"))
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                               style=LineSeriesStyle(color="#222222"))
+        untouched_style = chart.data_series[1].style
+
+        chart.retype_series(0, "scatter")
+
+        assert chart.data_series[0].series_type == SeriesType.SCATTER
+        assert chart.data_series[1].series_type == SeriesType.LINE
+        assert chart.data_series[1].style is untouched_style
+
+
 class TestChartAddDataSeriesDefaultsSeriesType:
     """add_data_series defaults series_type from the chart's own type when
     the caller doesn't pass one -- without this, every series added via

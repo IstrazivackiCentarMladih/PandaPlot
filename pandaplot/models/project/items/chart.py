@@ -241,6 +241,34 @@ class Chart(Item):
             "dpi": 100
         }
     
+    def retype_series(self, index: int, series_type: "str | SeriesType") -> None:
+        """Retype a single series to `series_type`, rebuilding its
+        `.style` for the new type and carrying over its current base
+        color. This is the same per-series retype logic `set_chart_type`
+        applies in bulk to every series a chart-type change makes
+        disallowed -- extracted here so an explicit single-series retype
+        (e.g. a user picking a type via a per-series UI control) shares
+        one implementation with that bulk case, instead of duplicating
+        the color-carry logic.
+        """
+        series = self.data_series[index]
+        new_type = SeriesType(series_type)
+        if series.series_type == new_type:
+            return
+        old_style = series.style
+        base_color = (
+            getattr(old_style, "vector_color", None)
+            or getattr(old_style, "color", None)
+            or "#1f77b4"
+        )
+        style_cls = SERIES_TYPE_SPECS[new_type].style_cls
+        series.series_type = new_type
+        if new_type == SeriesType.VECTOR:
+            series.style = style_cls(vector_color=base_color)
+        else:
+            series.style = style_cls(color=base_color)
+        self.update_modified_time()
+
     def set_chart_type(self, chart_type: "str | ChartType") -> None:
         """Set the chart type, retyping only series not allowed under it.
 
@@ -254,30 +282,16 @@ class Chart(Item):
         "vector", since Vector's spec allows {VECTOR, LINE}) is left
         completely untouched -- mixed series types are legitimate for
         that combination. Retyped series become the new chart type's own
-        `default_series_type`, carrying over a base color the same way
-        `add_data_series`/`AddSeriesCommand` do.
+        `default_series_type`, via `retype_series`.
         """
         new_type = ChartType(chart_type)
         if new_type == self.chart_type:
             return
         self.chart_type = new_type
         spec = CHART_TYPE_SPECS[new_type]
-        default_series_type = spec.default_series_type
-        style_cls = SERIES_TYPE_SPECS[default_series_type].style_cls
-        for series in self.data_series:
-            if series.series_type in spec.allowed_series_types:
-                continue
-            old_style = series.style
-            base_color = (
-                getattr(old_style, "vector_color", None)
-                or getattr(old_style, "color", None)
-                or "#1f77b4"
-            )
-            series.series_type = default_series_type
-            if default_series_type == SeriesType.VECTOR:
-                series.style = style_cls(vector_color=base_color)
-            else:
-                series.style = style_cls(color=base_color)
+        for index, series in enumerate(self.data_series):
+            if series.series_type not in spec.allowed_series_types:
+                self.retype_series(index, spec.default_series_type)
         self.update_modified_time()
     
     def add_data_series(self, dataset_id: str, x_column_id: str = "",
