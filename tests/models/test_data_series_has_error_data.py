@@ -1,10 +1,16 @@
 """Tests for DataSeries.has_error_data, used by the Style tab to decide
 whether the Error Bars card has anything to style."""
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
 from pandaplot.models.project.items.chart import DataSeries
 
 
 def _series(**kwargs):
-    return DataSeries(dataset_id="ds1", x_column="x", y_column="y", **kwargs)
+    """Build a line series with the given error-bar fields set on its
+    nested style.error_bars (where error-bar config actually lives now
+    -- see LineSeriesStyle), rather than as flat DataSeries kwargs."""
+    style = LineSeriesStyle(error_bars=ErrorBarConfig(**kwargs)) if kwargs else None
+    return DataSeries(dataset_id="ds1", x_column="x", y_column="y", style=style)
 
 
 def test_no_error_columns_means_no_error_data():

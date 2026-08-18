@@ -9,81 +9,111 @@ from typing import Callable
 
 from pandaplot.models.migrations.schema_version import CURRENT_SCHEMA_VERSION
 
-# Which of a v1 series' flat fields belong in the new "style" sub-object,
-# per chart type. Mirrors pandaplot.models.chart.series_style's 5 typed
-# classes exactly (LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle/
-# HistSeriesStyle/VectorSeriesStyle) -- kept as plain tuples of field
-# names here, rather than importing those classes, since this module only
-# ever produces plain dicts (Chart.from_dict is what turns a "style" dict
-# into a real dataclass instance, using the same field names).
-_STYLE_FIELDS_BY_CHART_TYPE: dict[str, tuple[str, ...]] = {
-    "line": (
-        "color", "marker_color", "marker_edge_color", "marker_edge_width",
-        "line_style", "marker_style", "line_width", "marker_size",
-        "fill_enabled", "fill_color", "fill_alpha", "fill_orientation",
-        "fill_base", "fill_to_index",
-    ),
-    "scatter": (
-        "color", "marker_color", "marker_edge_color", "marker_edge_width",
-        "marker_style", "marker_size",
-    ),
+# Which of a legacy series' flat fields belong under style.marker, per
+# chart type -- only line/scatter ever had marker fields.
+_MARKER_FIELDS_BY_CHART_TYPE: dict[str, tuple[str, ...]] = {
+    "line": ("marker_color", "marker_edge_color", "marker_edge_width", "marker_style", "marker_size"),
+    "scatter": ("marker_color", "marker_edge_color", "marker_edge_width", "marker_style", "marker_size"),
+}
+
+# Which of a legacy series' flat fields belong under style.error_bars,
+# per chart type -- line/scatter/bar all supported error bars.
+_ERROR_BAR_FIELDS = (
+    "x_error_column_id", "y_error_column_id",
+    "x_error_minus_column_id", "y_error_minus_column_id",
+    "x_error_column", "y_error_column",
+    "x_error_minus_column", "y_error_minus_column",
+    "error_symmetric", "error_direction", "error_color", "error_cap_size",
+)
+_ERROR_BAR_CHART_TYPES = ("line", "scatter", "bar")
+
+# Which of a legacy series' flat fields belong directly on style (not
+# nested further), per chart type.
+_DIRECT_STYLE_FIELDS_BY_CHART_TYPE: dict[str, tuple[str, ...]] = {
+    "line": ("color", "line_style", "line_width", "fill_enabled", "fill_color", "fill_alpha", "fill_orientation", "fill_base", "fill_to_index"),
+    "scatter": ("color",),
     "bar": ("color",),
     "hist": ("color",),
     "vector": (
         "vector_color", "vector_colormap", "vector_scale", "vector_width",
         "vector_head_width", "vector_head_length", "vector_head_axis_length",
+        "u_column_id", "v_column_id", "u_column", "v_column",
+        "magnitude_column_id", "magnitude_column",
     ),
 }
 
+_FIT_STYLE_FIELDS = ("color", "line_style", "line_width", "alpha")
 
-def migrate_chart_v1_to_v2(raw: dict) -> dict:
-    """Add series_type + style keys to each series, derived from the
-    chart's chart_type and that series' own flat fields. Every existing
-    key is left in place -- this migration only adds data, it does not
-    remove any (removal is a later sub-phase's job, once every consumer
-    reads from the new fields instead)."""
+# Every flat field this migration extracts into a series' nested style,
+# across all chart types -- used to strip the now-redundant flat keys
+# once they've been copied into style (see migrate_chart_legacy_to_v1's
+# docstring for why this migration removes them, unlike the original
+# v1->v2 it replaces).
+_ALL_EXTRACTED_SERIES_FIELDS = frozenset(
+    field
+    for fields in _DIRECT_STYLE_FIELDS_BY_CHART_TYPE.values()
+    for field in fields
+) | frozenset(
+    field
+    for fields in _MARKER_FIELDS_BY_CHART_TYPE.values()
+    for field in fields
+) | frozenset(_ERROR_BAR_FIELDS)
+
+
+def migrate_chart_legacy_to_v1(raw: dict) -> dict:
+    """Bring a pre-this-refactor chart dict (schema_version absent/0) up
+    to the current typed shape in one step: each series gets a
+    series_type + fully-nested style (direct fields, plus a "marker"
+    sub-dict for line/scatter and an "error_bars" sub-dict for
+    line/scatter/bar); each fit gets a nested style. There is exactly
+    one prior shape in the wild -- this whole schema-versioning system
+    has never shipped to a real user -- so there is nothing to preserve
+    from an intermediate v1/v2 shape; this replaces what were previously
+    two separate migration steps (v1->v2 for series, v2->v3 for fits).
+
+    Unlike the original v1->v2 (which deliberately left the old flat
+    fields in place for a "later sub-phase" to remove, once every
+    consumer read from the new nested fields instead), this migration
+    also strips the flat keys it just copied into style. That later
+    sub-phase is this same connected redesign landing in one shot -- by
+    the time this migration ships, every consumer already reads the
+    nested style fields (Tasks 1-9), so there's no longer a reason to
+    carry the redundant flat duplicates forward.
+    """
     chart_type = raw.get("chart_type", "line")
-    style_field_names = _STYLE_FIELDS_BY_CHART_TYPE.get(chart_type, _STYLE_FIELDS_BY_CHART_TYPE["line"])
+    direct_fields = _DIRECT_STYLE_FIELDS_BY_CHART_TYPE.get(chart_type, _DIRECT_STYLE_FIELDS_BY_CHART_TYPE["line"])
+    marker_fields = _MARKER_FIELDS_BY_CHART_TYPE.get(chart_type, ())
 
     migrated_series = []
     for series in raw.get("data_series", []):
         new_series = dict(series)
         new_series["series_type"] = chart_type
-        new_series["style"] = {name: series[name] for name in style_field_names if name in series}
+        style = {name: series[name] for name in direct_fields if name in series}
+        if marker_fields:
+            style["marker"] = {name: series[name] for name in marker_fields if name in series}
+        if chart_type in _ERROR_BAR_CHART_TYPES:
+            style["error_bars"] = {name: series[name] for name in _ERROR_BAR_FIELDS if name in series}
+        new_series["style"] = style
+        for name in _ALL_EXTRACTED_SERIES_FIELDS:
+            new_series.pop(name, None)
         migrated_series.append(new_series)
+
+    migrated_fits = []
+    for fit in raw.get("fit_data", []):
+        new_fit = dict(fit)
+        new_fit["style"] = {name: fit[name] for name in _FIT_STYLE_FIELDS if name in fit}
+        for name in _FIT_STYLE_FIELDS:
+            new_fit.pop(name, None)
+        migrated_fits.append(new_fit)
 
     new_raw = dict(raw)
     new_raw["data_series"] = migrated_series
-    return new_raw
-
-
-_FIT_STYLE_FIELDS = ("color", "line_style", "line_width", "alpha")
-
-
-def migrate_chart_v2_to_v3(raw: dict) -> dict:
-    """v2 -> v3: move each fit's flat color/line_style/line_width/alpha
-    fields into a nested "style" dict, matching v1->v2's identical move
-    for data_series. confidence_lower/confidence_upper are untouched --
-    they were already correct, just never had a UI to control how their
-    band renders (see FitStyle.band_fill_enabled/band_fill_alpha/
-    band_color, new in this version)."""
-    new_raw = dict(raw)
-    new_fit_data = []
-    for fit in raw.get("fit_data", []):
-        new_fit = dict(fit)
-        new_fit["style"] = {
-            name: fit[name] for name in _FIT_STYLE_FIELDS if name in fit
-        }
-        for name in _FIT_STYLE_FIELDS:
-            new_fit.pop(name, None)
-        new_fit_data.append(new_fit)
-    new_raw["fit_data"] = new_fit_data
+    new_raw["fit_data"] = migrated_fits
     return new_raw
 
 
 PER_ITEM_CHART_MIGRATIONS: dict[int, Callable[[dict], dict]] = {
-    1: migrate_chart_v1_to_v2,
-    2: migrate_chart_v2_to_v3,
+    0: migrate_chart_legacy_to_v1,
 }
 
 

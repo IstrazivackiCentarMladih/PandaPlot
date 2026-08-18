@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_style import BarSeriesStyle, HistSeriesStyle, LineSeriesStyle, ScatterSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
@@ -214,7 +215,7 @@ def test_error_bars_gating_uses_each_series_own_type_not_the_chart_type():
     series = chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
         label="Series 1", series_type=SeriesType.LINE,
-        y_error_column_id=dataset.column_id("y"),
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("y"))),
     )
     assert series.has_error_data
 

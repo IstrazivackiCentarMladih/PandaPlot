@@ -31,6 +31,7 @@ from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERER
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -869,7 +870,7 @@ class ChartEditorWidget(PWidget):
                             color=style.color,
                             line_style=style.line_style,
                             line_width=style.line_width,
-                            marker_style="none",
+                            marker=MarkerStyle(marker_style="none"),
                             fill_enabled=False,
                         )
                         fit_series_data = SeriesData(
