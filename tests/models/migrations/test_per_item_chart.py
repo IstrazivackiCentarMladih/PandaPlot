@@ -9,9 +9,7 @@ does for the cross-item runner.
 """
 from unittest.mock import patch
 
-from pandaplot.models.migrations.per_item.chart import migrate_chart
-from pandaplot.models.migrations.per_item.chart import migrate_chart_v1_to_v2
-from pandaplot.models.migrations.per_item.chart import migrate_chart_v2_to_v3
+from pandaplot.models.migrations.per_item.chart import migrate_chart, migrate_chart_v1_to_v2, migrate_chart_v2_to_v3
 
 
 def test_noop_when_registry_is_empty():
@@ -263,7 +261,6 @@ def test_style_field_names_match_the_real_style_dataclasses():
     dropping the whole chart from the loaded project."""
     import dataclasses
 
-    from pandaplot.models.chart.series_type import SeriesType
     from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
     from pandaplot.models.migrations.per_item.chart import _STYLE_FIELDS_BY_CHART_TYPE
 
@@ -271,3 +268,28 @@ def test_style_field_names_match_the_real_style_dataclasses():
         expected = {f.name for f in dataclasses.fields(spec.style_cls)}
         actual = set(_STYLE_FIELDS_BY_CHART_TYPE[series_type.value])
         assert actual == expected, f"{series_type.value}: {actual} != {expected}"
+
+
+def test_fit_style_fields_are_a_subset_of_the_real_fit_style_dataclass():
+    """Guards against pandaplot/models/migrations/per_item/chart.py's
+    _FIT_STYLE_FIELDS silently drifting out of sync with FitStyle
+    (pandaplot/models/chart/fit_style.py) -- a drift here (e.g. a field
+    rename) means an old fit dict's flat key ends up under the wrong name
+    inside the migrated "style" dict, so FitStyle(**style_dict) raises a
+    TypeError at project-load time that gets silently swallowed by
+    ProjectDataManager._load_item()'s bare except, dropping the whole
+    chart from the loaded project.
+
+    A subset (not equality) check is correct here: FitStyle also has
+    band_fill_enabled/band_fill_alpha/band_color, which are deliberately
+    NOT in _FIT_STYLE_FIELDS since old v2 data never had them -- they
+    should fall through to FitStyle's own defaults on migration."""
+    import dataclasses
+
+    from pandaplot.models.chart.fit_style import FitStyle
+    from pandaplot.models.migrations.per_item.chart import _FIT_STYLE_FIELDS
+
+    real_field_names = {f.name for f in dataclasses.fields(FitStyle)}
+    assert set(_FIT_STYLE_FIELDS).issubset(real_field_names), (
+        f"{set(_FIT_STYLE_FIELDS)} not a subset of {real_field_names}"
+    )

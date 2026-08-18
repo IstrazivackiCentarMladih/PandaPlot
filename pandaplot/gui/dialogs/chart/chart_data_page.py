@@ -9,10 +9,10 @@ from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
-from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 

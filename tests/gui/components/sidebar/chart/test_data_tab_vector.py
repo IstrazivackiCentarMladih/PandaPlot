@@ -6,8 +6,8 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
-from pandaplot.models.project.items import Dataset
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
 
