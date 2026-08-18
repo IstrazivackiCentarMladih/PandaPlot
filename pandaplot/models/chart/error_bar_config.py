@@ -35,8 +35,15 @@ class ErrorBarConfig:
     def has_error_data(self) -> bool:
         """Whether any error-bar column is configured, by stable id
         (current data) or legacy name (old projects loaded before stable
-        column ids)."""
+        column ids). Includes the asymmetric minus-side columns: a
+        one-sided uncertainty (only a minus column set, error_symmetric
+        False) still renders real error bars -- build_error_array treats
+        the missing plus side as zero rather than refusing to draw -- so
+        this must not report False for that case, or the Style tab hides
+        the Error Bars card for bars that are actually on screen."""
         return bool(
             self.x_error_column_id or self.y_error_column_id
             or self.x_error_column or self.y_error_column
+            or self.x_error_minus_column_id or self.y_error_minus_column_id
+            or self.x_error_minus_column or self.y_error_minus_column
         )
