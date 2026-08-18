@@ -239,12 +239,17 @@ class Chart(Item):
     def retype_series(self, index: int, series_type: "str | SeriesType") -> None:
         """Retype a single series to `series_type`, rebuilding its
         `.style` for the new type and carrying over its current base
-        color. This is the same per-series retype logic `set_chart_type`
-        applies in bulk to every series a chart-type change makes
-        disallowed -- extracted here so an explicit single-series retype
-        (e.g. a user picking a type via a per-series UI control) shares
-        one implementation with that bulk case, instead of duplicating
-        the color-carry logic.
+        color, plus its `marker`/`error_bars` sub-objects when the new
+        style class supports them too (e.g. Line -> Scatter: both
+        compose `marker`/`error_bars`, so a retype must not silently
+        discard a user's already-configured marker styling or error
+        bars just because the concrete style class changed). This is
+        the same per-series retype logic `set_chart_type` applies in
+        bulk to every series a chart-type change makes disallowed --
+        extracted here so an explicit single-series retype (e.g. a user
+        picking a type via a per-series UI control) shares one
+        implementation with that bulk case, instead of duplicating the
+        carry-over logic.
         """
         series = self.data_series[index]
         new_type = SeriesType(series_type)
@@ -259,9 +264,14 @@ class Chart(Item):
         style_cls = SERIES_TYPE_SPECS[new_type].style_cls
         series.series_type = new_type
         if new_type == SeriesType.VECTOR:
-            series.style = style_cls(vector_color=base_color)
+            new_style = style_cls(vector_color=base_color)
         else:
-            series.style = style_cls(color=base_color)
+            new_style = style_cls(color=base_color)
+        if hasattr(old_style, "marker") and hasattr(new_style, "marker"):
+            new_style.marker = copy.deepcopy(old_style.marker)
+        if hasattr(old_style, "error_bars") and hasattr(new_style, "error_bars"):
+            new_style.error_bars = copy.deepcopy(old_style.error_bars)
+        series.style = new_style
         self.update_modified_time()
 
     def set_chart_type(self, chart_type: "str | ChartType") -> None:

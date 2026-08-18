@@ -3,8 +3,16 @@
 import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.fit_style import FitStyle
-from pandaplot.models.chart.series_style import BarSeriesStyle, HistSeriesStyle, LineSeriesStyle, VectorSeriesStyle
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import (
+    BarSeriesStyle,
+    HistSeriesStyle,
+    LineSeriesStyle,
+    ScatterSeriesStyle,
+    VectorSeriesStyle,
+)
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import (
     Chart,
@@ -416,6 +424,63 @@ class TestRetypeSeries:
         assert chart.data_series[0].series_type == SeriesType.SCATTER
         assert chart.data_series[1].series_type == SeriesType.LINE
         assert chart.data_series[1].style is untouched_style
+
+    def test_retyping_line_to_scatter_carries_over_error_bars_and_marker(self):
+        """Regression test: a Line series' already-configured error bars
+        and marker styling must survive a retype to Scatter (both style
+        classes compose marker/error_bars) -- reported live as "if I move
+        from line chart with error bars to scatter, I lose error bars,"
+        caused by retype_series only ever carrying the base color into a
+        brand-new style object and discarding everything else."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=LineSeriesStyle(
+                color="#112233",
+                marker=MarkerStyle(marker_color="#445566", marker_size=5.0),
+                error_bars=ErrorBarConfig(y_error_column_id="err-col", error_cap_size=7.0),
+            ),
+        )
+
+        chart.retype_series(0, "scatter")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.SCATTER
+        assert isinstance(series.style, ScatterSeriesStyle)
+        assert series.style.color == "#112233"
+        assert series.style.marker.marker_color == "#445566"
+        assert series.style.marker.marker_size == 5.0
+        assert series.style.error_bars.y_error_column_id == "err-col"
+        assert series.style.error_bars.error_cap_size == 7.0
+
+    def test_retyping_line_to_scatter_does_not_alias_the_carried_error_bars(self):
+        """The carried-over error_bars/marker must be independent copies,
+        not shared references with the old (now-discarded) style object --
+        otherwise a later edit to the new series' error bars would reach
+        back and mutate an object nothing else should still hold."""
+        chart = Chart(name="C", chart_type="line")
+        old_style = LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id="err-col"))
+        chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y", style=old_style)
+
+        chart.retype_series(0, "scatter")
+
+        chart.data_series[0].style.error_bars.y_error_column_id = "changed"
+        assert old_style.error_bars.y_error_column_id == "err-col"
+
+    def test_retyping_line_to_hist_drops_error_bars_since_hist_has_none(self):
+        """Hist has no error_bars field at all -- retyping into it must not
+        try to carry anything over (and must not crash)."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id="err-col")),
+        )
+
+        chart.retype_series(0, "hist")
+
+        series = chart.data_series[0]
+        assert isinstance(series.style, HistSeriesStyle)
+        assert not hasattr(series.style, "error_bars")
 
 
 class TestChartAddDataSeriesDefaultsSeriesType:
