@@ -6,6 +6,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
@@ -48,7 +49,7 @@ def test_vector_fields_shown_and_populated_for_a_vector_chart():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+        style=VectorSeriesStyle(u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v")),
     )
     project.add_item(chart)
 
@@ -72,7 +73,7 @@ def test_editing_u_column_updates_the_series():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+        style=VectorSeriesStyle(u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v")),
     )
     project.add_item(chart)
 
@@ -83,7 +84,7 @@ def test_editing_u_column_updates_the_series():
     v_index = tab.v_column_combo.findData(dataset.column_id("u"))
     tab.v_column_combo.setCurrentIndex(v_index)
 
-    assert chart.data_series[0].v_column_id == dataset.column_id("u")
+    assert chart.data_series[0].style.v_column_id == dataset.column_id("u")
 
 
 def test_refresh_vector_fields_shows_combos_after_a_live_type_switch():
@@ -124,8 +125,11 @@ def test_refresh_vector_fields_preserves_the_selected_series_u_v_magnitude():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        magnitude_column_id=dataset.column_id("x"), label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            magnitude_column_id=dataset.column_id("x"),
+        ),
+        label="v1",
     )
     project.add_item(chart)
 
@@ -145,9 +149,9 @@ def test_refresh_vector_fields_preserves_the_selected_series_u_v_magnitude():
     tab._on_series_config_changed()
 
     series = chart.data_series[0]
-    assert series.u_column_id == dataset.column_id("u")
-    assert series.v_column_id == dataset.column_id("v")
-    assert series.magnitude_column_id == dataset.column_id("x")
+    assert series.style.u_column_id == dataset.column_id("u")
+    assert series.style.v_column_id == dataset.column_id("v")
+    assert series.style.magnitude_column_id == dataset.column_id("x")
 
 
 def test_apply_to_creates_a_default_vector_series_with_u_and_v():
@@ -171,8 +175,8 @@ def test_apply_to_creates_a_default_vector_series_with_u_and_v():
     tab.apply_to(chart)
 
     assert len(chart.data_series) == 1
-    assert chart.data_series[0].u_column_id == dataset.column_id("u")
-    assert chart.data_series[0].v_column_id == dataset.column_id("v")
+    assert chart.data_series[0].style.u_column_id == dataset.column_id("u")
+    assert chart.data_series[0].style.v_column_id == dataset.column_id("v")
 
 
 def test_vector_fields_hidden_for_a_non_vector_series_on_a_vector_typed_chart():
@@ -218,9 +222,9 @@ def test_editing_u_column_does_not_write_to_a_non_vector_series_on_a_vector_type
     tab._on_series_config_changed()
 
     series = chart.data_series[0]
-    assert series.u_column_id == ""
-    assert series.v_column_id == ""
-    assert series.magnitude_column_id == ""
+    assert getattr(series.style, "u_column_id", "") == ""
+    assert getattr(series.style, "v_column_id", "") == ""
+    assert getattr(series.style, "magnitude_column_id", "") == ""
 
 
 def test_retyping_an_existing_series_to_vector_does_not_default_uv_to_the_same_real_column():

@@ -28,6 +28,7 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_swatch_color import series_swatch_color
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -688,15 +689,17 @@ class DataTab(QWidget):
             series.x_column_id = self.x_column_combo.currentData() or ""
             series.y_column_id = self.y_column_combo.currentData() or ""
             series.y_axis = self.series_y_axis_control.currentValue()
-            series.x_error_column_id = self.x_error_column_combo.currentData() or ""
-            series.y_error_column_id = self.y_error_column_combo.currentData() or ""
-            series.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
-            series.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
-            series.error_symmetric = not self.error_asymmetric_check.isChecked()
+            error_bars = getattr(series.style, "error_bars", None)
+            if error_bars is not None:
+                error_bars.x_error_column_id = self.x_error_column_combo.currentData() or ""
+                error_bars.y_error_column_id = self.y_error_column_combo.currentData() or ""
+                error_bars.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
+                error_bars.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
+                error_bars.error_symmetric = not self.error_asymmetric_check.isChecked()
             if self._selected_series_is_vector():
-                series.u_column_id = self.u_column_combo.currentData() or ""
-                series.v_column_id = self.v_column_combo.currentData() or ""
-                series.magnitude_column_id = self.magnitude_column_combo.currentData() or ""
+                series.style.u_column_id = self.u_column_combo.currentData() or ""
+                series.style.v_column_id = self.v_column_combo.currentData() or ""
+                series.style.magnitude_column_id = self.magnitude_column_combo.currentData() or ""
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
             # to the secondary axis is reflected without waiting for Apply
@@ -830,11 +833,12 @@ class DataTab(QWidget):
             self.series_y_axis_control.setCurrentValue(series.y_axis)
 
             # Set error columns by id (block signals while populating)
+            error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
             for combo, column_id in (
-                (self.x_error_column_combo, series.x_error_column_id),
-                (self.y_error_column_combo, series.y_error_column_id),
-                (self.x_error_minus_column_combo, series.x_error_minus_column_id),
-                (self.y_error_minus_column_combo, series.y_error_minus_column_id),
+                (self.x_error_column_combo, error_bars.x_error_column_id),
+                (self.y_error_column_combo, error_bars.y_error_column_id),
+                (self.x_error_minus_column_combo, error_bars.x_error_minus_column_id),
+                (self.y_error_minus_column_combo, error_bars.y_error_minus_column_id),
             ):
                 combo.blockSignals(True)
                 index = combo.findData(column_id)
@@ -842,9 +846,9 @@ class DataTab(QWidget):
                 combo.blockSignals(False)
 
             for combo, column_id in (
-                (self.u_column_combo, series.u_column_id),
-                (self.v_column_combo, series.v_column_id),
-                (self.magnitude_column_combo, series.magnitude_column_id),
+                (self.u_column_combo, getattr(series.style, "u_column_id", "")),
+                (self.v_column_combo, getattr(series.style, "v_column_id", "")),
+                (self.magnitude_column_combo, getattr(series.style, "magnitude_column_id", "")),
             ):
                 combo.blockSignals(True)
                 index = combo.findData(column_id)
@@ -857,7 +861,7 @@ class DataTab(QWidget):
             self.series_type_combo.blockSignals(False)
 
             self.error_asymmetric_check.blockSignals(True)
-            self.error_asymmetric_check.setChecked(not series.error_symmetric)
+            self.error_asymmetric_check.setChecked(not error_bars.error_symmetric)
             self.error_asymmetric_check.blockSignals(False)
             self._update_error_bar_mode_controls()
 
@@ -1262,7 +1266,21 @@ class DataTab(QWidget):
             y_column_id = self.y_column_combo.currentData()
             y_column_name = self.y_column_combo.currentText()
             new_series_type = self.series_type_combo.currentData() or CHART_TYPE_SPECS[chart.chart_type].default_series_type
-            needs_secondary_columns = SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
+            type_spec = SERIES_TYPE_SPECS[new_series_type]
+            needs_secondary_columns = type_spec.needs_secondary_columns
+            style_kwargs = {}
+            if type_spec.supports_error_bars:
+                style_kwargs["error_bars"] = ErrorBarConfig(
+                    x_error_column_id=self.x_error_column_combo.currentData() or "",
+                    y_error_column_id=self.y_error_column_combo.currentData() or "",
+                    x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
+                    y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
+                    error_symmetric=not self.error_asymmetric_check.isChecked(),
+                )
+            if needs_secondary_columns:
+                style_kwargs["u_column_id"] = self.u_column_combo.currentData() or ""
+                style_kwargs["v_column_id"] = self.v_column_combo.currentData() or ""
+                style_kwargs["magnitude_column_id"] = self.magnitude_column_combo.currentData() or ""
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,
@@ -1271,14 +1289,7 @@ class DataTab(QWidget):
                     label=f"{dataset_name}:{y_column_name}",
                     y_axis=self.series_y_axis_control.currentValue(),
                     series_type=new_series_type,
-                    x_error_column_id=self.x_error_column_combo.currentData() or "",
-                    y_error_column_id=self.y_error_column_combo.currentData() or "",
-                    x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
-                    y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
-                    error_symmetric=not self.error_asymmetric_check.isChecked(),
-                    u_column_id=self.u_column_combo.currentData() or "" if needs_secondary_columns else "",
-                    v_column_id=self.v_column_combo.currentData() or "" if needs_secondary_columns else "",
-                    magnitude_column_id=self.magnitude_column_combo.currentData() or "" if needs_secondary_columns else "",
+                    style=type_spec.style_cls(**style_kwargs),
                 )
 
     def clear(self):
