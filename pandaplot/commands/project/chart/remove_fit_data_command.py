@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.project.items.chart import Chart, FitData, fit_from_flat_dict
+from pandaplot.models.project.items.chart import Chart, fit_from_flat_dict
 from pandaplot.models.state import AppContext
 
 
