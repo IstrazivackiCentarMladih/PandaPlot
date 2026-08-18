@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 
 
 class ChartTab(QWidget):
@@ -54,13 +55,7 @@ class ChartTab(QWidget):
 
         info_layout.addWidget(QLabel("Type:"), 2, 0)
         self.chart_type_control = ValueComboBox(
-            [
-                ("Scatter", ChartType.SCATTER),
-                ("Line", ChartType.LINE),
-                ("Bar", ChartType.BAR),
-                ("Histogram", ChartType.HIST),
-                ("Vector", ChartType.VECTOR),
-            ]
+            [(spec.display_name, chart_type) for chart_type, spec in CHART_TYPE_SPECS.items()]
         )
         info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
