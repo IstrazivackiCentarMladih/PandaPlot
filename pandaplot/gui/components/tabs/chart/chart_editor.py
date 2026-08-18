@@ -28,6 +28,8 @@ from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
+from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
+from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.gui.components.tabs.chart.style_maps import LINESTYLE_MAP
 from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.chart.series_type import SeriesType
@@ -860,21 +862,31 @@ class ChartEditorWidget(PWidget):
                                     break
 
                         # Plot the fit line
-                        fit_axes.plot(fit.x_data, fit.y_data,
-                                     color=fit.style.color,
-                                     linewidth=fit.style.line_width,
-                                     linestyle=LINESTYLE_MAP.get(fit.style.line_style, "--"),
-                                     label=fit.label,
-                                     alpha=fit.style.alpha)
-                        # Plot confidence band if available
-                        if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            # Plot confidence band on the same axis as the fitted curve.
+                        style = fit.style
+                        line_style_adapter = LineSeriesStyle(
+                            color=style.color,
+                            line_style=style.line_style,
+                            line_width=style.line_width,
+                            marker_style="none",
+                            fill_enabled=False,
+                        )
+                        fit_series_data = SeriesData(
+                            x_data=fit.x_data, y_data=fit.y_data,
+                            x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
+                        )
+                        render_line_series(fit_axes, fit_series_data, line_style_adapter,
+                                            fit.label, style.alpha, fit.visible, {})
+
+                        if (style.band_fill_enabled
+                                and fit.confidence_lower is not None
+                                and fit.confidence_upper is not None):
+                            band_color = style.band_color or style.color
                             fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
-                                color=fit.style.color,
-                                alpha=0.2)
+                                color=band_color,
+                                alpha=style.band_fill_alpha)
 
             # Apply chart configuration
             config = self.chart.config
