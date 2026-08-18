@@ -587,10 +587,16 @@ class DataTab(QWidget):
         v_column_id = self.v_column_combo.currentData() if self.v_column_combo.count() > 0 else ""
         magnitude_column_id = self.magnitude_column_combo.currentData() if self.magnitude_column_combo.count() > 0 else ""
 
-        new_series_type = self.series_type_combo.currentData()
-        if new_series_type is None and self.current_chart:
-            new_series_type = CHART_TYPE_SPECS[self.current_chart.chart_type].default_series_type
-        needs_secondary_columns = bool(new_series_type) and SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
+        # A new series always gets the chart's own default type -- NOT
+        # whatever the Series Type combo currently shows, since that combo
+        # tracks whichever EXISTING series is selected (see
+        # _load_series_into_controls) and merely looking at, say, a
+        # Scatter series on a Line chart must not silently make the next
+        # brand-new series Scatter too. To add a non-default type, add the
+        # series (it gets the chart's default) then retype it via the
+        # combo, same as retyping any other series.
+        new_series_type = CHART_TYPE_SPECS[self.current_chart.chart_type].default_series_type
+        needs_secondary_columns = SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
         vector_ready = (not needs_secondary_columns) or (u_column_id and v_column_id)
 
         if dataset_id and x_column_id and y_column_id and vector_ready:
@@ -1276,7 +1282,10 @@ class DataTab(QWidget):
             x_column_id = self.x_column_combo.currentData()
             y_column_id = self.y_column_combo.currentData()
             y_column_name = self.y_column_combo.currentText()
-            new_series_type = self.series_type_combo.currentData() or CHART_TYPE_SPECS[chart.chart_type].default_series_type
+            # Same reasoning as _add_series: a brand-new series always gets
+            # the chart's own default type, not whatever the combo happens
+            # to show (which tracks the selected existing series).
+            new_series_type = CHART_TYPE_SPECS[chart.chart_type].default_series_type
             type_spec = SERIES_TYPE_SPECS[new_series_type]
             needs_secondary_columns = type_spec.needs_secondary_columns
             style_kwargs = {}

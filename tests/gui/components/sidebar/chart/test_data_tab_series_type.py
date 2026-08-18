@@ -6,6 +6,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
+from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
@@ -111,3 +112,33 @@ def test_changing_the_combo_to_vector_shows_the_uv_fields_for_that_series():
     QApplication.processEvents()
 
     assert tab.u_column_combo.isVisible() is True
+
+
+def test_add_series_defaults_to_the_chart_type_even_if_a_different_typed_series_is_selected():
+    """Regression test: reported live as "chart is Line type, but because
+    I have selected a Scatter series, adding a new series defaults to
+    Scatter instead of Line." The Series Type combo tracks whichever
+    EXISTING series is selected (see _load_series_into_controls) -- a
+    brand-new series must always get the chart's own default type
+    (CHART_TYPE_SPECS[chart_type].default_series_type) regardless of
+    what the combo happens to show from the currently-selected series."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+                           series_type=SeriesType.SCATTER)
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    # Sanity: selecting the existing Scatter series correctly shows
+    # "Scatter" in the combo -- this is the surprising value that must
+    # NOT leak into a newly-added series.
+    assert tab.series_type_combo.currentData() == SeriesType.SCATTER
+
+    tab.x_column_combo.setCurrentIndex(0)
+    tab.y_column_combo.setCurrentIndex(0)
+    tab._add_series()
+
+    assert chart.data_series[-1].series_type == SeriesType.LINE
+    assert isinstance(chart.data_series[-1].style, LineSeriesStyle)
