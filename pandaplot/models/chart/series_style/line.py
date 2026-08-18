@@ -1,5 +1,6 @@
 """Style fields for a "line" series -- the only type that reads
-line_style/line_width/fill_* in chart_editor.py's update_chart()."""
+line_style/line_width/fill_* in render_line_series()
+(pandaplot/gui/components/tabs/chart/series_renderers/line.py)."""
 from dataclasses import dataclass, field
 
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig

@@ -1,7 +1,8 @@
-"""Style fields for a "vector" series -- chart_editor.py's vector branch
-(lines 874-892) reads these plus u/v/magnitude column references, now
-composed here on VectorSeriesStyle (moved off DataSeries since only a
-VECTOR series ever has them)."""
+"""Style fields for a "vector" series -- render_vector_series() in
+pandaplot/gui/components/tabs/chart/series_renderers/vector.py reads these
+plus u/v/magnitude column references, now composed here on
+VectorSeriesStyle (moved off DataSeries since only a VECTOR series ever
+has them)."""
 from dataclasses import dataclass
 
 from pandaplot.models.chart.series_style.base import SeriesStyleBase

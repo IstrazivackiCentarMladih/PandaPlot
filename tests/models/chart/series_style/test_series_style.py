@@ -1,13 +1,14 @@
 """Tests for the 5 typed per-series-type style dataclasses.
 
-Field lists and defaults are pinned against DataSeries's current flat
-fields (pandaplot/models/project/items/chart.py) and chart_editor.py's
-per-type rendering branches (lines 818-892) -- each style class holds
-exactly the fields that type's branch reads today, no more, no less.
-Marker fields are composed via MarkerStyle and error-bar fields via
-ErrorBarConfig (both pandaplot/models/chart/); vector's column-reference
-fields (u_column_id, v_column_id, ...) now live on VectorSeriesStyle
-itself.
+Field lists and defaults are pinned against each style class's own
+declared fields and against the corresponding per-type render function in
+pandaplot/gui/components/tabs/chart/series_renderers/ -- each style class
+holds exactly the fields that renderer reads, no more, no less. DataSeries
+itself no longer carries any flat style fields (they were fully retired;
+see test_flat_style_fields_no_longer_exist below). Marker fields are
+composed via MarkerStyle and error-bar fields via ErrorBarConfig (both
+pandaplot/models/chart/); vector's column-reference fields (u_column_id,
+v_column_id, ...) live on VectorSeriesStyle itself.
 """
 import dataclasses
 

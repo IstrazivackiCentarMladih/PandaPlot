@@ -337,7 +337,8 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     never missing-column-checked) and x_data comes back None for a hist
     series. The error columns are resolved leniently (see
     _resolve_error_column) since they're optional; x_err_minus/
-    y_err_minus are only meaningful when series.error_symmetric is False.
+    y_err_minus are only meaningful when style.error_bars.error_symmetric
+    is False.
     Secondary columns (u_data/v_data, required; magnitude_data, optional)
     are resolved the same way, keyed off needs_secondary_columns.
     """

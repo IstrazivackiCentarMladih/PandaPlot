@@ -169,8 +169,9 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         assert isinstance(restored.data_series[0].style, LineSeriesStyle)
 
     def test_from_dict_defaults_series_type_to_chart_type_when_absent(self):
-        # Simulates a v1 project not yet through migrate_chart_v1_to_v2
-        # (Task 5) -- from_dict must still produce a usable series_type.
+        # Simulates a legacy project not yet through
+        # migrate_chart_legacy_to_v1 -- from_dict must still produce a
+        # usable series_type.
         chart = Chart(name="C", chart_type="vector")
         raw = chart.to_dict()
         raw["data_series"] = [{

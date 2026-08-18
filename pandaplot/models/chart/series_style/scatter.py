@@ -1,5 +1,7 @@
 """Style fields for a "scatter" series -- marker fields only, no line/
-fill; chart_editor.py's scatter branch reads only marker fields."""
+fill; render_scatter_series()
+(pandaplot/gui/components/tabs/chart/series_renderers/scatter.py) reads
+only marker fields."""
 from dataclasses import dataclass, field
 
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig

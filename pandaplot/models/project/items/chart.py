@@ -119,8 +119,7 @@ def _series_style_from_dict(series_type: SeriesType, style_dict: Dict[str, Any])
     reverse that automatically -- dataclasses don't auto-build nested
     dataclasses from plain dicts the way ``asdict()`` auto-flattens them.
     So any ``marker``/``error_bars`` key needs to be rebuilt into its own
-    dataclass instance first. (Task 10 may consolidate this further
-    alongside the other flat-dict reconstruction helpers below.)
+    dataclass instance first.
     """
     style_dict = dict(style_dict)
     if "marker" in style_dict and isinstance(style_dict["marker"], dict):
@@ -295,17 +294,20 @@ class Chart(Item):
         """Add a new data series to the chart.
 
         Columns are referenced by their stable ids (``x_column_id`` /
-        ``y_column_id`` and the error-column ids via ``kwargs``). The caller
-        resolves names to ids against the dataset; this model holds no
+        ``y_column_id``); any error/vector column ids arrive nested inside
+        a ``style=`` argument, not as flat ``kwargs``. The caller resolves
+        names to ids against the dataset; this model holds no
         :class:`Dataset` reference — the renderer resolves ids back to live
         names with :func:`resolve_series_column`.
 
         ``series_type`` defaults to this chart's own type when the caller
-        doesn't pass one explicitly -- every series in a chart still shares
-        the chart's type today (mixed series types don't exist until a
-        later phase), so a series added without an explicit type should
-        never silently default to SeriesType.LINE regardless of what kind
-        of chart it's being added to.
+        doesn't pass one explicitly. Mixed series types are a real,
+        working capability today -- a chart's `allowed_series_types` (see
+        :class:`ChartTypeSpec`) restricts which types may coexist on it --
+        but a series added without an explicit type should still default
+        to the chart's own type rather than silently landing on
+        SeriesType.LINE regardless of what kind of chart it's being added
+        to.
         """
         kwargs.setdefault("series_type", SeriesType(self.chart_type))
         series = DataSeries(
@@ -605,7 +607,10 @@ def resolve_series_column(dataset: Any, column_id: str,
 def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
     """Fill a series' ``*_column_id`` fields from its name fields via ``dataset``.
 
-    Called at series write sites and during legacy-chart migration. A name that
+    Called at series write sites; the per-item chart migration itself is a
+    pure dict transform that never calls this method -- only
+    ``cross_item/column_ids.py``'s post-load backfill does, at a later point
+    in the load pipeline once items are constructed objects. A name that
     resolves to a column gets that column's id; an unresolved name leaves the
     existing id untouched (resolution falls back to the stored name).
 

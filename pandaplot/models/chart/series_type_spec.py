@@ -6,8 +6,9 @@ current hardcoded behavior each field's value is derived from.
 
 Deliberately holds no matplotlib-dependent render callable -- pandaplot/models/
 has zero matplotlib imports today, and this keeps it that way. The actual
-per-type render functions live in the GUI layer (a later phase), keyed by
-the same SeriesType.
+per-type render functions live in the GUI layer, in
+pandaplot/gui/components/tabs/chart/series_renderers/, keyed by the same
+SeriesType via SERIES_RENDERERS.
 """
 from dataclasses import dataclass
 from typing import Literal
@@ -28,13 +29,13 @@ class SeriesTypeSpec:
     marker_mode: Literal["required", "optional", "unsupported"]
     supports_line_style: bool
     # Whether the series' color/opacity controls (line_color_row,
-    # line_opacity_slider -- writing series.color/series.alpha) apply to
-    # this type. True for line/bar/hist (all read series.color/alpha in
-    # chart_editor.py's render branches); False for scatter/vector, which
-    # rely on marker_color/marker_edge_color instead. Distinct from
-    # supports_line_style, which is specifically about line_style/line_width
-    # (only true for "line") -- a bar/hist series has no line style but
-    # still needs its color/opacity card shown.
+    # line_opacity_slider -- writing style.color/style.alpha) apply to
+    # this type. True for line/bar/hist (all read style.color/alpha in
+    # their series_renderers module); False for scatter/vector, which
+    # rely on style.marker.marker_color/marker_edge_color instead. Distinct
+    # from supports_line_style, which is specifically about
+    # line_style/line_width (only true for "line") -- a bar/hist series has
+    # no line style but still needs its color/opacity card shown.
     supports_color: bool
     supports_fill: bool
     supports_error_bars: bool

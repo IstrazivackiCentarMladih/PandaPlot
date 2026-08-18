@@ -4,11 +4,10 @@ Absorbs pandaplot/gui/dialogs/chart/chart_role_spec.py's ChartRoleSpec/
 CHART_ROLE_SPECS (display_name/roles/required_roles, unchanged) into this
 single registry rather than keeping two competing ones, and adds the
 allowed_series_types/allows_fit/default_series_type fields nothing in the
-codebase declared before. `allowed_series_types` isn't enforced anywhere
-yet -- no chart can have mixed series types until Phase 3 adds
-DataSeries.series_type and Phase 4 wires enforcement into the "add
-series" flow -- but the type is introduced now since ChartType/
-ChartTypeSpec already exist.
+codebase declared before. `allowed_series_types` is enforced by
+`Chart.set_chart_type`, which retypes only the series that fall outside
+the new chart type's allow-list, and by the "add series" flow -- mixed
+series types are a real, working capability on a chart today.
 
 supports_error_bars is a *property*, not a stored field: chart_role_spec.py
 used to store this fact directly per chart type, but SeriesTypeSpec now

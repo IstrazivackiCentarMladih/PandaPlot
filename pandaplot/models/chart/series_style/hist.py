@@ -1,6 +1,6 @@
-"""Style fields for a "hist" series -- chart_editor.py's hist branch
-(lines 869-873) reads only color (bin count is chart-level config, not a
-per-series style field)."""
+"""Style fields for a "hist" series -- render_hist_series() in
+pandaplot/gui/components/tabs/chart/series_renderers/hist.py reads only
+color (bin count is chart-level config, not a per-series style field)."""
 from dataclasses import dataclass
 
 from pandaplot.models.chart.series_style.base import SeriesStyleBase

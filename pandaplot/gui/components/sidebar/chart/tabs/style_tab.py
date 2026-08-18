@@ -740,8 +740,8 @@ class StyleTab(QWidget):
         color_supported = spec is not None and spec.supports_color
         fill_supported = spec is not None and spec.supports_fill
         error_bars_supported = spec is not None and spec.supports_error_bars
-        # The Line card holds both color/opacity controls (series.color/
-        # series.alpha, rendered for line/bar/hist) and line_style/line_width
+        # The Line card holds both color/opacity controls (style.color/
+        # style.alpha, rendered for line/bar/hist) and line_style/line_width
         # controls (rendered only for "line" -- see SeriesTypeSpec.supports_
         # line_style's docstring). Gating the whole card on supports_color
         # keeps color/opacity available for bar/hist even though their
@@ -1186,7 +1186,7 @@ class StyleTab(QWidget):
 
         "Match line" hides only the color pickers (not just disables them):
         once matching, there's nothing for the user to set -- both colors
-        track `series.color` until unchecked. Edge width is a separate
+        track `style.color` until unchecked. Edge width is a separate
         concern (line thickness, not color) and stays visible/enabled
         whenever markers are on, regardless of the match-line state.
 
