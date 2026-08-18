@@ -6,10 +6,10 @@ scratch (no series existed before `apply_to_chart` ran), the panel used to
 seed `color`/`line_width`/`marker_size` directly onto the flat `DataSeries`
 fields from whatever the Style tab's Line card widgets currently show. Once
 those flat fields were deleted from `DataSeries` (Phase 3c Task 4), the seed
-must instead write into the freshly-created series' typed `.style` object,
-guarded by `hasattr` so it's a safe no-op for a style class (e.g. a vector
-chart's `VectorSeriesStyle`) that doesn't declare `color`/`line_width`/
-`marker_size` at all.
+must instead write into the freshly-created series' typed `.style` object
+(`marker_size` nested under `.style.marker`), guarded by `hasattr` so it's a
+safe no-op for a style class (e.g. a vector chart's `VectorSeriesStyle`) that
+doesn't declare `color`/`line_width`/`marker` at all.
 """
 import sys
 
@@ -64,7 +64,7 @@ def test_bootstrap_seed_writes_typed_style_for_line_chart():
     # now living on the typed style object rather than flat fields.
     assert isinstance(series.style.color, str)
     assert isinstance(series.style.line_width, (int, float))
-    assert isinstance(series.style.marker_size, (int, float))
+    assert isinstance(series.style.marker.marker_size, (int, float))
 
 
 def test_bootstrap_seed_is_noop_for_vector_chart_style_fields():

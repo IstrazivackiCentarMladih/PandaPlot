@@ -484,7 +484,7 @@ class ChartPropertiesPanel(SidebarPanel):
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
                     current_row, series.label,
                     getattr(series.style, "color", None),
-                    getattr(series.style, "marker_color", None),
+                    getattr(getattr(series.style, "marker", None), "marker_color", None),
                 )
             else:
                 # Update fit data
@@ -519,8 +519,8 @@ class ChartPropertiesPanel(SidebarPanel):
                 new_series.style.color = self.style_tab.line_color_row.currentColor()
             if hasattr(new_series.style, "line_width"):
                 new_series.style.line_width = self.style_tab.line_width_slider.value()
-            if hasattr(new_series.style, "marker_size"):
-                new_series.style.marker_size = self.style_tab.marker_size_slider.value()
+            if hasattr(new_series.style, "marker"):
+                new_series.style.marker.marker_size = self.style_tab.marker_size_slider.value()
 
         chart.update_modified_time()
     

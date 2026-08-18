@@ -338,8 +338,13 @@ class FitService:
         from pandaplot.models.project.items.chart import resolve_series_column
         project = getattr(self.fit_panel, "current_project", None)
         dataset = project.find_item(series.dataset_id) if project else None
-        plus_column = resolve_series_column(dataset, series.y_error_column_id, series.y_error_column)
-        minus_column = resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column)
+        error_bars = getattr(series.style, "error_bars", None)
+        y_error_column_id = getattr(error_bars, "y_error_column_id", "")
+        y_error_column = getattr(error_bars, "y_error_column", "")
+        y_error_minus_column_id = getattr(error_bars, "y_error_minus_column_id", "")
+        y_error_minus_column = getattr(error_bars, "y_error_minus_column", "")
+        plus_column = resolve_series_column(dataset, y_error_column_id, y_error_column)
+        minus_column = resolve_series_column(dataset, y_error_minus_column_id, y_error_minus_column)
 
         # Asymmetric error bars
         if plus_column and minus_column:

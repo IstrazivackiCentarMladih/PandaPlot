@@ -4,6 +4,8 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
@@ -27,8 +29,10 @@ def test_extract_sigma_y_asymmetric():
 
     series = DataSeries(
         dataset_id=dataset.id,
-        y_error_column_id=dataset.column_id("error_plus"),
-        y_error_minus_column_id=dataset.column_id("error_minus"),
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(
+            y_error_column_id=dataset.column_id("error_plus"),
+            y_error_minus_column_id=dataset.column_id("error_minus"),
+        )),
     )
 
     fit_panel = Mock()

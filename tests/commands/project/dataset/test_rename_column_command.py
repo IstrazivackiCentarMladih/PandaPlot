@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from pandaplot.commands.project.dataset.rename_column_command import RenameColumnCommand
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
@@ -160,8 +161,11 @@ def test_events_emitted_for_a_vector_series_referencing_the_column_by_u_v_or_mag
     vector_chart = Chart(name="vc", chart_type="vector")
     vector_chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("b"), y_column_id=dataset.column_id("b"),
-        u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b"),
-        magnitude_column_id=dataset.column_id("a"), label="v1",
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
     )
     app_context.get_app_state.return_value.current_project.add_item(vector_chart)
 
