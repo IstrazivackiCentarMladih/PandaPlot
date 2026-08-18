@@ -37,8 +37,9 @@ def test_vector_chart_draws_a_quiver_collection():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        style=VectorSeriesStyle(vector_color="#00ff00"), label="Field",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            vector_color="#00ff00"), label="Field",
     )
     project.add_item(chart)
 
@@ -58,9 +59,10 @@ def test_vector_chart_with_magnitude_column_uses_a_colormap():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        magnitude_column_id=dataset.column_id("mag"),
-        style=VectorSeriesStyle(vector_colormap="plasma"), label="Field",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            magnitude_column_id=dataset.column_id("mag"),
+            vector_colormap="plasma"), label="Field",
     )
     project.add_item(chart)
 
@@ -85,9 +87,10 @@ def test_vector_chart_with_magnitude_column_but_solid_colormap_ignores_magnitude
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        magnitude_column_id=dataset.column_id("mag"),
-        style=VectorSeriesStyle(vector_colormap="", vector_color="#00ff00"),
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            magnitude_column_id=dataset.column_id("mag"),
+            vector_colormap="", vector_color="#00ff00"),
         label="Field",
     )
     project.add_item(chart)

@@ -30,6 +30,7 @@ from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -366,15 +367,16 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
     x_data = (df[x_column] if x_column else df.index) if needs_x_column else None
-    x_err = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_column_id, series.x_error_column))
-    y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
-    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
-    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
+    error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
+    x_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_column_id, error_bars.x_error_column))
+    y_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_column_id, error_bars.y_error_column))
+    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_minus_column_id, error_bars.x_error_minus_column))
+    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_minus_column_id, error_bars.y_error_minus_column))
 
     u_data = v_data = magnitude_data = None
     if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_secondary_columns:
-        u_column = resolve_series_column(dataset, series.u_column_id, series.u_column)
-        v_column = resolve_series_column(dataset, series.v_column_id, series.v_column)
+        u_column = resolve_series_column(dataset, series.style.u_column_id, series.style.u_column)
+        v_column = resolve_series_column(dataset, series.style.v_column_id, series.style.v_column)
         if not u_column or not v_column:
             return SeriesData(None, None, None, None, None, None, "no U/V column configured")
         missing_uv = [c for c in (u_column, v_column) if c not in df.columns]
@@ -383,7 +385,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
             return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
         u_data = df[u_column]
         v_data = df[v_column]
-        magnitude_column = resolve_series_column(dataset, series.magnitude_column_id, series.magnitude_column)
+        magnitude_column = resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column)
         if magnitude_column and magnitude_column in df.columns:
             magnitude_data = df[magnitude_column]
 
@@ -820,11 +822,12 @@ class ChartEditorWidget(PWidget):
                         ),
                     })
 
-                    if SERIES_TYPE_SPECS[series.series_type].supports_error_bars:
-                        xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
-                        yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
+                    error_bars = getattr(style, "error_bars", None)
+                    if error_bars is not None:
+                        xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                        yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
                         if xerr is not None or yerr is not None:
-                            err_color = series.error_color or getattr(style, "color", "#1f77b4")
+                            err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
                             target_axes.errorbar(
                                 x_data, y_data,
                                 xerr=xerr,
@@ -832,7 +835,7 @@ class ChartEditorWidget(PWidget):
                                 fmt="none",
                                 ecolor=err_color,
                                 elinewidth=getattr(style, "line_width", 2.0),
-                                capsize=series.error_cap_size,
+                                capsize=error_bars.error_cap_size,
                                 alpha=alpha)
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
