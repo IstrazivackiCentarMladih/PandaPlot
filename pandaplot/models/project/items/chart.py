@@ -679,38 +679,9 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "style": copy.deepcopy(chart.style),
         "chart_type": chart.chart_type,
         "name": chart.name,
-        "data_series": [asdict(s) for s in chart.data_series],
+        "data_series": [copy.deepcopy(s) for s in chart.data_series],
         "fit_data_styles": [copy.deepcopy(f.style) for f in chart.fit_data],
     }
-
-
-def series_from_flat_dict(series_data: Dict[str, Any]) -> "DataSeries":
-    """Reconstruct a DataSeries from a dict shaped like dataclasses.asdict(series)
-    -- i.e. with `style` (if present) as a plain dict rather than a
-    SeriesStyleBase instance, the shape asdict()'s recursive flattening
-    always produces. Used by restore_chart_state (properties-panel
-    cancel/undo) and RemoveSeriesCommand.undo() -- both capture a series
-    via asdict() and need to reverse that flattening, not just re-apply
-    the flat dict as **kwargs (which would leave `style` as a dict)."""
-    series_data = dict(series_data)
-    style_data = series_data.pop("style", None)
-    series = DataSeries(**series_data)
-    if style_data is not None:
-        series.style = SERIES_TYPE_SPECS[series.series_type].style_cls(**style_data)
-    return series
-
-
-def fit_from_flat_dict(fit_data: dict) -> FitData:
-    """Reconstruct a FitData from a flattened dict (e.g. the output of
-    dataclasses.asdict()), rebuilding ``style`` as a FitStyle instance
-    rather than the plain dict asdict() flattens it into. Mirrors
-    series_from_flat_dict's identical fix for the same DataSeries bug
-    (RemoveSeriesCommand.undo -- see Phase 3a)."""
-    data = dict(fit_data)
-    style = data.get("style")
-    if isinstance(style, dict):
-        data["style"] = FitStyle(**style)
-    return FitData(**data)
 
 
 def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
@@ -719,7 +690,7 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     chart.style = copy.deepcopy(snapshot["style"])
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
-    chart.data_series = [series_from_flat_dict(series_data) for series_data in snapshot["data_series"]]
+    chart.data_series = [copy.deepcopy(s) for s in snapshot["data_series"]]
     for i, fit_style in enumerate(snapshot["fit_data_styles"]):
         if i < len(chart.fit_data):
             chart.fit_data[i].style = copy.deepcopy(fit_style)

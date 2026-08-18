@@ -1,11 +1,11 @@
 """Command for removing a data series from a chart."""
 
-from dataclasses import asdict
-from typing import Any, Dict, Optional, override
+import copy
+from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.project.items.chart import Chart, series_from_flat_dict
+from pandaplot.models.project.items.chart import Chart, DataSeries
 from pandaplot.models.state import AppContext
 
 
@@ -17,7 +17,7 @@ class RemoveSeriesCommand(Command):
         self.app_context = app_context
         self.chart_id = chart_id
         self.series_index = series_index
-        self.removed_series_data: Optional[Dict[str, Any]] = None
+        self.removed_series_data: Optional[DataSeries] = None
 
     def _find_chart(self) -> Optional[Chart]:
         app_state = self.app_context.get_app_state()
@@ -36,7 +36,7 @@ class RemoveSeriesCommand(Command):
 
         # Snapshot the series before removing
         series = chart.data_series[self.series_index]
-        self.removed_series_data = asdict(series)
+        self.removed_series_data = copy.deepcopy(series)
 
         chart.remove_data_series(self.series_index)
 
@@ -54,7 +54,7 @@ class RemoveSeriesCommand(Command):
             return
 
         # Re-create and insert at original position
-        series = series_from_flat_dict(self.removed_series_data)
+        series = copy.deepcopy(self.removed_series_data)
         chart.data_series.insert(self.series_index, series)
         chart.update_modified_time()
 

@@ -27,12 +27,12 @@ def app_context_with_chart():
 
 
 def test_undo_restores_series_with_style_as_dataclass_instance(app_context_with_chart):
-    """Regression test: execute() captures a series via asdict(), which
-    flattens series.style into a plain dict. undo() must reverse that
-    flattening (via series_from_flat_dict) rather than passing the flat
-    dict straight to DataSeries(**d), which would leave `.style` as a
-    plain dict. A plain-dict `.style` blows up the next Chart.to_dict()
-    call, since it does dataclasses.asdict(series.style)."""
+    """Regression test: execute() captures a series via copy.deepcopy(),
+    which preserves series.style as a typed dataclass instance (unlike the
+    old asdict()-then-reconstruct path, which flattened style into a plain
+    dict on the way out). undo() must restore that same typed instance. A
+    plain-dict `.style` would blow up the next Chart.to_dict() call, since
+    it does dataclasses.asdict(series.style)."""
     app_context, chart = app_context_with_chart
     chart.data_series.append(
         DataSeries(

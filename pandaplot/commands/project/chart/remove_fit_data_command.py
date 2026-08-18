@@ -1,11 +1,11 @@
 """Command for removing fit data from a chart."""
 
-from dataclasses import asdict
-from typing import Any, Dict, Optional, override
+import copy
+from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.project.items.chart import Chart, fit_from_flat_dict
+from pandaplot.models.project.items.chart import Chart, FitData
 from pandaplot.models.state import AppContext
 
 
@@ -17,7 +17,7 @@ class RemoveFitDataCommand(Command):
         self.app_context = app_context
         self.chart_id = chart_id
         self.fit_index = fit_index
-        self.removed_fit_data: Optional[Dict[str, Any]] = None
+        self.removed_fit_data: Optional[FitData] = None
 
     def _find_chart(self) -> Optional[Chart]:
         app_state = self.app_context.get_app_state()
@@ -36,7 +36,7 @@ class RemoveFitDataCommand(Command):
 
         # Snapshot the fit data before removing
         fit = chart.fit_data[self.fit_index]
-        self.removed_fit_data = asdict(fit)
+        self.removed_fit_data = copy.deepcopy(fit)
 
         chart.remove_fit_data(self.fit_index)
 
@@ -54,7 +54,7 @@ class RemoveFitDataCommand(Command):
             return
 
         # Re-create and insert at original position
-        fit = fit_from_flat_dict(self.removed_fit_data)
+        fit = copy.deepcopy(self.removed_fit_data)
         chart.fit_data.insert(self.fit_index, fit)
         chart.update_modified_time()
 
