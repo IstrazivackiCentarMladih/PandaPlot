@@ -15,6 +15,9 @@ still only ever set via Chart Properties after Finish, exactly as today.
 """
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas
 from pandaplot.gui.components.tabs.chart.chart_editor import resolve_series_data
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
 
@@ -53,18 +56,32 @@ def render_wizard_preview(
     axes = canvas.axes
     axes.clear()
 
+    series_type = SeriesType(chart_type)
+    spec = SERIES_TYPE_SPECS[series_type]
+    style_cls = spec.style_cls
+
     any_plotted = False
     for config in series_configs:
+        if spec.supports_error_bars:
+            style = style_cls(error_bars=ErrorBarConfig(
+                x_error_column_id=config.get("x_error_column_id", ""),
+                y_error_column_id=config.get("y_error_column_id", ""),
+                error_symmetric=config.get("error_symmetric", True),
+            ))
+        elif series_type == SeriesType.VECTOR:
+            style = style_cls(
+                u_column_id=config.get("u_column_id", ""),
+                v_column_id=config.get("v_column_id", ""),
+                magnitude_column_id=config.get("magnitude_column_id", ""),
+            )
+        else:
+            style = style_cls()
         series = DataSeries(
             dataset_id=config["dataset_id"],
             x_column_id=config.get("x_column_id", ""),
             y_column_id=config.get("y_column_id", ""),
-            x_error_column_id=config.get("x_error_column_id", ""),
-            y_error_column_id=config.get("y_error_column_id", ""),
-            error_symmetric=config.get("error_symmetric", True),
-            u_column_id=config.get("u_column_id", ""),
-            v_column_id=config.get("v_column_id", ""),
-            magnitude_column_id=config.get("magnitude_column_id", ""),
+            series_type=series_type,
+            style=style,
         )
         data = resolve_series_data(project, series, chart_type)
         if data.error is not None:

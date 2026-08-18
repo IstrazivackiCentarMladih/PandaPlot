@@ -710,9 +710,9 @@ def test_vector_series_config_passes_through_u_v_magnitude(mock_wizard_cls, app_
     created_chart = project.add_item.call_args[0][0]
     assert created_chart.chart_type == "vector"
     series = created_chart.data_series[0]
-    assert series.u_column_id == "col-u"
-    assert series.v_column_id == "col-v"
-    assert series.magnitude_column_id == "col-m"
+    assert series.style.u_column_id == "col-u"
+    assert series.style.v_column_id == "col-v"
+    assert series.style.magnitude_column_id == "col-m"
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -730,6 +730,6 @@ def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, ap
     command._on_wizard_finished(QDialog.DialogCode.Accepted)
 
     series = project.add_item.call_args[0][0].data_series[0]
-    assert series.u_column_id == ""
-    assert series.v_column_id == ""
-    assert series.magnitude_column_id == ""
+    assert not hasattr(series.style, "u_column_id")
+    assert not hasattr(series.style, "v_column_id")
+    assert not hasattr(series.style, "magnitude_column_id")

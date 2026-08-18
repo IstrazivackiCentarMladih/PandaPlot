@@ -12,6 +12,9 @@ from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
@@ -198,17 +201,29 @@ class CreateChartFromWizardCommand(Command):
                 chart.config["show_legend"] = dialog.get_show_legend()
                 chart.config["show_grid_x"] = dialog.get_show_grid()
                 chart.config["show_grid_y"] = dialog.get_show_grid()
+                series_type = SeriesType(chart.chart_type)
+                spec = SERIES_TYPE_SPECS[series_type]
+                style_cls = spec.style_cls
                 for series_config in series_configs:
+                    if spec.supports_error_bars:
+                        style = style_cls(error_bars=ErrorBarConfig(
+                            x_error_column_id=series_config["x_error_column_id"],
+                            y_error_column_id=series_config["y_error_column_id"],
+                            error_symmetric=series_config["error_symmetric"],
+                        ))
+                    elif series_type == SeriesType.VECTOR:
+                        style = style_cls(
+                            u_column_id=series_config.get("u_column_id", ""),
+                            v_column_id=series_config.get("v_column_id", ""),
+                            magnitude_column_id=series_config.get("magnitude_column_id", ""),
+                        )
+                    else:
+                        style = style_cls()
                     chart.add_data_series(
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
                         y_column_id=series_config["y_column_id"],
-                        x_error_column_id=series_config["x_error_column_id"],
-                        y_error_column_id=series_config["y_error_column_id"],
-                        error_symmetric=series_config["error_symmetric"],
-                        u_column_id=series_config.get("u_column_id", ""),
-                        v_column_id=series_config.get("v_column_id", ""),
-                        magnitude_column_id=series_config.get("magnitude_column_id", ""),
+                        style=style,
                         label=self._default_series_label(project, series_config),
                     )
 
