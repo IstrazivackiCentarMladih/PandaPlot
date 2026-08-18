@@ -716,6 +716,29 @@ def test_vector_series_config_passes_through_u_v_magnitude(mock_wizard_cls, app_
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_error_bar_series_config_passes_through_to_style(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "col-xerr", "y_error_column_id": "col-yerr",
+        "error_symmetric": False,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    series = created_chart.data_series[0]
+    assert series.style.error_bars.x_error_column_id == "col-xerr"
+    assert series.style.error_bars.y_error_column_id == "col-yerr"
+    assert series.style.error_bars.error_symmetric is False
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     series_configs = [{
