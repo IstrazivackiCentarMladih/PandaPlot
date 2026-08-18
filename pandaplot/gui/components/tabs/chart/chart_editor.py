@@ -29,9 +29,8 @@ from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_arr
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
-from pandaplot.models.chart.series_style import LineSeriesStyle
-from pandaplot.gui.components.tabs.chart.style_maps import LINESTYLE_MAP
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
