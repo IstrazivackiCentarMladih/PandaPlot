@@ -384,6 +384,30 @@ class StyleTab(QWidget):
 
         layout.addWidget(line_card)
 
+        # CONFIDENCE BAND group -- shades the region between
+        # FitData.confidence_lower/confidence_upper around a fit line.
+        # Fit-only (a data series has no confidence interval concept).
+        self.band_card = Card()
+        band_card = self.band_card
+        band_layout = QGridLayout(band_card)
+
+        band_header_row = QHBoxLayout()
+        band_header_row.addWidget(SectionHeader("Confidence Band"))
+        band_header_row.addStretch(1)
+        self.band_enabled_toggle = ToggleSwitch()
+        band_header_row.addWidget(self.band_enabled_toggle)
+        band_layout.addLayout(band_header_row, 0, 0, 1, 2)
+
+        band_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.band_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        band_layout.addWidget(self.band_color_row, 1, 1)
+
+        band_layout.addWidget(QLabel("Opacity:"), 2, 0)
+        self.band_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        band_layout.addWidget(self.band_opacity_slider, 2, 1)
+
+        layout.addWidget(band_card)
+
         # FILL group -- shade the area under the curve (down to a baseline) or
         # between this series and another series in the same chart.
         self.fill_card = Card()
@@ -595,6 +619,9 @@ class StyleTab(QWidget):
         self.line_style_control.currentValueChanged.connect(self._on_field_changed)
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
+        self.band_enabled_toggle.toggled.connect(self._on_field_changed)
+        self.band_color_row.colorChanged.connect(self._on_field_changed)
+        self.band_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
         self.fill_horizontal_toggle.toggled.connect(self._on_fill_orientation_toggled)
         self.fill_to_control.currentValueChanged.connect(self._on_fill_to_changed)
@@ -711,6 +738,7 @@ class StyleTab(QWidget):
         # line_style/line_width controls have no effect for those types,
         # matching pre-Phase-2 behavior exactly.
         self.line_card.setVisible(kind == "fit" or (kind == "series" and color_supported))
+        self.band_card.setVisible(kind == "fit")
         self.fill_card.setVisible(kind == "series" and fill_supported)
         self.marker_card.setVisible(kind == "series" and marker_supported)
         # Fit data has no error-bar fields at all (DataSeries-only), and even
@@ -1350,10 +1378,14 @@ class StyleTab(QWidget):
             style.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
-        fit.style.color = self.line_color_row.currentColor()
-        fit.style.line_style = self.line_style_control.currentValue().value
-        fit.style.line_width = self.line_width_slider.value()
-        fit.style.alpha = self.line_opacity_slider.value()
+        style = fit.style
+        style.color = self.line_color_row.currentColor()
+        style.line_style = self.line_style_control.currentValue().value
+        style.line_width = self.line_width_slider.value()
+        style.alpha = self.line_opacity_slider.value()
+        style.band_fill_enabled = self.band_enabled_toggle.isChecked()
+        style.band_color = self.band_color_row.currentColor()
+        style.band_fill_alpha = self.band_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
@@ -1450,19 +1482,25 @@ class StyleTab(QWidget):
             self._updating_controls = previous_guard
 
     def load_fit_style(self, fit):
-        """Populate the Line/Marker cards from a fit-data entry's style
-        fields. Fit data has no marker concept, so markers are forced off
-        and locked; opacity, however, does apply to the fit line itself."""
+        """Populate the Line/Band/Marker cards from a fit-data entry's
+        typed style object. Fit data has no marker concept, so markers are
+        forced off and locked; opacity applies to the fit line itself,
+        band_fill_alpha to the confidence band separately."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.line_color_row.setCurrentColor(fit.style.color)
-            self.line_width_slider.setValue(fit.style.line_width)
-            self.line_opacity_slider.setValue(fit.style.alpha)
+            style = fit.style
+            self.line_color_row.setCurrentColor(style.color)
+            self.line_width_slider.setValue(style.line_width)
+            self.line_opacity_slider.setValue(style.alpha)
             try:
-                self.line_style_control.setCurrentValue(LineStyleType(fit.style.line_style))
+                self.line_style_control.setCurrentValue(LineStyleType(style.line_style))
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
+
+            self.band_enabled_toggle.setChecked(style.band_fill_enabled)
+            self.band_color_row.setCurrentColor(style.band_color or style.color)
+            self.band_opacity_slider.setValue(style.band_fill_alpha)
 
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(False)
