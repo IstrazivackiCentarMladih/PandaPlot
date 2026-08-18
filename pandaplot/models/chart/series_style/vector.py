@@ -26,3 +26,7 @@ class VectorSeriesStyle(SeriesStyleBase):
     v_column: str = ""
     magnitude_column_id: str = ""
     magnitude_column: str = ""
+
+    @property
+    def swatch_color(self) -> str:
+        return self.vector_color

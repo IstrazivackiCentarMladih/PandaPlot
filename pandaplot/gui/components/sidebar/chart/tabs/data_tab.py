@@ -29,7 +29,6 @@ from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
-from pandaplot.models.chart.series_swatch_color import series_swatch_color
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
@@ -384,7 +383,7 @@ class DataTab(QWidget):
         self._install_select_on_click(card, index)
         row = QHBoxLayout(card)
 
-        row.addWidget(self._make_swatch(series_swatch_color(series), tokens))
+        row.addWidget(self._make_swatch(series.style.swatch_color, tokens))
 
         name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
@@ -452,7 +451,7 @@ class DataTab(QWidget):
         outer = QVBoxLayout(card)
 
         header = QHBoxLayout()
-        header.addWidget(self._make_swatch(series_swatch_color(series), tokens))
+        header.addWidget(self._make_swatch(series.style.swatch_color, tokens))
         name_label = QLabel(series.label or f"{series.dataset_id}:{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}")
         name_label.setStyleSheet(f"color: {tokens.get('text_primary', '#000')};")
         header.addWidget(name_label, 1)
