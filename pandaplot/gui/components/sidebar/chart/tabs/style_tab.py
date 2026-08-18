@@ -1526,7 +1526,7 @@ class StyleTab(QWidget):
             self.band_match_line_toggle.blockSignals(True)
             self.band_match_line_toggle.setChecked(style.band_color == "")
             self.band_match_line_toggle.blockSignals(False)
-            self.band_color_row.setEnabled(style.band_color == "")
+            self.band_color_row.setEnabled(style.band_color != "")
             self.band_opacity_slider.setValue(style.band_fill_alpha)
 
             self.markers_enabled_toggle.blockSignals(True)
