@@ -27,7 +27,12 @@ class ChartTypeSpec:
     display_name: str
     roles: tuple[str, ...]
     required_roles: tuple[str, ...]
-    allowed_series_types: set[SeriesType]
+    # frozenset, not set: `frozen=True` on the dataclass only stops
+    # `spec.allowed_series_types = ...` from reassigning the field -- a
+    # plain `set` value is still mutable in place (`spec.allowed_series_
+    # types.add(...)`), which would silently corrupt every chart using
+    # this shared, module-level registry entry. frozenset closes that gap.
+    allowed_series_types: frozenset[SeriesType]
     allows_fit: bool
     default_series_type: SeriesType
 
@@ -39,28 +44,28 @@ class ChartTypeSpec:
 CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
     ChartType.LINE: ChartTypeSpec(
         display_name="Line", roles=("x", "y"), required_roles=("y",),
-        allowed_series_types={SeriesType.LINE, SeriesType.SCATTER},
+        allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER}),
         allows_fit=True, default_series_type=SeriesType.LINE,
     ),
     ChartType.SCATTER: ChartTypeSpec(
         display_name="Scatter", roles=("x", "y"), required_roles=("y",),
-        allowed_series_types={SeriesType.SCATTER},
+        allowed_series_types=frozenset({SeriesType.SCATTER}),
         allows_fit=True, default_series_type=SeriesType.SCATTER,
     ),
     ChartType.BAR: ChartTypeSpec(
         display_name="Bar", roles=("x", "y"), required_roles=("y",),
-        allowed_series_types={SeriesType.BAR, SeriesType.SCATTER},
+        allowed_series_types=frozenset({SeriesType.BAR, SeriesType.SCATTER}),
         allows_fit=True, default_series_type=SeriesType.BAR,
     ),
     ChartType.HIST: ChartTypeSpec(
         display_name="Histogram", roles=("values",), required_roles=("values",),
-        allowed_series_types={SeriesType.HIST},
+        allowed_series_types=frozenset({SeriesType.HIST}),
         allows_fit=True, default_series_type=SeriesType.HIST,
     ),
     ChartType.VECTOR: ChartTypeSpec(
         display_name="Vector", roles=("x", "y", "u", "v", "magnitude"),
         required_roles=("x", "y", "u", "v"),
-        allowed_series_types={SeriesType.VECTOR, SeriesType.LINE},
+        allowed_series_types=frozenset({SeriesType.VECTOR, SeriesType.LINE}),
         allows_fit=True, default_series_type=SeriesType.VECTOR,
     ),
 }

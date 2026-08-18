@@ -51,6 +51,20 @@ def test_allowed_series_types_per_chart_type():
     assert CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types == {SeriesType.VECTOR, SeriesType.LINE}
 
 
+def test_allowed_series_types_is_genuinely_immutable():
+    """Regression test: ChartTypeSpec is @dataclass(frozen=True), but that
+    alone only stops `spec.allowed_series_types = ...` (reassigning the
+    field) -- a plain `set` value is still mutable in place. Since
+    CHART_TYPE_SPECS is a shared, module-level registry, an in-place
+    `.add()`/`.remove()` anywhere would silently corrupt every chart that
+    consults this same spec object. allowed_series_types must be a real
+    frozenset, not a set, to actually be immutable."""
+    spec = CHART_TYPE_SPECS[ChartType.LINE]
+    assert isinstance(spec.allowed_series_types, frozenset)
+    with pytest.raises(AttributeError):
+        spec.allowed_series_types.add(SeriesType.HIST)
+
+
 def test_all_chart_types_allow_fit():
     assert all(spec.allows_fit for spec in CHART_TYPE_SPECS.values())
 
