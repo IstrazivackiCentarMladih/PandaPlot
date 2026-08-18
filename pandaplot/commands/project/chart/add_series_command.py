@@ -56,14 +56,4 @@ class AddSeriesCommand(Command):
 
     @override
     def redo(self):
-        chart = self._find_chart()
-        if not chart or not isinstance(chart, Chart):
-            return
-        chart.data_series.append(self.series)
-        chart.update_modified_time()
-        self.added_index = len(chart.data_series) - 1
-        self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
-            "chart_id": self.chart_id,
-            "update_type": "series_added",
-            "chart": chart,
-        })
+        self.execute()
