@@ -28,10 +28,11 @@ from pandaplot.models.chart.chart_configuration import (
     LineStyleType,
     MarkerType,
 )
+from pandaplot.models.chart.error_direction import ErrorDirection
 from pandaplot.models.chart.series_style import LineSeriesStyle, ScatterSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
-from pandaplot.models.project.items.chart import DataSeries, ErrorDirection, FitData
+from pandaplot.models.project.items.chart import DataSeries, FitData
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,

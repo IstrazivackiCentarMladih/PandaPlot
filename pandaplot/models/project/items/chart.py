@@ -12,6 +12,7 @@ import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
+from pandaplot.models.chart.error_direction import ErrorDirection
 from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.chart.series_style import SeriesStyleBase
 from pandaplot.models.chart.series_type import SeriesType
@@ -23,13 +24,6 @@ class YAxis(StrEnum):
     """Y-axis selection for a data series."""
     PRIMARY = "primary"
     SECONDARY = "secondary"
-
-
-class ErrorDirection(StrEnum):
-    """Which side(s) of a data point a symmetric error bar's magnitude is drawn on."""
-    BOTH = "both"
-    PLUS = "plus"
-    MINUS = "minus"
 
 
 @dataclass
