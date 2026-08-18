@@ -3,33 +3,19 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
-from pandaplot.models.chart.series_type import SeriesType
-from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.project.items.chart import Chart, DataSeries
 from pandaplot.models.state import AppContext
 
 
 class AddSeriesCommand(Command):
-    """Command to add a new data series to an existing chart."""
+    """Command to add a new, fully-constructed data series to an existing chart."""
 
-    def __init__(self, app_context: AppContext, chart_id: str,
-                 dataset_id: str, x_column_id: str, y_column_id: str,
-                 label: str = "", color: str = "#1f77b4",
-                 u_column_id: str = "", v_column_id: str = "", magnitude_column_id: str = "",
-                 series_type: Optional[SeriesType] = None):
+    def __init__(self, app_context: AppContext, chart_id: str, series: DataSeries):
         super().__init__()
         self.app_context = app_context
         self.chart_id = chart_id
-        self.dataset_id = dataset_id
-        self.x_column_id = x_column_id
-        self.y_column_id = y_column_id
-        self.label = label
-        self.color = color
-        self.u_column_id = u_column_id
-        self.v_column_id = v_column_id
-        self.magnitude_column_id = magnitude_column_id
-        self.series_type = series_type
+        self.series = series
         self.added_index: Optional[int] = None
 
     def _find_chart(self) -> Optional[Chart]:
@@ -44,25 +30,8 @@ class AddSeriesCommand(Command):
         if not chart or not isinstance(chart, Chart):
             return False
 
-        series_type = self.series_type or SeriesType(chart.chart_type)
-        style_cls = SERIES_TYPE_SPECS[series_type].style_cls
-        style = (
-            style_cls(vector_color=self.color)
-            if series_type == SeriesType.VECTOR
-            else style_cls(color=self.color)
-        )
-
-        chart.add_data_series(
-            self.dataset_id,
-            x_column_id=self.x_column_id,
-            y_column_id=self.y_column_id,
-            label=self.label,
-            style=style,
-            series_type=series_type,
-            u_column_id=self.u_column_id,
-            v_column_id=self.v_column_id,
-            magnitude_column_id=self.magnitude_column_id,
-        )
+        chart.data_series.append(self.series)
+        chart.update_modified_time()
         self.added_index = len(chart.data_series) - 1
 
         self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
@@ -87,4 +56,14 @@ class AddSeriesCommand(Command):
 
     @override
     def redo(self):
-        self.execute()
+        chart = self._find_chart()
+        if not chart or not isinstance(chart, Chart):
+            return
+        chart.data_series.append(self.series)
+        chart.update_modified_time()
+        self.added_index = len(chart.data_series) - 1
+        self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
+            "chart_id": self.chart_id,
+            "update_type": "series_added",
+            "chart": chart,
+        })

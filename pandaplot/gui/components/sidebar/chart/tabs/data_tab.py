@@ -33,7 +33,7 @@ from pandaplot.models.chart.series_swatch_color import series_swatch_color
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import YAxis
+from pandaplot.models.project.items.chart import DataSeries, YAxis
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
@@ -595,18 +595,30 @@ class DataTab(QWidget):
         vector_ready = (not needs_secondary_columns) or (u_column_id and v_column_id)
 
         if dataset_id and x_column_id and y_column_id and vector_ready:
-            command = AddSeriesCommand(
-                self.app_context,
-                chart_id=self.current_chart.id,
+            style_cls = SERIES_TYPE_SPECS[new_series_type].style_cls
+            color = self._get_next_series_color()
+            if new_series_type == SeriesType.VECTOR:
+                style = style_cls(
+                    vector_color=color,
+                    u_column_id=u_column_id if needs_secondary_columns else "",
+                    v_column_id=v_column_id if needs_secondary_columns else "",
+                    magnitude_column_id=magnitude_column_id if needs_secondary_columns else "",
+                )
+            else:
+                style = style_cls(color=color)
+
+            new_series = DataSeries(
                 dataset_id=dataset_id,
                 x_column_id=x_column_id,
                 y_column_id=y_column_id,
                 label=f"{dataset_name}:{y_column_name}",
-                color=self._get_next_series_color(),
                 series_type=new_series_type,
-                u_column_id=u_column_id if needs_secondary_columns else "",
-                v_column_id=v_column_id if needs_secondary_columns else "",
-                magnitude_column_id=magnitude_column_id if needs_secondary_columns else "",
+                style=style,
+            )
+            command = AddSeriesCommand(
+                self.app_context,
+                chart_id=self.current_chart.id,
+                series=new_series,
             )
             self.command_executor.execute_command(command)
 
