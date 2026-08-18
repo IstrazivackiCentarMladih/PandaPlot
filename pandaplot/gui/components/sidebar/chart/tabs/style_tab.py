@@ -31,7 +31,7 @@ from pandaplot.models.chart.chart_configuration import (
 from pandaplot.models.chart.series_style import LineSeriesStyle, ScatterSeriesStyle, VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
-from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
+from pandaplot.models.project.items.chart import DataSeries, ErrorDirection, FitData
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -402,9 +402,17 @@ class StyleTab(QWidget):
         self.band_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         band_layout.addWidget(self.band_color_row, 1, 1)
 
-        band_layout.addWidget(QLabel("Opacity:"), 2, 0)
+        # "Match line" reuses the "" == inherit-style.color convention
+        # (same pattern as fill_match_line_toggle below): a fresh FitStyle
+        # has band_color="", meaning the band should track the fit line's
+        # own color rather than freezing a stale/prefilled swatch value.
+        band_layout.addWidget(QLabel("Match line:"), 2, 0)
+        self.band_match_line_toggle = ToggleSwitch(checked=True)
+        band_layout.addWidget(self.band_match_line_toggle, 2, 1)
+
+        band_layout.addWidget(QLabel("Opacity:"), 3, 0)
         self.band_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
-        band_layout.addWidget(self.band_opacity_slider, 2, 1)
+        band_layout.addWidget(self.band_opacity_slider, 3, 1)
 
         layout.addWidget(band_card)
 
@@ -621,6 +629,7 @@ class StyleTab(QWidget):
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.band_enabled_toggle.toggled.connect(self._on_field_changed)
         self.band_color_row.colorChanged.connect(self._on_field_changed)
+        self.band_match_line_toggle.toggled.connect(self._on_band_match_line_toggled)
         self.band_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
         self.fill_horizontal_toggle.toggled.connect(self._on_fill_orientation_toggled)
@@ -738,7 +747,9 @@ class StyleTab(QWidget):
         # line_style/line_width controls have no effect for those types,
         # matching pre-Phase-2 behavior exactly.
         self.line_card.setVisible(kind == "fit" or (kind == "series" and color_supported))
-        self.band_card.setVisible(kind == "fit")
+        self.band_card.setVisible(
+            kind == "fit" and isinstance(obj, FitData) and obj.confidence_lower is not None
+        )
         self.fill_card.setVisible(kind == "series" and fill_supported)
         self.marker_card.setVisible(kind == "series" and marker_supported)
         # Fit data has no error-bar fields at all (DataSeries-only), and even
@@ -1258,6 +1269,15 @@ class StyleTab(QWidget):
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
+    def _on_band_match_line_toggled(self, _checked: bool):
+        """Handle the Confidence Band 'Match line' toggle: grey out the
+        color swatch while it's checked (same convention as
+        _update_fill_controls_visibility's show_color, minus the
+        fill-specific enabled/orientation concerns that don't apply to a
+        fit's simpler Band card)."""
+        self.band_color_row.setEnabled(not self.band_match_line_toggle.isChecked())
+        self._on_field_changed()
+
     def _on_fill_match_line_toggled(self, _checked: bool):
         """Handle the Fill 'Match line' toggle for fill color."""
         self._update_fill_controls_visibility()
@@ -1384,7 +1404,10 @@ class StyleTab(QWidget):
         style.line_width = self.line_width_slider.value()
         style.alpha = self.line_opacity_slider.value()
         style.band_fill_enabled = self.band_enabled_toggle.isChecked()
-        style.band_color = self.band_color_row.currentColor()
+        style.band_color = (
+            "" if self.band_match_line_toggle.isChecked()
+            else self.band_color_row.currentColor()
+        )
         style.band_fill_alpha = self.band_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
@@ -1500,6 +1523,10 @@ class StyleTab(QWidget):
 
             self.band_enabled_toggle.setChecked(style.band_fill_enabled)
             self.band_color_row.setCurrentColor(style.band_color or style.color)
+            self.band_match_line_toggle.blockSignals(True)
+            self.band_match_line_toggle.setChecked(style.band_color == "")
+            self.band_match_line_toggle.blockSignals(False)
+            self.band_color_row.setEnabled(style.band_color == "")
             self.band_opacity_slider.setValue(style.band_fill_alpha)
 
             self.markers_enabled_toggle.blockSignals(True)
