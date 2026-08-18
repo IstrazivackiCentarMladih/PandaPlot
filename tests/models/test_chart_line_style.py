@@ -8,6 +8,7 @@ Covers:
 """
 
 from pandaplot.models.chart.chart_configuration import LineStyleType
+from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.project.items.chart import Chart, DataSeries
 
@@ -21,10 +22,10 @@ def test_data_series_accepts_none_line_style_with_marker():
         dataset_id="ds1",
         x_column="x",
         y_column="y",
-        style=LineSeriesStyle(line_style="none", marker_style="circle"),
+        style=LineSeriesStyle(line_style="none", marker=MarkerStyle(marker_style="circle")),
     )
     assert series.style.line_style == "none"
-    assert series.style.marker_style == "circle"
+    assert series.style.marker.marker_style == "circle"
 
 
 def test_chart_serialization_round_trips_none_line_style():
@@ -54,7 +55,7 @@ def test_line_and_marker_both_none_is_allowed_but_renders_nothing():
         dataset_id="ds1",
         x_column="x",
         y_column="y",
-        style=LineSeriesStyle(line_style="none", marker_style="none"),
+        style=LineSeriesStyle(line_style="none", marker=MarkerStyle(marker_style="none")),
     )
     assert series.style.line_style == "none"
-    assert series.style.marker_style == "none"
+    assert series.style.marker.marker_style == "none"

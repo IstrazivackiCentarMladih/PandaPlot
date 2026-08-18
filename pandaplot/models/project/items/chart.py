@@ -12,9 +12,12 @@ import numpy as np
 
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
-from pandaplot.models.chart.error_direction import ErrorDirection
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.error_direction import ErrorDirection  # noqa: F401 (re-exported; see tests/gui/test_chart_editor_series_resolution.py)
 from pandaplot.models.chart.fit_style import FitStyle
+from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import SeriesStyleBase
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.item import Item
@@ -32,43 +35,22 @@ class DataSeries:
 
     Columns are referenced by their stable id (``*_column_id``); the
     ``*_column`` name fields are a resolution fallback for legacy/externally
-    edited data and a display hint, never the authoritative reference. A
-    column rename updates the dataset registry only — the ids here are
-    untouched, so nothing has to cascade into series. Resolve a live name with
+    edited data and a display hint, never the authoritative reference.
+    Type-specific data (error-bar columns/styling, vector U/V/magnitude
+    columns, marker styling) lives on ``style`` instead of here -- this
+    class only holds fields every series type needs regardless of its
+    own type. Resolve a live name with
     :func:`pandaplot.models.project.items.chart.resolve_series_column`.
     """
     dataset_id: str
     x_column_id: str = ""
     y_column_id: str = ""
-    x_error_column_id: str = ""
-    y_error_column_id: str = ""
-    x_error_minus_column_id: str = ""
-    y_error_minus_column_id: str = ""
-    # Legacy/fallback column names — populated only by loading old projects
-    # (see resolve_series_column). New series reference columns by id.
     x_column: str = ""
     y_column: str = ""
     label: str = ""
     visible: bool = True
-    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
+    y_axis: YAxis = YAxis.PRIMARY
     alpha: float = 1.0
-    x_error_column: str = ""
-    y_error_column: str = ""
-    x_error_minus_column: str = ""  # only used when error_symmetric is False
-    y_error_minus_column: str = ""  # only used when error_symmetric is False
-    error_symmetric: bool = True
-    error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
-    error_color: str = ""  # "" => inherit series.style.color
-    error_cap_size: float = 3.0
-    # Vector-plot ("quiver") column references. u/v are the vector components
-    # at each (x, y); magnitude is optional and, when resolved, colors each
-    # arrow via the vector style's colormap instead of a flat color.
-    u_column_id: str = ""
-    v_column_id: str = ""
-    u_column: str = ""
-    v_column: str = ""
-    magnitude_column_id: str = ""
-    magnitude_column: str = ""
     series_type: SeriesType = SeriesType.LINE
     style: Optional[SeriesStyleBase] = None
 
@@ -85,13 +67,13 @@ class DataSeries:
 
     @property
     def has_error_data(self) -> bool:
-        """Whether any error-bar column is configured for this series, by
-        stable id (current data) or legacy name (old projects loaded before
-        stable column ids)."""
-        return bool(
-            self.x_error_column_id or self.y_error_column_id
-            or self.x_error_column or self.y_error_column
-        )
+        """Whether this series' style carries a configured error-bar
+        column -- only meaningful for style classes with an error_bars
+        field (LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle); any
+        other style class (HistSeriesStyle/VectorSeriesStyle) has none,
+        so this is always False for those."""
+        error_bars = getattr(self.style, "error_bars", None)
+        return error_bars is not None and error_bars.has_error_data
 
 
 @dataclass
@@ -126,6 +108,26 @@ class FitData:
             self.fit_stats = {}
         if self.style is None:
             self.style = FitStyle()
+
+
+def _series_style_from_dict(series_type: SeriesType, style_dict: Dict[str, Any]) -> SeriesStyleBase:
+    """Reconstruct a series' ``style`` from its serialized dict.
+
+    ``dataclasses.asdict()`` flattens nested dataclasses (``marker``,
+    ``error_bars``) into plain nested dicts on the way out; reconstructing
+    the style class from that dict via ``style_cls(**style_dict)`` does NOT
+    reverse that automatically -- dataclasses don't auto-build nested
+    dataclasses from plain dicts the way ``asdict()`` auto-flattens them.
+    So any ``marker``/``error_bars`` key needs to be rebuilt into its own
+    dataclass instance first. (Task 10 may consolidate this further
+    alongside the other flat-dict reconstruction helpers below.)
+    """
+    style_dict = dict(style_dict)
+    if "marker" in style_dict and isinstance(style_dict["marker"], dict):
+        style_dict["marker"] = MarkerStyle(**style_dict["marker"])
+    if "error_bars" in style_dict and isinstance(style_dict["error_bars"], dict):
+        style_dict["error_bars"] = ErrorBarConfig(**style_dict["error_bars"])
+    return SERIES_TYPE_SPECS[series_type].style_cls(**style_dict)
 
 
 class Chart(Item):
@@ -483,28 +485,10 @@ class Chart(Item):
                     "y_column": series.y_column,
                     "x_column_id": series.x_column_id,
                     "y_column_id": series.y_column_id,
-                    "x_error_column_id": series.x_error_column_id,
-                    "y_error_column_id": series.y_error_column_id,
-                    "x_error_minus_column_id": series.x_error_minus_column_id,
-                    "y_error_minus_column_id": series.y_error_minus_column_id,
                     "label": series.label,
                     "visible": series.visible,
                     "y_axis": series.y_axis,
                     "alpha": series.alpha,
-                    "x_error_column": series.x_error_column,
-                    "y_error_column": series.y_error_column,
-                    "x_error_minus_column": series.x_error_minus_column,
-                    "y_error_minus_column": series.y_error_minus_column,
-                    "error_symmetric": series.error_symmetric,
-                    "error_direction": series.error_direction,
-                    "error_color": series.error_color,
-                    "error_cap_size": series.error_cap_size,
-                    "u_column_id": series.u_column_id,
-                    "v_column_id": series.v_column_id,
-                    "u_column": series.u_column,
-                    "v_column": series.v_column,
-                    "magnitude_column_id": series.magnitude_column_id,
-                    "magnitude_column": series.magnitude_column,
                     "series_type": series.series_type.value,
                     "style": asdict(series.style) if series.style is not None else None,
                 } for series in self.data_series
@@ -556,35 +540,17 @@ class Chart(Item):
         for series_dict in series_data:
             series_type = SeriesType(series_dict.get("series_type", chart.chart_type))
             style_dict = series_dict.get("style")
-            style = SERIES_TYPE_SPECS[series_type].style_cls(**style_dict) if style_dict is not None else None
+            style = _series_style_from_dict(series_type, style_dict) if style_dict is not None else None
             series = DataSeries(
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
                 y_column=series_dict["y_column"],
                 x_column_id=series_dict.get("x_column_id", ""),
                 y_column_id=series_dict.get("y_column_id", ""),
-                x_error_column_id=series_dict.get("x_error_column_id", ""),
-                y_error_column_id=series_dict.get("y_error_column_id", ""),
-                x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
-                y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
                 label=series_dict.get("label", ""),
                 visible=series_dict.get("visible", True),
                 y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0),
-                x_error_column=series_dict.get("x_error_column", ""),
-                y_error_column=series_dict.get("y_error_column", ""),
-                x_error_minus_column=series_dict.get("x_error_minus_column", ""),
-                y_error_minus_column=series_dict.get("y_error_minus_column", ""),
-                error_symmetric=series_dict.get("error_symmetric", True),
-                error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
-                error_color=series_dict.get("error_color", ""),
-                error_cap_size=series_dict.get("error_cap_size", 3.0),
-                u_column_id=series_dict.get("u_column_id", ""),
-                v_column_id=series_dict.get("v_column_id", ""),
-                u_column=series_dict.get("u_column", ""),
-                v_column=series_dict.get("v_column", ""),
-                magnitude_column_id=series_dict.get("magnitude_column_id", ""),
-                magnitude_column=series_dict.get("magnitude_column", ""),
                 series_type=series_type,
                 style=style,
             )
@@ -642,26 +608,50 @@ def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
     Called at series write sites and during legacy-chart migration. A name that
     resolves to a column gets that column's id; an unresolved name leaves the
     existing id untouched (resolution falls back to the stored name).
+
+    The error and vector column pairs now live nested on ``series.style``
+    (``series.style.error_bars`` / a ``VectorSeriesStyle`` instance) rather
+    than directly on ``series``, so each nested target is resolved and
+    guarded the same way ``has_error_data``/``retype_series`` do.
     """
     if dataset is None:
         return
-    pairs = (
+    pairs = [
         ("x_column", "x_column_id"),
         ("y_column", "y_column_id"),
-        ("x_error_column", "x_error_column_id"),
-        ("y_error_column", "y_error_column_id"),
-        ("x_error_minus_column", "x_error_minus_column_id"),
-        ("y_error_minus_column", "y_error_minus_column_id"),
-        ("u_column", "u_column_id"),
-        ("v_column", "v_column_id"),
-        ("magnitude_column", "magnitude_column_id"),
-    )
+    ]
     for name_field, id_field in pairs:
         name = getattr(series, name_field, "")
         if name:
             cid = dataset.column_id(name)
             if cid is not None:
                 setattr(series, id_field, cid)
+
+    error_bars = getattr(series.style, "error_bars", None)
+    if error_bars is not None:
+        for name_field, id_field in (
+            ("x_error_column", "x_error_column_id"),
+            ("y_error_column", "y_error_column_id"),
+            ("x_error_minus_column", "x_error_minus_column_id"),
+            ("y_error_minus_column", "y_error_minus_column_id"),
+        ):
+            name = getattr(error_bars, name_field, "")
+            if name:
+                cid = dataset.column_id(name)
+                if cid is not None:
+                    setattr(error_bars, id_field, cid)
+
+    if isinstance(series.style, VectorSeriesStyle):
+        for name_field, id_field in (
+            ("u_column", "u_column_id"),
+            ("v_column", "v_column_id"),
+            ("magnitude_column", "magnitude_column_id"),
+        ):
+            name = getattr(series.style, name_field, "")
+            if name:
+                cid = dataset.column_id(name)
+                if cid is not None:
+                    setattr(series.style, id_field, cid)
 
 
 def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
