@@ -1362,24 +1362,29 @@ class StyleTab(QWidget):
         # and ScatterSeriesStyle declare marker fields at all.
         if isinstance(style, (LineSeriesStyle, ScatterSeriesStyle)):
             if self.markers_enabled_toggle.isChecked():
-                style.marker_style = self.marker_shape_control.currentValue().value
-                style.marker_size = self.marker_size_slider.value()
+                style.marker.marker_style = self.marker_shape_control.currentValue().value
+                style.marker.marker_size = self.marker_size_slider.value()
                 match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
-                style.marker_color = "" if match_line else self.marker_color_row.currentColor()
-                style.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
-                style.marker_edge_width = self.marker_edge_width_slider.value()
+                style.marker.marker_color = "" if match_line else self.marker_color_row.currentColor()
+                style.marker.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
+                style.marker.marker_edge_width = self.marker_edge_width_slider.value()
             else:
-                style.marker_style = MarkerType.NONE.value
+                style.marker.marker_style = MarkerType.NONE.value
 
-        # Error-bar fields were never moved into the typed style classes
-        # (Phase 3a) -- every series type keeps them directly, regardless
-        # of which style class `style` is.
-        series.error_direction = self.error_direction_control.currentValue()
-        series.error_color = (
-            "" if self.error_match_line_toggle.isChecked()
-            else self.error_color_row.currentColor()
-        )
-        series.error_cap_size = self.error_cap_size_slider.value()
+        # Error-bar fields now live on style.error_bars, which only
+        # LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle declare --
+        # HistSeriesStyle/VectorSeriesStyle have no such field, so this must
+        # be gated (the Error Bars card itself is only shown for a series
+        # whose spec supports error bars, but that visibility rule doesn't
+        # protect this direct write).
+        error_bars = getattr(style, "error_bars", None)
+        if error_bars is not None:
+            error_bars.error_direction = self.error_direction_control.currentValue()
+            error_bars.error_color = (
+                "" if self.error_match_line_toggle.isChecked()
+                else self.error_color_row.currentColor()
+            )
+            error_bars.error_cap_size = self.error_cap_size_slider.value()
 
         # Area fill. "Match line" reuses the "" == inherit-style.color
         # convention. fill_to_index is -1 (fill down to the constant baseline)
@@ -1446,7 +1451,8 @@ class StyleTab(QWidget):
             # shape control keeps showing the last remembered shape
             # (defaulting to circle) rather than "none", since "none" isn't
             # offered as a selectable shape here.
-            marker_style_value = getattr(style, "marker_style", MarkerType.NONE.value)
+            marker = getattr(style, "marker", None)
+            marker_style_value = getattr(marker, "marker_style", MarkerType.NONE.value)
             markers_enabled = marker_style_value != MarkerType.NONE.value
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(markers_enabled)
@@ -1458,33 +1464,37 @@ class StyleTab(QWidget):
             except ValueError:
                 self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
 
-            self.marker_size_slider.setValue(getattr(style, "marker_size", 2.0))
+            self.marker_size_slider.setValue(getattr(marker, "marker_size", 2.0))
 
             # marker_color == "" is the existing "match line color"
             # convention, now shared by marker_edge_color too.
-            marker_color = getattr(style, "marker_color", "")
+            marker_color = getattr(marker, "marker_color", "")
             self.marker_color_row.setCurrentColor(marker_color or color)
             self.marker_match_line_toggle.blockSignals(True)
             self.marker_match_line_toggle.setChecked(marker_color == "")
             self.marker_match_line_toggle.blockSignals(False)
-            marker_edge_color = getattr(style, "marker_edge_color", "")
+            marker_edge_color = getattr(marker, "marker_edge_color", "")
             self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
-            self.marker_edge_width_slider.setValue(getattr(style, "marker_edge_width", 1.0))
+            self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
 
-            # Error-bar fields were never moved into the typed style classes
-            # (Phase 3a) -- read them straight off the series.
+            # Error-bar fields now live on style.error_bars; not every style
+            # class declares one (Hist/Vector don't), so read defensively.
+            error_bars = getattr(style, "error_bars", None)
             try:
-                self.error_direction_control.setCurrentValue(ErrorDirection(series.error_direction))
+                self.error_direction_control.setCurrentValue(
+                    ErrorDirection(getattr(error_bars, "error_direction", ErrorDirection.BOTH))
+                )
             except ValueError:
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
-            self.error_color_row.setCurrentColor(series.error_color or color)
+            error_color = getattr(error_bars, "error_color", "")
+            self.error_color_row.setCurrentColor(error_color or color)
             self.error_match_line_toggle.blockSignals(True)
-            self.error_match_line_toggle.setChecked(series.error_color == "")
+            self.error_match_line_toggle.setChecked(error_color == "")
             self.error_match_line_toggle.blockSignals(False)
             self._update_error_controls_visibility()
-            self.error_cap_size_slider.setValue(series.error_cap_size)
+            self.error_cap_size_slider.setValue(getattr(error_bars, "error_cap_size", 3.0))
 
             self._populate_fill_to_options(series)
             self.fill_enabled_toggle.blockSignals(True)

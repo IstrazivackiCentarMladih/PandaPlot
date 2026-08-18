@@ -11,6 +11,8 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.chart import DataSeries
@@ -25,11 +27,33 @@ def _make_series(series_type, **overrides):
     name in ``overrides`` into a freshly constructed typed `style=` object
     -- the flat kwargs these used to be passed as directly to DataSeries no
     longer exist post-Phase-3c-Task-4 -- and passing everything else
-    (DataSeries' own fields) straight through."""
+    (DataSeries' own fields) straight through.
+
+    Marker fields (marker_style/marker_size/marker_color/marker_edge_color/
+    marker_edge_width) and error-bar fields (error_direction/error_color/
+    error_cap_size/etc.) live nested one level further, on style.marker
+    (a MarkerStyle) and style.error_bars (an ErrorBarConfig) respectively
+    -- routed here the same way."""
     style_cls = SERIES_TYPE_SPECS[series_type].style_cls
     style_field_names = {f.name for f in dataclasses.fields(style_cls)}
+    marker_field_names = {f.name for f in dataclasses.fields(MarkerStyle)}
+    error_bars_field_names = {f.name for f in dataclasses.fields(ErrorBarConfig)}
+
     style_kwargs = {k: v for k, v in overrides.items() if k in style_field_names}
-    series_kwargs = {k: v for k, v in overrides.items() if k not in style_field_names}
+    marker_kwargs = {k: v for k, v in overrides.items() if k in marker_field_names}
+    error_bars_kwargs = {k: v for k, v in overrides.items() if k in error_bars_field_names}
+    series_kwargs = {
+        k: v for k, v in overrides.items()
+        if k not in style_field_names
+        and k not in marker_field_names
+        and k not in error_bars_field_names
+    }
+
+    if marker_kwargs and "marker" in style_field_names:
+        style_kwargs["marker"] = MarkerStyle(**marker_kwargs)
+    if error_bars_kwargs and "error_bars" in style_field_names:
+        style_kwargs["error_bars"] = ErrorBarConfig(**error_bars_kwargs)
+
     return DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", series_type=series_type,
         style=style_cls(**style_kwargs),
@@ -79,7 +103,7 @@ def test_load_then_apply_round_trips_marker_match_line_sentinel():
 
     tab.apply_series_style_to(series)
 
-    assert series.style.marker_color == ""  # still the sentinel, not "#445566"
+    assert series.style.marker.marker_color == ""  # still the sentinel, not "#445566"
 
 
 def test_load_then_apply_round_trips_fill_fields_for_line_series():
@@ -149,7 +173,9 @@ def test_apply_does_not_write_marker_fields_onto_a_bar_series_style():
     assert not hasattr(series.style, "marker_style")
 
 
-def test_error_bar_fields_stay_on_dataseries_not_style():
+def test_error_bar_fields_live_on_style_error_bars_not_dataseries():
+    """Error-bar fields moved off DataSeries onto style.error_bars (Task 2);
+    apply_series_style_to must write there, not back onto the series."""
     _qapp()
     tab = StyleTab(app_context=None)
     tab.set_chart_type(ChartType.LINE)
@@ -158,8 +184,8 @@ def test_error_bar_fields_stay_on_dataseries_not_style():
     tab.load_series_style(series)
     tab.apply_series_style_to(series)
 
-    assert not hasattr(series.style, "error_color")
-    assert series.error_color == ""  # unchanged default, still a top-level field
+    assert not hasattr(series, "error_color")
+    assert series.style.error_bars.error_color == ""  # unchanged default
 
 
 def test_card_visibility_uses_the_selected_series_own_type_not_the_chart_type():
