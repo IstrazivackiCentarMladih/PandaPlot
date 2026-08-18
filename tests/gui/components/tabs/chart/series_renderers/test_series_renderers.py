@@ -7,6 +7,7 @@ matplotlib call and asserts on the resulting artist -- pinning today's
 rendering behavior before Task 3 deletes the original branches.
 """
 import matplotlib
+
 matplotlib.use("Agg")  # no display needed for these pure-drawing tests
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +22,7 @@ from pandaplot.gui.components.tabs.chart.series_renderers import (
     render_scatter_series,
     render_vector_series,
 )
+from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import (
     BarSeriesStyle,
     HistSeriesStyle,
@@ -53,7 +55,7 @@ def test_series_renderers_registry_has_all_5_types():
 def test_render_line_series_draws_a_line_with_style_fields():
     fig, ax = plt.subplots()
     style = LineSeriesStyle(color="#ff0000", line_width=3.0, line_style="dashed",
-                             marker_style="none", marker_size=1.0)
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
 
     render_line_series(ax, _series_data(), style, "My Line", 1.0, True,
                         {"resolve_fill_baseline": lambda q, h: 0.0})
@@ -98,7 +100,7 @@ def test_render_line_series_fill_alpha_halved_when_not_visible():
 
 def test_render_scatter_series_draws_a_scatter_collection():
     fig, ax = plt.subplots()
-    style = ScatterSeriesStyle(color="#123456", marker_style="square", marker_size=3.0)
+    style = ScatterSeriesStyle(color="#123456", marker=MarkerStyle(marker_style="square", marker_size=3.0))
 
     render_scatter_series(ax, _series_data(), style, "My Scatter", 1.0, True, {})
 

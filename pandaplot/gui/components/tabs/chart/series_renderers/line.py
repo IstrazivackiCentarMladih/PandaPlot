@@ -8,17 +8,17 @@ from pandaplot.models.chart.series_style import LineSeriesStyle
 
 def render_line_series(axes, series_data: SeriesData, style: LineSeriesStyle,
                         label: str, alpha: float, visible: bool, extra: dict) -> None:
-    mfc = style.marker_color or style.color
-    mec = style.marker_edge_color or style.color
+    mfc = style.marker.marker_color or style.color
+    mec = style.marker.marker_edge_color or style.color
     axes.plot(series_data.x_data, series_data.y_data,
               color=style.color,
               linewidth=style.line_width,
               linestyle=LINESTYLE_MAP.get(style.line_style, "-"),
-              marker=MARKER_MAP.get(style.marker_style, "o"),
-              markersize=style.marker_size,
+              marker=MARKER_MAP.get(style.marker.marker_style, "o"),
+              markersize=style.marker.marker_size,
               markerfacecolor=mfc,
               markeredgecolor=mec,
-              markeredgewidth=style.marker_edge_width,
+              markeredgewidth=style.marker.marker_edge_width,
               label=label,
               alpha=alpha)
     if style.fill_enabled:
