@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS, compatible_chart_types
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS, compatible_chart_types_for_series
 
 
 class ChartTab(QWidget):
@@ -98,17 +98,35 @@ class ChartTab(QWidget):
         self._on_field_changed()
 
     def _update_chart_type_compatibility(self):
-        """Disable chart-type options that would force-retype (and
-        therefore visually alter) this chart's current series, per
-        `compatible_chart_types`. Reported live: "if we don't want to
-        support some transitions in chart type we could disable it. like
-        I don't think we should support going from vector to barchart."
+        """Disable chart-type options that would force-retype (and therefore
+        visually alter) this chart's ACTUAL series -- not just its nominal
+        type's default series type, per `compatible_chart_types_for_series`.
+        Using the chart's real series types (rather than
+        `compatible_chart_types`, which only considers the chart type's
+        static default) is required for mixed-type charts: a Scatter chart
+        holding a VECTOR series must NOT show Bar as enabled just because a
+        plain Scatter series would survive the switch -- the VECTOR series
+        wouldn't. Reported live: "if we don't want to support some
+        transitions in chart type we could disable it. like I don't think we
+        should support going from vector to barchart"; refined via PR #180
+        review to account for mixed-series charts, not just single-type ones.
         Recomputed on every type change (not just on `load()`), since the
-        compatible set depends on the CURRENT chart type."""
+        compatible set depends on the CURRENT chart's actual series.
+
+        A chart with no series yet (a still-empty new chart, or the tab in
+        its cleared state) has no actual series to protect, so this falls
+        back to the current type's own default_series_type -- matching the
+        reviewer's "falling back to the chart default only when empty" --
+        rather than treating "no series" as "every chart type is safe",
+        which would defeat the whole point of the check for e.g. a
+        freshly-created Vector chart with no series added yet."""
         current_type = self.chart_type_control.currentValue()
         if current_type is None:
             return
-        compatible = compatible_chart_types(current_type)
+        series_types = {s.series_type for s in self._chart.data_series} if self._chart else set()
+        if not series_types:
+            series_types = {CHART_TYPE_SPECS[current_type].default_series_type}
+        compatible = compatible_chart_types_for_series(series_types)
         model = self.chart_type_control.model()
         for index in range(self.chart_type_control.count()):
             target_type = self.chart_type_control.itemData(index)

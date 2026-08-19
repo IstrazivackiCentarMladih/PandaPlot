@@ -143,3 +143,49 @@ def test_compatible_chart_types_always_includes_self():
     from pandaplot.models.chart.chart_type_spec import compatible_chart_types
     for chart_type in CHART_TYPE_SPECS:
         assert chart_type in compatible_chart_types(chart_type)
+
+
+def test_compatible_chart_types_for_series_empty_returns_all_chart_types():
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types_for_series
+    assert compatible_chart_types_for_series(frozenset()) == frozenset(CHART_TYPE_SPECS.keys())
+
+
+def test_compatible_chart_types_for_series_single_scatter_matches_compatible_chart_types():
+    """A chart whose only series is SCATTER should report the same
+    compatible set as `compatible_chart_types(ChartType.SCATTER)` --
+    SCATTER's own default_series_type IS scatter, so the two functions
+    agree in this specific single-type case."""
+    from pandaplot.models.chart.chart_type_spec import (
+        compatible_chart_types,
+        compatible_chart_types_for_series,
+    )
+    assert (
+        compatible_chart_types_for_series({SeriesType.SCATTER})
+        == compatible_chart_types(ChartType.SCATTER)
+    )
+
+
+def test_compatible_chart_types_for_series_mixed_scatter_and_vector_excludes_bar():
+    """The exact reviewer scenario from PR #180: a Scatter chart holding
+    both a SCATTER series and a VECTOR series must NOT report Bar as a
+    safe switch target, even though `compatible_chart_types(SCATTER)`
+    alone (which only looks at the chart's nominal type) WOULD include
+    Bar. BAR's allowed_series_types is {BAR, SCATTER}, which doesn't
+    include VECTOR, so switching would silently retype (and drop the
+    configuration of) the VECTOR series."""
+    from pandaplot.models.chart.chart_type_spec import (
+        compatible_chart_types,
+        compatible_chart_types_for_series,
+    )
+    mixed = {SeriesType.SCATTER, SeriesType.VECTOR}
+    assert ChartType.BAR not in compatible_chart_types_for_series(mixed)
+    assert ChartType.BAR in compatible_chart_types(ChartType.SCATTER)
+
+
+def test_compatible_chart_types_for_series_single_vector_matches_existing_vector_behavior():
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types_for_series
+    result = compatible_chart_types_for_series({SeriesType.VECTOR})
+    assert ChartType.BAR not in result
+    assert ChartType.LINE in result
+    assert ChartType.SCATTER in result
+    assert ChartType.VECTOR in result

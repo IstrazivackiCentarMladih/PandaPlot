@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.chart_tab import ChartTab
 from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart
 
 
@@ -84,3 +85,25 @@ def test_clear_resets_chart_type_compatibility_state():
     tab.clear()
 
     assert _is_option_enabled(tab, ChartType.BAR) is True
+
+
+def test_mixed_scatter_and_vector_series_disables_bar():
+    """The exact reviewer scenario from PR #180 review, reproduced through
+    the real UI method: a Scatter chart holding both a SCATTER series and
+    a VECTOR series must show Bar as DISABLED, even though a plain
+    Scatter chart alone (no VECTOR series) allows Bar -- see
+    `test_scatter_chart_still_allows_switching_to_bar` above. Before the
+    fix, `_update_chart_type_compatibility` consulted only the chart's
+    nominal type (`compatible_chart_types(ChartType.SCATTER)`, which
+    includes Bar) and ignored the actual VECTOR series present, so this
+    test would have failed by asserting Bar was enabled when it should
+    not be."""
+    tab = ChartTab()
+    chart = Chart(name="Mixed Chart", chart_type="scatter")
+    chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                           series_type=SeriesType.SCATTER)
+    chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
+                           series_type=SeriesType.VECTOR)
+    tab.load(chart)
+
+    assert _is_option_enabled(tab, ChartType.BAR) is False

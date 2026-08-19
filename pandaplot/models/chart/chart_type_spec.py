@@ -91,6 +91,34 @@ def compatible_chart_types(chart_type: "str | ChartType") -> frozenset[ChartType
     )
 
 
+def compatible_chart_types_for_series(series_types: "frozenset[SeriesType]") -> frozenset[ChartType]:
+    """Chart types it's non-destructive to switch into, given the ACTUAL
+    series types present on a chart -- not just the chart's nominal type's
+    static default_series_type (see `compatible_chart_types`, which only
+    looks at that).
+
+    A target chart type is compatible iff EVERY one of `series_types` is
+    already in that target's allowed_series_types, i.e. switching to it
+    would force-retype NONE of the chart's existing series. An empty
+    `series_types` (a brand-new, still-empty chart) has nothing to
+    protect, so every chart type is compatible.
+
+    Fixes a real gap in `compatible_chart_types`: a mixed chart -- e.g. a
+    Scatter chart holding both SCATTER and VECTOR series -- would
+    otherwise report Bar as a safe switch target (since SCATTER alone is
+    allowed on Bar's {BAR, SCATTER}), silently retyping and discarding
+    the VECTOR series' configuration on selection. Flagged in PR #180
+    review.
+    """
+    types = frozenset(series_types)
+    if not types:
+        return frozenset(CHART_TYPE_SPECS.keys())
+    return frozenset(
+        target for target, spec in CHART_TYPE_SPECS.items()
+        if types <= spec.allowed_series_types
+    )
+
+
 def get_chart_type_spec(chart_type: "str | ChartType") -> ChartTypeSpec:
     """Return the spec for `chart_type`.
 
