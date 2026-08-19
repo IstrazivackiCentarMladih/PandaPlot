@@ -62,8 +62,24 @@ class DataSeries:
                 self.y_axis = YAxis.PRIMARY
         if isinstance(self.series_type, str):
             self.series_type = SeriesType(self.series_type)
+        expected_style_cls = SERIES_TYPE_SPECS[self.series_type].style_cls
         if self.style is None:
-            self.style = SERIES_TYPE_SPECS[self.series_type].style_cls()
+            self.style = expected_style_cls()
+        elif type(self.style) is not expected_style_cls:
+            # An explicitly-passed style that doesn't match series_type's
+            # own registered class is not just cosmetically wrong: the
+            # renderer dispatches on series_type and will read fields the
+            # mismatched style class doesn't declare, and a save/reload
+            # round-trip is guaranteed to fail (_series_style_from_dict
+            # rebuilds the class series_type says it should be, from
+            # fields that belong to a different one). Catch it here,
+            # at construction, rather than downstream as a render crash
+            # or a corrupted save.
+            raise ValueError(
+                f"DataSeries.style must be a {expected_style_cls.__name__} "
+                f"for series_type={self.series_type.value!r}, "
+                f"got {type(self.style).__name__}"
+            )
 
     @property
     def has_error_data(self) -> bool:
@@ -519,6 +535,8 @@ class Chart(Item):
                     "visible": fit.visible,
                     "fit_params": fit.fit_params,
                     "fit_stats": fit.fit_stats,
+                    "confidence_lower": fit.confidence_lower.tolist() if fit.confidence_lower is not None else None,
+                    "confidence_upper": fit.confidence_upper.tolist() if fit.confidence_upper is not None else None,
                     "style": asdict(fit.style) if fit.style is not None else None,
                 } for fit in self.fit_data
             ],
@@ -586,6 +604,14 @@ class Chart(Item):
                 visible=fit_dict.get("visible", True),
                 fit_params=fit_dict.get("fit_params", {}),
                 fit_stats=fit_dict.get("fit_stats", {}),
+                confidence_lower=(
+                    np.array(fit_dict["confidence_lower"])
+                    if fit_dict.get("confidence_lower") is not None else None
+                ),
+                confidence_upper=(
+                    np.array(fit_dict["confidence_upper"])
+                    if fit_dict.get("confidence_upper") is not None else None
+                ),
                 style=style,
             )
             chart.fit_data.append(fit)

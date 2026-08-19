@@ -1,6 +1,7 @@
 """Tests for the Chart model (pandaplot.models.project.items.chart.Chart)."""
 
 import numpy as np
+import pytest
 
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
@@ -50,6 +51,50 @@ class TestFitDataStyle:
         assert not hasattr(fit, "line_style")
         assert not hasattr(fit, "line_width")
         assert not hasattr(fit, "alpha")
+
+
+class TestFitDataConfidenceBandRoundTrip:
+    """Regression test: Chart.to_dict()/from_dict() must not silently drop
+    a fit's confidence_lower/confidence_upper arrays. Neither field was
+    ever serialized -- saving and reopening any chart with a confidence
+    band configured (Phase 5's headline feature) made the band disappear
+    on reload, since FitData.confidence_lower/upper default to None."""
+
+    def test_confidence_bands_survive_to_dict_from_dict(self):
+        chart = Chart(name="C", chart_type="line")
+        chart.add_fit_data(
+            source_dataset_id="ds1", fit_type="linear",
+            x_data=np.array([1.0, 2.0, 3.0]), y_data=np.array([1.0, 2.0, 3.0]),
+            label="Fit",
+            confidence_lower=np.array([0.5, 1.5, 2.5]),
+            confidence_upper=np.array([1.5, 2.5, 3.5]),
+        )
+
+        restored = Chart.from_dict(chart.to_dict())
+
+        fit = restored.fit_data[0]
+        assert fit.confidence_lower is not None
+        assert fit.confidence_upper is not None
+        assert list(fit.confidence_lower) == [0.5, 1.5, 2.5]
+        assert list(fit.confidence_upper) == [1.5, 2.5, 3.5]
+        assert isinstance(fit.confidence_lower, np.ndarray)
+        assert isinstance(fit.confidence_upper, np.ndarray)
+
+    def test_absent_confidence_bands_round_trip_as_none(self):
+        """A fit with no computed confidence band (the common case) must
+        round-trip to None, not to a stray empty array or a crash."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_fit_data(
+            source_dataset_id="ds1", fit_type="linear",
+            x_data=np.array([1.0, 2.0]), y_data=np.array([1.0, 2.0]),
+            label="Fit",
+        )
+
+        restored = Chart.from_dict(chart.to_dict())
+
+        fit = restored.fit_data[0]
+        assert fit.confidence_lower is None
+        assert fit.confidence_upper is None
 
 
 class TestChartTypeIsChartTypeEnum:
@@ -260,6 +305,34 @@ class TestDataSeriesAutoDerivesStyle:
                              series_type=SeriesType.LINE, style=explicit)
 
         assert series.style is explicit
+
+
+class TestDataSeriesRejectsMismatchedStyle:
+    """DataSeries must reject a style whose concrete class doesn't match
+    series_type's own registered style_cls -- a mismatched pair isn't
+    just cosmetically wrong: the renderer dispatches on series_type and
+    will read fields the wrong style class doesn't declare, and a
+    save/reload round-trip is guaranteed to fail (from_dict rebuilds the
+    class series_type says it should be, from fields belonging to a
+    different one). Caught by a GitHub Copilot review comment on PR #180
+    after AddSeriesCommand started taking a caller-constructed DataSeries
+    directly, which made this mismatch newly reachable."""
+
+    def test_vector_style_on_a_line_series_raises(self):
+        with pytest.raises(ValueError, match="LineSeriesStyle"):
+            DataSeries(dataset_id="ds1", series_type=SeriesType.LINE,
+                       style=VectorSeriesStyle())
+
+    def test_line_style_on_a_scatter_series_raises(self):
+        with pytest.raises(ValueError, match="ScatterSeriesStyle"):
+            DataSeries(dataset_id="ds1", series_type=SeriesType.SCATTER,
+                       style=LineSeriesStyle())
+
+    def test_matching_style_is_accepted(self):
+        series = DataSeries(dataset_id="ds1", series_type=SeriesType.BAR,
+                             style=BarSeriesStyle(color="#112233"))
+
+        assert series.style.color == "#112233"
 
 
 class TestSetChartTypeRetypesSeries:
