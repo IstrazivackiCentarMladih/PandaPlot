@@ -6,6 +6,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
@@ -172,3 +173,57 @@ def test_add_series_works_on_a_vector_chart_when_a_line_series_is_selected():
 
     assert len(chart.data_series) == 2
     assert chart.data_series[-1].series_type == SeriesType.VECTOR
+
+
+def test_uv_fields_appear_right_after_x_and_y_in_the_form():
+    """Reported live: "order of information is wrong so u and v columns
+    are after error columns instead after x and y columns." The form is a
+    QGridLayout with explicit row numbers -- U/V must sit at the rows
+    immediately following X/Y, ahead of every error-bar row."""
+    app_context, project, dataset = _app_context_with_project()
+    tab = DataTab(app_context=app_context)
+
+    layout = tab._series_form_widget.layout()
+
+    def _row_of(widget):
+        index = layout.indexOf(widget)
+        row, _col, _rowspan, _colspan = layout.getItemPosition(index)
+        return row
+
+    x_row = _row_of(tab.x_column_combo)
+    y_row = _row_of(tab.y_column_combo)
+    u_row = _row_of(tab.u_column_combo)
+    v_row = _row_of(tab.v_column_combo)
+    x_error_row = _row_of(tab.x_error_column_combo)
+
+    assert x_row < y_row < u_row < v_row < x_error_row
+
+
+def test_enabling_asymmetric_error_bars_defaults_minus_columns_to_the_plus_columns():
+    """Reported live: "when I turn on asymetric error bars, the minus
+    column is set to None, it would make more sense if it was set to the
+    same column as the plus column as it reflects what is currently shown
+    on the chart." Ticking the checkbox must copy each already-selected
+    plus-side column into its still-empty minus-side sibling, so the
+    rendered error bars don't silently change the instant asymmetric mode
+    is turned on."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("y"))),
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    tab._expand_series(0)
+
+    y_error_index = tab.y_error_column_combo.findData(dataset.column_id("y"))
+    tab.y_error_column_combo.setCurrentIndex(y_error_index)
+    assert tab.y_error_minus_column_combo.currentData() in (None, "")
+
+    tab.error_asymmetric_check.setChecked(True)
+
+    assert tab.y_error_minus_column_combo.currentData() == dataset.column_id("y")

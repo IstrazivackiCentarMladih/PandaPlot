@@ -149,15 +149,25 @@ class DataTab(QWidget):
         self.y_column_combo = QComboBox()
         series_config_layout.addWidget(self.y_column_combo, 2, 1)
 
-        series_config_layout.addWidget(QLabel("Y Axis:"), 3, 0)
+        self.u_column_label = QLabel("U Column:")
+        series_config_layout.addWidget(self.u_column_label, 3, 0)
+        self.u_column_combo = QComboBox()
+        series_config_layout.addWidget(self.u_column_combo, 3, 1)
+
+        self.v_column_label = QLabel("V Column:")
+        series_config_layout.addWidget(self.v_column_label, 4, 0)
+        self.v_column_combo = QComboBox()
+        series_config_layout.addWidget(self.v_column_combo, 4, 1)
+
+        series_config_layout.addWidget(QLabel("Y Axis:"), 5, 0)
         self.series_y_axis_control = SegmentedControl(
             [("Y₁ left", YAxis.PRIMARY), ("Y₂ right", YAxis.SECONDARY)]
         )
-        series_config_layout.addWidget(self.series_y_axis_control, 3, 1)
+        series_config_layout.addWidget(self.series_y_axis_control, 5, 1)
 
-        series_config_layout.addWidget(QLabel("Label:"), 4, 0)
+        series_config_layout.addWidget(QLabel("Label:"), 6, 0)
         self.series_label_edit = QLineEdit()
-        series_config_layout.addWidget(self.series_label_edit, 4, 1)
+        series_config_layout.addWidget(self.series_label_edit, 6, 1)
 
         # Checked -> pick independent +/- error columns below; unchecked
         # (default) -> a single column supplies a symmetric magnitude (the
@@ -167,42 +177,32 @@ class DataTab(QWidget):
         self.error_asymmetric_check.setToolTip(
             "When checked, pick separate +/- error columns for independent "
             "upper/lower magnitudes instead of one symmetric column.")
-        series_config_layout.addWidget(self.error_asymmetric_check, 5, 0, 1, 2)
+        series_config_layout.addWidget(self.error_asymmetric_check, 7, 0, 1, 2)
 
         # Label text switches between "X Error Column" (symmetric magnitude)
         # and "X Error (+) Column" (asymmetric upper magnitude) depending on
         # the checkbox above; see _update_error_bar_mode_controls.
         self.x_error_column_label = QLabel("X Error Column:")
-        series_config_layout.addWidget(self.x_error_column_label, 6, 0)
+        series_config_layout.addWidget(self.x_error_column_label, 8, 0)
         self.x_error_column_combo = QComboBox()
-        series_config_layout.addWidget(self.x_error_column_combo, 6, 1)
+        series_config_layout.addWidget(self.x_error_column_combo, 8, 1)
 
         self.y_error_column_label = QLabel("Y Error Column:")
-        series_config_layout.addWidget(self.y_error_column_label, 7, 0)
+        series_config_layout.addWidget(self.y_error_column_label, 9, 0)
         self.y_error_column_combo = QComboBox()
-        series_config_layout.addWidget(self.y_error_column_combo, 7, 1)
+        series_config_layout.addWidget(self.y_error_column_combo, 9, 1)
 
         # Only shown when "Asymmetric Error Bars" is checked, to supply the
         # lower-side (-) magnitude.
         self.x_error_minus_label = QLabel("X Error (-) Column:")
-        series_config_layout.addWidget(self.x_error_minus_label, 8, 0)
+        series_config_layout.addWidget(self.x_error_minus_label, 10, 0)
         self.x_error_minus_column_combo = QComboBox()
-        series_config_layout.addWidget(self.x_error_minus_column_combo, 8, 1)
+        series_config_layout.addWidget(self.x_error_minus_column_combo, 10, 1)
 
         self.y_error_minus_label = QLabel("Y Error (-) Column:")
-        series_config_layout.addWidget(self.y_error_minus_label, 9, 0)
+        series_config_layout.addWidget(self.y_error_minus_label, 11, 0)
         self.y_error_minus_column_combo = QComboBox()
-        series_config_layout.addWidget(self.y_error_minus_column_combo, 9, 1)
-
-        self.u_column_label = QLabel("U Column:")
-        series_config_layout.addWidget(self.u_column_label, 10, 0)
-        self.u_column_combo = QComboBox()
-        series_config_layout.addWidget(self.u_column_combo, 10, 1)
-
-        self.v_column_label = QLabel("V Column:")
-        series_config_layout.addWidget(self.v_column_label, 11, 0)
-        self.v_column_combo = QComboBox()
-        series_config_layout.addWidget(self.v_column_combo, 11, 1)
+        series_config_layout.addWidget(self.y_error_minus_column_combo, 11, 1)
 
         self.magnitude_column_label = QLabel("Color-by Column (optional):")
         series_config_layout.addWidget(self.magnitude_column_label, 12, 0)
@@ -791,7 +791,26 @@ class DataTab(QWidget):
 
     def _on_error_symmetry_toggled(self):
         """Handle the Asymmetric error-bars checkbox: persist and refresh
-        control enablement."""
+        control enablement.
+
+        Reported live: enabling asymmetric mode left the newly-revealed
+        minus-side combos on "None", silently zeroing out the lower error
+        bar even though the chart was, up to that toggle, showing a
+        symmetric magnitude on both sides. Default each minus combo to
+        whatever its plus-side sibling already has selected, so the
+        rendered chart doesn't change the instant the checkbox is
+        ticked -- only unchecking-then-rechecking or an already-set minus
+        combo is left alone.
+        """
+        if self.error_asymmetric_check.isChecked():
+            for minus_combo, plus_combo in (
+                (self.x_error_minus_column_combo, self.x_error_column_combo),
+                (self.y_error_minus_column_combo, self.y_error_column_combo),
+            ):
+                if not minus_combo.currentData():
+                    index = minus_combo.findData(plus_combo.currentData())
+                    if index >= 0:
+                        minus_combo.setCurrentIndex(index)
         self._update_error_bar_mode_controls()
         self._on_series_config_changed()
 
