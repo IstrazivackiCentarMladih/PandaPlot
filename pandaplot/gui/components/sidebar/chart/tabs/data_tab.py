@@ -187,18 +187,18 @@ class DataTab(QWidget):
         self.x_error_column_combo = QComboBox()
         series_config_layout.addWidget(self.x_error_column_combo, 8, 1)
 
+        self.x_error_minus_label = QLabel("X Error (-) Column:")
+        series_config_layout.addWidget(self.x_error_minus_label, 9, 0)
+        self.x_error_minus_column_combo = QComboBox()
+        series_config_layout.addWidget(self.x_error_minus_column_combo, 9, 1)
+
         self.y_error_column_label = QLabel("Y Error Column:")
-        series_config_layout.addWidget(self.y_error_column_label, 9, 0)
+        series_config_layout.addWidget(self.y_error_column_label, 10, 0)
         self.y_error_column_combo = QComboBox()
-        series_config_layout.addWidget(self.y_error_column_combo, 9, 1)
+        series_config_layout.addWidget(self.y_error_column_combo, 10, 1)
 
         # Only shown when "Asymmetric Error Bars" is checked, to supply the
         # lower-side (-) magnitude.
-        self.x_error_minus_label = QLabel("X Error (-) Column:")
-        series_config_layout.addWidget(self.x_error_minus_label, 10, 0)
-        self.x_error_minus_column_combo = QComboBox()
-        series_config_layout.addWidget(self.x_error_minus_column_combo, 10, 1)
-
         self.y_error_minus_label = QLabel("Y Error (-) Column:")
         series_config_layout.addWidget(self.y_error_minus_label, 11, 0)
         self.y_error_minus_column_combo = QComboBox()

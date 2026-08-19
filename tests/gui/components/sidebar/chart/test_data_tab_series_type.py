@@ -233,3 +233,26 @@ def test_enabling_asymmetric_error_bars_defaults_minus_columns_to_the_plus_colum
     tab.error_asymmetric_check.setChecked(True)
 
     assert tab.y_error_minus_column_combo.currentData() == dataset.column_id("y")
+
+
+def test_error_bar_fields_are_grouped_by_axis_not_by_sign():
+    """Reported live: "asymetric error bars in ui should be grouped by
+    axis and not by plus/minus. I think this is more intuitive for the
+    user." Row order must be X(+), X(-), Y(+), Y(-), not X(+), Y(+),
+    X(-), Y(-)."""
+    app_context, project, dataset = _app_context_with_project()
+    tab = DataTab(app_context=app_context)
+
+    layout = tab._series_form_widget.layout()
+
+    def _row_of(widget):
+        index = layout.indexOf(widget)
+        row, _col, _rowspan, _colspan = layout.getItemPosition(index)
+        return row
+
+    x_plus_row = _row_of(tab.x_error_column_combo)
+    x_minus_row = _row_of(tab.x_error_minus_column_combo)
+    y_plus_row = _row_of(tab.y_error_column_combo)
+    y_minus_row = _row_of(tab.y_error_minus_column_combo)
+
+    assert x_plus_row < x_minus_row < y_plus_row < y_minus_row
