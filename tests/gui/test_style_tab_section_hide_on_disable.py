@@ -70,12 +70,14 @@ def test_disabling_fill_hides_the_option_rows():
 
     style_tab.fill_enabled_toggle.setChecked(True)
     assert style_tab.fill_horizontal_toggle.isVisible() is True
+    assert style_tab.fill_opacity_label.isVisible() is True
 
     style_tab.fill_enabled_toggle.setChecked(False)
 
     assert style_tab.fill_horizontal_toggle.isVisible() is False
     assert style_tab.fill_to_control.isVisible() is False
     assert style_tab.fill_opacity_slider.isVisible() is False
+    assert style_tab.fill_opacity_label.isVisible() is False
     assert style_tab.fill_card.isVisible() is True
     assert style_tab.fill_header.isEnabled() is False
 

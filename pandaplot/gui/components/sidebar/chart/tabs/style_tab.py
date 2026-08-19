@@ -470,7 +470,8 @@ class StyleTab(QWidget):
         self.fill_match_line_toggle = ToggleSwitch(checked=True)
         fill_layout.addWidget(self.fill_match_line_toggle, 5, 1)
 
-        fill_layout.addWidget(QLabel("Opacity:"), 6, 0)
+        self.fill_opacity_label = QLabel("Opacity:")
+        fill_layout.addWidget(self.fill_opacity_label, 6, 0)
         self.fill_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
         fill_layout.addWidget(self.fill_opacity_slider, 6, 1)
 
@@ -1331,6 +1332,7 @@ class StyleTab(QWidget):
             self.fill_match_line_label, self.fill_match_line_toggle,
         ):
             widget.setVisible(enabled)
+        self.fill_opacity_label.setVisible(enabled)
         self.fill_opacity_slider.setVisible(enabled)
 
         # The baseline is a Y value for a vertical fill, an X value for a
