@@ -31,9 +31,15 @@ def _app_context_with_project():
 
 
 def test_series_type_combo_offers_only_the_chart_types_allowed_series_types():
-    """A Line chart allows {LINE, SCATTER} (not BAR/HIST/VECTOR)."""
+    """A Bar chart allows {BAR, SCATTER} (not LINE/HIST/VECTOR).
+
+    LINE/SCATTER/VECTOR now all mutually allow each other (CHART_TYPE_
+    SPECS), so a Line chart's combo would no longer demonstrate any
+    restriction -- Bar (and Histogram) are the chart types still narrowed
+    to a proper subset, so this test uses Bar to keep checking real
+    allow-list enforcement rather than becoming vacuous."""
     app_context, project, dataset = _app_context_with_project()
-    chart = Chart(name="Line Chart", chart_type="line")
+    chart = Chart(name="Bar Chart", chart_type="bar")
     chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
     project.add_item(chart)
 
@@ -42,7 +48,7 @@ def test_series_type_combo_offers_only_the_chart_types_allowed_series_types():
     tab.load(chart)
 
     offered = {tab.series_type_combo.itemData(i) for i in range(tab.series_type_combo.count())}
-    assert offered == {SeriesType.LINE, SeriesType.SCATTER}
+    assert offered == {SeriesType.BAR, SeriesType.SCATTER}
 
 
 def test_series_type_combo_selects_the_current_series_own_type():

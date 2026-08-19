@@ -88,16 +88,16 @@ def test_editing_u_column_updates_the_series():
 
 
 def test_refresh_vector_fields_shows_combos_after_a_live_type_switch():
-    """Uses a starting chart type of "scatter" rather than "line": Vector's
-    spec allows {VECTOR, LINE} series to pass through set_chart_type
-    untouched (see Chart.set_chart_type), so a LINE series would NOT be
-    retyped to VECTOR by this switch and the fields would correctly stay
-    hidden (that's the scenario the two "non_vector_series" tests below
-    cover). A SCATTER series isn't in Vector's allowed set, so it IS
+    """Uses a starting chart type of "bar" rather than "line" or "scatter":
+    LINE/SCATTER/VECTOR now all mutually allow each other (CHART_TYPE_
+    SPECS), so a LINE or SCATTER series would pass through set_chart_type
+    untouched when switching to "vector" and the fields would correctly
+    stay hidden (that's the scenario the two "non_vector_series" tests
+    below cover). A BAR series isn't in Vector's allowed set, so it IS
     retyped to VECTOR, which is what this test needs to exercise the
     fields actually appearing after a live switch."""
     app_context, project, dataset = _app_context_with_project()
-    chart = Chart(name="Chart", chart_type="scatter")
+    chart = Chart(name="Chart", chart_type="bar")
     chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
     project.add_item(chart)
 
