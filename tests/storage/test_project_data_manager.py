@@ -101,3 +101,33 @@ def test_freshly_saved_project_round_trips_schema_version(tmp_path, manager):
     loaded = manager.load(str(zip_path))
 
     assert loaded.schema_version == CURRENT_SCHEMA_VERSION
+
+
+def test_a_schema_version_newer_than_current_is_rejected(tmp_path, manager):
+    """Regression test: every per-item/cross-item migration dispatcher is
+    a `while schema_version < CURRENT_SCHEMA_VERSION` loop, which silently
+    no-ops for a schema_version that's already >= CURRENT_SCHEMA_VERSION --
+    including one that's newer than this app understands (e.g. a file
+    saved by a future app version). Loading it anyway would hand
+    un-migrated-for-this-shape dicts straight to each item's from_dict(),
+    which _load_item's broad except would swallow into silently-missing
+    items -- and a later save would overwrite the original file with that
+    truncated project. Caught by a GitHub Copilot review comment on PR
+    #180; must fail loudly before any item is loaded, not silently drop
+    data."""
+    project_dict = {
+        "name": "From The Future",
+        "description": "",
+        "root": {"id": "root", "items": []},
+        "metadata": {},
+        "version": "1.0",
+        "schema_version": CURRENT_SCHEMA_VERSION + 1,
+        "path": None,
+        "item_files": {},
+    }
+    zip_path = tmp_path / "future.pplot"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("project.json", json.dumps(project_dict))
+
+    with pytest.raises(ValueError, match="schema_version"):
+        manager.load(str(zip_path))

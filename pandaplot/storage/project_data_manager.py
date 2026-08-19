@@ -3,6 +3,7 @@ import logging
 import zipfile
 
 from pandaplot.models.migrations.runner import run_cross_item_migrations
+from pandaplot.models.migrations.schema_version import CURRENT_SCHEMA_VERSION
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Item
 from pandaplot.storage.item_data_manager_factory import ItemDataManagerFactory
@@ -63,6 +64,24 @@ class ProjectDataManager:
         project_dict = json.loads(raw_data["project.json"].decode("utf-8"))
         project = Project.from_dict(project_dict)
         schema_version = project_dict.get("schema_version", 0)
+        if schema_version > CURRENT_SCHEMA_VERSION:
+            # A newer schema_version means a newer app version wrote this
+            # file in a shape this build doesn't know how to migrate --
+            # every migration dispatcher here is a `while schema_version <
+            # CURRENT_SCHEMA_VERSION` loop, so it silently no-ops instead
+            # of upgrading (there's nothing to upgrade FROM its own point
+            # of view). Loading anyway would hand raw, un-migrated dicts
+            # straight to each item's from_dict(), which _load_item's own
+            # broad except swallows into a logged error -- so the project
+            # would open with items silently missing, and a later save
+            # would overwrite the original file with that truncated
+            # project. Refuse up front instead, before any item is loaded.
+            raise ValueError(
+                f"Project file {filepath!r} was saved with schema_version="
+                f"{schema_version}, newer than this app supports "
+                f"(CURRENT_SCHEMA_VERSION={CURRENT_SCHEMA_VERSION}). "
+                "Open it with a newer version of the app."
+            )
 
         items = {}
         for item_id, info in project_dict.get("item_files", {}).items():
