@@ -71,6 +71,26 @@ CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
 }
 
 
+def compatible_chart_types(chart_type: "str | ChartType") -> frozenset[ChartType]:
+    """Chart types it's non-destructive to switch `chart_type` into.
+
+    `target` is compatible with `chart_type` iff `chart_type`'s own
+    default_series_type is allowed on `target` -- i.e. the chart's
+    "typical" series (what a freshly-created chart of that type actually
+    has) survives the switch without a forced retype. This is a static
+    per-type-pair rule, not dependent on any specific chart's actual
+    series mix, so the chart-type selector UI can precompute it once per
+    chart type rather than recomputing per chart. Always includes
+    `chart_type` itself (switching a chart to its own current type is
+    trivially non-destructive).
+    """
+    source_spec = CHART_TYPE_SPECS[ChartType(chart_type)]
+    return frozenset(
+        target for target, target_spec in CHART_TYPE_SPECS.items()
+        if source_spec.default_series_type in target_spec.allowed_series_types
+    )
+
+
 def get_chart_type_spec(chart_type: "str | ChartType") -> ChartTypeSpec:
     """Return the spec for `chart_type`.
 

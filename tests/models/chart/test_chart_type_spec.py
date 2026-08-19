@@ -98,3 +98,48 @@ def test_get_chart_type_spec_accepts_a_charttype_instance():
 def test_get_chart_type_spec_raises_on_unknown_type():
     with pytest.raises(ValueError):
         get_chart_type_spec("violin")
+
+
+def test_compatible_chart_types_line_scatter_vector_are_mutually_compatible():
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    lsv = {ChartType.LINE, ChartType.SCATTER, ChartType.VECTOR}
+    assert compatible_chart_types(ChartType.LINE) & lsv == lsv
+    assert compatible_chart_types(ChartType.SCATTER) & lsv == lsv
+    assert compatible_chart_types(ChartType.VECTOR) & lsv == lsv
+
+
+def test_compatible_chart_types_vector_to_bar_is_disabled():
+    """Reported live: "I don't think we should support going from vector
+    to barchart." VECTOR's default series type isn't in BAR's
+    allowed_series_types, so it's excluded."""
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    assert ChartType.BAR not in compatible_chart_types(ChartType.VECTOR)
+
+
+def test_compatible_chart_types_scatter_to_bar_is_enabled():
+    """Existing, preserved case: a Scatter chart's default series type
+    (SCATTER) is allowed on Bar charts."""
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    assert ChartType.BAR in compatible_chart_types(ChartType.SCATTER)
+
+
+def test_compatible_chart_types_bar_to_scatter_is_disabled():
+    """Asymmetric with the case above: Bar's default series type (BAR)
+    isn't allowed on a Scatter chart, so switching away from Bar always
+    force-retypes -- now visible as a disabled option instead of silent."""
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    assert ChartType.SCATTER not in compatible_chart_types(ChartType.BAR)
+
+
+def test_compatible_chart_types_hist_is_isolated_both_ways():
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    assert compatible_chart_types(ChartType.HIST) == frozenset({ChartType.HIST})
+    for chart_type in CHART_TYPE_SPECS:
+        if chart_type != ChartType.HIST:
+            assert ChartType.HIST not in compatible_chart_types(chart_type)
+
+
+def test_compatible_chart_types_always_includes_self():
+    from pandaplot.models.chart.chart_type_spec import compatible_chart_types
+    for chart_type in CHART_TYPE_SPECS:
+        assert chart_type in compatible_chart_types(chart_type)
