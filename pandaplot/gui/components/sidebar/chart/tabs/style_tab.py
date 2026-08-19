@@ -475,13 +475,15 @@ class StyleTab(QWidget):
         marker_layout = QGridLayout(marker_card)
 
         marker_header_row = QHBoxLayout()
-        marker_header_row.addWidget(SectionHeader("Markers"))
+        self.marker_header = SectionHeader("Markers")
+        marker_header_row.addWidget(self.marker_header)
         marker_header_row.addStretch(1)
         self.markers_enabled_toggle = ToggleSwitch()
         marker_header_row.addWidget(self.markers_enabled_toggle)
         marker_layout.addLayout(marker_header_row, 0, 0, 1, 2)
 
-        marker_layout.addWidget(QLabel("Shape:"), 1, 0)
+        self.marker_shape_label = QLabel("Shape:")
+        marker_layout.addWidget(self.marker_shape_label, 1, 0)
         self.marker_shape_control = ValueComboBox(
             [
                 ("● Circle", MarkerType.CIRCLE),
@@ -495,7 +497,8 @@ class StyleTab(QWidget):
         )
         marker_layout.addWidget(self.marker_shape_control, 1, 1)
 
-        marker_layout.addWidget(QLabel("Size:"), 2, 0)
+        self.marker_size_label = QLabel("Size:")
+        marker_layout.addWidget(self.marker_size_label, 2, 0)
         self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
         marker_layout.addWidget(self.marker_size_slider, 2, 1)
 
@@ -1179,32 +1182,33 @@ class StyleTab(QWidget):
         self._on_field_changed()
 
     def _update_marker_controls_enabled(self):
-        """Enable/disable marker sub-controls based on the enable toggle, and
-        show/hide the fill/edge color pickers based on the match-line toggle
-        (pure UI convenience; see apply_series_style_to for how this maps
-        onto the persisted `marker_style`/`marker_color`/`marker_edge_color`).
-
-        "Match line" hides only the color pickers (not just disables them):
-        once matching, there's nothing for the user to set -- both colors
-        track `style.color` until unchecked. Edge width is a separate
-        concern (line thickness, not color) and stays visible/enabled
-        whenever markers are on, regardless of the match-line state.
+        """Show the marker sub-controls only while markers are enabled;
+        hide them (not just grey them out) when disabled, leaving only
+        the greyed section title -- reported live: "if I disable entire
+        section, such as marker, we should hide options and just leave
+        the section title with a disabled state, instead of showing all
+        options in a disabled state." Same "match line hides colors"
+        sub-behavior as before once markers are on.
 
         For a scatter-chart series there is no drawn line at all (the Line
         card is hidden -- see _update_target_cards_visibility), so "Match
-        line" is meaningless: the row is hidden outright and the color
-        pickers always show, regardless of the toggle's stored (but now
-        irrelevant) checked state.
+        line" is meaningless: that row alone is hidden outright whenever
+        markers are on, regardless of the toggle's stored state.
         """
         is_scatter_series = self._is_scatter_series_target()
         markers_enabled = self.markers_enabled_toggle.isChecked()
-        self.marker_shape_control.setEnabled(markers_enabled)
-        self.marker_size_slider.setEnabled(markers_enabled)
-        self.marker_match_line_toggle.setEnabled(markers_enabled and not is_scatter_series)
-        self.marker_match_line_label.setVisible(not is_scatter_series)
-        self.marker_match_line_toggle.setVisible(not is_scatter_series)
-        self.marker_edge_width_label.setVisible(markers_enabled)
-        self.marker_edge_width_slider.setVisible(markers_enabled)
+        self.marker_header.setEnabled(markers_enabled)
+
+        for widget in (
+            self.marker_shape_label, self.marker_shape_control,
+            self.marker_size_label, self.marker_size_slider,
+            self.marker_edge_width_label, self.marker_edge_width_slider,
+        ):
+            widget.setVisible(markers_enabled)
+
+        show_match_line_row = markers_enabled and not is_scatter_series
+        self.marker_match_line_label.setVisible(show_match_line_row)
+        self.marker_match_line_toggle.setVisible(show_match_line_row)
 
         matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
         show_colors = markers_enabled and not matching_line
