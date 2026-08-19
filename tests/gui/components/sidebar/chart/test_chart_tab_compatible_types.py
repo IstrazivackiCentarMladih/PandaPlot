@@ -69,3 +69,18 @@ def test_compatibility_is_recomputed_after_switching_type():
 
     assert _is_option_enabled(tab, ChartType.BAR) is False
     assert _is_option_enabled(tab, ChartType.HIST) is False
+
+
+def test_clear_resets_chart_type_compatibility_state():
+    """clear() resets the type combo to SCATTER but must also recompute
+    compatibility -- otherwise a tab cleared after showing a Vector chart
+    (which disables Bar) keeps stale disabled state even though SCATTER's
+    compatible_chart_types includes BAR."""
+    tab = ChartTab()
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    tab.load(chart)
+    assert _is_option_enabled(tab, ChartType.BAR) is False
+
+    tab.clear()
+
+    assert _is_option_enabled(tab, ChartType.BAR) is True

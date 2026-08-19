@@ -184,6 +184,7 @@ class ChartTab(QWidget):
             self.title_edit.clear()
             self.subtitle_edit.clear()
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
+            self._update_chart_type_compatibility()
             self.hist_bins_spin.setValue(20)
             self._update_hist_bins_visibility()
         finally:
