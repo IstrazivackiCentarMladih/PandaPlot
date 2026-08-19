@@ -118,10 +118,9 @@ class ChartTab(QWidget):
             if enabled:
                 item.setToolTip("")
             else:
-                current_default = CHART_TYPE_SPECS[current_type].default_series_type
                 item.setToolTip(
-                    f"Switching to {CHART_TYPE_SPECS[target_type].display_name} would discard "
-                    f"this chart's {current_default.value} series data"
+                    f"Switching to {CHART_TYPE_SPECS[target_type].display_name} isn't "
+                    f"supported from a {CHART_TYPE_SPECS[current_type].display_name} chart"
                 )
 
     def _update_hist_bins_visibility(self):
