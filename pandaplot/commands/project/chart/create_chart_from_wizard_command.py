@@ -19,6 +19,7 @@ from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.config.config_manager import ConfigManager
 
 # Same default palette data_tab.py's "+Add series" cycles through -- keeps
 # wizard-created series visually distinguishable instead of all landing on
@@ -198,6 +199,27 @@ class CreateChartFromWizardCommand(Command):
             project = self.app_state.current_project
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
+            # Reported live: "when creating chart through wizard, the
+            # chart is too small (it didn't use app default size)."
+            # Leaving width_cm/height_cm as None routes a new chart
+            # through ChartEditorWidget's auto-fit-to-viewport path,
+            # which races the still-settling layout of a just-opened tab
+            # and can permanently bake in an undersized result. Setting
+            # the app's configured defaults explicitly here skips that
+            # racy path for every wizard-created chart.
+            width_cm, height_cm, dpi = 20.0, 15.0, 100
+            try:
+                cfg_manager = self.app_context.get_manager(ConfigManager)
+                chart_display = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+                if chart_display:
+                    width_cm = getattr(chart_display, "default_width_cm", width_cm) or width_cm
+                    height_cm = getattr(chart_display, "default_height_cm", height_cm) or height_cm
+                    dpi = getattr(chart_display, "dpi", dpi) or dpi
+            except Exception:
+                pass
+            chart.config["width_cm"] = width_cm
+            chart.config["height_cm"] = height_cm
+            chart.config["dpi"] = dpi
             series_configs = [] if dialog.is_empty() else dialog.get_series_configs()
             if not dialog.is_empty():
                 chart.set_labels(
