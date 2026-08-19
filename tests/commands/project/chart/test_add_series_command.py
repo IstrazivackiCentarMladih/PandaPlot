@@ -1,4 +1,5 @@
 """Tests for AddSeriesCommand."""
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -72,7 +73,7 @@ def test_execute_with_line_series_style(app_context_with_line_chart):
     assert not hasattr(series.style, "vector_color")
 
 
-def test_execute_returns_false_when_chart_not_found():
+def test_execute_returns_false_when_chart_not_found(caplog):
     project = Mock()
     project.find_item.return_value = None
     app_state = Mock()
@@ -85,8 +86,10 @@ def test_execute_returns_false_when_chart_not_found():
     series = DataSeries(dataset_id="ds-1", x_column_id="col-x", y_column_id="col-y")
     command = AddSeriesCommand(app_context, chart_id="missing", series=series)
 
-    assert command.execute() is False
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
     assert command.added_index is None
+    assert "missing" in caplog.text
 
 
 def test_undo_removes_the_added_series(app_context_with_chart):

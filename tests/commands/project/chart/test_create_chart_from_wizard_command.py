@@ -6,6 +6,7 @@ These unit tests therefore drive that slot directly instead of relying on a
 return value from `dialog.exec()`.
 """
 import gc
+import logging
 from types import MethodType
 from unittest.mock import Mock, patch
 
@@ -316,15 +317,17 @@ def test_execute_succeeds_before_the_wizard_has_finished(mock_wizard_cls, app_co
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
-def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project):
+def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project, caplog):
     app_context, _ = app_context_with_project
     app_context.get_app_state.return_value.has_project = False
     mock_wizard_cls.return_value = _fake_wizard()
 
     command = CreateChartFromWizardCommand(app_context)
 
-    assert command.execute() is False
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
     mock_wizard_cls.assert_not_called()
+    assert "no project" in caplog.text.lower()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

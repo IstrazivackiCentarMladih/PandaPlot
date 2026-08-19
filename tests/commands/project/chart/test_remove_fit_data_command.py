@@ -1,5 +1,6 @@
 """Tests for RemoveFitDataCommand execute/undo/redo."""
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -49,12 +50,41 @@ def test_execute_removes_fit_data(app_context_with_chart):
     assert len(chart.fit_data) == 0
 
 
-def test_execute_out_of_range_returns_false(app_context_with_chart):
+def test_execute_out_of_range_returns_false(app_context_with_chart, caplog):
     app_context, chart = app_context_with_chart
     command = RemoveFitDataCommand(app_context, chart_id="chart-1", fit_index=5)
 
-    assert command.execute() is False
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
     assert len(chart.fit_data) == 1
+    assert "5" in caplog.text
+
+
+def test_execute_logs_a_warning_when_chart_not_found(caplog):
+    project = Mock()
+    project.find_item.return_value = None
+    app_state = Mock()
+    app_state.has_project = True
+    app_state.current_project = project
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.event_bus = Mock()
+
+    command = RemoveFitDataCommand(app_context, chart_id="missing", fit_index=0)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing" in caplog.text
+
+
+def test_undo_logs_a_warning_when_nothing_to_undo(app_context_with_chart, caplog):
+    app_context, chart = app_context_with_chart
+
+    command = RemoveFitDataCommand(app_context, chart_id="chart-1", fit_index=0)
+
+    with caplog.at_level(logging.WARNING):
+        command.undo()
+    assert "chart-1" in caplog.text
 
 
 def test_undo_restores_the_removed_fit(app_context_with_chart, chart_with_fit):

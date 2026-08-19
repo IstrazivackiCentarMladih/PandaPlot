@@ -29,9 +29,17 @@ class RemoveSeriesCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "RemoveSeriesCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         if self.series_index < 0 or self.series_index >= len(chart.data_series):
+            self.logger.warning(
+                "RemoveSeriesCommand.execute: series_index %s out of range for chart '%s' (%d series)",
+                self.series_index, self.chart_id, len(chart.data_series),
+            )
             return False
 
         # Snapshot the series before removing
@@ -51,6 +59,10 @@ class RemoveSeriesCommand(Command):
     def undo(self):
         chart = self._find_chart()
         if not chart or self.removed_series_data is None:
+            self.logger.warning(
+                "RemoveSeriesCommand.undo: cannot undo for chart '%s' (chart found=%s, removed_series_data set=%s)",
+                self.chart_id, chart is not None, self.removed_series_data is not None,
+            )
             return
 
         # Re-create and insert at original position

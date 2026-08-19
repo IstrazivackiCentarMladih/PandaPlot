@@ -1,4 +1,5 @@
 """Tests for RemoveSeriesCommand."""
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -78,3 +79,40 @@ def test_redo_after_undo_removes_series_again(app_context_with_chart):
     command.undo()
     command.redo()
     assert len(chart.data_series) == 0
+
+
+def test_execute_logs_a_warning_when_chart_not_found(caplog):
+    project = Mock()
+    project.find_item.return_value = None
+    app_state = Mock()
+    app_state.has_project = True
+    app_state.current_project = project
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.event_bus = Mock()
+
+    command = RemoveSeriesCommand(app_context, chart_id="missing", series_index=0)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing" in caplog.text
+
+
+def test_execute_logs_a_warning_when_series_index_out_of_range(app_context_with_chart, caplog):
+    app_context, chart = app_context_with_chart
+
+    command = RemoveSeriesCommand(app_context, chart_id=chart.id, series_index=5)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "5" in caplog.text
+
+
+def test_undo_logs_a_warning_when_nothing_to_undo(app_context_with_chart, caplog):
+    app_context, chart = app_context_with_chart
+
+    command = RemoveSeriesCommand(app_context, chart_id=chart.id, series_index=0)
+
+    with caplog.at_level(logging.WARNING):
+        command.undo()
+    assert chart.id in caplog.text

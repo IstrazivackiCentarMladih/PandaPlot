@@ -28,6 +28,10 @@ class AddSeriesCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "AddSeriesCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         chart.data_series.append(self.series)

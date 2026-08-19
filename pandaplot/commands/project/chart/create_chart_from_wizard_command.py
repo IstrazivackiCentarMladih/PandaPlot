@@ -122,6 +122,7 @@ class CreateChartFromWizardCommand(Command):
             self.logger.info("Executing CreateChartFromWizardCommand")
 
             if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning("CreateChartFromWizardCommand.execute: no project is currently loaded")
                 self.ui_controller.show_error_message("Create Chart Error", "No project is currently loaded")
                 return False
             project = self.app_state.current_project

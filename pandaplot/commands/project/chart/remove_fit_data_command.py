@@ -29,9 +29,17 @@ class RemoveFitDataCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "RemoveFitDataCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         if self.fit_index < 0 or self.fit_index >= len(chart.fit_data):
+            self.logger.warning(
+                "RemoveFitDataCommand.execute: fit_index %s out of range for chart '%s' (%d fits)",
+                self.fit_index, self.chart_id, len(chart.fit_data),
+            )
             return False
 
         # Snapshot the fit data before removing
@@ -51,6 +59,10 @@ class RemoveFitDataCommand(Command):
     def undo(self):
         chart = self._find_chart()
         if not chart or self.removed_fit_data is None:
+            self.logger.warning(
+                "RemoveFitDataCommand.undo: cannot undo for chart '%s' (chart found=%s, removed_fit_data set=%s)",
+                self.chart_id, chart is not None, self.removed_fit_data is not None,
+            )
             return
 
         # Re-create and insert at original position
