@@ -393,13 +393,15 @@ class StyleTab(QWidget):
         band_layout = QGridLayout(band_card)
 
         band_header_row = QHBoxLayout()
-        band_header_row.addWidget(SectionHeader("Confidence Band"))
+        self.band_header = SectionHeader("Confidence Band")
+        band_header_row.addWidget(self.band_header)
         band_header_row.addStretch(1)
         self.band_enabled_toggle = ToggleSwitch()
         band_header_row.addWidget(self.band_enabled_toggle)
         band_layout.addLayout(band_header_row, 0, 0, 1, 2)
 
-        band_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.band_color_label = QLabel("Color:")
+        band_layout.addWidget(self.band_color_label, 1, 0)
         self.band_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
         band_layout.addWidget(self.band_color_row, 1, 1)
 
@@ -407,11 +409,13 @@ class StyleTab(QWidget):
         # (same pattern as fill_match_line_toggle below): a fresh FitStyle
         # has band_color="", meaning the band should track the fit line's
         # own color rather than freezing a stale/prefilled swatch value.
-        band_layout.addWidget(QLabel("Match line:"), 2, 0)
+        self.band_match_line_label = QLabel("Match line:")
+        band_layout.addWidget(self.band_match_line_label, 2, 0)
         self.band_match_line_toggle = ToggleSwitch(checked=True)
         band_layout.addWidget(self.band_match_line_toggle, 2, 1)
 
-        band_layout.addWidget(QLabel("Opacity:"), 3, 0)
+        self.band_opacity_label = QLabel("Opacity:")
+        band_layout.addWidget(self.band_opacity_label, 3, 0)
         self.band_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
         band_layout.addWidget(self.band_opacity_slider, 3, 1)
 
@@ -634,6 +638,7 @@ class StyleTab(QWidget):
         self.line_style_control.currentValueChanged.connect(self._on_field_changed)
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
+        self.band_enabled_toggle.toggled.connect(self._on_band_enabled_toggled)
         self.band_enabled_toggle.toggled.connect(self._on_field_changed)
         self.band_color_row.colorChanged.connect(self._on_field_changed)
         self.band_match_line_toggle.toggled.connect(self._on_band_match_line_toggled)
@@ -1277,14 +1282,34 @@ class StyleTab(QWidget):
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
+    def _update_band_controls_visibility(self):
+        """Show the Confidence Band sub-controls only while the band is
+        enabled; hidden, not just greyed, when off (same convention as
+        _update_marker_controls_enabled / _update_fill_controls_visibility).
+        The 'Match line' toggle's own effect on the color swatch (grey it
+        out, but keep it visible) is handled separately by
+        _on_band_match_line_toggled / load_fit_style's own setEnabled call --
+        this method only owns the all-or-nothing on/off wiring."""
+        enabled = self.band_enabled_toggle.isChecked()
+        self.band_header.setEnabled(enabled)
+        self.band_color_label.setVisible(enabled)
+        self.band_color_row.setVisible(enabled)
+        self.band_opacity_label.setVisible(enabled)
+        self.band_opacity_slider.setVisible(enabled)
+        self.band_match_line_label.setVisible(enabled)
+        self.band_match_line_toggle.setVisible(enabled)
+
     def _on_band_match_line_toggled(self, _checked: bool):
         """Handle the Confidence Band 'Match line' toggle: grey out the
-        color swatch while it's checked (same convention as
-        _update_fill_controls_visibility's show_color, minus the
-        fill-specific enabled/orientation concerns that don't apply to a
-        fit's simpler Band card)."""
+        color swatch while it's checked (kept as enabled/disabled rather
+        than hidden -- the swatch's own visibility is only governed by the
+        section's overall on/off toggle, see _update_band_controls_visibility)."""
         self.band_color_row.setEnabled(not self.band_match_line_toggle.isChecked())
         self._on_field_changed()
+
+    def _on_band_enabled_toggled(self, _checked: bool):
+        """Handle the Confidence Band section's on/off toggle."""
+        self._update_band_controls_visibility()
 
     def _on_fill_match_line_toggled(self, _checked: bool):
         """Handle the Fill 'Match line' toggle for fill color."""
@@ -1549,6 +1574,7 @@ class StyleTab(QWidget):
             self.band_match_line_toggle.blockSignals(False)
             self.band_color_row.setEnabled(style.band_color != "")
             self.band_opacity_slider.setValue(style.band_fill_alpha)
+            self._update_band_controls_visibility()
 
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(False)
