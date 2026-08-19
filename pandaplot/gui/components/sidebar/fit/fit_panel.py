@@ -24,6 +24,7 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import resolve_series_column
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
@@ -335,10 +336,10 @@ class FitPanel(SidebarPanel):
 
         df = dataset.data
 
-        x_column = series.x_column
-        y_column = series.y_column
+        x_column = resolve_series_column(dataset, series.x_column_id, series.x_column)
+        y_column = resolve_series_column(dataset, series.y_column_id, series.y_column)
 
-        if x_column not in df.columns or y_column not in df.columns:
+        if not x_column or not y_column or x_column not in df.columns or y_column not in df.columns:
             return None
 
         mask = ~(pd.isna(df[x_column]) | pd.isna(df[y_column]))
@@ -472,6 +473,7 @@ class FitPanel(SidebarPanel):
 
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
+        self._clear_results()
         self.current_chart = chart
         self.series_combo.clear()
 
@@ -481,7 +483,16 @@ class FitPanel(SidebarPanel):
         self.current_project = self.app_context.app_state.current_project
 
         for series in chart.data_series:
-            label = series.label or f"{series.y_column} vs {series.x_column}"
+            if series.label:
+                label = series.label
+            else:
+                dataset = (
+                    self.current_project.find_item(series.dataset_id)
+                    if self.current_project else None
+                )
+                x_name = resolve_series_column(dataset, series.x_column_id, series.x_column) or "?"
+                y_name = resolve_series_column(dataset, series.y_column_id, series.y_column) or "?"
+                label = f"{y_name} vs {x_name}"
             self.series_combo.addItem(label, series)
 
         if self.series_combo.count() > 0:
@@ -489,6 +500,7 @@ class FitPanel(SidebarPanel):
             self._on_series_changed()
 
     def _on_series_changed(self):
+        self._clear_results()
         series = self.series_combo.currentData()
         if series is None:
             return
