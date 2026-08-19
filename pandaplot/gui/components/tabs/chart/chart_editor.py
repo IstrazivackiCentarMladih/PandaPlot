@@ -815,15 +815,12 @@ class ChartEditorWidget(PWidget):
                     alpha = series.alpha if series.visible else 0.3
                     series_type = series.series_type
                     style = series.style
-                    renderer = SERIES_RENDERERS[series_type]
-                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
-                        "bins": self.chart.config.get("hist_bins", 20),
-                        "resolve_fill_baseline": (
-                            lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
-                                project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
-                        ),
-                    })
 
+                    # Draw error bars BEFORE the series/marker renderer:
+                    # matplotlib draws artists in the order they're added
+                    # to the axes when zorder is tied (neither call here
+                    # sets one), so error bars drawn first land underneath
+                    # the markers/line/bars instead of obscuring them.
                     error_bars = getattr(style, "error_bars", None)
                     if error_bars is not None:
                         xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
@@ -839,6 +836,15 @@ class ChartEditorWidget(PWidget):
                                 elinewidth=getattr(style, "line_width", 2.0),
                                 capsize=error_bars.error_cap_size,
                                 alpha=alpha)
+
+                    renderer = SERIES_RENDERERS[series_type]
+                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                        "bins": self.chart.config.get("hist_bins", 20),
+                        "resolve_fill_baseline": (
+                            lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
+                                project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
+                        ),
+                    })
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the

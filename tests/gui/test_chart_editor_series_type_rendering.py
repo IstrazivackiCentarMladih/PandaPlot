@@ -224,3 +224,45 @@ def test_error_bars_gating_uses_each_series_own_type_not_the_chart_type():
     from matplotlib.container import ErrorbarContainer
     error_containers = [c for c in editor.chart_canvas.axes.containers if isinstance(c, ErrorbarContainer)]
     assert len(error_containers) == 1
+
+
+def test_error_bars_are_drawn_behind_the_series_not_on_top_of_it():
+    """Regression test: error bars must render underneath the series'
+    own marker/line, not obscure it. Neither the error-bar errorbar()
+    call nor the line renderer sets an explicit zorder, so matplotlib
+    falls back to insertion order for artists at the same default
+    zorder (a documented, stable rule, not an implementation detail) --
+    drawing error bars first is what puts them behind. axes.lines lists
+    every Line2D artist (the series' own line AND the errorbar's cap/bar
+    lines are all Line2D) in the order each was added to the axes."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="C", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        label="Series 1", series_type=SeriesType.LINE,
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("y"))),
+    )
+
+    editor = _editor_for(project, chart)
+
+    from matplotlib.container import ErrorbarContainer
+    axes = editor.chart_canvas.axes
+    error_container = next(c for c in axes.containers if isinstance(c, ErrorbarContainer))
+    # ErrorbarContainer.lines is (data_line, caplines, barlinecols):
+    # data_line is None (fmt="none" -- no connecting line drawn), caplines
+    # are the Line2D cap markers (what actually shows up in axes.lines
+    # alongside the series' own plotted line), barlinecols are the error
+    # bar segments themselves as a LineCollection (in axes.collections,
+    # not axes.lines).
+    _data_line, caplines, _barlinecols = error_container.lines
+    assert caplines, "expected error-bar cap lines to exist"
+
+    series_line = next(line for line in axes.lines if line not in caplines)
+    cap_indices = [axes.lines.index(cap) for cap in caplines]
+    series_line_index = axes.lines.index(series_line)
+
+    assert all(i < series_line_index for i in cap_indices), (
+        "error-bar cap lines must be added to the axes BEFORE the series' "
+        "own line, so they draw underneath it"
+    )
