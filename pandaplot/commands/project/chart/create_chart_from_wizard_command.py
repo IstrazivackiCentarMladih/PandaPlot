@@ -244,6 +244,8 @@ class CreateChartFromWizardCommand(Command):
                         style = style_cls(color=color, error_bars=ErrorBarConfig(
                             x_error_column_id=series_config["x_error_column_id"],
                             y_error_column_id=series_config["y_error_column_id"],
+                            x_error_minus_column_id=series_config.get("x_error_minus_column_id", ""),
+                            y_error_minus_column_id=series_config.get("y_error_minus_column_id", ""),
                             error_symmetric=series_config["error_symmetric"],
                         ))
                     elif series_type == SeriesType.VECTOR:

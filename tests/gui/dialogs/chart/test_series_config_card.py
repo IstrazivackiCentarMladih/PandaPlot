@@ -246,3 +246,31 @@ def test_swatch_color_reflects_the_cards_index():
     card.set_collapsed(True)
 
     assert "#222222" in card._swatch.styleSheet()
+
+
+def test_enabling_asymmetric_error_bars_exposes_minus_columns_and_defaults_them_to_plus():
+    """Mirrors data_tab.py's already-shipped "default minus to plus"
+    behavior (see _on_error_symmetry_toggled), applied to the wizard's
+    per-series card so the wizard doesn't reintroduce the same
+    None-default gap in a second place."""
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+    plus_index = card.x_error_column_combo.findData("col-rev")
+    card.x_error_column_combo.setCurrentIndex(plus_index)
+
+    card.error_asymmetric_check.setChecked(True)
+
+    assert card.x_error_minus_column_combo.isVisible() is True
+    assert card.x_error_minus_column_combo.currentData() == "col-rev"
+
+
+def test_series_config_includes_minus_columns_and_symmetric_flag():
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+    card.error_asymmetric_check.setChecked(True)
+
+    config = card.get_series_config()
+
+    assert "x_error_minus_column_id" in config
+    assert "y_error_minus_column_id" in config
+    assert config["error_symmetric"] is False

@@ -66,6 +66,8 @@ def render_wizard_preview(
             style = style_cls(error_bars=ErrorBarConfig(
                 x_error_column_id=config.get("x_error_column_id", ""),
                 y_error_column_id=config.get("y_error_column_id", ""),
+                x_error_minus_column_id=config.get("x_error_minus_column_id", ""),
+                y_error_minus_column_id=config.get("y_error_minus_column_id", ""),
                 error_symmetric=config.get("error_symmetric", True),
             ))
         elif series_type == SeriesType.VECTOR:
