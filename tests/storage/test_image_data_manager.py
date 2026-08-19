@@ -76,8 +76,6 @@ class TestImageDataManagerCopied:
         (the on-disk counterpart of the save-with-missing-bytes case above)
         must not crash with KeyError; bytes should just be None.
         """
-        image = Image(id="img-6", name="Ghost", storage_mode="copied", image_ext="png")
-
         buffer = io.BytesIO()
         with ZipFile(buffer, "w") as zf:
             zf.writestr(

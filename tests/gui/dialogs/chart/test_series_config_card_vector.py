@@ -4,8 +4,8 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 
 
 @pytest.fixture(scope="module", autouse=True)

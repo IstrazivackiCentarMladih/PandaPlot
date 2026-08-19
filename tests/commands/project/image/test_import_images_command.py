@@ -1,10 +1,10 @@
 import datetime
 import os
+from unittest.mock import Mock, patch
 
 import pytest
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QImage
-from unittest.mock import Mock, patch
 
 from pandaplot.commands.project.image.create_image_gallery_command import (
     CreateImageGalleryCommand,
