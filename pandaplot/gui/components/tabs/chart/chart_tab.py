@@ -159,14 +159,21 @@ class ChartTab(PWidget):
             fit_params = fit_results.params
             fit_stats = {"r_squared": fit_results.r_squared}
 
-            # Resolve the fit's source column names to stable ids against the
-            # dataset, so the fit stays rename-proof (the model holds no dataset
-            # reference). Unresolved names leave empty ids (name-only fallback).
-            app_state = self.app_context.get_app_state()
-            project = app_state.current_project if app_state.has_project else None
-            source_dataset = project.find_item(source_dataset_id) if project else None
-            source_x_column_id = source_dataset.column_id(source_x_column) if isinstance(source_dataset, Dataset) else None
-            source_y_column_id = source_dataset.column_id(source_y_column) if isinstance(source_dataset, Dataset) else None
+            # Prefer the stable ids the fit panel already resolved (it has
+            # direct access to the series' x_column_id/y_column_id). Fall back
+            # to a name-based lookup against the dataset for older/other
+            # callers that only populate the name fields, so the fit stays
+            # rename-proof (the model holds no dataset reference).
+            source_x_column_id = getattr(fit_results, "source_x_column_id", None)
+            source_y_column_id = getattr(fit_results, "source_y_column_id", None)
+            if not source_x_column_id or not source_y_column_id:
+                app_state = self.app_context.get_app_state()
+                project = app_state.current_project if app_state.has_project else None
+                source_dataset = project.find_item(source_dataset_id) if project else None
+                if not source_x_column_id:
+                    source_x_column_id = source_dataset.column_id(source_x_column) if isinstance(source_dataset, Dataset) else None
+                if not source_y_column_id:
+                    source_y_column_id = source_dataset.column_id(source_y_column) if isinstance(source_dataset, Dataset) else None
 
             self.chart.add_fit_data(
                 source_dataset_id,

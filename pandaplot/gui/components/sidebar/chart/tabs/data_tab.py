@@ -534,7 +534,10 @@ class DataTab(QWidget):
             title_text = f"\U0001f527 {fit.label}"
         else:
             series = self.current_chart.data_series[index]
-            title_text = series.label or f"{series.dataset_id}:{series.y_column}"
+            title_text = series.label or (
+                f"{series.dataset_id}:"
+                f"{self._column_display_name(series.dataset_id, series.y_column_id, series.y_column)}"
+            )
 
         header = QHBoxLayout()
         title_label = QLabel(title_text)

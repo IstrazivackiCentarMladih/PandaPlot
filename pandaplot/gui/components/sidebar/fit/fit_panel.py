@@ -442,17 +442,20 @@ class FitPanel(SidebarPanel):
                 return
 
             dataset_id = series.dataset_id
-            x_column = series.x_column
-            y_column = series.y_column
+            dataset = self.current_project.find_item(dataset_id) if self.current_project else None
+            x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) or ""
+            y_column = resolve_series_column(dataset, series.y_column_id, series.y_column) or ""
 
             dataset_name = str(series.label)
-            
+
             # Add source dataset info to fit results
             enhanced_fit_results = replace(
                 self.fit_command.fit_results,
                 source_dataset_id=dataset_id,
                 source_x_column=x_column,
                 source_y_column=y_column,
+                source_x_column_id=series.x_column_id,
+                source_y_column_id=series.y_column_id,
             )
             
             # Publish fit applied event

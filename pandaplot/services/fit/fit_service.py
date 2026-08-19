@@ -52,6 +52,8 @@ class FitResult:
     source_dataset_id: str | None = None
     source_x_column: str | None = None
     source_y_column: str | None = None
+    source_x_column_id: str | None = None
+    source_y_column_id: str | None = None
     sigma_y: np.ndarray | None = None
     equation: str | None = None
 
