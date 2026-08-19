@@ -1287,25 +1287,22 @@ class StyleTab(QWidget):
         """Show the Confidence Band sub-controls only while the band is
         enabled; hidden, not just greyed, when off (same convention as
         _update_marker_controls_enabled / _update_fill_controls_visibility).
-        The 'Match line' toggle's own effect on the color swatch (grey it
-        out, but keep it visible) is handled separately by
-        _on_band_match_line_toggled / load_fit_style's own setEnabled call --
-        this method only owns the all-or-nothing on/off wiring."""
+        The color swatch is additionally hidden whenever 'Match line' is
+        checked, matching Marker's and Fill's show_color convention."""
         enabled = self.band_enabled_toggle.isChecked()
         self.band_header.setEnabled(enabled)
-        self.band_color_label.setVisible(enabled)
-        self.band_color_row.setVisible(enabled)
+        show_color = enabled and not self.band_match_line_toggle.isChecked()
+        self.band_color_label.setVisible(show_color)
+        self.band_color_row.setVisible(show_color)
         self.band_opacity_label.setVisible(enabled)
         self.band_opacity_slider.setVisible(enabled)
         self.band_match_line_label.setVisible(enabled)
         self.band_match_line_toggle.setVisible(enabled)
 
     def _on_band_match_line_toggled(self, _checked: bool):
-        """Handle the Confidence Band 'Match line' toggle: grey out the
-        color swatch while it's checked (kept as enabled/disabled rather
-        than hidden -- the swatch's own visibility is only governed by the
-        section's overall on/off toggle, see _update_band_controls_visibility)."""
-        self.band_color_row.setEnabled(not self.band_match_line_toggle.isChecked())
+        """Handle the Confidence Band 'Match line' toggle: hide the color
+        swatch while it's checked (same convention as Marker/Fill)."""
+        self._update_band_controls_visibility()
         self._on_field_changed()
 
     def _on_band_enabled_toggled(self, _checked: bool):
@@ -1574,7 +1571,6 @@ class StyleTab(QWidget):
             self.band_match_line_toggle.blockSignals(True)
             self.band_match_line_toggle.setChecked(style.band_color == "")
             self.band_match_line_toggle.blockSignals(False)
-            self.band_color_row.setEnabled(style.band_color != "")
             self.band_opacity_slider.setValue(style.band_fill_alpha)
             self._update_band_controls_visibility()
 

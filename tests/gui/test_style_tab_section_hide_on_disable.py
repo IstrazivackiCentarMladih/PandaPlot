@@ -89,7 +89,9 @@ def test_disabling_confidence_band_hides_the_option_rows():
     _qapp()
     style_tab = StyleTab(app_context=build_app_context())
     style_tab.show()
-    style_tab.set_selected("fit", _fit_with_confidence(band_fill_enabled=True))
+    style_tab.set_selected(
+        "fit", _fit_with_confidence(band_fill_enabled=True, band_color="#445566")
+    )
 
     assert style_tab.band_color_row.isVisible() is True
 

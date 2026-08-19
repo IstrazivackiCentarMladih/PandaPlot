@@ -69,37 +69,39 @@ def test_load_fit_style_populates_band_controls_from_fitstyle():
     _qapp()
     app_context = build_app_context()
     style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
 
-    fit = _fit_with_confidence(band_fill_enabled=False, band_fill_alpha=0.4, band_color="#112233")
+    fit = _fit_with_confidence(band_fill_enabled=True, band_fill_alpha=0.4, band_color="#112233")
 
     style_tab.load_fit_style(fit)
 
-    assert style_tab.band_enabled_toggle.isChecked() is False
+    assert style_tab.band_enabled_toggle.isChecked() is True
     assert style_tab.band_opacity_slider.value() == 0.4
     assert style_tab.band_color_row.currentColor() == "#112233"
     # A non-empty stored band_color is an explicit color, not "match line".
     assert style_tab.band_match_line_toggle.isChecked() is False
-    # The swatch must load enabled when showing an explicit color -- loading
-    # it disabled here would visually contradict the unchecked toggle.
-    assert style_tab.band_color_row.isEnabled() is True
+    # The swatch must load visible when showing an explicit color -- loading
+    # it hidden here would visually contradict the unchecked toggle.
+    assert style_tab.band_color_row.isVisible() is True
 
 
 def test_load_fit_style_disables_the_band_swatch_when_matching_the_line():
     """Regression test: loading a fit whose band_color=="" (inherit/match
-    line) must load the swatch disabled, matching the "Match line" toggle's
+    line) must load the swatch hidden, matching the "Match line" toggle's
     own live-edit behavior (_on_band_match_line_toggled) -- a prior bug set
     this backwards, so an inherit-color fit loaded with the toggle checked
     but the swatch still editable until the user touched the toggle once."""
     _qapp()
     app_context = build_app_context()
     style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
 
     fit = _fit_with_confidence(band_color="")
 
     style_tab.load_fit_style(fit)
 
     assert style_tab.band_match_line_toggle.isChecked() is True
-    assert style_tab.band_color_row.isEnabled() is False
+    assert style_tab.band_color_row.isVisible() is False
 
 
 def test_apply_fit_style_to_writes_band_fields():
