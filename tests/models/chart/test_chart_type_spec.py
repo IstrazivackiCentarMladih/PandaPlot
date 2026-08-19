@@ -44,11 +44,12 @@ def test_vector_spec_matches_former_chart_role_spec_values():
 
 
 def test_allowed_series_types_per_chart_type():
-    assert CHART_TYPE_SPECS[ChartType.LINE].allowed_series_types == {SeriesType.LINE, SeriesType.SCATTER}
-    assert CHART_TYPE_SPECS[ChartType.SCATTER].allowed_series_types == {SeriesType.SCATTER}
+    lsv = {SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}
+    assert CHART_TYPE_SPECS[ChartType.LINE].allowed_series_types == lsv
+    assert CHART_TYPE_SPECS[ChartType.SCATTER].allowed_series_types == lsv
+    assert CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types == lsv
     assert CHART_TYPE_SPECS[ChartType.BAR].allowed_series_types == {SeriesType.BAR, SeriesType.SCATTER}
     assert CHART_TYPE_SPECS[ChartType.HIST].allowed_series_types == {SeriesType.HIST}
-    assert CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types == {SeriesType.VECTOR, SeriesType.LINE}
 
 
 def test_allowed_series_types_is_genuinely_immutable():

@@ -359,17 +359,17 @@ class TestSetChartTypeRetypesSeries:
         assert isinstance(series.style, HistSeriesStyle)
         assert series.style.color == "#112233"
 
-    def test_vector_to_line_carries_vector_color_into_color(self):
+    def test_vector_to_line_stays_vector_since_now_allowed(self):
         chart = Chart(name="C", chart_type="vector")
         chart.add_data_series(dataset_id="ds1", x_column_id="x", y_column_id="y",
                                style=VectorSeriesStyle(vector_color="#445566"))
+        original_style = chart.data_series[0].style
 
         chart.set_chart_type("line")
 
         series = chart.data_series[0]
-        assert series.series_type == SeriesType.LINE
-        assert isinstance(series.style, LineSeriesStyle)
-        assert series.style.color == "#445566"
+        assert series.series_type == SeriesType.VECTOR
+        assert series.style is original_style
 
     def test_line_series_stays_line_when_chart_becomes_vector_since_line_is_allowed(self):
         chart = Chart(name="C", chart_type="line")

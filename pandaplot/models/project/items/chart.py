@@ -266,6 +266,14 @@ class Chart(Item):
         picking a type via a per-series UI control) shares one
         implementation with that bulk case, instead of duplicating the
         carry-over logic.
+
+        Deliberately does NOT add a line when retyping Scatter -> Line
+        (asymmetric with Line -> Scatter, which drops the line): Line ->
+        Scatter drops it out of necessity (ScatterSeriesStyle has no line
+        concept to keep it in), whereas Scatter -> Line has an available
+        destination but adding one would be a user-visible rendering
+        change nobody asked for at retype time. Left as an explicit,
+        subsequent style edit instead.
         """
         series = self.data_series[index]
         new_type = SeriesType(series_type)

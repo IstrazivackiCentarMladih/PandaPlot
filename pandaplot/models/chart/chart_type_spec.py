@@ -44,12 +44,12 @@ class ChartTypeSpec:
 CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
     ChartType.LINE: ChartTypeSpec(
         display_name="Line", roles=("x", "y"), required_roles=("y",),
-        allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER}),
+        allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}),
         allows_fit=True, default_series_type=SeriesType.LINE,
     ),
     ChartType.SCATTER: ChartTypeSpec(
         display_name="Scatter", roles=("x", "y"), required_roles=("y",),
-        allowed_series_types=frozenset({SeriesType.SCATTER}),
+        allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}),
         allows_fit=True, default_series_type=SeriesType.SCATTER,
     ),
     ChartType.BAR: ChartTypeSpec(
@@ -65,7 +65,7 @@ CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
     ChartType.VECTOR: ChartTypeSpec(
         display_name="Vector", roles=("x", "y", "u", "v", "magnitude"),
         required_roles=("x", "y", "u", "v"),
-        allowed_series_types=frozenset({SeriesType.VECTOR, SeriesType.LINE}),
+        allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}),
         allows_fit=True, default_series_type=SeriesType.VECTOR,
     ),
 }
