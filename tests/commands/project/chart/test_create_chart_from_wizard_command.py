@@ -384,6 +384,32 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_multiple_series_get_distinct_default_colors(mock_wizard_cls, app_context_with_project):
+    """Regression test: every wizard-created series used to land on its
+    style class's own single hardcoded default color (no color= kwarg
+    was ever passed), so a multi-series chart came out of the wizard
+    with every series visually indistinguishable."""
+    app_context, project = app_context_with_project
+    series_configs = [
+        {
+            "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": f"col-{i}",
+            "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        }
+        for i in range(3)
+    ]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    colors = [series.style.color for series in created_chart.data_series]
+    assert len(set(colors)) == len(colors), f"expected distinct colors, got {colors}"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_series_gets_a_default_label_from_dataset_and_y_column(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     dataset = project.find_item("ds-1")

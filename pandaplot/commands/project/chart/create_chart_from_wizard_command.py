@@ -20,6 +20,14 @@ from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state import AppContext, AppState
 
+# Same default palette data_tab.py's "+Add series" cycles through -- keeps
+# wizard-created series visually distinguishable instead of all landing on
+# the style class's own single hardcoded default color.
+_DEFAULT_SERIES_COLORS = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
+
 
 class CreateChartFromWizardCommand(Command):
     """Opens `ChartWizard` non-blocking; on acceptance builds a `Chart` from it."""
@@ -204,21 +212,27 @@ class CreateChartFromWizardCommand(Command):
                 series_type = SeriesType(chart.chart_type)
                 spec = SERIES_TYPE_SPECS[series_type]
                 style_cls = spec.style_cls
-                for series_config in series_configs:
+                for index, series_config in enumerate(series_configs):
+                    # Cycle through the same default palette data_tab.py's
+                    # "+Add series" uses, so multiple wizard-created series
+                    # aren't all left on the style class's own single
+                    # hardcoded default color.
+                    color = _DEFAULT_SERIES_COLORS[index % len(_DEFAULT_SERIES_COLORS)]
                     if spec.supports_error_bars:
-                        style = style_cls(error_bars=ErrorBarConfig(
+                        style = style_cls(color=color, error_bars=ErrorBarConfig(
                             x_error_column_id=series_config["x_error_column_id"],
                             y_error_column_id=series_config["y_error_column_id"],
                             error_symmetric=series_config["error_symmetric"],
                         ))
                     elif series_type == SeriesType.VECTOR:
                         style = style_cls(
+                            vector_color=color,
                             u_column_id=series_config.get("u_column_id", ""),
                             v_column_id=series_config.get("v_column_id", ""),
                             magnitude_column_id=series_config.get("magnitude_column_id", ""),
                         )
                     else:
-                        style = style_cls()
+                        style = style_cls(color=color)
                     chart.add_data_series(
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
