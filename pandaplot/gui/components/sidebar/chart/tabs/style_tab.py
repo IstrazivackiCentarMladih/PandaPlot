@@ -424,7 +424,8 @@ class StyleTab(QWidget):
         fill_layout = QGridLayout(fill_card)
 
         fill_header_row = QHBoxLayout()
-        fill_header_row.addWidget(SectionHeader("Fill"))
+        self.fill_header = SectionHeader("Fill")
+        fill_header_row.addWidget(self.fill_header)
         fill_header_row.addStretch(1)
         self.fill_enabled_toggle = ToggleSwitch()
         fill_header_row.addWidget(self.fill_enabled_toggle)
@@ -434,7 +435,8 @@ class StyleTab(QWidget):
         # (fill_between); on => horizontal fill to an X baseline
         # (fill_betweenx). It also flips how the baseline field and "Fill to"
         # interpolation are interpreted (see _update_fill_controls_visibility).
-        fill_layout.addWidget(QLabel("Horizontal:"), 1, 0)
+        self.fill_horizontal_label = QLabel("Horizontal:")
+        fill_layout.addWidget(self.fill_horizontal_label, 1, 0)
         self.fill_horizontal_toggle = ToggleSwitch()
         fill_layout.addWidget(self.fill_horizontal_toggle, 1, 1)
 
@@ -442,7 +444,8 @@ class StyleTab(QWidget):
         # a "Baseline" entry (value -1) plus every *other* series in the chart
         # (value = its index in data_series). Seeded with just Baseline so the
         # ValueComboBox has a non-empty initial item list.
-        fill_layout.addWidget(QLabel("Fill to:"), 2, 0)
+        self.fill_to_label = QLabel("Fill to:")
+        fill_layout.addWidget(self.fill_to_label, 2, 0)
         self.fill_to_control = ValueComboBox([("Baseline", -1)])
         fill_layout.addWidget(self.fill_to_control, 2, 1)
 
@@ -1289,20 +1292,25 @@ class StyleTab(QWidget):
         self._on_field_changed()
 
     def _update_fill_controls_visibility(self):
-        """Enable the fill sub-controls only while fill is on, hide the color
-        picker while it matches the line color, and hide the constant-baseline
-        field when filling between two curves instead of to a baseline (same
-        hide-not-disable convention as _update_marker_controls_enabled)."""
+        """Show the fill sub-controls only while fill is on -- hidden, not
+        just greyed, when off (same convention as
+        _update_marker_controls_enabled). While on: hide the color picker
+        if it matches the line color, and hide the constant-baseline field
+        when filling between two curves instead of to a baseline."""
         enabled = self.fill_enabled_toggle.isChecked()
-        to_baseline = self.fill_to_control.currentValue() == -1
+        self.fill_header.setEnabled(enabled)
+
         for widget in (
-            self.fill_horizontal_toggle, self.fill_to_control,
-            self.fill_match_line_toggle, self.fill_opacity_slider,
+            self.fill_horizontal_label, self.fill_horizontal_toggle,
+            self.fill_to_label, self.fill_to_control,
+            self.fill_match_line_label, self.fill_match_line_toggle,
         ):
-            widget.setEnabled(enabled)
+            widget.setVisible(enabled)
+        self.fill_opacity_slider.setVisible(enabled)
 
         # The baseline is a Y value for a vertical fill, an X value for a
         # horizontal one -- label it so the field's meaning is unambiguous.
+        to_baseline = self.fill_to_control.currentValue() == -1
         horizontal = self.fill_horizontal_toggle.isChecked()
         self.fill_base_label.setText("X baseline:" if horizontal else "Y baseline:")
         show_baseline = enabled and to_baseline
@@ -1312,8 +1320,6 @@ class StyleTab(QWidget):
         show_color = enabled and not self.fill_match_line_toggle.isChecked()
         self.fill_color_label.setVisible(show_color)
         self.fill_color_row.setVisible(show_color)
-        self.fill_match_line_label.setVisible(enabled)
-        self.fill_match_line_toggle.setVisible(enabled)
 
     # -- Background transparent toggles ----------------------------------
 
