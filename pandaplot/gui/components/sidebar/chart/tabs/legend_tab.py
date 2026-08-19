@@ -42,8 +42,8 @@ class LegendTab(QWidget):
         show_row.addStretch(1)
         layout.addLayout(show_row)
 
-        legend_group = QGroupBox("Legend")
-        legend_layout = QGridLayout(legend_group)
+        self.legend_group = QGroupBox("Legend")
+        legend_layout = QGridLayout(self.legend_group)
 
         legend_layout.addWidget(QLabel("Position:"), 0, 0)
         self.legend_position_combo = QComboBox()
@@ -96,20 +96,23 @@ class LegendTab(QWidget):
         self.legend_font_family_combo = ValueComboBox(list_available_font_families())
         legend_layout.addWidget(self.legend_font_family_combo, 4, 1)
 
-        layout.addWidget(legend_group)
+        layout.addWidget(self.legend_group)
 
-        frame_card = Card()
-        frame_layout = QGridLayout(frame_card)
-        frame_layout.addWidget(SectionHeader("Frame"), 0, 0)
+        self.frame_card = Card()
+        frame_layout = QGridLayout(self.frame_card)
+        self.frame_header = SectionHeader("Frame")
+        frame_layout.addWidget(self.frame_header, 0, 0)
         self.legend_show_frame_toggle = ToggleSwitch(checked=True)
         frame_layout.addWidget(self.legend_show_frame_toggle, 0, 1)
-        frame_layout.addWidget(QLabel("Background:"), 1, 0)
+        self.legend_bg_color_label = QLabel("Background:")
+        frame_layout.addWidget(self.legend_bg_color_label, 1, 0)
         self.legend_bg_color_row = ColorSwatchRow(["#FFFFFF", "#F4F5F8", "#1C1E26"])
         frame_layout.addWidget(self.legend_bg_color_row, 1, 1)
-        frame_layout.addWidget(QLabel("Opacity:"), 2, 0)
+        self.legend_bg_opacity_label = QLabel("Opacity:")
+        frame_layout.addWidget(self.legend_bg_opacity_label, 2, 0)
         self.legend_bg_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
         frame_layout.addWidget(self.legend_bg_opacity_slider, 2, 1)
-        layout.addWidget(frame_card)
+        layout.addWidget(self.frame_card)
 
         layout.addStretch()
 
@@ -122,6 +125,7 @@ class LegendTab(QWidget):
         self.legend_columns_control.currentValueChanged.connect(self._on_field_changed)
         self.legend_font_family_combo.currentValueChanged.connect(self._on_field_changed)
         self.legend_show_frame_toggle.toggled.connect(self._on_field_changed)
+        self.legend_show_frame_toggle.toggled.connect(self._on_frame_enabled_toggled)
         self.legend_bg_color_row.colorChanged.connect(self._on_field_changed)
         self.legend_bg_opacity_slider.valueChanged.connect(self._on_field_changed)
 
@@ -130,25 +134,40 @@ class LegendTab(QWidget):
         self._on_field_changed()
 
     def _on_show_legend_toggled(self, _checked: bool):
-        self._update_legend_controls_enabled()
+        self._update_legend_controls_visibility()
         self._on_field_changed()
 
-    def _update_legend_controls_enabled(self):
-        """Enable/disable every other Legend-tab widget based on the master toggle."""
+    def _update_legend_controls_visibility(self):
+        """Hide (not just grey) the Legend and Frame sections entirely when
+        the master "Show legend" toggle is off -- reported live: "if I
+        disable show legend I can still see all of the legend options."
+        Hiding the whole legend_group/frame_card containers is simpler and
+        cleaner than hiding a dozen individual rows inside a QGroupBox, and
+        there is nothing meaningful to configure about the frame of a legend
+        that isn't shown at all."""
         show_legend = self.show_legend_toggle.isChecked()
-        for control in (
-            self.legend_position_combo,
-            self.legend_custom_x_spin,
-            self.legend_custom_y_spin,
-            self.legend_custom_anchor_combo,
-            self.legend_font_size_spin,
-            self.legend_columns_control,
-            self.legend_font_family_combo,
-            self.legend_show_frame_toggle,
-            self.legend_bg_color_row,
-            self.legend_bg_opacity_slider,
+        self.legend_group.setVisible(show_legend)
+        self.frame_card.setVisible(show_legend)
+        if show_legend:
+            self._update_frame_controls_visibility()
+
+    def _update_frame_controls_visibility(self):
+        """Hide (not just grey) the Frame section's Background/Opacity rows
+        when "Show Frame" is off, greying only the section title via
+        SectionHeader's disabled-state CSS -- reported live: "if I disable
+        show frame, I can still see controls and edit them." Mirrors the
+        same convention already established for the Style tab's Marker/
+        Fill/Confidence Band sections."""
+        frame_enabled = self.legend_show_frame_toggle.isChecked()
+        self.frame_header.setEnabled(frame_enabled)
+        for widget in (
+            self.legend_bg_color_label, self.legend_bg_color_row,
+            self.legend_bg_opacity_label, self.legend_bg_opacity_slider,
         ):
-            control.setEnabled(show_legend)
+            widget.setVisible(frame_enabled)
+
+    def _on_frame_enabled_toggled(self, _checked: bool):
+        self._update_frame_controls_visibility()
 
     def _on_field_changed(self):
         if self._chart is None or self._updating_controls:
@@ -189,7 +208,7 @@ class LegendTab(QWidget):
             self.legend_show_frame_toggle.setChecked(config.get("legend_show_frame", True))
             self.legend_bg_color_row.setCurrentColor(config.get("legend_bg_color", "#ffffff"))
             self.legend_bg_opacity_slider.setValue(config.get("legend_bg_alpha", 1.0))
-            self._update_legend_controls_enabled()
+            self._update_legend_controls_visibility()
         finally:
             self._updating_controls = previous_guard
 
@@ -218,7 +237,7 @@ class LegendTab(QWidget):
             self.legend_show_frame_toggle.setChecked(True)
             self.legend_bg_color_row.setCurrentColor("#ffffff")
             self.legend_bg_opacity_slider.setValue(1.0)
-            self._update_legend_controls_enabled()
+            self._update_legend_controls_visibility()
         finally:
             self._updating_controls = previous_guard
 
