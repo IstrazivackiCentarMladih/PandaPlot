@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS, compatible_chart_types
 
 
 class ChartTab(QWidget):
@@ -92,9 +92,37 @@ class ChartTab(QWidget):
         chart_type = self.chart_type_control.currentValue()
         if self._chart is not None and chart_type:
             self._chart.set_chart_type(chart_type)
+        self._update_chart_type_compatibility()
         self._update_hist_bins_visibility()
         self.chartTypeChanged.emit(chart_type)
         self._on_field_changed()
+
+    def _update_chart_type_compatibility(self):
+        """Disable chart-type options that would force-retype (and
+        therefore visually alter) this chart's current series, per
+        `compatible_chart_types`. Reported live: "if we don't want to
+        support some transitions in chart type we could disable it. like
+        I don't think we should support going from vector to barchart."
+        Recomputed on every type change (not just on `load()`), since the
+        compatible set depends on the CURRENT chart type."""
+        current_type = self.chart_type_control.currentValue()
+        if current_type is None:
+            return
+        compatible = compatible_chart_types(current_type)
+        model = self.chart_type_control.model()
+        for index in range(self.chart_type_control.count()):
+            target_type = self.chart_type_control.itemData(index)
+            item = model.item(index)
+            enabled = target_type in compatible
+            item.setEnabled(enabled)
+            if enabled:
+                item.setToolTip("")
+            else:
+                current_default = CHART_TYPE_SPECS[current_type].default_series_type
+                item.setToolTip(
+                    f"Switching to {CHART_TYPE_SPECS[target_type].display_name} would discard "
+                    f"this chart's {current_default.value} series data"
+                )
 
     def _update_hist_bins_visibility(self):
         """Show the Histogram Bins control only when the chart type is Histogram."""
@@ -132,6 +160,7 @@ class ChartTab(QWidget):
             # this method is guaranteed to carry a value setCurrentValue can
             # display (no defensive except-ValueError fallback needed here).
             self.chart_type_control.setCurrentValue(chart.chart_type)
+            self._update_chart_type_compatibility()
             self._update_hist_bins_visibility()
 
             self.hist_bins_spin.setValue(chart.config.get("hist_bins", 20))
