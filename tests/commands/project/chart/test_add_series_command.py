@@ -5,6 +5,7 @@ import pytest
 
 from pandaplot.commands.project.chart import AddSeriesCommand
 from pandaplot.models.chart.series_style.line import LineSeriesStyle
+from pandaplot.models.chart.series_style.scatter import ScatterSeriesStyle
 from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart, DataSeries
@@ -123,7 +124,7 @@ def test_redo_appends_series_type_matching_the_original_construction(app_context
     series = DataSeries(
         dataset_id="ds-1", x_column_id="col-x", y_column_id="col-y",
         series_type=SeriesType.SCATTER,
-        style=LineSeriesStyle(color="#112233"),
+        style=ScatterSeriesStyle(color="#112233"),
     )
     command = AddSeriesCommand(app_context, chart_id=chart.id, series=series)
 

@@ -4,6 +4,7 @@ import pandas as pd
 
 from pandaplot.gui.components.tabs.chart.chart_editor import resolve_series_data
 from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
 from pandaplot.models.project.project import Project
@@ -25,6 +26,7 @@ def test_resolve_series_data_resolves_u_and_v_for_vector_chart_type():
     series = DataSeries(
         dataset_id=dataset.id,
         x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        series_type=SeriesType.VECTOR,
         style=VectorSeriesStyle(u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v")),
     )
 
@@ -41,6 +43,7 @@ def test_resolve_series_data_resolves_optional_magnitude_column():
     series = DataSeries(
         dataset_id=dataset.id,
         x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        series_type=SeriesType.VECTOR,
         style=VectorSeriesStyle(
             u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
             magnitude_column_id=dataset.column_id("mag"),
@@ -58,6 +61,7 @@ def test_resolve_series_data_errors_when_u_column_missing():
     series = DataSeries(
         dataset_id=dataset.id,
         x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        series_type=SeriesType.VECTOR,
         style=VectorSeriesStyle(u_column_id="", v_column_id=dataset.column_id("v")),
     )
 
