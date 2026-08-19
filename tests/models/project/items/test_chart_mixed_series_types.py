@@ -6,8 +6,8 @@ refactor was built to support: a chart's `allowed_series_types` (see
 than every series on a chart being forced to share the chart's own type.
 A "vector" chart is the concrete example the design calls out
 (`CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types ==
-{SeriesType.VECTOR, SeriesType.LINE}`) -- a raw line series can sit
-alongside vector arrows on the same chart.
+{SeriesType.VECTOR, SeriesType.LINE, SeriesType.SCATTER}`) -- a raw line
+series can sit alongside vector arrows on the same chart.
 
 This was previously verified only by a throwaway manual script during a
 whole-branch review; this test makes that verification permanent.
@@ -41,9 +41,16 @@ def _mixed_chart() -> Chart:
 
 class TestMixedSeriesTypesOnOneChart:
     def test_vector_chart_type_allows_both_vector_and_line_series(self):
-        assert CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types == {
-            SeriesType.VECTOR, SeriesType.LINE,
-        }
+        """LINE/SCATTER/VECTOR now all mutually allow each other
+        (CHART_TYPE_SPECS was broadened), so VECTOR's allowed set also
+        includes SCATTER. This test still demonstrates the specific
+        vector+line coexistence the class is about; the full three-member
+        set is asserted exactly so the stale narrower matrix can't creep
+        back in unnoticed."""
+        allowed = CHART_TYPE_SPECS[ChartType.VECTOR].allowed_series_types
+
+        assert {SeriesType.VECTOR, SeriesType.LINE} <= allowed
+        assert allowed == {SeriesType.VECTOR, SeriesType.LINE, SeriesType.SCATTER}
 
     def test_chart_holds_one_vector_and_one_line_series_with_distinct_styles(self):
         chart, vector_series, line_series = _mixed_chart()
