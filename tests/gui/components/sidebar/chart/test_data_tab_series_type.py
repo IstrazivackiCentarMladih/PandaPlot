@@ -142,3 +142,33 @@ def test_add_series_defaults_to_the_chart_type_even_if_a_different_typed_series_
 
     assert chart.data_series[-1].series_type == SeriesType.LINE
     assert isinstance(chart.data_series[-1].style, LineSeriesStyle)
+
+
+def test_add_series_works_on_a_vector_chart_when_a_line_series_is_selected():
+    """Regression test: reported live as "+Add series doesn't work when
+    chart is vector and series is line." Root cause: a Line series (which
+    Vector's spec allows) doesn't need U/V, so its own U/V combos are
+    legitimately hidden and blank (_selected_series_is_vector() is False)
+    -- but _add_series used to REQUIRE those same combos to be non-empty
+    before creating a new (Vector-typed, chart-default) series, so the
+    click silently did nothing. It must create the series anyway, even
+    with empty U/V -- the resulting series can be completed afterward by
+    selecting it and filling in its own now-visible U/V combos, exactly
+    like apply_to's already-established empty-chart bootstrap path."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Vector Chart", chart_type="vector")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+                           series_type=SeriesType.LINE)
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    # Sanity: the Line series is selected, so U/V combos read back empty.
+    assert tab.u_column_combo.currentData() in (None, "")
+    assert tab.v_column_combo.currentData() in (None, "")
+
+    tab._add_series()
+
+    assert len(chart.data_series) == 2
+    assert chart.data_series[-1].series_type == SeriesType.VECTOR

@@ -597,9 +597,18 @@ class DataTab(QWidget):
         # combo, same as retyping any other series.
         new_series_type = CHART_TYPE_SPECS[self.current_chart.chart_type].default_series_type
         needs_secondary_columns = SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
-        vector_ready = (not needs_secondary_columns) or (u_column_id and v_column_id)
-
-        if dataset_id and x_column_id and y_column_id and vector_ready:
+        # No "vector_ready" gate: u_column_id/v_column_id above reflect
+        # whichever EXISTING series is currently selected, not the type
+        # being created here -- if that series doesn't need them (e.g. a
+        # Line series selected on a Vector chart), the U/V combos are
+        # legitimately hidden and blank, and requiring them upfront would
+        # make "+Add series" silently do nothing. Instead, create the
+        # series with whatever U/V values happen to be available (often
+        # empty) -- an incomplete Vector series already renders a graceful
+        # "no U/V column configured" message, recoverable by selecting the
+        # new series and filling in U/V via its own now-visible combos,
+        # exactly matching apply_to's already-established bootstrap path.
+        if dataset_id and x_column_id and y_column_id:
             style_cls = SERIES_TYPE_SPECS[new_series_type].style_cls
             color = self._get_next_series_color()
             if new_series_type == SeriesType.VECTOR:
