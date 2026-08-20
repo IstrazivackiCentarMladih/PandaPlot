@@ -1,6 +1,4 @@
 """Tests for extracting sigma_y with missing error bars returns none"""
-from unittest.mock import Mock
-
 import numpy as np
 import pandas as pd
 
@@ -33,10 +31,8 @@ def test_extract_sigma_y_missing_column_returns_none():
         )),
     )
 
-    fit_panel = Mock()
-    fit_panel.current_project = project
-    service = FitService(fit_panel)
+    service = FitService()
 
-    sigma = service._extract_sigma_y(dataset.data, mask, series)
+    sigma = service._extract_sigma_y(dataset.data, mask, series, dataset=dataset)
 
     assert sigma is None

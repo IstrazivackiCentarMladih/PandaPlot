@@ -15,9 +15,9 @@ import pandas as pd
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.fit.fit_panel import FitPanel
-from pandaplot.models.events import FitEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -48,11 +48,30 @@ def test_fit_panel_constructs_with_expected_buttons(fit_panel):
     assert isinstance(fit_panel.clear_button, PButton)
 
 
-def test_fit_button_enabled_state_matches_scipy_availability(fit_panel):
+def test_fit_button_enabled_state_matches_scipy_availability(app_context):
     # Directly covers the construction-order-sensitive `enabled=self.scipy_available`
     # retrofit: fit_button's enabled state must reflect scipy_available as computed
     # at construction time, not some later/default value.
-    assert fit_panel.fit_button.isEnabled() == fit_panel.scipy_available
+    #
+    # A valid series with enough data points must be loaded first: the fit
+    # button is also gated on data availability (see
+    # test_fit_button_disabled_when_data_is_insufficient), so with no chart
+    # loaded the button is disabled regardless of scipy_available.
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.set_project(project)
+    panel.load_chart_object(chart)
+
+    assert panel.fit_button.isEnabled() == panel.scipy_available
+
+
+def test_fit_button_disabled_when_data_is_insufficient(fit_panel):
+    assert fit_panel.fit_button.isEnabled() is False
 
 
 def test_apply_button_starts_disabled(fit_panel):
@@ -137,22 +156,23 @@ def test_load_chart_object_clears_stale_fit_results_across_charts(app_context):
     panel.set_project(project)
     panel.load_chart_object(chart_a)
 
-    panel.fit_command.fit_results = _make_fake_fit_result()
+    panel.fit_results = _make_fake_fit_result()
     panel.apply_button.setEnabled(True)
 
     panel.load_chart_object(chart_b)
 
-    assert panel.fit_command.fit_results is None
+    assert panel.fit_results is None
     assert panel.apply_button.isEnabled() is False
 
 
 def test_apply_fit_resolves_id_only_series_columns(app_context):
     """`_apply_fit` must resolve the id-only series' columns via
     `resolve_series_column` (not read the empty legacy name fields directly),
-    and must carry the raw column ids through to the published fit results
-    alongside the resolved names, so downstream axis/series pairing in
-    chart_editor (which matches by column name) doesn't misattribute the fit
-    to the wrong series when several id-only series share empty legacy names.
+    and must carry the raw column ids through to the `ApplyFitCommand` it
+    executes alongside the resolved names, so downstream axis/series pairing
+    in chart_editor (which matches by column name) doesn't misattribute the
+    fit to the wrong series when several id-only series share empty legacy
+    names.
     """
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
     series = chart.data_series[0]
@@ -166,25 +186,25 @@ def test_apply_fit_resolves_id_only_series_columns(app_context):
     panel.set_project(project)
     panel.load_chart_object(chart)
 
-    panel.fit_command.fit_results = _make_fake_fit_result()
+    panel.fit_results = _make_fake_fit_result()
 
-    published = {}
+    executed = {}
 
-    def _capture_publish(event_type, event_data):
-        published["event_type"] = event_type
-        published["event_data"] = event_data
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
 
-    panel.publish_event = _capture_publish
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
 
     panel._apply_fit()
 
-    assert published["event_type"] == FitEvents.FIT_APPLIED
-    fit_results = published["event_data"]["fit_results"]
-    assert fit_results.source_dataset_id == series.dataset_id
-    assert fit_results.source_x_column == "time"
-    assert fit_results.source_y_column == "value"
-    assert fit_results.source_x_column_id == series.x_column_id
-    assert fit_results.source_y_column_id == series.y_column_id
+    command = executed["command"]
+    assert isinstance(command, ApplyFitCommand)
+    assert command.source_dataset_id == series.dataset_id
+    assert command.source_x_column == "time"
+    assert command.source_y_column == "value"
+    assert command.source_x_column_id == series.x_column_id
+    assert command.source_y_column_id == series.y_column_id
 
 
 def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_context):
@@ -202,10 +222,10 @@ def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_contex
     panel.set_project(project)
     panel.load_chart_object(chart)
 
-    panel.fit_command.fit_results = _make_fake_fit_result()
+    panel.fit_results = _make_fake_fit_result()
     panel.apply_button.setEnabled(True)
 
     panel.series_combo.setCurrentIndex(1)
 
-    assert panel.fit_command.fit_results is None
+    assert panel.fit_results is None
     assert panel.apply_button.isEnabled() is False

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pandaplot.models.events import FitEvents
+MIN_FIT_POINTS = 2
 
 FIT_DEFINITIONS = {
     "Linear": {
@@ -57,22 +57,28 @@ class FitResult:
     sigma_y: np.ndarray | None = None
     equation: str | None = None
 
-#performs fit, doesn't include combobox methods
 class FitService:
-    def __init__(self, fit_panel):
+    def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.fixed_params = {}
-        self.fit_results = None
-        self.fit_panel = fit_panel
-        self.logger = logging.getLogger(__name__)
 
     def _get_fit_name(self, fit_type: str) -> str:
         return fit_type.split(" (")[0]
 
-    def _get_fit_func(self, fit_type: str):
-        """Get the fitting function based on the selected type."""
+    def _get_fit_func(
+            self,
+            fit_type: str,
+            custom_function: str | None = None,
+            custom_parameters: str | None = None,
+            fixed_parameters: str | None = None,
+    ):
         fit_name = self._get_fit_name(fit_type)
         if fit_name == "Custom Function":
-            return self._create_custom_function()
+            return self._create_custom_function(
+                custom_function,
+                custom_parameters,
+                fixed_parameters,
+            )
 
         fit = FIT_DEFINITIONS.get(fit_name)
         if fit is None:
@@ -81,100 +87,129 @@ class FitService:
 
         return fit["function"], fit["parameters"]
 
-    def insert_function(self, function_str):
-        cursor_pos = self.fit_panel.custom_function_edit.cursorPosition()
-        current_text = self.fit_panel.custom_function_edit.text()
-        new_text = current_text[:cursor_pos] + function_str + current_text[cursor_pos:]
-        self.fit_panel.custom_function_edit.setText(new_text)
-        self.fit_panel.custom_function_edit.setCursorPosition(cursor_pos + len(function_str))
 
-    def _create_custom_function(self):
-        """Create a custom fitting function from user input."""
-        function_str = self.fit_panel.custom_function_edit.text().strip()
-        params_str = self.fit_panel.custom_params_edit.text().strip()
-        initial_str = self.fit_panel.initial_guess_edit.text().strip()  # use as predefined values, not initial guess
+    def _create_custom_function(
+            self,
+            function_str: str | None,
+            params_str: str | None,
+            initial_str: str | None,
+    ):
+        function_str = (function_str or "").strip()
+        params_str = (params_str or "").strip()
+        initial_str = (initial_str or "").strip()
 
         if not function_str or not params_str:
-            self.logger.warning("Custom function or parameters not specified")
             raise ValueError("Custom function and parameters must be specified")
 
-        # add prefix np. to func
-        func_list = self.fit_panel.function_names
-        for func in func_list:
-            function_str = function_str.replace(f"{func}(", f"np.{func}(")
-            function_str = function_str.replace(f"np.np.{func}(", f"np.{func}(") #avoid np.np
+        function_names = ["sin", "cos", "tan", "sqrt", "exp", "log", "arcsin", "arccos"]
 
-        # Parse parameters
+        for func in function_names:
+            function_str = function_str.replace(
+                f"{func}(",
+                f"np.{func}("
+            )
+            function_str = function_str.replace(
+                f"np.np.{func}(",
+                f"np.{func}("
+            )
+
         params = [p.strip() for p in params_str.split(",")]
 
-        # Parse initial values (fixed params)
         fixed_params = {}
         if initial_str:
             for item in initial_str.split(","):
                 if "=" in item:
-                    key, val = item.split("=")
+                    key, val = item.split("=", 1)
                     fixed_params[key.strip()] = float(val)
 
-        self.fixed_params = fixed_params.copy()
-        free_params = [p for p in params if p not in fixed_params] #free parameters for fit
+        free_params = [
+            p for p in params
+            if p not in fixed_params
+        ]
 
-        # Create function dynamically
         def custom_func(x, *free_args):
             local_vars = {"x": x, "np": np}
-            # Fill in predefined fixed values
-            for k, v in fixed_params.items():
-                local_vars[k] = v
-            # Fill in free values
-            for i, p in enumerate(free_params):
-                local_vars[p] = free_args[i]
-            return eval(function_str, {"__builtins__": {}}, local_vars)
+
+            for key, value in fixed_params.items():
+                local_vars[key] = value
+
+            for i, param in enumerate(free_params):
+                local_vars[param] = free_args[i]
+
+            return eval(
+                function_str,
+                {"__builtins__": {}},
+                local_vars,
+            )
 
         return custom_func, params
 
-    def perform_fit(self): #fit_services
-        """Perform the curve fitting."""
+    def perform_fit(
+            self,
+            fit_type: str,
+            x_data: np.ndarray,
+            y_data: np.ndarray,
+            fit_points: int = 500,
+            calculate_r_squared: bool = True,
+            confidence_bands: bool = False,
+            sigma_y: np.ndarray | None = None,
+            custom_function: str | None = None,
+            custom_parameters: str | None = None,
+            fixed_parameters: str | None = None,
+    ) -> FitResult | None:
+
         from scipy.optimize import curve_fit
 
-        # Get data
-        data = self.fit_panel.get_current_data()
-        if data is None:
-            self.fit_panel.results_text.setPlainText("Please select valid data columns.")
-            self.logger.debug("No valid data columns selected, get_current_data() returned None")
-            return
-
-        df, mask, x_data, y_data, series = data
-
-        if len(x_data) < 2:
-            self.fit_panel.results_text.setPlainText("At least 2 data points are required for fitting.")
-            self.logger.debug("Received %d data points, at least 2 data points are required for fitting.", len(x_data))
-            return
+        if len(x_data) < MIN_FIT_POINTS:
+            raise ValueError(f"At least {MIN_FIT_POINTS} data points are required for fitting.")
 
         try:
-            # Get fit function
-            fit_type = self.fit_panel.fit_type_combo.currentText()
-            fit_func, param_names = self._get_fit_func(fit_type)
+            fit_func, param_names = self._get_fit_func(
+                fit_type,
+                custom_function=custom_function,
+                custom_parameters=custom_parameters,
+                fixed_parameters=fixed_parameters,
+            )
+            fixed_params = {}
 
-            # Extract y uncertainties (if available)
-            sigma_y = self._extract_sigma_y(df, mask, series)
+            if fixed_parameters:
+                for item in fixed_parameters.split(","):
+                    if "=" in item:
+                        key, val = item.split("=", 1)
+                        fixed_params[key.strip()] = float(val)
 
-            fit_options = {"p0": [1] * len(param_names)}
+            free_count = len([
+                p for p in param_names
+                if p not in fixed_params
+            ])
+
+            fit_options = {"p0": [1] * free_count}
 
             self.logger.debug("Weighted fit: %s", sigma_y is not None)
 
             if sigma_y is not None:
-                self.logger.info("sigma_y range: %.3f - %.3f, n=%d",sigma_y.min(),sigma_y.max(),len(sigma_y))
+                self.logger.info(
+                    "sigma_y range: %.3f - %.3f, n=%d",
+                    sigma_y.min(),
+                    sigma_y.max(),
+                    len(sigma_y),
+                )
+
                 fit_options["sigma"] = sigma_y
                 fit_options["absolute_sigma"] = True
 
-            # Perform fit
-            popt, pcov = curve_fit(fit_func, x_data, y_data, **fit_options)
+            popt, pcov = curve_fit(
+                fit_func,
+                x_data,
+                y_data,
+                **fit_options,
+            )
 
-            # Calculate errors
             perr = np.sqrt(np.diag(pcov))
 
-            # Calculate R-squared if requested
             r_squared = None
-            if self.fit_panel.r_squared_check.isChecked():
+
+            if calculate_r_squared:
                 y_pred = fit_func(x_data, *popt)
 
                 if sigma_y is not None:
@@ -194,16 +229,23 @@ class FitService:
                     r_squared = 1 - (ss_res / ss_tot)
 
             # Generate fit data for plotting
-            x_fit = np.linspace(x_data.min(), x_data.max(), self.fit_panel.fit_points_spin.value())
+            x_fit = np.linspace(x_data.min(), x_data.max(), fit_points)
             y_fit = fit_func(x_fit, *popt)
 
             confidence_lower = None
             confidence_upper = None
-            if self.fit_panel.confidence_check.isChecked():
-                confidence_lower, confidence_upper = self._calculate_confidence_band(fit_func, x_fit, popt, pcov, x_data)
 
-            # param dictionary define
-            fixed_params = dict(self.fixed_params)
+            if confidence_bands:
+                confidence_lower, confidence_upper = (
+                    self._calculate_confidence_band(
+                        fit_func,
+                        x_fit,
+                        popt,
+                        pcov,
+                        x_data,
+                    )
+                )
+
             params = {}
             popt_index = 0
 
@@ -214,8 +256,7 @@ class FitService:
                     params[name] = popt[popt_index]
                     popt_index += 1
 
-            # Store results
-            self.fit_results = FitResult(
+            result = FitResult(
                 fit_type=fit_type,
                 parameters=popt,
                 errors=perr,
@@ -230,32 +271,20 @@ class FitService:
                 confidence_lower=confidence_lower,
                 confidence_upper=confidence_upper,
                 sigma_y=sigma_y,
-                equation=self.format_equation(fit_type, params)
+                equation=self.format_equation(fit_type, params, custom_function=custom_function)
             )
 
-            # Display results
-            self.fit_panel.display_results()
+            return result
 
-            # Enable apply button
-            self.fit_panel.apply_button.setEnabled(True)
+        except Exception:
+            self.logger.exception("Fit failed for fit type %s", fit_type)
+            raise
 
-            # Publish fit completed event
-            self.fit_panel.publish_event(FitEvents.FIT_COMPLETED, {
-                "fit_results": self.fit_results,
-                "chart_id": self.fit_panel.current_chart.id if self.fit_panel.current_chart else None,
-                "fit_type": self.fit_results.fit_type
-            })
+    def format_equation(self, fit_type: str, params: dict, custom_function: str | None = None) -> str:
 
-        except Exception as e:
-            self.logger.error("Fit failed: %s", str(e), exc_info=True)
-            self.fit_panel.results_text.setPlainText(f"Fit failed: {str(e)}")
-            self.fit_panel.equation_label.setText("Fit failed")
-            self.fit_panel.apply_button.setEnabled(False)
-
-    def format_equation(self, fit_type: str, params: dict) -> str:
         fit_name = self._get_fit_name(fit_type)
         if fit_name == "Custom Function":
-            equation = self.fit_panel.custom_function_edit.text().strip()
+            equation = (custom_function or "").strip()
         else:
             fit = FIT_DEFINITIONS.get(fit_name)
             if fit is None:
@@ -278,10 +307,17 @@ class FitService:
         equation = equation.replace("+-", "-").replace("+ -", "-")
         return f"y = {equation}"
 
-    def format_parameters(self, param_names, params, errors) -> str:
+    def format_parameters(self, param_names, params, errors, fixed_parameters: str | None = None ) -> str:
         """format fitted parameters for display"""
+        fixed_params = {}
+
+        if fixed_parameters:
+            for item in fixed_parameters.split(","):
+                if "=" in item:
+                    key, val = item.split("=", 1)
+                    fixed_params[key.strip()] = float(val)
+
         lines = []
-        fixed_params = self.fixed_params
         free_index = 0
 
         for name in param_names:
@@ -328,18 +364,17 @@ class FitService:
 
         return lower, upper
 
-    def _extract_sigma_y(self, df, mask, series) -> np.ndarray | None:
+    def _extract_sigma_y(self, df, mask, series, dataset=None) -> np.ndarray | None:
         """Extract y-axis uncertainties for weighted fitting.
             Supports symmetric and asymmetric error bar configurations."""
 
-        if series is None:
+        if series is None or dataset is None:
             return None
 
         # Error columns are referenced by stable id; resolve them to current
         # DataFrame names against the series' dataset (name fallback for legacy).
         from pandaplot.models.project.items.chart import resolve_series_column
-        project = getattr(self.fit_panel, "current_project", None)
-        dataset = project.find_item(series.dataset_id) if project else None
+
         error_bars = getattr(series.style, "error_bars", None)
         y_error_column_id = getattr(error_bars, "y_error_column_id", "")
         y_error_column = getattr(error_bars, "y_error_column", "")
