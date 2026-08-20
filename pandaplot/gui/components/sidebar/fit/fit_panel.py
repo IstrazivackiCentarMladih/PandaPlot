@@ -347,6 +347,10 @@ class FitPanel(SidebarPanel):
 
         df = dataset.data
 
+        if df is None:
+            self.logger.warning("Dataset contains no data: id=%r", series.dataset_id)
+            return None
+
         self.logger.info("Dataset found: %r, dataframe shape=%s, columns=%s",
             dataset, df.shape, list(df.columns))
 
@@ -493,7 +497,6 @@ class FitPanel(SidebarPanel):
                 dataset,
                 series.y_column_id,
                 series.y_column) or "",
-            label=series.label,
         )
 
         executor = self.app_context.get_command_executor()

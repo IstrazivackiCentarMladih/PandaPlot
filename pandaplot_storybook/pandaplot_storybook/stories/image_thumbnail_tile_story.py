@@ -1,10 +1,9 @@
 from __future__ import annotations
 
+from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
-
-from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 
 from pandaplot_storybook.registry import BoolControl, ChoiceControl, StoryDef, story
 
