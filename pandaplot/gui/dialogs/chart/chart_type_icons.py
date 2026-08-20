@@ -69,12 +69,27 @@ def _paint_vector(painter: QPainter, size: int):
             painter.drawLine(end, head_point)
 
 
+def _paint_colormap(painter: QPainter, size: int):
+    painter.setBrush(painter.pen().color())
+    for x, y in ((size * 0.25, size * 0.7), (size * 0.5, size * 0.35), (size * 0.75, size * 0.55)):
+        painter.drawEllipse(QRectF(x - 2, y - 2, 4, 4))
+
+
+def _paint_heatmap(painter: QPainter, size: int):
+    cell = size / 3
+    for row in range(3):
+        for col in range(3):
+            painter.drawRect(QRectF(col * cell, row * cell, cell, cell))
+
+
 _PAINTERS = {
     "line": _paint_line,
     "scatter": _paint_scatter,
     "bar": _paint_bar,
     "hist": _paint_hist,
     "vector": _paint_vector,
+    "colormap": _paint_colormap,
+    "heatmap": _paint_heatmap,
 }
 
 
@@ -82,7 +97,8 @@ def chart_type_icon(chart_type: str, color: str, size: int = 14) -> QIcon:
     """Render `chart_type`'s icon at `size`x`size` in `color`.
 
     Raises:
-        KeyError: if `chart_type` isn't one of "line"/"scatter"/"bar"/"hist"/"vector".
+        KeyError: if `chart_type` isn't one of "line"/"scatter"/"bar"/"hist"/"vector"/
+        "colormap"/"heatmap".
     """
     paint_fn = _PAINTERS[chart_type]
 

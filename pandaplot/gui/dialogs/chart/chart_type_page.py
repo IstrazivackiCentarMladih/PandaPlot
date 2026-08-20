@@ -152,6 +152,12 @@ class ChartTypePage(PWizardPage):
             axes.hist(_SAMPLE_Y, bins=5)
         elif chart_type == "vector":
             axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
+        elif chart_type == "colormap":
+            axes.scatter(_SAMPLE_X, _SAMPLE_Y, c=_SAMPLE_Y, cmap="viridis")
+        elif chart_type == "heatmap":
+            import numpy as np
+            grid = np.arange(16).reshape(4, 4)
+            axes.pcolormesh(grid, cmap="viridis")
         canvas.draw()
 
         self.preview_container.layout().addWidget(canvas)
