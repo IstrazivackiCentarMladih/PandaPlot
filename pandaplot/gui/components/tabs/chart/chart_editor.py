@@ -461,6 +461,12 @@ class ChartEditorWidget(PWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
 
+        # Colorbar drawn for the current colormap/heatmap render, if any. It
+        # lives on its own figure axes (not the main axes cleared each
+        # render), so update_chart must explicitly remove the previous one
+        # before drawing again, or stale colorbars would accumulate.
+        self._colorbar = None
+
         self._initialize()
         self.load_chart_config()
         self.update_chart()
@@ -771,6 +777,15 @@ class ChartEditorWidget(PWidget):
         order = np.argsort(xp)
         return np.interp(np.asarray(query, dtype=float), xp[order], fp[order])
 
+    def _resolve_z_label(self, project, series) -> str:
+        """Current display name of a series' Z (color) column, for the
+        default colorbar label. Empty when it can't be resolved (missing
+        dataset/column) so the colorbar just goes unlabeled rather than
+        erroring."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.style.z_column_id, series.style.z_column) or ""
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -781,6 +796,29 @@ class ChartEditorWidget(PWidget):
         try:
             # Clear the current plot
             self.chart_canvas.axes.clear()
+
+            # Remove the previous colorbar (a colormap/heatmap render adds
+            # one on its own figure axes, which axes.clear() above doesn't
+            # touch).
+            if self._colorbar is not None:
+                try:
+                    self._colorbar.remove()
+                except Exception:
+                    self.logger.debug("Failed to remove stale colorbar", exc_info=True)
+                self._colorbar = None
+
+            # Reset the main axes to a fresh full-figure 1x1 gridspec. A
+            # colorbar created with the default use_gridspec=True
+            # *subdivides* the axes' gridspec to make room, and that
+            # subdivision survives colorbar.remove() -- so without this
+            # reset, every re-render of a colormap/heatmap chart would steal
+            # space from the already-shrunk axes, making the plot
+            # progressively smaller (PR #156 review comment).
+            from matplotlib.gridspec import GridSpec
+            subplotspec = self.chart_canvas.axes.get_subplotspec()
+            if subplotspec is not None:
+                self.chart_canvas.axes.set_subplotspec(
+                    GridSpec(1, 1, figure=self.chart_canvas.fig)[0])
 
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
@@ -801,6 +839,8 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.original_ylim2 = None
 
             series_errors = []
+            colorbar_mappable = None
+            colorbar_label = ""
             if not self.chart.data_series:
                 self.dataset_label.setText("No Data Loaded")
             else:
@@ -850,13 +890,26 @@ class ChartEditorWidget(PWidget):
                                 alpha=alpha)
 
                     renderer = SERIES_RENDERERS[series_type]
-                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                    mappable = renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
                         "bins": self.chart.config.get("hist_bins", 20),
                         "resolve_fill_baseline": (
                             lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
                                 project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
                         ),
                     })
+                    if mappable is None and series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+                        series_errors.append(f"{series.label or f'Series {i + 1}'}: no data to grid")
+                        continue
+                    if (mappable is not None and colorbar_mappable is None
+                            and getattr(style, "colorbar_show", False)):
+                        colorbar_mappable = mappable
+                        colorbar_label = style.colorbar_label or self._resolve_z_label(project, series)
+
+                if colorbar_mappable is not None:
+                    self._colorbar = self.chart_canvas.fig.colorbar(
+                        colorbar_mappable, ax=self.chart_canvas.axes)
+                    if colorbar_label:
+                        self._colorbar.set_label(colorbar_label)
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
