@@ -369,8 +369,13 @@ def test_style_field_names_match_the_real_style_dataclasses():
     # Chart types that predate the typed-style migration architecture --
     # i.e. could genuinely have a schema_version-0 project file saved by
     # a real user, with legacy flat fields for this migration to convert.
+    # Derived directly from the production dicts' own keys (rather than a
+    # hand-maintained parallel list) so this test can't silently stop
+    # covering a type if a future contributor adds it to those dicts but
+    # forgets to update a separate list here.
     _PRE_MIGRATION_SERIES_TYPES = {
-        SeriesType.LINE, SeriesType.SCATTER, SeriesType.BAR, SeriesType.HIST, SeriesType.VECTOR,
+        SeriesType(chart_type)
+        for chart_type in set(_DIRECT_STYLE_FIELDS_BY_CHART_TYPE) | set(_MARKER_FIELDS_BY_CHART_TYPE)
     }
     assert SeriesType.COLORMAP not in _PRE_MIGRATION_SERIES_TYPES
     assert SeriesType.HEATMAP not in _PRE_MIGRATION_SERIES_TYPES
