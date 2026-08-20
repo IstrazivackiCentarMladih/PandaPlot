@@ -9,6 +9,8 @@ from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import (
     BarSeriesStyle,
+    ColormapSeriesStyle,
+    HeatmapSeriesStyle,
     HistSeriesStyle,
     LineSeriesStyle,
     ScatterSeriesStyle,
@@ -19,6 +21,7 @@ from pandaplot.models.project.items.chart import (
     Chart,
     DataSeries,
     FitData,
+    assign_series_column_ids,
     restore_chart_state,
     snapshot_chart_state,
 )
@@ -587,3 +590,110 @@ class TestChartAddDataSeriesDefaultsSeriesType:
         assert series.series_type == SeriesType.VECTOR
         assert isinstance(series.style, VectorSeriesStyle)
         assert series.style.vector_color == "#abcdef"
+
+
+class _FakeDataset:
+    """Minimal dataset stand-in for assign_series_column_ids tests --
+    mirrors the pattern in tests/models/test_data_series_vector_fields.py."""
+
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    def column_id(self, name):
+        return self._mapping.get(name)
+
+
+class TestAssignSeriesColumnIdsBackfillsZColumn:
+    """assign_series_column_ids must backfill style.z_column_id from
+    style.z_column for ColormapSeriesStyle/HeatmapSeriesStyle, mirroring
+    the existing VectorSeriesStyle u/v/magnitude branch -- otherwise a
+    legacy-format chart (name-only, no ids) loaded for a Colormap/Heatmap
+    series would never get its Z column resolved to a stable id."""
+
+    def test_backfills_z_column_id_for_heatmap_style(self):
+        series = DataSeries(
+            dataset_id="ds1", series_type=SeriesType.HEATMAP,
+            style=HeatmapSeriesStyle(z_column="z_name"),
+        )
+        assign_series_column_ids(series, _FakeDataset({"z_name": "z-id"}))
+        assert series.style.z_column_id == "z-id"
+
+    def test_backfills_z_column_id_for_colormap_style(self):
+        series = DataSeries(
+            dataset_id="ds1", series_type=SeriesType.COLORMAP,
+            style=ColormapSeriesStyle(z_column="z_name"),
+        )
+        assign_series_column_ids(series, _FakeDataset({"z_name": "z-id"}))
+        assert series.style.z_column_id == "z-id"
+
+    def test_does_not_overwrite_an_already_set_z_column_id(self):
+        """Guard must match the Vector branch's exact pattern: only
+        backfill when z_column_id is currently empty."""
+        series = DataSeries(
+            dataset_id="ds1", series_type=SeriesType.HEATMAP,
+            style=HeatmapSeriesStyle(z_column="z_name", z_column_id="existing-id"),
+        )
+        assign_series_column_ids(series, _FakeDataset({"z_name": "z-id"}))
+        assert series.style.z_column_id == "existing-id"
+
+    def test_leaves_z_column_id_empty_when_z_column_unset(self):
+        series = DataSeries(
+            dataset_id="ds1", series_type=SeriesType.HEATMAP,
+            style=HeatmapSeriesStyle(),
+        )
+        assign_series_column_ids(series, _FakeDataset({}))
+        assert series.style.z_column_id == ""
+
+
+class TestRetypeSeriesToColormapCarriesOverMarker:
+    """ColormapSeriesStyle.marker is a MarkerStyle field like Line/Scatter's
+    -- retype_series' existing generic
+    `hasattr(old_style, "marker") and hasattr(new_style, "marker")` carry-over
+    logic should pick it up with no dedicated Colormap/Heatmap code needed.
+    Verified directly here rather than just trusting that claim."""
+
+    def test_retyping_scatter_to_colormap_carries_over_marker(self):
+        chart = Chart(name="C", chart_type="scatter")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=ScatterSeriesStyle(marker=MarkerStyle(marker_size=9.0, marker_color="#445566")),
+        )
+
+        chart.retype_series(0, "colormap")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.COLORMAP
+        assert isinstance(series.style, ColormapSeriesStyle)
+        assert series.style.marker.marker_size == 9.0
+        assert series.style.marker.marker_color == "#445566"
+
+    def test_retyping_colormap_to_scatter_carries_marker_back(self):
+        chart = Chart(name="C", chart_type="colormap")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=ColormapSeriesStyle(marker=MarkerStyle(marker_size=12.0)),
+        )
+
+        chart.retype_series(0, "scatter")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.SCATTER
+        assert isinstance(series.style, ScatterSeriesStyle)
+        assert series.style.marker.marker_size == 12.0
+
+    def test_retyping_scatter_to_heatmap_does_not_crash_since_heatmap_has_no_marker(self):
+        """HeatmapSeriesStyle has no marker field at all (marker_mode is
+        "unsupported") -- retyping into it must not try to carry one over,
+        and must not crash."""
+        chart = Chart(name="C", chart_type="scatter")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=ScatterSeriesStyle(marker=MarkerStyle(marker_size=9.0)),
+        )
+
+        chart.retype_series(0, "heatmap")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.HEATMAP
+        assert isinstance(series.style, HeatmapSeriesStyle)
+        assert not hasattr(series.style, "marker")

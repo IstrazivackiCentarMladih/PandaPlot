@@ -17,6 +17,8 @@ from pandaplot.models.chart.error_direction import ErrorDirection  # noqa: F401 
 from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import SeriesStyleBase
+from pandaplot.models.chart.series_style.colormap import ColormapSeriesStyle
+from pandaplot.models.chart.series_style.heatmap import HeatmapSeriesStyle
 from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
@@ -287,10 +289,15 @@ class Chart(Item):
         )
         style_cls = SERIES_TYPE_SPECS[new_type].style_cls
         series.series_type = new_type
+        new_style = style_cls()
         if new_type == SeriesType.VECTOR:
-            new_style = style_cls(vector_color=base_color)
-        else:
-            new_style = style_cls(color=base_color)
+            new_style.vector_color = base_color
+        elif hasattr(new_style, "color"):
+            # ColormapSeriesStyle/HeatmapSeriesStyle have no flat `color`
+            # field (color comes from marker/z-data instead), so leave
+            # them at their own default rather than crash on an unknown
+            # constructor kwarg.
+            new_style.color = base_color
         if hasattr(old_style, "marker") and hasattr(new_style, "marker"):
             new_style.marker = copy.deepcopy(old_style.marker)
         if hasattr(old_style, "error_bars") and hasattr(new_style, "error_bars"):
@@ -701,6 +708,12 @@ def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
                 cid = dataset.column_id(name)
                 if cid is not None:
                     setattr(series.style, id_field, cid)
+
+    if isinstance(series.style, (ColormapSeriesStyle, HeatmapSeriesStyle)):
+        if not series.style.z_column_id and series.style.z_column:
+            cid = dataset.column_id(series.style.z_column)
+            if cid is not None:
+                series.style.z_column_id = cid
 
 
 def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
