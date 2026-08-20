@@ -68,6 +68,16 @@ CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
         allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}),
         allows_fit=True, default_series_type=SeriesType.VECTOR,
     ),
+    ChartType.COLORMAP: ChartTypeSpec(
+        display_name="Color Map", roles=("x", "y", "z"), required_roles=("x", "y", "z"),
+        allowed_series_types=frozenset({SeriesType.COLORMAP}),
+        allows_fit=False, default_series_type=SeriesType.COLORMAP,
+    ),
+    ChartType.HEATMAP: ChartTypeSpec(
+        display_name="Heatmap", roles=("x", "y", "z"), required_roles=("x", "y", "z"),
+        allowed_series_types=frozenset({SeriesType.HEATMAP}),
+        allows_fit=False, default_series_type=SeriesType.HEATMAP,
+    ),
 }
 
 

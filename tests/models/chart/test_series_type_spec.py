@@ -44,10 +44,11 @@ from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 
 
-def test_all_five_series_types_are_registered():
+def test_all_seven_series_types_are_registered():
     assert set(SERIES_TYPE_SPECS.keys()) == {
         SeriesType.LINE, SeriesType.SCATTER, SeriesType.BAR,
         SeriesType.HIST, SeriesType.VECTOR,
+        SeriesType.COLORMAP, SeriesType.HEATMAP,
     }
 
 
