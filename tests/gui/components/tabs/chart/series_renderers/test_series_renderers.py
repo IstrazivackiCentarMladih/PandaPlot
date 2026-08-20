@@ -25,6 +25,8 @@ from pandaplot.gui.components.tabs.chart.series_renderers import (
 from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import (
     BarSeriesStyle,
+    ColormapSeriesStyle,
+    HeatmapSeriesStyle,
     HistSeriesStyle,
     LineSeriesStyle,
     ScatterSeriesStyle,
@@ -44,6 +46,7 @@ def _series_data(**overrides):
 def test_series_renderers_registry_has_all_5_types():
     assert set(SERIES_RENDERERS.keys()) == {
         SeriesType.LINE, SeriesType.SCATTER, SeriesType.BAR, SeriesType.HIST, SeriesType.VECTOR,
+        SeriesType.COLORMAP, SeriesType.HEATMAP,
     }
     assert SERIES_RENDERERS[SeriesType.LINE] is render_line_series
     assert SERIES_RENDERERS[SeriesType.SCATTER] is render_scatter_series
@@ -155,3 +158,51 @@ def test_render_vector_series_with_magnitude_and_colormap():
     assert len(quivers) == 1
     assert quivers[0].get_cmap().name == "plasma"
     plt.close(fig)
+
+
+def test_render_colormap_series_returns_scatter_mappable():
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(z_data=[0.1, 0.5, 0.9])
+    style = ColormapSeriesStyle(colormap="viridis", color_scale_auto=True)
+
+    mappable = render_colormap_series(ax, data, style, "S", 1.0, True, {})
+
+    assert mappable is not None
+    assert len(ax.collections) == 1
+    plt.close(fig)
+
+
+def test_render_heatmap_series_returns_pcolormesh_mappable_for_grid_data():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    x = [0, 1, 0, 1]
+    y = [0, 0, 1, 1]
+    z = [1, 2, 3, 4]
+    data = _series_data(x_data=x, y_data=y, z_data=z)
+    style = HeatmapSeriesStyle(colormap="viridis", heatmap_gridding="grid")
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True, {})
+
+    assert mappable is not None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_returns_none_when_ungriddable():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(x_data=[], y_data=[], z_data=[])
+    style = HeatmapSeriesStyle()
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True, {})
+
+    assert mappable is None
+    plt.close(fig)
+
+
+def test_series_renderers_registry_includes_new_types():
+    assert SeriesType.COLORMAP in SERIES_RENDERERS
+    assert SeriesType.HEATMAP in SERIES_RENDERERS
