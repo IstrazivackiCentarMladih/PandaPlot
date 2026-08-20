@@ -33,7 +33,7 @@ def fit_results():
         x_fit=[1, 2, 3],
         y_fit=[2, 4, 6],
         param_names=["slope", "intercept"],
-        params=[2.0, 0.0],
+        params={"slope": 2.0, "intercept": 0.0},
         r_squared=0.99,
         confidence_lower=None,
         confidence_upper=None,
@@ -71,6 +71,8 @@ def test_execute_adds_fit_to_chart(app_context_with_chart, fit_results):
     assert fit.source_x_column == "x"
     assert fit.source_y_column == "y"
     assert fit.label == "Linear fit"
+    assert fit.fit_params == {"slope": 2.0, "intercept": 0.0}
+    assert fit.fit_stats == {"r_squared": 0.99}
 
 
 def test_undo_removes_fit_from_chart(app_context_with_chart, fit_results):

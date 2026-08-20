@@ -19,10 +19,16 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.p_button import PButton
-from pandaplot.gui.dialogs.chart.chart_role_spec import ChartRoleSpec
+from pandaplot.models.chart.chart_type_spec import ChartTypeSpec
 
-_ROLE_LABELS = {"x": "X column", "y": "Y column", "values": "Values column"}
-_ROLE_TO_FIELD = {"x": "x_column_id", "y": "y_column_id", "values": "y_column_id"}
+_ROLE_LABELS = {
+    "x": "X column", "y": "Y column", "values": "Values column",
+    "u": "U column", "v": "V column", "magnitude": "Color-by column (optional)",
+}
+_ROLE_TO_FIELD = {
+    "x": "x_column_id", "y": "y_column_id", "values": "y_column_id",
+    "u": "u_column_id", "v": "v_column_id", "magnitude": "magnitude_column_id",
+}
 
 
 class SeriesConfigCard(Card):
@@ -30,13 +36,16 @@ class SeriesConfigCard(Card):
     configChanged = Signal()
     datasetChanged = Signal(str)
 
-    def __init__(self, role_spec: ChartRoleSpec, parent: Optional[QWidget] = None, index: int = 0):
+    def __init__(self, role_spec: ChartTypeSpec, parent: Optional[QWidget] = None, index: int = 0):
         super().__init__(parent)
         self._role_spec = role_spec
         self._role_combos: dict[str, QComboBox] = {}
         self.error_bars_check: Optional[QCheckBox] = None
+        self.error_asymmetric_check: Optional[QCheckBox] = None
         self.x_error_column_combo: Optional[QComboBox] = None
         self.y_error_column_combo: Optional[QComboBox] = None
+        self.x_error_minus_column_combo: Optional[QComboBox] = None
+        self.y_error_minus_column_combo: Optional[QComboBox] = None
         self._collapsed = False
         self._tokens: dict = {}
         self._index = index
@@ -102,7 +111,15 @@ class SeriesConfigCard(Card):
             grid.addWidget(self.error_bars_check, row, 0, 1, 2)
             row += 1
 
-            for error_role, label in (("x_error", "X error column"), ("y_error", "Y error column")):
+            self.error_asymmetric_check = QCheckBox("Asymmetric Error Bars")
+            self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
+            grid.addWidget(self.error_asymmetric_check, row, 0, 1, 2)
+            row += 1
+
+            for error_role, label in (
+                ("x_error", "X error (+) column"), ("x_error_minus", "X error (-) column"),
+                ("y_error", "Y error (+) column"), ("y_error_minus", "Y error (-) column"),
+            ):
                 error_label = QLabel(f"{label}:")
                 combo = QComboBox()
                 combo.currentIndexChanged.connect(lambda _index=None: self.configChanged.emit())
@@ -172,9 +189,33 @@ class SeriesConfigCard(Card):
         for error_role in ("x_error", "y_error"):
             getattr(self, f"_{error_role}_label").setVisible(visible)
             self._role_combos[error_role].setVisible(visible)
+        self.error_asymmetric_check.setVisible(visible)
+        self._update_minus_controls_visible()
+
+    def _update_minus_controls_visible(self):
+        show_minus = self.error_bars_check.isChecked() and self.error_asymmetric_check.isChecked()
+        for error_role in ("x_error_minus", "y_error_minus"):
+            getattr(self, f"_{error_role}_label").setVisible(show_minus)
+            self._role_combos[error_role].setVisible(show_minus)
 
     def _on_error_bars_toggled(self, checked: bool):
         self._set_error_controls_visible(checked)
+        self.configChanged.emit()
+
+    def _on_error_symmetry_toggled(self, checked: bool):
+        """Mirrors data_tab.py's _on_error_symmetry_toggled: default each
+        newly-shown minus combo to its plus-side sibling's current
+        selection, so ticking the checkbox doesn't silently zero out the
+        lower error bar."""
+        if checked:
+            for minus_role, plus_role in (("x_error_minus", "x_error"), ("y_error_minus", "y_error")):
+                minus_combo = self._role_combos[minus_role]
+                plus_combo = self._role_combos[plus_role]
+                if not minus_combo.currentData():
+                    index = minus_combo.findData(plus_combo.currentData())
+                    if index >= 0:
+                        minus_combo.setCurrentIndex(index)
+        self._update_minus_controls_visible()
         self.configChanged.emit()
 
     def _on_dataset_changed(self):
@@ -218,6 +259,8 @@ class SeriesConfigCard(Card):
             "y_column_id": "",
             "x_error_column_id": "",
             "y_error_column_id": "",
+            "x_error_minus_column_id": "",
+            "y_error_minus_column_id": "",
             "error_symmetric": True,
         }
         for role in self._role_spec.roles:
@@ -225,6 +268,10 @@ class SeriesConfigCard(Card):
         if self.error_bars_check is not None and self.error_bars_check.isChecked():
             config["x_error_column_id"] = self._role_combos["x_error"].currentData() or ""
             config["y_error_column_id"] = self._role_combos["y_error"].currentData() or ""
+            config["error_symmetric"] = not self.error_asymmetric_check.isChecked()
+            if self.error_asymmetric_check.isChecked():
+                config["x_error_minus_column_id"] = self._role_combos["x_error_minus"].currentData() or ""
+                config["y_error_minus_column_id"] = self._role_combos["y_error_minus"].currentData() or ""
         return config
 
     def get_display_names(self) -> dict[str, str]:

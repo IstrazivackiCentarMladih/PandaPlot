@@ -2,7 +2,6 @@
 
 from typing import override
 
-import numpy as np
 from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
@@ -11,30 +10,10 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
+from pandaplot.models.events import ChartEvents, UIEvents
 from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
-from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items import Chart
 from pandaplot.models.state.app_context import AppContext
-
-# Maps a short fit-type name to its chart color. `fit_type` from the fit panel is a
-# full descriptive string (e.g. "Linear (y = ax + b)"), so lookups use substring
-# matching rather than exact-match, mirroring FitService._get_fit_func.
-FIT_TYPE_COLORS = {
-    "Linear": "#ff0000",       # Red
-    "Quadratic": "#00aa00",    # Green
-    "Exponential": "#0066cc",  # Blue
-    "Power": "#cc00cc",        # Magenta
-    "Logarithmic": "#ff6600",  # Orange
-    "Custom": "#00cccc",       # Cyan
-}
-
-
-def _resolve_fit_style(fit_type: str) -> tuple[str, str]:
-    """Return (short_name, color) for a fit_type string like 'Linear (y = ax + b)'."""
-    for short_name, color in FIT_TYPE_COLORS.items():
-        if short_name in fit_type:
-            return short_name, color
-    return fit_type, "#ff0000"
 
 
 class ChartTab(PWidget):
@@ -70,7 +49,6 @@ class ChartTab(PWidget):
             ProjectEvents.PROJECT_ITEM_RENAMED, self.on_chart_renamed)
         self.subscribe_to_event(
             ChartEvents.CHART_UPDATED, self.on_chart_updated)
-        self.subscribe_to_event(FitEvents.FIT_APPLIED, self.on_fit_applied)
         # Charts read their series data live from the source datasets, so any
         # change to a dataset this chart plots (cell edits, added/removed
         # rows or columns, imports, analysis columns) must re-render the
@@ -130,16 +108,6 @@ class ChartTab(PWidget):
             except RuntimeError as e:
                 # Widget was deleted during callback
                 self.logger.debug(f"Chart editor deleted during update: {e}")
-
-    def on_fit_applied(self, event_data: dict):
-        """Refresh the chart after a fit has been applied."""
-        fit_chart_id = event_data.get("chart_id")
-
-        if fit_chart_id != self.chart.id:
-            return
-
-        self.logger.info("FIT_APPLIED received for chart %s", self.chart.id)
-        self._refresh_chart_editor()
 
     def get_tab_title(self) -> str:
         """Get the tab title."""

@@ -2,6 +2,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
+from pandaplot.models.migrations.schema_version import CURRENT_SCHEMA_VERSION
 from pandaplot.models.project.items import Item, ItemCollection
 
 
@@ -27,6 +28,7 @@ class Project:
         # Project metadata
         self.metadata: Dict[str, Any] = {}
         self.version = "1.0"
+        self.schema_version: int = CURRENT_SCHEMA_VERSION
         self.project_file_path: Optional[str] = None
 
     def add_item(self, item: Item, parent_id: Optional[str] = None):
@@ -122,6 +124,7 @@ class Project:
             "root": self.root.to_dict(),
             "metadata": self.metadata,
             "version": self.version,
+            "schema_version": self.schema_version,
             "path": self.project_file_path
         }
         
@@ -134,6 +137,7 @@ class Project:
         )
         project.metadata = data.get("metadata", {})
         project.version = data.get("version", "1.0")
+        project.schema_version = data.get("schema_version", 0)
         project.project_file_path = data.get("path", None)
 
         # TODO: Parse root hierarchy when item types are fully implemented

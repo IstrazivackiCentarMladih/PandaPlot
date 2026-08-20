@@ -112,6 +112,46 @@ class TestTreeVisitor(unittest.TestCase):
         self.assertIsNotNone(root_item)
         print("✅ Nested folder test passed")
 
+    def test_visitor_creates_image_gallery_item(self):
+        from pandaplot.models.project.items import ImageGallery
+
+        project = Project("Gallery Test")
+
+        gallery = ImageGallery(name="Trip Photos")
+        project.add_item(gallery)
+
+        self.tree_builder.build_tree(project.root)
+
+        display_texts = [item.display_text for item in self.tree_items]
+        assert "🖼️ Trip Photos" in display_texts
+
+        gallery_item = next(i for i in self.tree_items if i.display_text == "🖼️ Trip Photos")
+        assert gallery_item.item_type == "imagegallery"
+
+    def test_visitor_does_not_recurse_into_gallery_children(self):
+        from pandaplot.models.project.items import Image, ImageGallery
+
+        project = Project("Gallery Test")
+
+        gallery = ImageGallery(name="Trip")
+        project.add_item(gallery)
+
+        album = ImageGallery(name="Day 1")
+        project.add_item(album, parent_id=gallery.id)
+
+        image = Image(name="Beach")
+        project.add_item(image, parent_id=gallery.id)
+
+        self.tree_builder.build_tree(project.root)
+
+        display_texts = [item.display_text for item in self.tree_items]
+        assert "🖼️ Trip" in display_texts
+        assert "🖼️ Day 1" not in display_texts
+        assert "🎞️ Beach" not in display_texts
+
+        gallery_item = next(i for i in self.tree_items if i.display_text == "🖼️ Trip")
+        assert gallery_item.children == []
+
 
 if __name__ == "__main__":
     unittest.main()

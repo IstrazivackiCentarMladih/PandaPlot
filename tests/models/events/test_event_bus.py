@@ -154,7 +154,7 @@ class TestEventBus:
 
         event_bus.subscribe("test_event", callback)
 
-        for event_name, data in test_cases:
+        for _event_name, data in test_cases:
             callback.reset_mock()
             event_bus.emit("test_event", data)
 
@@ -474,7 +474,7 @@ class TestEventBus:
         callbacks = []
 
         # Create 100 mock callbacks
-        for i in range(100):
+        for _i in range(100):
             callback = Mock()
             callbacks.append(callback)
             event_bus.subscribe("stress_test", callback)

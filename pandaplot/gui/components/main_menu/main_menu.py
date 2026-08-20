@@ -120,7 +120,7 @@ class MainMenu(PMenuBar):
         settings_menu = QMenu("Settings", self)
         self.addMenu(settings_menu)
 
-        preferences_action = QAction("⚙️ Preferences...", self)
+        preferences_action = QAction("Preferences...", self)
         # TODO: consider showing settings dialog by triggering event which invokes a command
         preferences_action.triggered.connect(self.show_settings_dialog)
         settings_menu.addAction(preferences_action)
@@ -201,10 +201,14 @@ class MainMenu(PMenuBar):
         ).execute_command(ImportDataCommand(self.app_context)))
         data_menu.addAction(import_data_action)
 
-        create_empty_dataset_action = QAction("Create Empty Dataset", self)
+        create_empty_dataset_action = QAction("Add Dataset", self)
         create_empty_dataset_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(CreateEmptyDatasetCommand(self.app_context)))
         data_menu.addAction(create_empty_dataset_action)
+
+        import_images_action = QAction("Import Images...", self)
+        import_images_action.triggered.connect(self._on_import_images_from_menu)
+        data_menu.addAction(import_images_action)
 
         self.add_rows_columns_action = QAction("Add Rows / Columns...", self)
         self.add_rows_columns_action.triggered.connect(lambda: self.app_context.get_command_executor(
@@ -218,6 +222,31 @@ class MainMenu(PMenuBar):
         ).execute_command(CreateNoteCommand(self.app_context)))
         data_menu.addAction(new_note_action)
         return data_menu
+
+    def _on_import_images_from_menu(self):
+        """Import Images from the Data menu always targets a brand-new top-level
+        gallery -- unlike the sidebar's version, this menu has no tree
+        selection context to reuse an existing gallery from."""
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
+        from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
+
+        dialog = ImageImportDialog(self.app_context, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        create_command = CreateImageGalleryCommand(self.app_context, parent_id=None)
+        self.app_context.get_command_executor().execute_command(create_command)
+        gallery_id = create_command.created_gallery_id
+        if gallery_id is None:
+            return
+
+        import_command = ImportImagesCommand(
+            self.app_context, gallery_id=gallery_id,
+            sources=dialog.get_sources(), copy_into_project=dialog.get_copy_into_project(),
+        )
+        self.app_context.get_command_executor().execute_command(import_command)
 
     def _create_chart_menu(self) -> QMenu:
         chart_menu = QMenu("Chart", self)

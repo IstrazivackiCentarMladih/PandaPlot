@@ -192,7 +192,7 @@ class IconBar(PWidget):
     def _apply_panel_buttons_theme(self):
         """Apply theme styling to all panel buttons."""
         # Apply styling to all existing panel buttons
-        for panel_name, btn in self.panels.items():
+        for btn in self.panels.values():
             self._apply_button_theme(btn, is_active=False)
     
     def _apply_button_theme(self, button: QPushButton, is_active: bool = False) -> None:

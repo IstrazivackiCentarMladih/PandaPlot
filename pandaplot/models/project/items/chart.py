@@ -10,6 +10,16 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.error_direction import ErrorDirection  # noqa: F401 (re-exported; see tests/gui/test_chart_editor_series_resolution.py)
+from pandaplot.models.chart.fit_style import FitStyle
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import SeriesStyleBase
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items.item import Item
 
 
@@ -19,70 +29,30 @@ class YAxis(StrEnum):
     SECONDARY = "secondary"
 
 
-class ErrorDirection(StrEnum):
-    """Which side(s) of a data point a symmetric error bar's magnitude is drawn on."""
-    BOTH = "both"
-    PLUS = "plus"
-    MINUS = "minus"
-
-
 @dataclass
 class DataSeries:
     """Represents a single data series in a chart.
 
     Columns are referenced by their stable id (``*_column_id``); the
     ``*_column`` name fields are a resolution fallback for legacy/externally
-    edited data and a display hint, never the authoritative reference. A
-    column rename updates the dataset registry only — the ids here are
-    untouched, so nothing has to cascade into series. Resolve a live name with
+    edited data and a display hint, never the authoritative reference.
+    Type-specific data (error-bar columns/styling, vector U/V/magnitude
+    columns, marker styling) lives on ``style`` instead of here -- this
+    class only holds fields every series type needs regardless of its
+    own type. Resolve a live name with
     :func:`pandaplot.models.project.items.chart.resolve_series_column`.
     """
     dataset_id: str
     x_column_id: str = ""
     y_column_id: str = ""
-    x_error_column_id: str = ""
-    y_error_column_id: str = ""
-    x_error_minus_column_id: str = ""
-    y_error_minus_column_id: str = ""
-    # Legacy/fallback column names — populated only by loading old projects
-    # (see resolve_series_column). New series reference columns by id.
     x_column: str = ""
     y_column: str = ""
     label: str = ""
-    color: str = "#1f77b4"
-    marker_color: str = ""
-    marker_edge_color: str = "#000000"
-    marker_edge_width: float = 1.0
-    line_style: str = "solid"
-    marker_style: str = "circle"
-    line_width: float = 2.0
-    marker_size: float = 2.0
     visible: bool = True
-    y_axis: YAxis = YAxis.PRIMARY  # "primary" or "secondary" - which Y axis this series plots against
+    y_axis: YAxis = YAxis.PRIMARY
     alpha: float = 1.0
-    x_error_column: str = ""
-    y_error_column: str = ""
-    x_error_minus_column: str = ""  # only used when error_symmetric is False
-    y_error_minus_column: str = ""  # only used when error_symmetric is False
-    error_symmetric: bool = True
-    error_direction: ErrorDirection = ErrorDirection.BOTH  # only used when error_symmetric is True
-    error_color: str = ""  # "" => inherit series.color
-    error_cap_size: float = 3.0
-    # Area fill under/between curves (line charts). When fill_enabled, the
-    # region between this series' curve and a baseline is shaded. The baseline
-    # is a constant y (fill_base) unless fill_to_index points at another series
-    # in the same chart, in which case the region *between* the two curves is
-    # filled.
-    fill_enabled: bool = False
-    fill_color: str = ""  # "" => inherit series.color
-    fill_alpha: float = 0.3
-    # Orientation of the fill. "vertical" fills between the curve and a y
-    # baseline (matplotlib fill_between); "horizontal" fills between the curve
-    # and an x baseline (fill_betweenx). fill_base is interpreted on the
-    # corresponding axis (a y value when vertical, an x value when horizontal).
-    fill_orientation: str = "vertical"  # "vertical" | "horizontal"
-    fill_base: float = 0.0  # constant baseline, used when fill_to_index < 0
-    fill_to_index: int = -1  # index of sibling series to fill to; -1 => fill_base
+    series_type: SeriesType = SeriesType.LINE
+    style: Optional[SeriesStyleBase] = None
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -90,16 +60,36 @@ class DataSeries:
                 self.y_axis = YAxis(self.y_axis)
             except ValueError:
                 self.y_axis = YAxis.PRIMARY
+        if isinstance(self.series_type, str):
+            self.series_type = SeriesType(self.series_type)
+        expected_style_cls = SERIES_TYPE_SPECS[self.series_type].style_cls
+        if self.style is None:
+            self.style = expected_style_cls()
+        elif type(self.style) is not expected_style_cls:
+            # An explicitly-passed style that doesn't match series_type's
+            # own registered class is not just cosmetically wrong: the
+            # renderer dispatches on series_type and will read fields the
+            # mismatched style class doesn't declare, and a save/reload
+            # round-trip is guaranteed to fail (_series_style_from_dict
+            # rebuilds the class series_type says it should be, from
+            # fields that belong to a different one). Catch it here,
+            # at construction, rather than downstream as a render crash
+            # or a corrupted save.
+            raise ValueError(
+                f"DataSeries.style must be a {expected_style_cls.__name__} "
+                f"for series_type={self.series_type.value!r}, "
+                f"got {type(self.style).__name__}"
+            )
 
     @property
     def has_error_data(self) -> bool:
-        """Whether any error-bar column is configured for this series, by
-        stable id (current data) or legacy name (old projects loaded before
-        stable column ids)."""
-        return bool(
-            self.x_error_column_id or self.y_error_column_id
-            or self.x_error_column or self.y_error_column
-        )
+        """Whether this series' style carries a configured error-bar
+        column -- only meaningful for style classes with an error_bars
+        field (LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle); any
+        other style class (HistSeriesStyle/VectorSeriesStyle) has none,
+        so this is always False for those."""
+        error_bars = getattr(self.style, "error_bars", None)
+        return error_bars is not None and error_bars.has_error_data
 
 
 @dataclass
@@ -120,21 +110,39 @@ class FitData:
     source_y_column_id: str = ""
     source_x_column: str = ""
     source_y_column: str = ""
-    color: str = "#ff7f0e"
-    line_style: str = "dashed"
-    line_width: float = 2.0
-    alpha: float = 1.0
     visible: bool = True
     fit_params: Optional[Dict[str, Any]] = None
     fit_stats: Optional[Dict[str, Any]] = None
     confidence_lower: np.ndarray | None = None
     confidence_upper: np.ndarray | None = None
+    style: Optional[FitStyle] = None
 
     def __post_init__(self):
         if self.fit_params is None:
             self.fit_params = {}
         if self.fit_stats is None:
             self.fit_stats = {}
+        if self.style is None:
+            self.style = FitStyle()
+
+
+def _series_style_from_dict(series_type: SeriesType, style_dict: Dict[str, Any]) -> SeriesStyleBase:
+    """Reconstruct a series' ``style`` from its serialized dict.
+
+    ``dataclasses.asdict()`` flattens nested dataclasses (``marker``,
+    ``error_bars``) into plain nested dicts on the way out; reconstructing
+    the style class from that dict via ``style_cls(**style_dict)`` does NOT
+    reverse that automatically -- dataclasses don't auto-build nested
+    dataclasses from plain dicts the way ``asdict()`` auto-flattens them.
+    So any ``marker``/``error_bars`` key needs to be rebuilt into its own
+    dataclass instance first.
+    """
+    style_dict = dict(style_dict)
+    if "marker" in style_dict and isinstance(style_dict["marker"], dict):
+        style_dict["marker"] = MarkerStyle(**style_dict["marker"])
+    if "error_bars" in style_dict and isinstance(style_dict["error_bars"], dict):
+        style_dict["error_bars"] = ErrorBarConfig(**style_dict["error_bars"])
+    return SERIES_TYPE_SPECS[series_type].style_cls(**style_dict)
 
 
 class Chart(Item):
@@ -146,13 +154,13 @@ class Chart(Item):
     Supports multiple data series from different datasets.
     """
     
-    def __init__(self, id: Optional[str] = None, name: str = "", 
-                 chart_type: str = "line"):
+    def __init__(self, id: Optional[str] = None, name: str = "",
+                 chart_type: "str | ChartType" = ChartType.LINE):
         # Call parent constructor with CHART item type
         super().__init__(id, name)
-        
+
         # Set chart-specific attributes
-        self.chart_type: str = chart_type
+        self.chart_type: ChartType = ChartType(chart_type)
         self.data_series: List[DataSeries] = []
         self.fit_data: List[FitData] = []
         self.config: Dict[str, Any] = {}
@@ -244,9 +252,75 @@ class Chart(Item):
             "dpi": 100
         }
     
-    def set_chart_type(self, chart_type: str) -> None:
-        """Set the chart type."""
-        self.chart_type = chart_type
+    def retype_series(self, index: int, series_type: "str | SeriesType") -> None:
+        """Retype a single series to `series_type`, rebuilding its
+        `.style` for the new type and carrying over its current base
+        color, plus its `marker`/`error_bars` sub-objects when the new
+        style class supports them too (e.g. Line -> Scatter: both
+        compose `marker`/`error_bars`, so a retype must not silently
+        discard a user's already-configured marker styling or error
+        bars just because the concrete style class changed). This is
+        the same per-series retype logic `set_chart_type` applies in
+        bulk to every series a chart-type change makes disallowed --
+        extracted here so an explicit single-series retype (e.g. a user
+        picking a type via a per-series UI control) shares one
+        implementation with that bulk case, instead of duplicating the
+        carry-over logic.
+
+        Deliberately does NOT add a line when retyping Scatter -> Line
+        (asymmetric with Line -> Scatter, which drops the line): Line ->
+        Scatter drops it out of necessity (ScatterSeriesStyle has no line
+        concept to keep it in), whereas Scatter -> Line has an available
+        destination but adding one would be a user-visible rendering
+        change nobody asked for at retype time. Left as an explicit,
+        subsequent style edit instead.
+        """
+        series = self.data_series[index]
+        new_type = SeriesType(series_type)
+        if series.series_type == new_type:
+            return
+        old_style = series.style
+        base_color = (
+            getattr(old_style, "vector_color", None)
+            or getattr(old_style, "color", None)
+            or "#1f77b4"
+        )
+        style_cls = SERIES_TYPE_SPECS[new_type].style_cls
+        series.series_type = new_type
+        if new_type == SeriesType.VECTOR:
+            new_style = style_cls(vector_color=base_color)
+        else:
+            new_style = style_cls(color=base_color)
+        if hasattr(old_style, "marker") and hasattr(new_style, "marker"):
+            new_style.marker = copy.deepcopy(old_style.marker)
+        if hasattr(old_style, "error_bars") and hasattr(new_style, "error_bars"):
+            new_style.error_bars = copy.deepcopy(old_style.error_bars)
+        series.style = new_style
+        self.update_modified_time()
+
+    def set_chart_type(self, chart_type: "str | ChartType") -> None:
+        """Set the chart type, retyping only series not allowed under it.
+
+        chart_editor.py's renderer picks its dispatch function AND its
+        style-field expectations from each series' own `series_type` --
+        so a series only needs retyping when its current type falls
+        OUTSIDE the new chart type's `allowed_series_types` (e.g. a HIST
+        series can't stay on a chart that just became "line", since
+        Line's spec only allows {LINE, SCATTER}). A series whose type is
+        already allowed (e.g. a LINE series when the chart becomes
+        "vector", since Vector's spec allows {VECTOR, LINE}) is left
+        completely untouched -- mixed series types are legitimate for
+        that combination. Retyped series become the new chart type's own
+        `default_series_type`, via `retype_series`.
+        """
+        new_type = ChartType(chart_type)
+        if new_type == self.chart_type:
+            return
+        self.chart_type = new_type
+        spec = CHART_TYPE_SPECS[new_type]
+        for index, series in enumerate(self.data_series):
+            if series.series_type not in spec.allowed_series_types:
+                self.retype_series(index, spec.default_series_type)
         self.update_modified_time()
     
     def add_data_series(self, dataset_id: str, x_column_id: str = "",
@@ -254,11 +328,22 @@ class Chart(Item):
         """Add a new data series to the chart.
 
         Columns are referenced by their stable ids (``x_column_id`` /
-        ``y_column_id`` and the error-column ids via ``kwargs``). The caller
-        resolves names to ids against the dataset; this model holds no
+        ``y_column_id``); any error/vector column ids arrive nested inside
+        a ``style=`` argument, not as flat ``kwargs``. The caller resolves
+        names to ids against the dataset; this model holds no
         :class:`Dataset` reference — the renderer resolves ids back to live
         names with :func:`resolve_series_column`.
+
+        ``series_type`` defaults to this chart's own type when the caller
+        doesn't pass one explicitly. Mixed series types are a real,
+        working capability today -- a chart's `allowed_series_types` (see
+        :class:`ChartTypeSpec`) restricts which types may coexist on it --
+        but a series added without an explicit type should still default
+        to the chart's own type rather than silently landing on
+        SeriesType.LINE regardless of what kind of chart it's being added
+        to.
         """
+        kwargs.setdefault("series_type", SeriesType(self.chart_type))
         series = DataSeries(
             dataset_id=dataset_id,
             x_column_id=x_column_id,
@@ -436,36 +521,12 @@ class Chart(Item):
                     "y_column": series.y_column,
                     "x_column_id": series.x_column_id,
                     "y_column_id": series.y_column_id,
-                    "x_error_column_id": series.x_error_column_id,
-                    "y_error_column_id": series.y_error_column_id,
-                    "x_error_minus_column_id": series.x_error_minus_column_id,
-                    "y_error_minus_column_id": series.y_error_minus_column_id,
                     "label": series.label,
-                    "color": series.color,
-                    "marker_color": series.marker_color,
-                    "marker_edge_color": series.marker_edge_color,
-                    "marker_edge_width": series.marker_edge_width,
-                    "line_style": series.line_style,
-                    "marker_style": series.marker_style,
-                    "line_width": series.line_width,
-                    "marker_size": series.marker_size,
                     "visible": series.visible,
                     "y_axis": series.y_axis,
                     "alpha": series.alpha,
-                    "x_error_column": series.x_error_column,
-                    "y_error_column": series.y_error_column,
-                    "x_error_minus_column": series.x_error_minus_column,
-                    "y_error_minus_column": series.y_error_minus_column,
-                    "error_symmetric": series.error_symmetric,
-                    "error_direction": series.error_direction,
-                    "error_color": series.error_color,
-                    "error_cap_size": series.error_cap_size,
-                    "fill_enabled": series.fill_enabled,
-                    "fill_color": series.fill_color,
-                    "fill_alpha": series.fill_alpha,
-                    "fill_orientation": series.fill_orientation,
-                    "fill_base": series.fill_base,
-                    "fill_to_index": series.fill_to_index
+                    "series_type": series.series_type.value,
+                    "style": asdict(series.style) if series.style is not None else None,
                 } for series in self.data_series
             ],
             "fit_data": [
@@ -479,13 +540,12 @@ class Chart(Item):
                     "x_data": fit.x_data.tolist(),
                     "y_data": fit.y_data.tolist(),
                     "label": fit.label,
-                    "color": fit.color,
-                    "line_style": fit.line_style,
-                    "line_width": fit.line_width,
-                    "alpha": fit.alpha,
                     "visible": fit.visible,
                     "fit_params": fit.fit_params,
-                    "fit_stats": fit.fit_stats
+                    "fit_stats": fit.fit_stats,
+                    "confidence_lower": fit.confidence_lower.tolist() if fit.confidence_lower is not None else None,
+                    "confidence_upper": fit.confidence_upper.tolist() if fit.confidence_upper is not None else None,
+                    "style": asdict(fit.style) if fit.style is not None else None,
                 } for fit in self.fit_data
             ],
             "config": self.config,
@@ -516,48 +576,29 @@ class Chart(Item):
         # Load data series
         series_data = data.get("data_series", [])
         for series_dict in series_data:
+            series_type = SeriesType(series_dict.get("series_type", chart.chart_type))
+            style_dict = series_dict.get("style")
+            style = _series_style_from_dict(series_type, style_dict) if style_dict is not None else None
             series = DataSeries(
                 dataset_id=series_dict["dataset_id"],
                 x_column=series_dict["x_column"],
                 y_column=series_dict["y_column"],
                 x_column_id=series_dict.get("x_column_id", ""),
                 y_column_id=series_dict.get("y_column_id", ""),
-                x_error_column_id=series_dict.get("x_error_column_id", ""),
-                y_error_column_id=series_dict.get("y_error_column_id", ""),
-                x_error_minus_column_id=series_dict.get("x_error_minus_column_id", ""),
-                y_error_minus_column_id=series_dict.get("y_error_minus_column_id", ""),
                 label=series_dict.get("label", ""),
-                color=series_dict.get("color", "#1f77b4"),
-                marker_color=series_dict.get("marker_color", ""),
-                marker_edge_color=series_dict.get("marker_edge_color", "#000000"),
-                marker_edge_width=series_dict.get("marker_edge_width", 1.0),
-                line_style=series_dict.get("line_style", "solid"),
-                marker_style=series_dict.get("marker_style", "circle"),
-                line_width=series_dict.get("line_width", 2.0),
-                marker_size=series_dict.get("marker_size", 2.0),
                 visible=series_dict.get("visible", True),
                 y_axis=series_dict.get("y_axis", "primary"),
                 alpha=series_dict.get("alpha", 1.0),
-                x_error_column=series_dict.get("x_error_column", ""),
-                y_error_column=series_dict.get("y_error_column", ""),
-                x_error_minus_column=series_dict.get("x_error_minus_column", ""),
-                y_error_minus_column=series_dict.get("y_error_minus_column", ""),
-                error_symmetric=series_dict.get("error_symmetric", True),
-                error_direction=ErrorDirection(series_dict.get("error_direction", ErrorDirection.BOTH)),
-                error_color=series_dict.get("error_color", ""),
-                error_cap_size=series_dict.get("error_cap_size", 3.0),
-                fill_enabled=series_dict.get("fill_enabled", False),
-                fill_color=series_dict.get("fill_color", ""),
-                fill_alpha=series_dict.get("fill_alpha", 0.3),
-                fill_orientation=series_dict.get("fill_orientation", "vertical"),
-                fill_base=series_dict.get("fill_base", 0.0),
-                fill_to_index=series_dict.get("fill_to_index", -1)
+                series_type=series_type,
+                style=style,
             )
             chart.data_series.append(series)
         
         # Load fit data
         fit_data_list = data.get("fit_data", [])
         for fit_dict in fit_data_list:
+            style_dict = fit_dict.get("style")
+            style = FitStyle(**style_dict) if style_dict is not None else None
             fit = FitData(
                 source_dataset_id=fit_dict["source_dataset_id"],
                 source_x_column=fit_dict["source_x_column"],
@@ -568,13 +609,18 @@ class Chart(Item):
                 x_data=np.array(fit_dict["x_data"]),
                 y_data=np.array(fit_dict["y_data"]),
                 label=fit_dict.get("label", ""),
-                color=fit_dict.get("color", "#ff7f0e"),
-                line_style=fit_dict.get("line_style", "dashed"),
-                line_width=fit_dict.get("line_width", 2.0),
-                alpha=fit_dict.get("alpha", 1.0),
                 visible=fit_dict.get("visible", True),
                 fit_params=fit_dict.get("fit_params", {}),
-                fit_stats=fit_dict.get("fit_stats", {})
+                fit_stats=fit_dict.get("fit_stats", {}),
+                confidence_lower=(
+                    np.array(fit_dict["confidence_lower"])
+                    if fit_dict.get("confidence_lower") is not None else None
+                ),
+                confidence_upper=(
+                    np.array(fit_dict["confidence_upper"])
+                    if fit_dict.get("confidence_upper") is not None else None
+                ),
+                style=style,
             )
             chart.fit_data.append(fit)
 
@@ -605,26 +651,56 @@ def resolve_series_column(dataset: Any, column_id: str,
 def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
     """Fill a series' ``*_column_id`` fields from its name fields via ``dataset``.
 
-    Called at series write sites and during legacy-chart migration. A name that
+    Called at series write sites; the per-item chart migration itself is a
+    pure dict transform that never calls this method -- only
+    ``cross_item/column_ids.py``'s post-load backfill does, at a later point
+    in the load pipeline once items are constructed objects. A name that
     resolves to a column gets that column's id; an unresolved name leaves the
     existing id untouched (resolution falls back to the stored name).
+
+    The error and vector column pairs now live nested on ``series.style``
+    (``series.style.error_bars`` / a ``VectorSeriesStyle`` instance) rather
+    than directly on ``series``, so each nested target is resolved and
+    guarded the same way ``has_error_data``/``retype_series`` do.
     """
     if dataset is None:
         return
-    pairs = (
+    pairs = [
         ("x_column", "x_column_id"),
         ("y_column", "y_column_id"),
-        ("x_error_column", "x_error_column_id"),
-        ("y_error_column", "y_error_column_id"),
-        ("x_error_minus_column", "x_error_minus_column_id"),
-        ("y_error_minus_column", "y_error_minus_column_id"),
-    )
+    ]
     for name_field, id_field in pairs:
         name = getattr(series, name_field, "")
         if name:
             cid = dataset.column_id(name)
             if cid is not None:
                 setattr(series, id_field, cid)
+
+    error_bars = getattr(series.style, "error_bars", None)
+    if error_bars is not None:
+        for name_field, id_field in (
+            ("x_error_column", "x_error_column_id"),
+            ("y_error_column", "y_error_column_id"),
+            ("x_error_minus_column", "x_error_minus_column_id"),
+            ("y_error_minus_column", "y_error_minus_column_id"),
+        ):
+            name = getattr(error_bars, name_field, "")
+            if name:
+                cid = dataset.column_id(name)
+                if cid is not None:
+                    setattr(error_bars, id_field, cid)
+
+    if isinstance(series.style, VectorSeriesStyle):
+        for name_field, id_field in (
+            ("u_column", "u_column_id"),
+            ("v_column", "v_column_id"),
+            ("magnitude_column", "magnitude_column_id"),
+        ):
+            name = getattr(series.style, name_field, "")
+            if name:
+                cid = dataset.column_id(name)
+                if cid is not None:
+                    setattr(series.style, id_field, cid)
 
 
 def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
@@ -652,11 +728,8 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "style": copy.deepcopy(chart.style),
         "chart_type": chart.chart_type,
         "name": chart.name,
-        "data_series": [asdict(s) for s in chart.data_series],
-        "fit_data_styles": [
-            {"color": f.color, "line_width": f.line_width, "alpha": f.alpha}
-            for f in chart.fit_data
-        ],
+        "data_series": [copy.deepcopy(s) for s in chart.data_series],
+        "fit_data_styles": [copy.deepcopy(f.style) for f in chart.fit_data],
     }
 
 
@@ -666,11 +739,9 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     chart.style = copy.deepcopy(snapshot["style"])
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
-    chart.data_series = [DataSeries(**d) for d in snapshot["data_series"]]
+    chart.data_series = [copy.deepcopy(s) for s in snapshot["data_series"]]
     for i, fit_style in enumerate(snapshot["fit_data_styles"]):
         if i < len(chart.fit_data):
-            chart.fit_data[i].color = fit_style["color"]
-            chart.fit_data[i].line_width = fit_style["line_width"]
-            chart.fit_data[i].alpha = fit_style.get("alpha", 1.0)
+            chart.fit_data[i].style = copy.deepcopy(fit_style)
     chart.update_modified_time()
 

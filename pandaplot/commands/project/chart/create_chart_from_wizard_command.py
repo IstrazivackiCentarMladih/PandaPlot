@@ -12,10 +12,22 @@ from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.config.config_manager import ConfigManager
+
+# Same default palette data_tab.py's "+Add series" cycles through -- keeps
+# wizard-created series visually distinguishable instead of all landing on
+# the style class's own single hardcoded default color.
+_DEFAULT_SERIES_COLORS = [
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
 
 
 class CreateChartFromWizardCommand(Command):
@@ -110,6 +122,7 @@ class CreateChartFromWizardCommand(Command):
             self.logger.info("Executing CreateChartFromWizardCommand")
 
             if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning("CreateChartFromWizardCommand.execute: no project is currently loaded")
                 self.ui_controller.show_error_message("Create Chart Error", "No project is currently loaded")
                 return False
             project = self.app_state.current_project
@@ -187,6 +200,27 @@ class CreateChartFromWizardCommand(Command):
             project = self.app_state.current_project
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
+            # Reported live: "when creating chart through wizard, the
+            # chart is too small (it didn't use app default size)."
+            # Leaving width_cm/height_cm as None routes a new chart
+            # through ChartEditorWidget's auto-fit-to-viewport path,
+            # which races the still-settling layout of a just-opened tab
+            # and can permanently bake in an undersized result. Setting
+            # the app's configured defaults explicitly here skips that
+            # racy path for every wizard-created chart.
+            width_cm, height_cm, dpi = 20.0, 15.0, 100
+            try:
+                cfg_manager = self.app_context.get_manager(ConfigManager)
+                chart_display = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+                if chart_display:
+                    width_cm = getattr(chart_display, "default_width_cm", width_cm) or width_cm
+                    height_cm = getattr(chart_display, "default_height_cm", height_cm) or height_cm
+                    dpi = getattr(chart_display, "dpi", dpi) or dpi
+            except Exception:
+                pass
+            chart.config["width_cm"] = width_cm
+            chart.config["height_cm"] = height_cm
+            chart.config["dpi"] = dpi
             series_configs = [] if dialog.is_empty() else dialog.get_series_configs()
             if not dialog.is_empty():
                 chart.set_labels(
@@ -198,14 +232,37 @@ class CreateChartFromWizardCommand(Command):
                 chart.config["show_legend"] = dialog.get_show_legend()
                 chart.config["show_grid_x"] = dialog.get_show_grid()
                 chart.config["show_grid_y"] = dialog.get_show_grid()
-                for series_config in series_configs:
+                series_type = SeriesType(chart.chart_type)
+                spec = SERIES_TYPE_SPECS[series_type]
+                style_cls = spec.style_cls
+                for index, series_config in enumerate(series_configs):
+                    # Cycle through the same default palette data_tab.py's
+                    # "+Add series" uses, so multiple wizard-created series
+                    # aren't all left on the style class's own single
+                    # hardcoded default color.
+                    color = _DEFAULT_SERIES_COLORS[index % len(_DEFAULT_SERIES_COLORS)]
+                    if spec.supports_error_bars:
+                        style = style_cls(color=color, error_bars=ErrorBarConfig(
+                            x_error_column_id=series_config["x_error_column_id"],
+                            y_error_column_id=series_config["y_error_column_id"],
+                            x_error_minus_column_id=series_config.get("x_error_minus_column_id", ""),
+                            y_error_minus_column_id=series_config.get("y_error_minus_column_id", ""),
+                            error_symmetric=series_config["error_symmetric"],
+                        ))
+                    elif series_type == SeriesType.VECTOR:
+                        style = style_cls(
+                            vector_color=color,
+                            u_column_id=series_config.get("u_column_id", ""),
+                            v_column_id=series_config.get("v_column_id", ""),
+                            magnitude_column_id=series_config.get("magnitude_column_id", ""),
+                        )
+                    else:
+                        style = style_cls(color=color)
                     chart.add_data_series(
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
                         y_column_id=series_config["y_column_id"],
-                        x_error_column_id=series_config["x_error_column_id"],
-                        y_error_column_id=series_config["y_error_column_id"],
-                        error_symmetric=series_config["error_symmetric"],
+                        style=style,
                         label=self._default_series_label(project, series_config),
                     )
 

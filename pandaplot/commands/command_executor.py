@@ -34,7 +34,7 @@ class CommandExecutor:
         try:
             success = command.execute()
 
-            if not success:
+            if success is False:
                 self.logger.warning("Command execution failed: %s", command_name)
                 return False
 

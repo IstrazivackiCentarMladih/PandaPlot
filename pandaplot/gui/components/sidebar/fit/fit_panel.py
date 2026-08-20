@@ -20,11 +20,12 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
-from pandaplot.models.project.items.chart import resolve_series_column
 from pandaplot.commands.project.fit.perform_fit_command import PerformFitCommand
-from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import FitEvents, ChartEvents, UIEvents
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
+from pandaplot.models.events import ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import resolve_series_column
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import FitService
 from pandaplot.services.theme import ThemeManager
@@ -45,6 +46,7 @@ class FitPanel(SidebarPanel):
         self.current_project = None
         self.current_chart = None
         self.fit_results = None
+        self.fit_fixed_parameters: Optional[str] = None
         self.datasets = []
 
         # Check scipy availability lazily (only when FitPanel is instantiated)
@@ -86,8 +88,7 @@ class FitPanel(SidebarPanel):
         # Action buttons
         self._create_action_buttons(content_layout)
 
-        scroll.setWidget(content_widget)
-        layout.addWidget(scroll)
+        self._set_content(content_widget, scrollable=True)
 
     @override
     def _apply_theme(self):
@@ -220,11 +221,6 @@ class FitPanel(SidebarPanel):
             action = self.menu.addAction(name)
             action.triggered.connect(lambda checked, f=name: self._insert_function(f + "("))
 
-        #connect buttons to menu
-        self.function_button.clicked.connect(
-            lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
-        )
-
         custom_layout.addWidget(QLabel("Parameters:"), 1, 0)
         self.custom_params_edit = QLineEdit()
         self.custom_params_edit.setPlaceholderText("e.g., a, b, c")
@@ -289,7 +285,7 @@ class FitPanel(SidebarPanel):
         button_layout = QHBoxLayout()
 
         self.fit_button = PButton(
-            "Perform Fit", role="primary", on_click=self.fit_command.perform_fit, enabled=self.scipy_available
+            "Perform Fit", role="primary", on_click=self._perform_fit, enabled=self.scipy_available
         )
         button_layout.addWidget(self.fit_button)
 
@@ -305,9 +301,6 @@ class FitPanel(SidebarPanel):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
-        self.fit_button.clicked.connect(self._perform_fit)
-        self.apply_button.clicked.connect(self._apply_fit)
-        self.clear_button.clicked.connect(self._clear_results)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -358,10 +351,9 @@ class FitPanel(SidebarPanel):
             dataset, df.shape, list(df.columns))
 
         x_column = resolve_series_column(dataset, series.x_column_id, series.x_column)
-
         y_column = resolve_series_column(dataset, series.y_column_id, series.y_column)
 
-        if x_column not in df.columns or y_column not in df.columns:
+        if not x_column or not y_column or x_column not in df.columns or y_column not in df.columns:
             self.logger.warning(
                 "Columns not found: x=%r y=%r columns=%s",
                 x_column,
@@ -453,6 +445,7 @@ class FitPanel(SidebarPanel):
             param_names,
             params,
             perr,
+            fixed_parameters=self.fit_fixed_parameters,
         )
 
         if r_squared is not None:
@@ -514,12 +507,14 @@ class FitPanel(SidebarPanel):
     def _clear_results(self):
         """Clear the fit results."""
         self.fit_results = None
+        self.fit_fixed_parameters = None
         self.results_text.clear()
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
 
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
+        self._clear_results()
         self.current_chart = chart
         self.series_combo.clear()
 
@@ -529,7 +524,16 @@ class FitPanel(SidebarPanel):
         self.current_project = self.app_context.app_state.current_project
 
         for series in chart.data_series:
-            label = series.label or f"{series.y_column} vs {series.x_column}"
+            if series.label:
+                label = series.label
+            else:
+                dataset = (
+                    self.current_project.find_item(series.dataset_id)
+                    if self.current_project else None
+                )
+                x_name = resolve_series_column(dataset, series.x_column_id, series.x_column) or "?"
+                y_name = resolve_series_column(dataset, series.y_column_id, series.y_column) or "?"
+                label = f"{y_name} vs {x_name}"
             self.series_combo.addItem(label, series)
 
         if self.series_combo.count() > 0:
@@ -537,6 +541,7 @@ class FitPanel(SidebarPanel):
             self._on_series_changed()
 
     def _on_series_changed(self):
+        self._clear_results()
         series = self.series_combo.currentData()
         if series is None:
             return
@@ -579,6 +584,7 @@ class FitPanel(SidebarPanel):
         df, mask, x_data, y_data, series = current_data
 
         fit_type = self.fit_type_combo.currentText()
+        is_custom = fit_type.split(" (")[0] == "Custom Function"
 
         command = PerformFitCommand(
             fit_service=self.fit_service,
@@ -594,9 +600,9 @@ class FitPanel(SidebarPanel):
                 series,
                 dataset=self.current_project.find_item(series.dataset_id),
             ),
-            custom_function=self.custom_function_edit.text(),
-            custom_parameters=self.custom_params_edit.text(),
-            fixed_parameters=self.initial_guess_edit.text(),
+            custom_function=self.custom_function_edit.text() if is_custom else None,
+            custom_parameters=self.custom_params_edit.text() if is_custom else None,
+            fixed_parameters=self.initial_guess_edit.text() if is_custom else None,
         )
 
         executor = self.app_context.get_command_executor()
@@ -606,6 +612,7 @@ class FitPanel(SidebarPanel):
             return
 
         self.fit_results = command.result
+        self.fit_fixed_parameters = command.fixed_parameters
         self.display_results()
         self.apply_button.setEnabled(self.fit_results is not None)
 

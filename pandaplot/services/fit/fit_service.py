@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-
 FIT_DEFINITIONS = {
     "Linear": {
         "function": lambda x, a, b: a * x + b,
@@ -51,6 +50,8 @@ class FitResult:
     source_dataset_id: str | None = None
     source_x_column: str | None = None
     source_y_column: str | None = None
+    source_x_column_id: str | None = None
+    source_y_column_id: str | None = None
     sigma_y: np.ndarray | None = None
     equation: str | None = None
 
@@ -372,8 +373,13 @@ class FitService:
         # DataFrame names against the series' dataset (name fallback for legacy).
         from pandaplot.models.project.items.chart import resolve_series_column
 
-        plus_column = resolve_series_column(dataset, series.y_error_column_id, series.y_error_column)
-        minus_column = resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column)
+        error_bars = getattr(series.style, "error_bars", None)
+        y_error_column_id = getattr(error_bars, "y_error_column_id", "")
+        y_error_column = getattr(error_bars, "y_error_column", "")
+        y_error_minus_column_id = getattr(error_bars, "y_error_minus_column_id", "")
+        y_error_minus_column = getattr(error_bars, "y_error_minus_column", "")
+        plus_column = resolve_series_column(dataset, y_error_column_id, y_error_column)
+        minus_column = resolve_series_column(dataset, y_error_minus_column_id, y_error_minus_column)
 
         # Asymmetric error bars
         if plus_column and minus_column:

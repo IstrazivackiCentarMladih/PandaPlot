@@ -30,30 +30,30 @@ class ItemDataManagerFactory:
             manager = self._registry[type_name].manager
             self.logger.debug("Retrieved data manager for type '%s': %s", type_name, type(manager).__name__)
             return manager
-        except KeyError:
+        except KeyError as e:
             error_msg = f"No data manager registered for type '{type_name}'"
             self.logger.error(error_msg + ". Available types: %s", list(self._registry.keys()))
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
     def resolve_item_class(self, type_name: str) -> type:
         try:
             item_class = self._registry[type_name].item_class
             self.logger.debug("Resolved item class for type '%s': %s", type_name, item_class.__name__)
             return item_class
-        except KeyError:
+        except KeyError as e:
             error_msg = f"No item class registered for type '{type_name}'"
             self.logger.error(error_msg + ". Available types: %s", list(self._registry.keys()))
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
     def get_extension_for_type(self, type_name: str) -> str:
         try:
             extension = self._registry[type_name].extension
             self.logger.debug("Retrieved extension for type '%s': %s", type_name, extension)
             return extension
-        except KeyError:
+        except KeyError as e:
             error_msg = f"No extension registered for type '{type_name}'"
             self.logger.error(error_msg + ". Available types: %s", list(self._registry.keys()))
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
     def get_registered_types(self) -> list[str]:
         return list(self._registry.keys())

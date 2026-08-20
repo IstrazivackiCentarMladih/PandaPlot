@@ -67,6 +67,11 @@ class ProjectViewPanelContextManager(QMenu):
         self.add_note_action.triggered.connect(self.command_manager.add_note)
         self.addAction(self.add_note_action)
 
+        self.add_image_gallery_action = QAction("Add Image Gallery", self)
+        self.add_image_gallery_action.triggered.connect(
+            self.command_manager.add_image_gallery)
+        self.addAction(self.add_image_gallery_action)
+
         self.import_data_action = QAction("Import Data...", self)
         self.import_data_action.triggered.connect(
             self.command_manager.import_data)
@@ -83,6 +88,11 @@ class ProjectViewPanelContextManager(QMenu):
         self.create_chart_action.triggered.connect(
             self.command_manager.create_chart_from_dataset)
         self.addAction(self.create_chart_action)
+
+        self.import_images_action = QAction("Import Images...", self)
+        self.import_images_action.triggered.connect(
+            self.command_manager.import_images)
+        self.addAction(self.import_images_action)
 
         self.addSeparator()
 
@@ -116,6 +126,9 @@ class ProjectViewPanelContextManager(QMenu):
 
         # Show chart creation only for datasets
         self.create_chart_action.setVisible(item_type == "dataset")
+
+        # Show image import only for image galleries (or a container it could be created under)
+        self.import_images_action.setVisible(item_type == "imagegallery")
 
         self.delete_action.setEnabled(can_delete)
 

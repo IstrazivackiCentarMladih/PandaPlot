@@ -2,8 +2,8 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -13,7 +13,7 @@ def qapp():
 
 
 def _line_card() -> SeriesConfigCard:
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("line"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("line"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
     card.show()
@@ -43,7 +43,7 @@ def test_x_role_is_optional_for_line():
 
 
 def test_histogram_card_has_no_error_bar_toggle():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     assert card.error_bars_check is None
 
 
@@ -93,7 +93,7 @@ def test_remove_button_emits_remove_requested():
 
 
 def test_histogram_values_role_maps_to_y_column_id():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-date", "Date"), ("col-rev", "Revenue")])
     card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))
@@ -148,7 +148,7 @@ def test_display_names_uses_display_text_not_column_id():
 
 
 def test_display_names_for_histogram_uses_the_values_role():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("hist"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("hist"))
     card.set_datasets([("ds-1", "Sales")])
     card.set_dataset_columns("ds-1", [("col-rev", "Revenue")])
     card.values_column_combo.setCurrentIndex(card.values_column_combo.findData("col-rev"))
@@ -246,3 +246,31 @@ def test_swatch_color_reflects_the_cards_index():
     card.set_collapsed(True)
 
     assert "#222222" in card._swatch.styleSheet()
+
+
+def test_enabling_asymmetric_error_bars_exposes_minus_columns_and_defaults_them_to_plus():
+    """Mirrors data_tab.py's already-shipped "default minus to plus"
+    behavior (see _on_error_symmetry_toggled), applied to the wizard's
+    per-series card so the wizard doesn't reintroduce the same
+    None-default gap in a second place."""
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+    plus_index = card.x_error_column_combo.findData("col-rev")
+    card.x_error_column_combo.setCurrentIndex(plus_index)
+
+    card.error_asymmetric_check.setChecked(True)
+
+    assert card.x_error_minus_column_combo.isVisible() is True
+    assert card.x_error_minus_column_combo.currentData() == "col-rev"
+
+
+def test_series_config_includes_minus_columns_and_symmetric_flag():
+    card = _line_card()
+    card.error_bars_check.setChecked(True)
+    card.error_asymmetric_check.setChecked(True)
+
+    config = card.get_series_config()
+
+    assert "x_error_minus_column_id" in config
+    assert "y_error_minus_column_id" in config
+    assert config["error_symmetric"] is False

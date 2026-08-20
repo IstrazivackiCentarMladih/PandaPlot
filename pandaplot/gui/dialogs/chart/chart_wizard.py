@@ -189,8 +189,8 @@ class ChartWizard(PWizard):
         summaries: dict[int, str] = {}
         chart_type = self.type_page.selected_chart_type()
         if chart_type:
-            from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
-            summaries[0] = f"Type · {get_chart_role_spec(chart_type).display_name}"
+            from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
+            summaries[0] = f"Type · {get_chart_type_spec(chart_type).display_name}"
         if self.data_page.cards:
             count = len(self.data_page.cards)
             summaries[1] = f"Data · {count} series"
@@ -224,7 +224,7 @@ class ChartWizard(PWizard):
         if len(column_ids) == 1:
             card.apply_picked_columns("y" if "y" in card._role_combos else "values", column_ids)
         else:
-            for role, column_id in zip(roles, column_ids):
+            for role, column_id in zip(roles, column_ids, strict=False):
                 card.apply_picked_columns(role, [column_id])
         # The initial selection stays available for the wizard's lifetime so it
         # can be re-applied whenever a fresh card set is built (e.g. the user

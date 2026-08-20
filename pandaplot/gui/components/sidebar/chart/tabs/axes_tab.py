@@ -276,7 +276,9 @@ class AxesTab(QWidget):
             # matplotlib's own autoscale would -- otherwise a computed min <= 0
             # gets shown here and later rejected/ignored by set_xlim/set_ylim.
             is_log = form["scale_control"].currentValue() == ScaleType.LOG
-            computed = compute_axis_data_range(project, self._chart.data_series, prefix, positive_only=is_log)
+            computed = compute_axis_data_range(
+                project, self._chart.data_series, prefix, positive_only=is_log
+            )
         else:
             computed = None
         min_value, max_value = computed if computed is not None else (0.0, 1.0)

@@ -44,6 +44,10 @@ class ApplyChartPropertiesCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "ApplyChartPropertiesCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         if self.old_snapshot is None:
@@ -62,6 +66,10 @@ class ApplyChartPropertiesCommand(Command):
     def undo(self):
         chart = self._find_chart()
         if not chart or self.old_snapshot is None:
+            self.logger.warning(
+                "ApplyChartPropertiesCommand.undo: cannot undo for chart '%s' (chart found=%s, old_snapshot set=%s)",
+                self.chart_id, chart is not None, self.old_snapshot is not None,
+            )
             return
         restore_chart_state(chart, self.old_snapshot)
         self._emit_update(chart)
@@ -70,6 +78,10 @@ class ApplyChartPropertiesCommand(Command):
     def redo(self):
         chart = self._find_chart()
         if not chart or self.new_snapshot is None:
+            self.logger.warning(
+                "ApplyChartPropertiesCommand.redo: cannot redo for chart '%s' (chart found=%s, new_snapshot set=%s)",
+                self.chart_id, chart is not None, self.new_snapshot is not None,
+            )
             return
         restore_chart_state(chart, self.new_snapshot)
         self._emit_update(chart)

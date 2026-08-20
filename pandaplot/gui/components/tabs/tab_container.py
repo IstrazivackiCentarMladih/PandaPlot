@@ -15,7 +15,7 @@ from pandaplot.models.events import (
     ProjectEvents,
     UIEvents,
 )
-from pandaplot.models.project.items import Chart, Dataset, Note
+from pandaplot.models.project.items import Chart, Dataset, ImageGallery, Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.session import SessionPersistenceManager
 
@@ -540,6 +540,9 @@ class TabContainer(PWidget):
         elif isinstance(item, Dataset):
             from pandaplot.gui.components.tabs.dataset.dataset_tab import DatasetTab
             return DatasetTab(app_context=self.app_context, dataset=item, parent=self)
+        elif isinstance(item, ImageGallery):
+            from pandaplot.gui.components.tabs.image.image_gallery_tab import ImageGalleryTab
+            return ImageGalleryTab(app_context=self.app_context, gallery=item, parent=self)
         else:
             raise ValueError(f"Unsupported item type, item class {item.__class__.__name__}")
 
@@ -757,7 +760,7 @@ class TabContainer(PWidget):
         """Handle analysis completion events."""
         dataset_id = event_data.get("dataset_id")
         # Find and refresh the relevant dataset tab
-        for tab_id, tab_widget in self.tabs.items():
+        for tab_widget in self.tabs.values():
             if hasattr(tab_widget, "dataset") and tab_widget.dataset.id == dataset_id:
                 if hasattr(tab_widget, "load_dataset_data"):
                     tab_widget.load_dataset_data()  # Refresh to show new analysis column

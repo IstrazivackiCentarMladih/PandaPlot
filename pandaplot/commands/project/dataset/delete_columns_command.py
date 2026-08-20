@@ -1,9 +1,10 @@
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import List, Tuple, Union, override
+from typing import List, Union, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project.items import Chart
@@ -18,6 +19,26 @@ class ChartReferenceMatch:
     series_indices: List[int]
     fit_indices: List[int]
     error_only_indices: List[int]
+
+
+def _error_field_targets(series):
+    """Return (container, id_field, name_field) triples for a series'
+    optional error/magnitude column references -- these now live on
+    ``series.style.error_bars`` (x/y error + minus pairs) and, for a
+    VECTOR series, ``series.style.magnitude_column*`` directly, rather
+    than flatly on ``series`` itself."""
+    targets = []
+    error_bars = getattr(series.style, "error_bars", None)
+    if error_bars is not None:
+        targets.extend([
+            (error_bars, "x_error_column_id", "x_error_column"),
+            (error_bars, "y_error_column_id", "y_error_column"),
+            (error_bars, "x_error_minus_column_id", "x_error_minus_column"),
+            (error_bars, "y_error_minus_column_id", "y_error_minus_column"),
+        ])
+    if isinstance(series.style, VectorSeriesStyle):
+        targets.append((series.style, "magnitude_column_id", "magnitude_column"))
+    return targets
 
 
 class DeleteColumnsCommand(Command):
@@ -201,8 +222,9 @@ class DeleteColumnsCommand(Command):
         Returns a list of (chart, data_series indices, fit_data indices,
         error-only data_series indices) for every chart with at least one
         matching reference. A series lands in error-only indices (instead of
-        data_series indices) when the only matching reference is its
-        optional x_error_column/y_error_column, since that series still
+        data_series indices) when the only matching reference is one of its
+        optional columns (x_error_column/y_error_column/magnitude_column),
+        since that series still
         renders fine without error bars and shouldn't be removed.
         """
         if not self.project:
@@ -227,15 +249,16 @@ class DeleteColumnsCommand(Command):
                 i for i, series in enumerate(item.data_series)
                 if series.dataset_id == self.dataset_id
                 and (refs(series.x_column_id, series.x_column)
-                     or refs(series.y_column_id, series.y_column))
+                     or refs(series.y_column_id, series.y_column)
+                     or (isinstance(series.style, VectorSeriesStyle)
+                         and (refs(series.style.u_column_id, series.style.u_column)
+                              or refs(series.style.v_column_id, series.style.v_column))))
             ]
             error_only_idx = [
                 i for i, series in enumerate(item.data_series)
                 if i not in series_idx and series.dataset_id == self.dataset_id
-                and (refs(series.x_error_column_id, series.x_error_column)
-                     or refs(series.y_error_column_id, series.y_error_column)
-                     or refs(series.x_error_minus_column_id, series.x_error_minus_column)
-                     or refs(series.y_error_minus_column_id, series.y_error_minus_column))
+                and any(refs(getattr(container, id_field), getattr(container, name_field))
+                        for container, id_field, name_field in _error_field_targets(series))
             ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
@@ -285,25 +308,21 @@ class DeleteColumnsCommand(Command):
             # deletion shifts the list, so `i` still points at the right series.
             # Match by stable id (deleted_ids) with a name fallback for legacy
             # references; clear both the id and the name field together.
-            error_field_pairs = (
-                ("x_error_column_id", "x_error_column"),
-                ("y_error_column_id", "y_error_column"),
-                ("x_error_minus_column_id", "x_error_minus_column"),
-                ("y_error_minus_column_id", "y_error_minus_column"),
-            )
             cleared_series = []
             for i in error_only_idx:
                 series = chart.data_series[i]
-                old_values = {
-                    field: getattr(series, field)
-                    for pair in error_field_pairs for field in pair
-                }
-                for id_field, name_field in error_field_pairs:
-                    cid = getattr(series, id_field)
-                    name = getattr(series, name_field)
+                targets = _error_field_targets(series)
+                old_values = [
+                    (container, field, getattr(container, field))
+                    for container, id_field, name_field in targets
+                    for field in (id_field, name_field)
+                ]
+                for container, id_field, name_field in targets:
+                    cid = getattr(container, id_field)
+                    name = getattr(container, name_field)
                     if (cid and cid in deleted_ids) or name in column_set:
-                        setattr(series, id_field, "")
-                        setattr(series, name_field, "")
+                        setattr(container, id_field, "")
+                        setattr(container, name_field, "")
                 cleared_series.append((i, old_values))
 
             for i in sorted(series_idx, reverse=True):
@@ -342,8 +361,8 @@ class DeleteColumnsCommand(Command):
 
             for i, old_values in self.cleared_error_refs.get(chart_id, []):
                 if 0 <= i < len(chart.data_series):
-                    for field, value in old_values.items():
-                        setattr(chart.data_series[i], field, value)
+                    for container, field, value in old_values:
+                        setattr(container, field, value)
 
             if removed["series"] or removed["fits"] or chart_id in self.cleared_error_refs:
                 chart.update_modified_time()

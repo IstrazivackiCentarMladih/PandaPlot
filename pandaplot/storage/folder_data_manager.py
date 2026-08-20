@@ -18,7 +18,7 @@ class FolderDataManager(ItemDataManager[Folder]):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
 
     @override
-    def load(self, item_class: type[Folder], zip_file: ZipFile, path_in_zip: str) -> Folder:
+    def load(self, item_class: type[Folder], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> Folder:
         """Read and deserialize item data from given path in the zip."""
         # Read metadata
         metadata = json.loads(zip_file.read(
