@@ -849,8 +849,9 @@ class ChartEditorWidget(PWidget):
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
                 # secondary Y axis).
-                # TODO: Follow-up PR: expose fit-line styling in the UI
-                # (line color/style/width, visibility, and confidence-band styling)
+                # Line color/style/width and confidence-band styling are editable
+                # via StyleTab.load_fit_style/apply_fit_style_to; fit.visible has
+                # no UI toggle yet (only delete via remove_fit_data_command).
                 for fit in self.chart.fit_data:
                     if fit.visible:
                         fit_axes = self.chart_canvas.axes
