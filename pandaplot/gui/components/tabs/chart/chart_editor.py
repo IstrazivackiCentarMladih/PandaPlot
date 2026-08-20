@@ -340,7 +340,10 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     y_err_minus are only meaningful when style.error_bars.error_symmetric
     is False.
     Secondary columns (u_data/v_data, required; magnitude_data, optional)
-    are resolved the same way, keyed off needs_secondary_columns.
+    are resolved the same way, keyed off needs_secondary_columns. The Z
+    (color) column for Colormap/Heatmap series is resolved the same way
+    too, keyed off needs_z_column: required, so a missing/unresolvable
+    Z column errors out just like a missing U/V column does.
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -391,8 +394,17 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         if magnitude_column and magnitude_column in df.columns:
             magnitude_data = df[magnitude_column]
 
+    z_data = None
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_z_column:
+        z_column = resolve_series_column(dataset, series.style.z_column_id, series.style.z_column)
+        if not z_column:
+            return SeriesData(None, None, None, None, None, None, "no Z column configured")
+        if z_column not in df.columns:
+            return SeriesData(None, None, None, None, None, None, f"Z column '{z_column}' not found")
+        z_data = df[z_column]
+
     return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None,
-                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data)
+                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data, z_data=z_data)
 
 
 def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
