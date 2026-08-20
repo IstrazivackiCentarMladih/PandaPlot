@@ -18,7 +18,7 @@ class ImageGalleryDataManager(ItemDataManager[ImageGallery]):
         zip_file.writestr(f"{path_in_zip}.json", json.dumps(metadata, indent=2))
 
     @override
-    def load(self, item_class: type[ImageGallery], zip_file: ZipFile, path_in_zip: str) -> ImageGallery:
+    def load(self, item_class: type[ImageGallery], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> ImageGallery:
         """Read and deserialize image gallery metadata from the given path."""
         metadata = json.loads(zip_file.read(f"{path_in_zip}.json").decode("utf-8"))
 

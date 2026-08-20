@@ -446,7 +446,7 @@ class TestImageGalleryTabViewToggle:
 class TestImageGalleryTabMovedEvent:
     def test_subscribes_to_project_item_moved(self, app_context):
         gallery = ImageGallery(name="Trip")
-        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
 
         subscribed_events = [call.args[0] for call in app_context.event_bus.subscribe.call_args_list]
         from pandaplot.models.events.event_types import ProjectEvents

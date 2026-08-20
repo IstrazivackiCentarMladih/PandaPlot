@@ -7,7 +7,7 @@ unit-tested without any Qt/matplotlib widget setup.
 
 import numpy as np
 
-from pandaplot.models.project.items.chart import ErrorDirection
+from pandaplot.models.chart.error_direction import ErrorDirection
 
 
 def _symmetric_directional_error(magnitude, direction: ErrorDirection):

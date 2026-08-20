@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any, Optional, override
+from typing import Optional, override
 
 import numpy as np
 from matplotlib.ticker import (
@@ -27,7 +26,15 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
+from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import LineSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
@@ -314,33 +321,26 @@ def _resolve_error_column(df, column_name):
     return df[column_name].to_numpy()
 
 
-@dataclass
-class SeriesData:
-    x_data: Any
-    y_data: Any
-    x_err: Optional[Any]
-    y_err: Optional[Any]
-    x_err_minus: Optional[Any]
-    y_err_minus: Optional[Any]
-    error: Optional[str]
-    u_data: Optional[Any] = None
-    v_data: Optional[Any] = None
-    magnitude_data: Optional[Any] = None
-
-
 def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     """Resolve a DataSeries against the project's datasets.
 
     Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
     success, or all-None with a message when the dataset or a required
     column can't be found. An empty x_column means "plot against the
-    DataFrame index". Histograms only ever plot y_column, so a stale/unused
-    x_column is ignored when chart_type == "hist". The error columns are
-    resolved leniently (see _resolve_error_column) since they're optional;
-    x_err_minus/y_err_minus are only meaningful when series.error_symmetric
-    is False. When chart_type == "vector", u_data/v_data are also resolved
-    (required -- missing either is an error) and magnitude_data leniently
-    (optional -- unset/unresolved never causes an error).
+    DataFrame index" for series types that need one -- per
+    SERIES_TYPE_SPECS[...].needs_x_column, keyed by `chart_type` when
+    explicitly passed (used by wizard_preview.py, whose throwaway
+    DataSeries objects don't yet carry a reliable series_type of their
+    own), otherwise by the series' own `series_type` -- the correct
+    source once every real caller has one. Histograms only ever plot
+    y_column, so a stale/unused x_column is ignored (never resolved,
+    never missing-column-checked) and x_data comes back None for a hist
+    series. The error columns are resolved leniently (see
+    _resolve_error_column) since they're optional; x_err_minus/
+    y_err_minus are only meaningful when style.error_bars.error_symmetric
+    is False.
+    Secondary columns (u_data/v_data, required; magnitude_data, optional)
+    are resolved the same way, keyed off needs_secondary_columns.
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -359,7 +359,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     if not y_column:
         return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
-    needs_x_column = chart_type != "hist"
+    needs_x_column = SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_x_column
     x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
     missing = [c for c in (x_column, y_column)
@@ -368,16 +368,17 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         cols = ", ".join(f"'{c}'" for c in missing)
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
-    x_data = df[x_column] if x_column else df.index
-    x_err = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_column_id, series.x_error_column))
-    y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
-    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
-    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
+    x_data = (df[x_column] if x_column else df.index) if needs_x_column else None
+    error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
+    x_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_column_id, error_bars.x_error_column))
+    y_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_column_id, error_bars.y_error_column))
+    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_minus_column_id, error_bars.x_error_minus_column))
+    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_minus_column_id, error_bars.y_error_minus_column))
 
     u_data = v_data = magnitude_data = None
-    if chart_type == "vector":
-        u_column = resolve_series_column(dataset, series.u_column_id, series.u_column)
-        v_column = resolve_series_column(dataset, series.v_column_id, series.v_column)
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_secondary_columns:
+        u_column = resolve_series_column(dataset, series.style.u_column_id, series.style.u_column)
+        v_column = resolve_series_column(dataset, series.style.v_column_id, series.style.v_column)
         if not u_column or not v_column:
             return SeriesData(None, None, None, None, None, None, "no U/V column configured")
         missing_uv = [c for c in (u_column, v_column) if c not in df.columns]
@@ -386,7 +387,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
             return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
         u_data = df[u_column]
         v_data = df[v_column]
-        magnitude_column = resolve_series_column(dataset, series.magnitude_column_id, series.magnitude_column)
+        magnitude_column = resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column)
         if magnitude_column and magnitude_column in df.columns:
             magnitude_data = df[magnitude_column]
 
@@ -401,6 +402,12 @@ def compute_axis_data_range(project, data_series, prefix: str, positive_only: bo
     `series.y_axis`. Returns None if no series have resolvable data for
     this axis (no series yet, or every reference is broken) -- callers
     fall back to a fixed default range in that case.
+
+    Each series' own `series_type` (not one chart-wide type) governs
+    whether it needs an x-column when contributing to the "x" range --
+    a chart containing series of different types (once Phase 4c allows
+    that) must not have one type's column requirements silently applied
+    to another series that doesn't share it.
 
     `positive_only` should be True when the axis is Log-scaled: matplotlib's
     own autoscale ignores non-positive data points when computing log-scale
@@ -718,13 +725,14 @@ class ChartEditorWidget(PWidget):
         # No configuration UI to load since it's now in the side panel
         pass
 
-    def _resolve_fill_baseline(self, project, series, series_index, query, horizontal=False):
+    def _resolve_fill_baseline(self, project, series_index, fill_base, fill_to_index, query, horizontal=False):
         """Resolve the second bound for a series' area fill.
 
-        Returns either the constant ``series.fill_base`` (fill down/across to a
-        straight baseline) or, when ``series.fill_to_index`` points at another
-        series in the chart, that series' curve interpolated onto this series'
-        sampling grid so the region *between* the two curves is filled.
+        Returns either the constant ``fill_base`` (fill down/across to a
+        straight baseline) or, when ``fill_to_index`` points at another
+        series in the chart, that series' curve interpolated onto this
+        series' sampling grid so the region *between* the two curves is
+        filled.
 
         ``query`` is this series' independent-axis samples: its x-values for a
         vertical fill (interpolating the other series' y over x), or its
@@ -734,13 +742,12 @@ class ChartEditorWidget(PWidget):
         the constant baseline if the referenced series is missing or fails to
         resolve.
         """
-        idx = series.fill_to_index
-        if idx is None or idx < 0 or idx == series_index or idx >= len(self.chart.data_series):
-            return series.fill_base
-        other = self.chart.data_series[idx]
-        other_data = resolve_series_data(project, other, self.chart.chart_type)
+        if fill_to_index is None or fill_to_index < 0 or fill_to_index == series_index or fill_to_index >= len(self.chart.data_series):
+            return fill_base
+        other = self.chart.data_series[fill_to_index]
+        other_data = resolve_series_data(project, other)
         if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
-            return series.fill_base
+            return fill_base
         # Interpolate the other curve over its own independent axis (x when
         # vertical, y when horizontal). np.interp needs that axis increasing.
         if horizontal:
@@ -758,15 +765,6 @@ class ChartEditorWidget(PWidget):
         if not isValid(self.chart_canvas):
             self.logger.debug("Chart canvas already deleted, skipping update")
             return
-
-        # Mapping from model string values to matplotlib parameters
-        _marker_map = {
-            "circle": "o", "square": "s", "triangle": "^", "diamond": "D",
-            "star": "*", "plus": "+", "cross": "x", "none": "",
-        }
-        _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
-        }
 
         try:
             # Clear the current plot
@@ -801,7 +799,7 @@ class ChartEditorWidget(PWidget):
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    series_data = resolve_series_data(project, series, self.chart.chart_type)
+                    series_data = resolve_series_data(project, series)
                     x_data = series_data.x_data
                     y_data = series_data.y_data
                     x_err = series_data.x_err
@@ -815,96 +813,38 @@ class ChartEditorWidget(PWidget):
                         continue
 
                     alpha = series.alpha if series.visible else 0.3
-                    if self.chart.chart_type == "line":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.plot(x_data, y_data,
-                                         color=series.color,
-                                         linewidth=series.line_width,
-                                         linestyle=_linestyle_map.get(series.line_style, "-"),
-                                         marker=_marker_map.get(series.marker_style, "o"),
-                                         markersize=series.marker_size,
-                                         markerfacecolor=mfc,
-                                         markeredgecolor=mec,
-                                         markeredgewidth=series.marker_edge_width,
-                                         label=series.label,
-                                         alpha=alpha)
-                        # Fill the area under this curve (or between it and
-                        # another series) when enabled.
-                        if series.fill_enabled:
-                            fill_color = series.fill_color or series.color
-                            fill_alpha = series.fill_alpha if series.visible else 0.3 * series.fill_alpha
-                            if series.fill_orientation == "horizontal":
-                                # fill_betweenx: shade between the curve and an
-                                # x baseline, indexed by this series' y-values.
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, y_data, horizontal=True)
-                                target_axes.fill_betweenx(
-                                    y_data, x_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                            else:
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, x_data)
-                                target_axes.fill_between(
-                                    x_data, y_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                    elif self.chart.chart_type == "scatter":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.scatter(x_data, y_data,
-                                            c=mfc,
-                                            edgecolors=mec,
-                                            linewidths=series.marker_edge_width,
-                                            marker=_marker_map.get(series.marker_style, "o"),
-                                            s=series.marker_size ** 2,
-                                            label=series.label,
-                                            alpha=alpha)
-                    elif self.chart.chart_type == "bar":
-                        target_axes.bar(x_data, y_data,
-                                        color=series.color,
-                                        label=series.label,
-                                        alpha=alpha)
-                    elif self.chart.chart_type == "hist":
-                        target_axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
-                                         color=series.color,
-                                         label=series.label,
-                                         alpha=alpha)
-                    elif self.chart.chart_type == "vector":
-                        quiver_kwargs = {
-                            "scale": series.vector_scale if series.vector_scale > 0 else None,
-                            "width": series.vector_width,
-                            "headwidth": series.vector_head_width,
-                            "headlength": series.vector_head_length,
-                            "headaxislength": series.vector_head_axis_length,
-                            "label": series.label,
-                            "alpha": alpha,
-                        }
-                        if series_data.magnitude_data is not None and series.vector_colormap:
-                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
-                                               series_data.magnitude_data,
-                                               cmap=series.vector_colormap,
-                                               **quiver_kwargs)
-                        else:
-                            target_axes.quiver(x_data, y_data, series_data.u_data, series_data.v_data,
-                                               color=series.vector_color,
-                                               **quiver_kwargs)
+                    series_type = series.series_type
+                    style = series.style
 
-                    if self.chart.chart_type in ("line", "scatter", "bar"):
-                        xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
-                        yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
+                    # Draw error bars BEFORE the series/marker renderer:
+                    # matplotlib draws artists in the order they're added
+                    # to the axes when zorder is tied (neither call here
+                    # sets one), so error bars drawn first land underneath
+                    # the markers/line/bars instead of obscuring them.
+                    error_bars = getattr(style, "error_bars", None)
+                    if error_bars is not None:
+                        xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                        yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
                         if xerr is not None or yerr is not None:
-                            err_color = series.error_color or series.color
+                            err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
                             target_axes.errorbar(
                                 x_data, y_data,
                                 xerr=xerr,
                                 yerr=yerr,
                                 fmt="none",
                                 ecolor=err_color,
-                                elinewidth=series.line_width,
-                                capsize=series.error_cap_size,
+                                elinewidth=getattr(style, "line_width", 2.0),
+                                capsize=error_bars.error_cap_size,
                                 alpha=alpha)
+
+                    renderer = SERIES_RENDERERS[series_type]
+                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                        "bins": self.chart.config.get("hist_bins", 20),
+                        "resolve_fill_baseline": (
+                            lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
+                                project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
+                        ),
+                    })
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
@@ -932,21 +872,31 @@ class ChartEditorWidget(PWidget):
                                     break
 
                         # Plot the fit line
-                        fit_axes.plot(fit.x_data, fit.y_data,
-                                     color=fit.color,
-                                     linewidth=fit.line_width,
-                                     linestyle=_linestyle_map.get(fit.line_style, "--"),
-                                     label=fit.label,
-                                     alpha=fit.alpha)
-                        # Plot confidence band if available
-                        if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            # Plot confidence band on the same axis as the fitted curve.
+                        style = fit.style
+                        line_style_adapter = LineSeriesStyle(
+                            color=style.color,
+                            line_style=style.line_style,
+                            line_width=style.line_width,
+                            marker=MarkerStyle(marker_style="none"),
+                            fill_enabled=False,
+                        )
+                        fit_series_data = SeriesData(
+                            x_data=fit.x_data, y_data=fit.y_data,
+                            x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
+                        )
+                        render_line_series(fit_axes, fit_series_data, line_style_adapter,
+                                            fit.label, style.alpha, fit.visible, {})
+
+                        if (style.band_fill_enabled
+                                and fit.confidence_lower is not None
+                                and fit.confidence_upper is not None):
+                            band_color = style.band_color or style.color
                             fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
-                                color=fit.color,
-                                alpha=0.2)
+                                color=band_color,
+                                alpha=style.band_fill_alpha)
 
             # Apply chart configuration
             config = self.chart.config

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
+from pandaplot.models.chart.series_style import VectorSeriesStyle
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.project import Project
@@ -36,8 +37,9 @@ def test_vector_chart_draws_a_quiver_collection():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        vector_color="#00ff00", label="Field",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            vector_color="#00ff00"), label="Field",
     )
     project.add_item(chart)
 
@@ -57,8 +59,10 @@ def test_vector_chart_with_magnitude_column_uses_a_colormap():
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        magnitude_column_id=dataset.column_id("mag"), vector_colormap="plasma", label="Field",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            magnitude_column_id=dataset.column_id("mag"),
+            vector_colormap="plasma"), label="Field",
     )
     project.add_item(chart)
 
@@ -83,8 +87,10 @@ def test_vector_chart_with_magnitude_column_but_solid_colormap_ignores_magnitude
     chart = Chart(name="Vector Chart", chart_type="vector")
     chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
-        u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
-        magnitude_column_id=dataset.column_id("mag"), vector_colormap="", vector_color="#00ff00",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("u"), v_column_id=dataset.column_id("v"),
+            magnitude_column_id=dataset.column_id("mag"),
+            vector_colormap="", vector_color="#00ff00"),
         label="Field",
     )
     project.add_item(chart)

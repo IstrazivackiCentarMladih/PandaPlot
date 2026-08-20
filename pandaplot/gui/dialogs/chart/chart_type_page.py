@@ -20,10 +20,10 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
-from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
 from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -63,7 +63,7 @@ class ChartTypePage(PWizardPage):
         type_layout.addWidget(SectionHeader("Chart type"))
 
         self.type_list = QListWidget()
-        for chart_type, spec in CHART_ROLE_SPECS.items():
+        for chart_type, spec in CHART_TYPE_SPECS.items():
             item = QListWidgetItem(spec.display_name)
             item.setData(Qt.ItemDataRole.UserRole, chart_type)
             self.type_list.addItem(item)

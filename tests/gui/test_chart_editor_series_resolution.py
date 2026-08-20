@@ -5,6 +5,8 @@ import pandas as pd
 
 from pandaplot.gui.components.tabs.chart.chart_editor import resolve_series_data
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
 from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
@@ -72,7 +74,8 @@ def test_histogram_ignores_stale_x_column():
 
 def test_resolves_y_error_column():
     project, dataset = _project_with_dataset()
-    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", y_error_column="err")
+    style = LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column="err"))
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", style=style)
     result = resolve_series_data(project, series)
     assert result.error is None
     assert list(result.y_err) == [0.1, 0.2]
@@ -82,7 +85,8 @@ def test_resolves_y_error_column():
 def test_missing_error_column_is_lenient():
     """A stale/unset error-column reference must not turn the whole series into an error."""
     project, dataset = _project_with_dataset()
-    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", y_error_column="gone")
+    style = LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column="gone"))
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", style=style)
     result = resolve_series_data(project, series)
     assert result.error is None
     assert list(result.y_data) == [3, 4]
@@ -91,10 +95,10 @@ def test_missing_error_column_is_lenient():
 
 def test_resolves_asymmetric_minus_column():
     project, dataset = _project_with_dataset()
-    series = DataSeries(
-        dataset_id=dataset.id, x_column="a", y_column="b",
+    style = LineSeriesStyle(error_bars=ErrorBarConfig(
         y_error_column="err", y_error_minus_column="err_minus", error_symmetric=False,
-    )
+    ))
+    series = DataSeries(dataset_id=dataset.id, x_column="a", y_column="b", style=style)
     result = resolve_series_data(project, series)
     assert result.error is None
     assert list(result.y_err) == [0.1, 0.2]

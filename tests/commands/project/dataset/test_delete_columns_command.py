@@ -7,6 +7,9 @@ import pandas as pd
 import pytest
 
 from pandaplot.commands.project.dataset.delete_columns_command import DeleteColumnsCommand
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
@@ -155,7 +158,8 @@ def test_delete_u_column_removes_vector_series(env):
     vector_chart = Chart(name="vc", chart_type="vector")
     vector_chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
-        u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b"), label="v1",
+        label="v1",
+        style=VectorSeriesStyle(u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b")),
     )
     app_context.get_app_state.return_value.current_project.add_item(vector_chart)
 
@@ -172,8 +176,11 @@ def test_delete_magnitude_column_clears_reference_but_keeps_series(env):
     vector_chart = Chart(name="vc", chart_type="vector")
     vector_chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
-        u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
-        magnitude_column_id=dataset.column_id("a"), label="v1",
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
     )
     app_context.get_app_state.return_value.current_project.add_item(vector_chart)
 
@@ -182,8 +189,8 @@ def test_delete_magnitude_column_clears_reference_but_keeps_series(env):
     assert command.execute() is True
     assert len(vector_chart.data_series) == 1
     series = vector_chart.data_series[0]
-    assert series.magnitude_column_id == ""
-    assert series.magnitude_column == ""
+    assert series.style.magnitude_column_id == ""
+    assert series.style.magnitude_column == ""
 
 
 def test_undo_restores_a_cleared_magnitude_reference(env):
@@ -191,8 +198,11 @@ def test_undo_restores_a_cleared_magnitude_reference(env):
     vector_chart = Chart(name="vc", chart_type="vector")
     vector_chart.add_data_series(
         dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
-        u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
-        magnitude_column_id=dataset.column_id("a"), label="v1",
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
     )
     app_context.get_app_state.return_value.current_project.add_item(vector_chart)
     command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
@@ -200,4 +210,44 @@ def test_undo_restores_a_cleared_magnitude_reference(env):
 
     assert command.undo() is True
     series = vector_chart.data_series[0]
-    assert resolve_series_column(dataset, series.magnitude_column_id, series.magnitude_column) == "a"
+    assert resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column) == "a"
+
+
+def test_delete_error_bar_column_clears_reference_but_keeps_series(env):
+    """error bars are optional -- a Line series still renders without them, so
+    deleting the referenced column only clears the error-bar reference."""
+    app_context, dataset, _, _, _ = env
+    line_chart = Chart(name="lc")
+    line_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="l1",
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("a"))),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(line_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert len(line_chart.data_series) == 1
+    series = line_chart.data_series[0]
+    assert series.style.error_bars.y_error_column_id == ""
+    assert series.style.error_bars.y_error_column == ""
+
+
+def test_undo_restores_a_cleared_error_bar_reference(env):
+    app_context, dataset, _, _, _ = env
+    line_chart = Chart(name="lc")
+    line_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="l1",
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("a"))),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(line_chart)
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    assert command.undo() is True
+    series = line_chart.data_series[0]
+    assert resolve_series_column(
+        dataset, series.style.error_bars.y_error_column_id, series.style.error_bars.y_error_column
+    ) == "a"

@@ -10,7 +10,10 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
-from pandaplot.models.chart.chart_configuration import ChartType
+from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import ScatterSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries, FitData
 
 
@@ -47,7 +50,10 @@ def test_series_line_card_hidden_on_scatter_chart():
     style_tab.show()
     style_tab.set_chart_type(ChartType.SCATTER)
 
-    series = DataSeries(dataset_id="ds1", x_column="x", y_column="y", label="Series A")
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.SCATTER,
+    )
     style_tab.set_selected("series", series)
 
     assert not style_tab.line_card.isVisible()
@@ -76,6 +82,50 @@ def test_fit_line_card_visible_on_line_chart():
     assert not style_tab.marker_card.isVisible()
 
 
+def test_series_line_card_visible_marker_card_hidden_on_bar_chart():
+    """Regression test: Task 7's SERIES_TYPE_SPECS-driven rewrite of
+    _update_target_cards_visibility must keep the Line card visible for a
+    Bar series -- it houses the color/opacity controls (series.color/
+    series.alpha), which chart_editor.py's bar() branch does read -- even
+    though bar has no line_style/line_width concept. The Marker card must
+    stay hidden since bar has no marker concept at all."""
+    _qapp()
+    app_context = build_app_context()
+    style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
+    style_tab.set_chart_type(ChartType.BAR)
+
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.BAR,
+    )
+    style_tab.set_selected("series", series)
+
+    assert style_tab.line_card.isVisible()
+    assert not style_tab.marker_card.isVisible()
+
+
+def test_series_line_card_visible_marker_card_hidden_on_histogram_chart():
+    """Same regression as the Bar case above, for Histogram: chart_editor.py's
+    hist() branch also reads series.color/series.alpha, so the Line card
+    (which houses those controls) must stay visible even though hist has no
+    line_style concept or marker concept."""
+    _qapp()
+    app_context = build_app_context()
+    style_tab = StyleTab(app_context=app_context)
+    style_tab.show()
+    style_tab.set_chart_type(ChartType.HIST)
+
+    series = DataSeries(
+        dataset_id="ds1", x_column="x", y_column="y", label="Series A",
+        series_type=SeriesType.HIST,
+    )
+    style_tab.set_selected("series", series)
+
+    assert style_tab.line_card.isVisible()
+    assert not style_tab.marker_card.isVisible()
+
+
 def test_match_line_toggle_hidden_for_scatter_series():
     """A scatter-chart series has no drawn line at all (see above), so
     "Match line" is meaningless: it must be hidden and the marker color
@@ -88,7 +138,8 @@ def test_match_line_toggle_hidden_for_scatter_series():
 
     series = DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", label="Series A",
-        marker_color="",  # "" == inherit, i.e. "match line" was on
+        series_type=SeriesType.SCATTER,
+        style=ScatterSeriesStyle(marker=MarkerStyle(marker_color="")),  # "" == inherit, i.e. "match line" was on
     )
     style_tab.set_selected("series", series)
 
@@ -124,11 +175,12 @@ def test_scatter_series_marker_color_applied_explicitly_even_when_match_line_che
 
     series = DataSeries(
         dataset_id="ds1", x_column="x", y_column="y", label="Series A",
-        color="#123456", marker_color="",
+        series_type=SeriesType.SCATTER,
+        style=ScatterSeriesStyle(color="#123456", marker=MarkerStyle(marker_color="")),
     )
     style_tab.set_selected("series", series)
     assert style_tab.marker_match_line_toggle.isChecked()  # stored state preserved
 
     style_tab.apply_series_style_to(series)
 
-    assert series.marker_color == "#123456"
+    assert series.style.marker.marker_color == "#123456"

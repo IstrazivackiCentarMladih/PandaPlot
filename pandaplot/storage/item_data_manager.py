@@ -21,6 +21,6 @@ class ItemDataManager(ABC, Generic[TItem]):
         raise NotImplementedError
 
     @abstractmethod
-    def load(self, item_class: type[TItem], zip_file: ZipFile, path_in_zip: str) -> TItem:
+    def load(self, item_class: type[TItem], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> TItem:
         """Read and deserialize item data from given path in the zip."""
         raise NotImplementedError

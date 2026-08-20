@@ -49,7 +49,7 @@ class ImageDataManager(ItemDataManager[Image]):
         self.logger.info("Successfully saved image '%s' (ID: %s)", item.name, item.id)
 
     @override
-    def load(self, item_class: type[Image], zip_file: ZipFile, path_in_zip: str) -> Image:
+    def load(self, item_class: type[Image], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> Image:
         """Load image metadata, plus its bytes when storage_mode is "copied"."""
         self.logger.debug("Loading image from path: %s", path_in_zip)
 

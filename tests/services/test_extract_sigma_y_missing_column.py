@@ -4,6 +4,11 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
+from pandaplot.models.project import Project
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import DataSeries
 from pandaplot.services.fit.fit_service import FitService
 
 
@@ -15,14 +20,23 @@ def test_extract_sigma_y_missing_column_returns_none():
         "y": [1.0, 2.0, 3.0],
     })
 
+    dataset = Dataset(name="ds", data=df)
+    project = Project("P")
+    project.add_item(dataset)
+
     mask = np.array([True, True, True])
 
-    series = Mock()
-    series.y_error_column = "missing_error"
-    series.y_error_minus_column = ""
+    series = DataSeries(
+        dataset_id=dataset.id,
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(
+            y_error_column="missing_error",
+        )),
+    )
 
-    service = FitService(Mock())
+    fit_panel = Mock()
+    fit_panel.current_project = project
+    service = FitService(fit_panel)
 
-    sigma = service._extract_sigma_y(df, mask, series)
+    sigma = service._extract_sigma_y(dataset.data, mask, series)
 
     assert sigma is None

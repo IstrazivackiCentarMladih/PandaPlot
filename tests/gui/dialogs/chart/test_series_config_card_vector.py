@@ -4,8 +4,8 @@ import sys
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.gui.dialogs.chart.chart_role_spec import get_chart_role_spec
 from pandaplot.gui.dialogs.chart.series_config_card import SeriesConfigCard
+from pandaplot.models.chart.chart_type_spec import get_chart_type_spec
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -14,14 +14,14 @@ def qapp():
 
 
 def test_vector_card_exposes_u_v_magnitude_combos():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("vector"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("vector"))
     assert hasattr(card, "u_column_combo")
     assert hasattr(card, "v_column_combo")
     assert hasattr(card, "magnitude_column_combo")
 
 
 def test_vector_card_series_config_has_u_v_magnitude_keys():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("vector"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("vector"))
     card.set_datasets([("ds-1", "Dataset 1")])
     card.set_dataset_columns("ds-1", [("col-u", "U"), ("col-v", "V"), ("col-m", "M")])
 
@@ -36,7 +36,7 @@ def test_vector_card_series_config_has_u_v_magnitude_keys():
 
 
 def test_vector_card_is_complete_requires_u_and_v_not_magnitude():
-    card = SeriesConfigCard(role_spec=get_chart_role_spec("vector"))
+    card = SeriesConfigCard(role_spec=get_chart_type_spec("vector"))
     card.set_datasets([("ds-1", "Dataset 1")])
     card.dataset_combo.setCurrentIndex(0)
     card.set_dataset_columns("ds-1", [("col-x", "X"), ("col-y", "Y"), ("col-u", "U"), ("col-v", "V")])
