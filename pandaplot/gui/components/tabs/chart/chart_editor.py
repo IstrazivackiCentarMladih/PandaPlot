@@ -794,18 +794,21 @@ class ChartEditorWidget(PWidget):
             return
 
         try:
-            # Clear the current plot
-            self.chart_canvas.axes.clear()
-
             # Remove the previous colorbar (a colormap/heatmap render adds
-            # one on its own figure axes, which axes.clear() above doesn't
-            # touch).
+            # one on its own figure axes, which axes.clear() below doesn't
+            # touch). This must happen BEFORE axes.clear(): clearing the
+            # main axes detaches the mappable the colorbar refers to, which
+            # makes Colorbar.remove() raise (its mappable's axes becomes
+            # None) instead of cleanly removing the colorbar axes.
             if self._colorbar is not None:
                 try:
                     self._colorbar.remove()
                 except Exception:
                     self.logger.debug("Failed to remove stale colorbar", exc_info=True)
                 self._colorbar = None
+
+            # Clear the current plot
+            self.chart_canvas.axes.clear()
 
             # Reset the main axes to a fresh full-figure 1x1 gridspec. A
             # colorbar created with the default use_gridspec=True

@@ -58,6 +58,16 @@ def _heatmap_chart(dataset):
     return chart
 
 
+def _line_chart(dataset):
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.set_chart_type(ChartType.LINE)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.LINE,
+    ))
+    return chart
+
+
 def test_heatmap_render_draws_colorbar_and_does_not_shrink_on_rerender():
     _qapp()
     project, dataset = _project_and_dataset()
@@ -88,6 +98,38 @@ def test_switching_away_from_heatmap_removes_colorbar():
     chart.set_chart_type(ChartType.LINE)
     editor.update_chart()
     assert editor._colorbar is None
+
+    # The actual PR #156 review bug was the plot area shrinking, not merely
+    # a stale colorbar reference -- a regression that keeps the colorbar
+    # teardown working but drops the GridSpec reset would leave the
+    # assertion above green while reintroducing the shrinking bug. Prove
+    # the axes size is genuinely restored by comparing against a fresh,
+    # never-heatmapped Line chart editor's axes width.
+    fresh_project, fresh_dataset = _project_and_dataset()
+    fresh_chart = _line_chart(fresh_dataset)
+    fresh_editor = _editor_for(fresh_project, fresh_chart)
+    fresh_editor.update_chart()
+
+    switched_width = editor.chart_canvas.axes.get_position().bounds[2]
+    fresh_width = fresh_editor.chart_canvas.axes.get_position().bounds[2]
+    assert switched_width == fresh_width
+
+
+def test_heatmap_rerender_does_not_log_stale_colorbar_removal_failure(caplog):
+    """colorbar.remove() must succeed while its mappable's axes still exist
+    (i.e. before axes.clear()), so the debug log for a failed removal
+    should never fire during normal heatmap re-renders."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    editor = _editor_for(project, chart)
+
+    with caplog.at_level("DEBUG"):
+        editor.update_chart()
+        editor.update_chart()
+        editor.update_chart()
+
+    assert "Failed to remove stale colorbar" not in caplog.text
 
 
 def test_colorbar_show_false_skips_the_shared_colorbar():
