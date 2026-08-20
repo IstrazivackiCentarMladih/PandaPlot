@@ -65,6 +65,12 @@ def test_gridding_controls_hidden_for_colormap_scatter_series():
     assert tab.marker_card.isVisible() is True
     assert tab.line_card.isVisible() is False
     assert tab.fill_card.isVisible() is False
+    # Colormap has supports_color=False (same as Scatter) -- there is no
+    # drawn line to match, so the "Match line" toggle must be hidden too.
+    # Regression check for _is_scatter_series_target previously hardcoding
+    # SeriesType.SCATTER and missing Colormap: leaving this toggle visible
+    # let it silently blank marker_edge_color/swatch_color when checked.
+    assert tab.marker_match_line_toggle.isVisible() is False
 
 
 def test_colormap_card_hidden_for_a_line_series_target():

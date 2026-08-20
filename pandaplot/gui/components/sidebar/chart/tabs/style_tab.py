@@ -1159,12 +1159,26 @@ class StyleTab(QWidget):
         self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
 
     def _is_scatter_series_target(self) -> bool:
-        """Whether the current target is a data series of scatter type --
-        i.e. there is no drawn line at all (Line card is hidden; see
-        _update_target_cards_visibility), so "match line" has nothing to
-        refer to and marker colors must always be set explicitly."""
+        """Whether the current target is a data series with no drawn line at
+        all (Line card is hidden; see _update_target_cards_visibility), so
+        "match line" has nothing to refer to and marker colors must always
+        be set explicitly. Spec-driven off SERIES_TYPE_SPECS.supports_color
+        (the same flag the Line card's own visibility is gated on) rather
+        than hardcoding SeriesType.SCATTER, so this stays correct for any
+        other no-line series type -- e.g. Colormap, which also has
+        supports_color=False and a required marker (see marker_mode) but
+        was previously missed by the SCATTER-only check, leaving "Match
+        line" visible and able to silently blank marker_edge_color/
+        swatch_color for Colormap series.
+
+        In practice this only affects LINE/SCATTER/COLORMAP: BAR/HIST/
+        VECTOR/HEATMAP all have marker_mode="unsupported", so their Marker
+        card (and this toggle) is never shown regardless of this value (see
+        marker_supported in _update_target_cards_visibility)."""
         kind, obj = self._current_target
-        return kind == "series" and isinstance(obj, DataSeries) and obj.series_type == SeriesType.SCATTER
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return not SERIES_TYPE_SPECS[obj.series_type].supports_color
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
