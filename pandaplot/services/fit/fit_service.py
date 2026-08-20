@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+MIN_FIT_POINTS = 2
+
 FIT_DEFINITIONS = {
     "Linear": {
         "function": lambda x, a, b: a * x + b,
@@ -158,8 +160,8 @@ class FitService:
 
         from scipy.optimize import curve_fit
 
-        if len(x_data) < 2:
-            raise ValueError("At least 2 data points are required for fitting.")
+        if len(x_data) < MIN_FIT_POINTS:
+            raise ValueError(f"At least {MIN_FIT_POINTS} data points are required for fitting.")
 
         try:
             fit_func, param_names = self._get_fit_func(

@@ -27,7 +27,7 @@ from pandaplot.models.events import ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import resolve_series_column
 from pandaplot.models.state import AppContext
-from pandaplot.services.fit.fit_service import FitService
+from pandaplot.services.fit.fit_service import MIN_FIT_POINTS, FitService
 from pandaplot.services.theme import ThemeManager
 
 
@@ -128,6 +128,8 @@ class FitPanel(SidebarPanel):
         # Title label with shared styling
         self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
+        self.update_data_points_display()
+
     def _apply_menu_styling(self):
             """Apply theme styling to the function menu"""
             theme_manager = self.app_context.get_manager(ThemeManager)
@@ -173,8 +175,18 @@ class FitPanel(SidebarPanel):
         data_layout.addWidget(self.series_combo, 0, 1)
 
         data_layout.addWidget(QLabel("Data Points:"), 1, 0)
+
+        points_layout = QHBoxLayout()
         self.data_points_label = QLabel("No data selected")
-        data_layout.addWidget(self.data_points_label, 1, 1)
+        points_layout.addWidget(self.data_points_label)
+
+        self.data_points_warning_icon = QLabel("⚠")
+        self.data_points_warning_icon.setStyleSheet("color: red;")
+        self.data_points_warning_icon.setVisible(False)
+        points_layout.addWidget(self.data_points_warning_icon)
+        points_layout.addStretch()
+
+        data_layout.addLayout(points_layout, 1, 1)
 
         layout.addWidget(data_group)
 
@@ -412,15 +424,40 @@ class FitPanel(SidebarPanel):
             self.logger.debug("Fit panel context cleared")
 
     def update_data_points_display(self):
-        """Update the data points display."""
+        """Update the data points display and enable/disable the Fit button accordingly."""
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+        base_fg = palette.get("base_fg", "#333333")
+        secondary_fg = palette.get("secondary_fg", "#555555")
+
         current_data = self.get_current_data()
         if current_data is not None:
             df, mask, x_data, y_data, series = current_data
             self.data_points_label.setText(f"{len(x_data)} points")
-            self.data_points_label.setStyleSheet("color: #333;")
+
+            if len(x_data) < MIN_FIT_POINTS:
+                tooltip = f"At least {MIN_FIT_POINTS} valid (x, y) data points are required to perform a fit."
+                self.data_points_label.setStyleSheet("color: red;")
+                self.data_points_label.setToolTip(tooltip)
+                self.data_points_warning_icon.setToolTip(tooltip)
+                self.data_points_warning_icon.setVisible(True)
+                self.fit_button.setEnabled(False)
+                self.fit_button.setToolTip(tooltip)
+            else:
+                self.data_points_label.setStyleSheet(f"color: {base_fg};")
+                self.data_points_label.setToolTip("")
+                self.data_points_warning_icon.setVisible(False)
+                self.fit_button.setEnabled(self.scipy_available)
+                self.fit_button.setToolTip("")
         else:
+            tooltip = "Select a chart series with valid data to perform a fit."
             self.data_points_label.setText("No data selected")
-            self.data_points_label.setStyleSheet("color: #666; font-style: italic;")
+            self.data_points_label.setStyleSheet(f"color: {secondary_fg}; font-style: italic;")
+            self.data_points_label.setToolTip(tooltip)
+            self.data_points_warning_icon.setToolTip(tooltip)
+            self.data_points_warning_icon.setVisible(True)
+            self.fit_button.setEnabled(False)
+            self.fit_button.setToolTip(tooltip)
 
     def _on_fit_type_changed(self):
         """Handle fit type selection change."""
@@ -458,6 +495,7 @@ class FitPanel(SidebarPanel):
         results_text += f"\nData points: {len(results.x_data)}\n"
         results_text += f"Fit points: {len(results.x_fit)}"
 
+        self.results_text.setStyleSheet("")
         self.results_text.setPlainText(results_text)
 
     def _apply_fit(self):
@@ -512,6 +550,7 @@ class FitPanel(SidebarPanel):
         self.fit_results = None
         self.fit_fixed_parameters = None
         self.results_text.clear()
+        self.results_text.setStyleSheet("")
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
 
@@ -522,6 +561,7 @@ class FitPanel(SidebarPanel):
         self.series_combo.clear()
 
         if chart is None:
+            self.update_data_points_display()
             return
 
         self.current_project = self.app_context.app_state.current_project
@@ -545,9 +585,6 @@ class FitPanel(SidebarPanel):
 
     def _on_series_changed(self):
         self._clear_results()
-        series = self.series_combo.currentData()
-        if series is None:
-            return
         self.update_data_points_display()
 
     def _on_chart_updated(self, event_data):
@@ -611,7 +648,9 @@ class FitPanel(SidebarPanel):
         executor = self.app_context.get_command_executor()
 
         if not executor.execute_command(command):
-            self.logger.error("PerformFitCommand failed")
+            self.logger.error("PerformFitCommand failed: %s", command.error_message)
+            self.results_text.setPlainText(command.error_message or "Fit failed.")
+            self.results_text.setStyleSheet("color: red;")
             return
 
         self.fit_results = command.result

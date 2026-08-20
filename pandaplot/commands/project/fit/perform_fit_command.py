@@ -37,6 +37,7 @@ class PerformFitCommand(Command):
         self.fixed_parameters = fixed_parameters
 
         self.result: Optional[FitResult] = None
+        self.error_message: Optional[str] = None
 
     @override
     def execute(self) -> bool:
@@ -57,9 +58,10 @@ class PerformFitCommand(Command):
 
             return self.result is not None
 
-        except Exception:
+        except Exception as e:
             self.logger.exception("PerformFitCommand failed")
             self.result = None
+            self.error_message = str(e)
             return False
 
     @override

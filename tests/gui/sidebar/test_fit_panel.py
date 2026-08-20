@@ -48,11 +48,30 @@ def test_fit_panel_constructs_with_expected_buttons(fit_panel):
     assert isinstance(fit_panel.clear_button, PButton)
 
 
-def test_fit_button_enabled_state_matches_scipy_availability(fit_panel):
+def test_fit_button_enabled_state_matches_scipy_availability(app_context):
     # Directly covers the construction-order-sensitive `enabled=self.scipy_available`
     # retrofit: fit_button's enabled state must reflect scipy_available as computed
     # at construction time, not some later/default value.
-    assert fit_panel.fit_button.isEnabled() == fit_panel.scipy_available
+    #
+    # A valid series with enough data points must be loaded first: the fit
+    # button is also gated on data availability (see
+    # test_fit_button_disabled_when_data_is_insufficient), so with no chart
+    # loaded the button is disabled regardless of scipy_available.
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.set_project(project)
+    panel.load_chart_object(chart)
+
+    assert panel.fit_button.isEnabled() == panel.scipy_available
+
+
+def test_fit_button_disabled_when_data_is_insufficient(fit_panel):
+    assert fit_panel.fit_button.isEnabled() is False
 
 
 def test_apply_button_starts_disabled(fit_panel):
