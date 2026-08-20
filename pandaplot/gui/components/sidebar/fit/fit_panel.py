@@ -649,6 +649,7 @@ class FitPanel(SidebarPanel):
 
         if not executor.execute_command(command):
             self.logger.error("PerformFitCommand failed: %s", command.error_message)
+            self._clear_results()
             self.results_text.setPlainText(command.error_message or "Fit failed.")
             self.results_text.setStyleSheet("color: red;")
             return
