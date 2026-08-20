@@ -224,6 +224,47 @@ class TestChartSeriesTypeAndStyleRoundTrip:
 
         assert isinstance(restored.data_series[0].style, LineSeriesStyle)
 
+    def test_heatmap_series_round_trips_through_to_dict_from_dict(self):
+        chart = Chart(name="C", chart_type="heatmap")
+        chart.data_series.append(DataSeries(
+            dataset_id="ds1", x_column_id="x-id", y_column_id="y-id",
+            series_type=SeriesType.HEATMAP,
+            style=HeatmapSeriesStyle(
+                z_column_id="z-id", colormap="plasma",
+                heatmap_gridding="binned", heatmap_resolution=64,
+            ),
+        ))
+
+        data = chart.to_dict()
+        restored = Chart.from_dict(data)
+
+        restored_series = restored.data_series[0]
+        restored_style = restored_series.style
+        assert restored_series.series_type == SeriesType.HEATMAP
+        assert isinstance(restored_style, HeatmapSeriesStyle)
+        assert restored_style.z_column_id == "z-id"
+        assert restored_style.colormap == "plasma"
+        assert restored_style.heatmap_gridding == "binned"
+        assert restored_style.heatmap_resolution == 64
+
+    def test_colormap_series_round_trips_through_to_dict_from_dict(self):
+        chart = Chart(name="C", chart_type="colormap")
+        chart.data_series.append(DataSeries(
+            dataset_id="ds1", x_column_id="x-id", y_column_id="y-id",
+            series_type=SeriesType.COLORMAP,
+            style=ColormapSeriesStyle(z_column_id="z-id", colormap="viridis"),
+        ))
+
+        data = chart.to_dict()
+        restored = Chart.from_dict(data)
+
+        restored_series = restored.data_series[0]
+        restored_style = restored_series.style
+        assert restored_series.series_type == SeriesType.COLORMAP
+        assert isinstance(restored_style, ColormapSeriesStyle)
+        assert restored_style.z_column_id == "z-id"
+        assert restored_style.colormap == "viridis"
+
     def test_from_dict_defaults_series_type_to_chart_type_when_absent(self):
         # Simulates a legacy project not yet through
         # migrate_chart_legacy_to_v1 -- from_dict must still produce a
