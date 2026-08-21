@@ -26,6 +26,7 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.gui.components.tabs.chart.chart_heatmap import resolve_color_limits
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
@@ -848,13 +849,32 @@ class ChartEditorWidget(PWidget):
                 self.dataset_label.setText("No Data Loaded")
             else:
                 project = self.app_context.get_app_state().current_project
-                for i, series in enumerate(self.chart.data_series):
+
+                # Resolve every series' data once, up front: a shared color
+                # scale for Colormap/Heatmap series must be computed from
+                # ALL of their z-data before any of them render, not just
+                # whichever one happens to render first (see
+                # docs/superpowers/specs/2026-08-21-shared-chart-level-color-map-design.md).
+                resolved_data = [resolve_series_data(project, series) for series in self.chart.data_series]
+                z_arrays = [
+                    np.asarray(data.z_data, dtype=float)
+                    for series, data in zip(self.chart.data_series, resolved_data)
+                    if SERIES_TYPE_SPECS[series.series_type].needs_z_column and data.error is None
+                ]
+                combined_z = np.concatenate(z_arrays) if z_arrays else np.array([])
+                color_limits = resolve_color_limits(
+                    combined_z,
+                    self.chart.config.get("color_scale_auto", True),
+                    self.chart.config.get("color_vmin", 0.0),
+                    self.chart.config.get("color_vmax", 1.0),
+                )
+
+                for i, (series, series_data) in enumerate(zip(self.chart.data_series, resolved_data)):
                     # Route this series to its configured Y axis
                     target_axes = (self.chart_canvas.axes2
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    series_data = resolve_series_data(project, series)
                     x_data = series_data.x_data
                     y_data = series_data.y_data
                     x_err = series_data.x_err
@@ -899,14 +919,19 @@ class ChartEditorWidget(PWidget):
                             lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
                                 project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
                         ),
+                        "colormap": self.chart.config.get("colormap", "viridis"),
+                        "color_limits": color_limits,
                     })
                     if mappable is None and series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
                         series_errors.append(f"{series.label or f'Series {i + 1}'}: no data to grid")
                         continue
                     if (mappable is not None and colorbar_mappable is None
-                            and getattr(style, "colorbar_show", False)):
+                            and self.chart.config.get("colorbar_show", True)):
                         colorbar_mappable = mappable
-                        colorbar_label = style.colorbar_label or self._resolve_z_label(project, series)
+                        colorbar_label = (
+                            self.chart.config.get("colorbar_label", "")
+                            or self._resolve_z_label(project, series)
+                        )
 
                 if colorbar_mappable is not None:
                     self._colorbar = self.chart_canvas.fig.colorbar(

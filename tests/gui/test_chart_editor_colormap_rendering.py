@@ -146,7 +146,7 @@ def test_heatmap_render_draws_colorbar_and_does_not_shrink_on_rerender():
     assert editor._colorbar is not None
     width_after_first_render = editor.chart_canvas.axes.get_position().bounds[2]
 
-    editor.chart.data_series[0].style.colormap = "plasma"
+    editor.chart.config["colormap"] = "plasma"
     editor.update_chart()
     editor.update_chart()
     width_after_third_render = editor.chart_canvas.axes.get_position().bounds[2]
@@ -202,12 +202,12 @@ def test_heatmap_rerender_does_not_log_stale_colorbar_removal_failure(caplog):
 
 def test_colorbar_show_false_skips_the_shared_colorbar():
     """A series with colorbar_show=False must not contribute to the shared
-    colorbar -- proving the gate reads style.colorbar_show, not merely
-    whether the renderer returned a mappable."""
+    colorbar -- proving the gate reads chart.config["colorbar_show"], not a
+    per-series field."""
     _qapp()
     project, dataset = _project_and_dataset()
     chart = _heatmap_chart(dataset)
-    chart.data_series[0].style.colorbar_show = False
+    chart.config["colorbar_show"] = False
     editor = _editor_for(project, chart)
 
     editor.update_chart()
@@ -232,6 +232,29 @@ def test_only_one_colorbar_drawn_for_multiple_colorbar_series():
 
     assert editor._colorbar is not None
     assert len(editor.chart_canvas.fig.axes) == 2  # main axes + 1 colorbar axes
+
+
+def test_auto_scale_spans_combined_z_data_of_every_colormap_heatmap_series():
+    """color_scale_auto must compute (vmin, vmax) from the UNION of every
+    Colormap/Heatmap series' z-data on the chart, not just whichever one
+    renders first -- otherwise the shared colorbar's scale would silently
+    depend on series order."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)  # z: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    vmin, vmax = editor._colorbar.mappable.get_clim()
+    assert vmin == 0.1
+    assert vmax == 0.6
 
 
 def test_heatmap_chart_can_mix_in_a_scatter_series():

@@ -230,7 +230,7 @@ class TestChartSeriesTypeAndStyleRoundTrip:
             dataset_id="ds1", x_column_id="x-id", y_column_id="y-id",
             series_type=SeriesType.HEATMAP,
             style=HeatmapSeriesStyle(
-                z_column_id="z-id", colormap="plasma",
+                z_column_id="z-id",
                 heatmap_gridding="binned", heatmap_resolution=64,
             ),
         ))
@@ -243,7 +243,6 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         assert restored_series.series_type == SeriesType.HEATMAP
         assert isinstance(restored_style, HeatmapSeriesStyle)
         assert restored_style.z_column_id == "z-id"
-        assert restored_style.colormap == "plasma"
         assert restored_style.heatmap_gridding == "binned"
         assert restored_style.heatmap_resolution == 64
 
@@ -252,7 +251,7 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         chart.data_series.append(DataSeries(
             dataset_id="ds1", x_column_id="x-id", y_column_id="y-id",
             series_type=SeriesType.COLORMAP,
-            style=ColormapSeriesStyle(z_column_id="z-id", colormap="viridis"),
+            style=ColormapSeriesStyle(z_column_id="z-id"),
         ))
 
         data = chart.to_dict()
@@ -263,7 +262,6 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         assert restored_series.series_type == SeriesType.COLORMAP
         assert isinstance(restored_style, ColormapSeriesStyle)
         assert restored_style.z_column_id == "z-id"
-        assert restored_style.colormap == "viridis"
 
     def test_from_dict_defaults_series_type_to_chart_type_when_absent(self):
         # Simulates a legacy project not yet through

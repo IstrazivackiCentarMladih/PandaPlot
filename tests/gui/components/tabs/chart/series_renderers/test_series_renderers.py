@@ -165,9 +165,10 @@ def test_render_colormap_series_returns_scatter_mappable():
 
     fig, ax = plt.subplots()
     data = _series_data(z_data=[0.1, 0.5, 0.9])
-    style = ColormapSeriesStyle(colormap="viridis", color_scale_auto=True)
+    style = ColormapSeriesStyle()
 
-    mappable = render_colormap_series(ax, data, style, "S", 1.0, True, {})
+    mappable = render_colormap_series(ax, data, style, "S", 1.0, True,
+                                       {"colormap": "viridis", "color_limits": (None, None)})
 
     assert mappable is not None
     assert len(ax.collections) == 1
@@ -185,15 +186,14 @@ def test_render_colormap_series_edge_matches_each_points_own_fill_by_default():
 
     fig, ax = plt.subplots()
     data = _series_data(z_data=[0.1, 0.5, 0.9])
-    style = ColormapSeriesStyle(colormap="viridis")
+    style = ColormapSeriesStyle()
 
-    render_colormap_series(ax, data, style, "S", 1.0, True, {})
+    render_colormap_series(ax, data, style, "S", 1.0, True,
+                            {"colormap": "viridis", "color_limits": (None, None)})
 
     collection = ax.collections[0]
     fig.canvas.draw()  # "face" only resolves to concrete per-point RGBA at draw time
     assert collection.get_edgecolor().tolist() == collection.get_facecolor().tolist()
-    # The points genuinely differ in color (proving this isn't a
-    # coincidental single-color match) -- pin at least 2 distinct RGBA rows.
     assert len({tuple(c) for c in collection.get_facecolor()}) >= 2
     plt.close(fig)
 
@@ -206,14 +206,34 @@ def test_render_colormap_series_uses_an_explicit_edge_color_when_set():
 
     fig, ax = plt.subplots()
     data = _series_data(z_data=[0.1, 0.5, 0.9])
-    style = ColormapSeriesStyle(colormap="viridis", marker=MarkerStyle(marker_edge_color="#ff0000"))
+    style = ColormapSeriesStyle(marker=MarkerStyle(marker_edge_color="#ff0000"))
 
-    render_colormap_series(ax, data, style, "S", 1.0, True, {})
+    render_colormap_series(ax, data, style, "S", 1.0, True,
+                            {"colormap": "viridis", "color_limits": (None, None)})
 
     import matplotlib.colors as mcolors
     edge_colors = ax.collections[0].get_edgecolor()
     assert len(edge_colors) > 0
     assert tuple(edge_colors[0]) == mcolors.to_rgba("#ff0000")
+    plt.close(fig)
+
+
+def test_render_colormap_series_uses_the_shared_color_limits_not_its_own_data():
+    """The colormap value range must come from extra["color_limits"] --
+    computed by chart_editor.py from ALL Colormap/Heatmap series on the
+    chart combined -- not derived from this series' own z_data, proving
+    the shared-scale design actually reaches the renderer."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(z_data=[0.1, 0.5, 0.9])
+    style = ColormapSeriesStyle()
+
+    mappable = render_colormap_series(ax, data, style, "S", 1.0, True,
+                                       {"colormap": "plasma", "color_limits": (-10.0, 10.0)})
+
+    assert mappable.get_clim() == (-10.0, 10.0)
+    assert mappable.get_cmap().name == "plasma"
     plt.close(fig)
 
 
@@ -225,11 +245,30 @@ def test_render_heatmap_series_returns_pcolormesh_mappable_for_grid_data():
     y = [0, 0, 1, 1]
     z = [1, 2, 3, 4]
     data = _series_data(x_data=x, y_data=y, z_data=z)
-    style = HeatmapSeriesStyle(colormap="viridis", heatmap_gridding="grid")
+    style = HeatmapSeriesStyle(heatmap_gridding="grid")
 
-    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True, {})
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
 
     assert mappable is not None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_uses_the_shared_colormap_and_limits():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    x = [0, 1, 0, 1]
+    y = [0, 0, 1, 1]
+    z = [1, 2, 3, 4]
+    data = _series_data(x_data=x, y_data=y, z_data=z)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid")
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "plasma", "color_limits": (0.0, 5.0)})
+
+    assert mappable.get_cmap().name == "plasma"
+    assert mappable.get_clim() == (0.0, 5.0)
     plt.close(fig)
 
 
@@ -240,7 +279,8 @@ def test_render_heatmap_series_returns_none_when_ungriddable():
     data = _series_data(x_data=[], y_data=[], z_data=[])
     style = HeatmapSeriesStyle()
 
-    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True, {})
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
 
     assert mappable is None
     plt.close(fig)

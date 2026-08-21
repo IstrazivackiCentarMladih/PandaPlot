@@ -6,24 +6,26 @@ def test_colormap_series_style_defaults():
     style = ColormapSeriesStyle()
     assert style.z_column_id == ""
     assert style.z_column == ""
-    assert style.colormap == "viridis"
-    assert style.colorbar_show is True
-    assert style.colorbar_label == ""
-    assert style.color_scale_auto is True
-    assert style.color_vmin == 0.0
-    assert style.color_vmax == 1.0
     assert isinstance(style.marker, MarkerStyle)
-    assert style.swatch_color == style.marker.marker_color or style.swatch_color == ""
+    assert not hasattr(style, "colormap")
+    assert not hasattr(style, "colorbar_show")
+    assert not hasattr(style, "colorbar_label")
+    assert not hasattr(style, "color_scale_auto")
+    assert not hasattr(style, "color_vmin")
+    assert not hasattr(style, "color_vmax")
 
 
 def test_heatmap_series_style_defaults():
     style = HeatmapSeriesStyle()
     assert style.z_column_id == ""
-    assert style.colormap == "viridis"
-    assert style.colorbar_show is True
-    assert style.color_scale_auto is True
     assert style.heatmap_gridding == "grid"
     assert style.heatmap_resolution == 50
+    assert not hasattr(style, "colormap")
+    assert not hasattr(style, "colorbar_show")
+    assert not hasattr(style, "colorbar_label")
+    assert not hasattr(style, "color_scale_auto")
+    assert not hasattr(style, "color_vmin")
+    assert not hasattr(style, "color_vmax")
 
 
 def test_series_types_registered():
