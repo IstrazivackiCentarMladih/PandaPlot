@@ -304,3 +304,27 @@ def test_switching_a_scatter_chart_to_colormap_does_not_retype_its_series():
     chart.set_chart_type(ChartType.COLORMAP)
 
     assert chart.data_series[0].series_type == SeriesType.SCATTER
+
+
+def test_heatmap_chart_can_mix_in_a_colormap_series():
+    """A Heatmap chart's allowed_series_types now also includes COLORMAP
+    (chart_type_spec.py), so a color-mapped scatter overlay can sit on the
+    same axes as the gridded matrix. Both render without error, and the
+    single shared colorbar attaches to whichever one's mappable is first
+    in the render loop."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+        label="Overlay",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    assert len(editor.chart_canvas.axes.collections) >= 2  # QuadMesh + scatter PathCollection
+    assert len(editor.chart_canvas.fig.axes) == 2  # main axes + exactly 1 colorbar axes

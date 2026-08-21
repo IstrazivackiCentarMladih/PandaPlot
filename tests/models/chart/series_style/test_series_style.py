@@ -32,8 +32,11 @@ def test_all_style_classes_subclass_series_style_base():
 
 def test_marker_style_fields_and_defaults():
     marker = MarkerStyle()
+    # Both color fields default to "" (the shared "match" sentinel every
+    # marker renderer falls back on) so a fresh series' fill and edge
+    # start out matching -- see marker_style.py's module docstring.
     assert marker.marker_color == ""
-    assert marker.marker_edge_color == "#000000"
+    assert marker.marker_edge_color == ""
     assert marker.marker_edge_width == 1.0
     assert marker.marker_style == "circle"
     assert marker.marker_size == 2.0

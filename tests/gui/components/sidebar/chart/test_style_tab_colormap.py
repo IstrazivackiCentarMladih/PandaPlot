@@ -12,7 +12,8 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle, ScatterSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import DataSeries
 
@@ -65,20 +66,72 @@ def test_gridding_controls_hidden_for_colormap_scatter_series():
     assert tab.marker_card.isVisible() is True
     assert tab.line_card.isVisible() is False
     assert tab.fill_card.isVisible() is False
-    # Colormap has supports_color=False (same as Scatter) -- there is no
-    # drawn line to match, so the "Match line" toggle must be hidden too.
-    # Regression check for _is_scatter_series_target previously hardcoding
-    # SeriesType.SCATTER and missing Colormap: leaving this toggle visible
-    # let it silently blank marker_edge_color/swatch_color when checked.
-    assert tab.marker_match_line_toggle.isVisible() is False
+    # Colormap's fill genuinely varies per point (through the colormap), so
+    # unlike a plain Scatter's fixed style.color there IS something
+    # meaningful to "match" -- the toggle is shown, just relabeled (see
+    # test_marker_match_toggle_relabeled_for_colormap below).
+    assert tab.marker_match_line_toggle.isVisible() is True
 
 
-def test_marker_fill_color_hidden_for_colormap_series_edge_color_stays_visible():
+def test_markers_cannot_be_disabled_for_scatter_or_colormap():
+    """Scatter/Colormap have marker_mode == "required" -- markers are the
+    ONLY thing they draw, so the on/off toggle that lets an optional-marker
+    series (Line) turn markers off entirely must not be offered for them."""
+    tab = _tab()
+    for series_type, style, chart_type in (
+        (SeriesType.SCATTER, ScatterSeriesStyle(), ChartType.SCATTER),
+        (SeriesType.COLORMAP, ColormapSeriesStyle(), ChartType.COLORMAP),
+    ):
+        series = DataSeries(dataset_id="ds1", series_type=series_type, style=style)
+        tab.set_chart_type(chart_type)
+        tab.set_selected("series", series)
+
+        assert tab.markers_enabled_toggle.isVisible() is False, series_type
+        # Shape/size/edge-width remain fully available regardless.
+        assert tab.marker_shape_control.isVisible() is True, series_type
+        assert tab.marker_size_slider.isVisible() is True, series_type
+        assert tab.marker_edge_width_slider.isVisible() is True, series_type
+
+
+def test_markers_enabled_toggle_still_shown_for_line_series():
+    """Sanity check: Line's marker_mode is "optional" -- the on/off toggle
+    must still be offered there, unlike Scatter/Colormap."""
+    tab = _tab()
+    series = DataSeries(dataset_id="ds1", series_type=SeriesType.LINE)
+    tab.set_chart_type(ChartType.LINE)
+    tab.set_selected("series", series)
+
+    assert tab.markers_enabled_toggle.isVisible() is True
+
+
+def test_marker_match_toggle_relabeled_for_colormap():
+    """The shared "Match line"/"Match point color" toggle row is relabeled
+    per target: Colormap's fill varies per point (matched via
+    edgecolors="face" in the renderer), which is a materially different
+    thing to match than Line's single style.color."""
+    tab = _tab()
+    line_series = DataSeries(dataset_id="ds1", series_type=SeriesType.LINE)
+    tab.set_chart_type(ChartType.LINE)
+    tab.set_selected("series", line_series)
+    assert tab.marker_match_line_label.text() == "Match line:"
+
+    colormap_series = DataSeries(
+        dataset_id="ds1", series_type=SeriesType.COLORMAP, style=ColormapSeriesStyle(),
+    )
+    tab.set_chart_type(ChartType.COLORMAP)
+    tab.set_selected("series", colormap_series)
+    assert tab.marker_match_line_label.text() == "Match point color:"
+
+
+def test_marker_fill_color_hidden_for_colormap_series_edge_color_toggle_controlled():
     """render_colormap_series always drives fill color from z_data through
     the colormap (c=series_data.z_data) -- style.marker.marker_color is
     never read, so the "Color:" row must be hidden outright rather than
-    shown as a control that silently does nothing. Edge color/width and
-    shape/size DO apply (read by the renderer) and must stay visible."""
+    shown as a control that silently does nothing. Edge color IS read
+    (edgecolors=marker_edge_color or "face") -- its row's visibility
+    follows the "Match point color" toggle: hidden while matching (nothing
+    to configure -- it's derived per-point), shown to pick a literal value
+    once unchecked. Shape/size always apply and stay visible regardless."""
     tab = _tab()
     series = DataSeries(
         dataset_id="ds1", series_type=SeriesType.COLORMAP, style=ColormapSeriesStyle(),
@@ -89,10 +142,50 @@ def test_marker_fill_color_hidden_for_colormap_series_edge_color_stays_visible()
     assert tab.marker_card.isVisible() is True
     assert tab.marker_color_row.isVisible() is False
     assert tab.marker_color_label.isVisible() is False
-    assert tab.marker_edge_color_row.isVisible() is True
-    assert tab.marker_edge_color_label.isVisible() is True
     assert tab.marker_shape_control.isVisible() is True
     assert tab.marker_size_slider.isVisible() is True
+
+    # Fresh ColormapSeriesStyle() has marker_edge_color == "" (MarkerStyle's
+    # default) -- "Match point color" starts checked, edge row starts hidden.
+    assert tab.marker_match_line_toggle.isChecked() is True
+    assert tab.marker_edge_color_row.isVisible() is False
+    assert tab.marker_edge_color_label.isVisible() is False
+
+    # Unchecking reveals the row so a literal edge color can be picked.
+    tab.marker_match_line_toggle.setChecked(False)
+    assert tab.marker_edge_color_row.isVisible() is True
+    assert tab.marker_edge_color_label.isVisible() is True
+
+
+def test_apply_series_style_writes_explicit_colormap_edge_color_when_not_matching():
+    tab = _tab()
+    series = DataSeries(
+        dataset_id="ds1", series_type=SeriesType.COLORMAP, style=ColormapSeriesStyle(),
+    )
+    tab.set_chart_type(ChartType.COLORMAP)
+    tab.set_selected("series", series)
+
+    tab.marker_match_line_toggle.setChecked(False)
+    tab.marker_edge_color_row.setCurrentColor("#ff00ff")
+    tab.apply_series_style_to(series)
+
+    assert series.style.marker.marker_edge_color == "#ff00ff"
+
+
+def test_apply_series_style_clears_colormap_edge_color_when_matching():
+    tab = _tab()
+    series = DataSeries(
+        dataset_id="ds1", series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(marker=MarkerStyle(marker_edge_color="#ff00ff")),
+    )
+    tab.set_chart_type(ChartType.COLORMAP)
+    tab.set_selected("series", series)
+    assert tab.marker_match_line_toggle.isChecked() is False  # loaded from the non-empty edge color
+
+    tab.marker_match_line_toggle.setChecked(True)
+    tab.apply_series_style_to(series)
+
+    assert series.style.marker.marker_edge_color == ""
 
 
 def test_marker_fill_color_visible_for_a_plain_line_series_target():

@@ -174,6 +174,49 @@ def test_render_colormap_series_returns_scatter_mappable():
     plt.close(fig)
 
 
+def test_render_colormap_series_edge_matches_each_points_own_fill_by_default():
+    """A Colormap series' fill color varies per point through the colormap
+    (c=z_data) -- there's no single style.color an edge could "match" the
+    way Line/Scatter's marker_edge_color falls back to style.color. The
+    default (marker_edge_color == "", per MarkerStyle's default) instead
+    resolves to matplotlib's "face" sentinel, which makes each point's edge
+    exactly match ITS OWN fill color rather than a single fixed value."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(z_data=[0.1, 0.5, 0.9])
+    style = ColormapSeriesStyle(colormap="viridis")
+
+    render_colormap_series(ax, data, style, "S", 1.0, True, {})
+
+    collection = ax.collections[0]
+    fig.canvas.draw()  # "face" only resolves to concrete per-point RGBA at draw time
+    assert collection.get_edgecolor().tolist() == collection.get_facecolor().tolist()
+    # The points genuinely differ in color (proving this isn't a
+    # coincidental single-color match) -- pin at least 2 distinct RGBA rows.
+    assert len({tuple(c) for c in collection.get_facecolor()}) >= 2
+    plt.close(fig)
+
+
+def test_render_colormap_series_uses_an_explicit_edge_color_when_set():
+    """Setting marker_edge_color to a literal value opts back out of the
+    "match each point's fill" default -- render_colormap_series must pass
+    it straight through, not silently ignore it."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(z_data=[0.1, 0.5, 0.9])
+    style = ColormapSeriesStyle(colormap="viridis", marker=MarkerStyle(marker_edge_color="#ff0000"))
+
+    render_colormap_series(ax, data, style, "S", 1.0, True, {})
+
+    import matplotlib.colors as mcolors
+    edge_colors = ax.collections[0].get_edgecolor()
+    assert len(edge_colors) > 0
+    assert tuple(edge_colors[0]) == mcolors.to_rgba("#ff0000")
+    plt.close(fig)
+
+
 def test_render_heatmap_series_returns_pcolormesh_mappable_for_grid_data():
     from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
 

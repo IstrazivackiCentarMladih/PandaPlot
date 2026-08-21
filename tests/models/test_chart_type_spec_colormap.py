@@ -41,10 +41,13 @@ def test_colormap_chart_type_spec():
     spec = CHART_TYPE_SPECS[ChartType.COLORMAP]
     assert spec.roles == ("x", "y", "z")
     assert spec.required_roles == ("x", "y", "z")
-    # A Colormap chart may also hold plain Scatter/Line series alongside its
-    # color-mapped points -- e.g. an overlay of raw data points or a trend
-    # line -- not just SeriesType.COLORMAP series.
-    assert spec.allowed_series_types == frozenset({SeriesType.COLORMAP, SeriesType.SCATTER, SeriesType.LINE})
+    # A Colormap chart may also hold plain Scatter/Line series (an overlay
+    # of raw points or a trend line) and Heatmap series (a gridded matrix
+    # alongside color-mapped points on the same axes) -- not just
+    # SeriesType.COLORMAP series.
+    assert spec.allowed_series_types == frozenset({
+        SeriesType.COLORMAP, SeriesType.SCATTER, SeriesType.LINE, SeriesType.HEATMAP,
+    })
     assert spec.allows_fit is False
     assert spec.default_series_type == SeriesType.COLORMAP
 
@@ -53,10 +56,12 @@ def test_heatmap_chart_type_spec():
     spec = CHART_TYPE_SPECS[ChartType.HEATMAP]
     assert spec.roles == ("x", "y", "z")
     assert spec.required_roles == ("x", "y", "z")
-    # A Heatmap chart may also hold plain Scatter/Line series alongside its
-    # gridded matrix -- e.g. marking specific points or overlaying a trend
-    # line -- not just SeriesType.HEATMAP series.
-    assert spec.allowed_series_types == frozenset({SeriesType.HEATMAP, SeriesType.SCATTER, SeriesType.LINE})
+    # A Heatmap chart may also hold plain Scatter/Line series (marking
+    # specific points or a trend line) and Colormap series (a color-mapped
+    # scatter overlay on the same grid) -- not just SeriesType.HEATMAP.
+    assert spec.allowed_series_types == frozenset({
+        SeriesType.HEATMAP, SeriesType.SCATTER, SeriesType.LINE, SeriesType.COLORMAP,
+    })
     assert spec.allows_fit is False
     assert spec.default_series_type == SeriesType.HEATMAP
 

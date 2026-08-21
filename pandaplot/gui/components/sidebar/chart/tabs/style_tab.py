@@ -1195,6 +1195,18 @@ class StyleTab(QWidget):
             return False
         return SERIES_TYPE_SPECS[obj.series_type].needs_z_column
 
+    def _is_required_marker_target(self) -> bool:
+        """Whether the current target's marker can never be turned off --
+        SeriesTypeSpec.marker_mode == "required" (Scatter, Colormap): a
+        marker is the ONLY thing either type draws, so the Markers
+        section's on/off toggle (meaningful for Line, marker_mode ==
+        "optional", which already has a line to fall back on) is hidden
+        rather than offered and then ignored."""
+        kind, obj = self._current_target
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return SERIES_TYPE_SPECS[obj.series_type].marker_mode == "required"
+
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
@@ -1333,11 +1345,22 @@ class StyleTab(QWidget):
         For a scatter-chart series there is no drawn line at all (the Line
         card is hidden -- see _update_target_cards_visibility), so "Match
         line" is meaningless: that row alone is hidden outright whenever
-        markers are on, regardless of the toggle's stored state.
+        markers are on, regardless of the toggle's stored state -- UNLESS
+        the target is Z-driven (Colormap), whose fill genuinely varies per
+        point through the colormap and so has its own, different thing to
+        match (each point's own color, via edgecolors="face") -- see the
+        relabeling below.
+
+        A required-marker series (Scatter, Colormap) can never turn its
+        markers off -- they're the only thing it draws -- so the on/off
+        toggle itself is hidden rather than offered and ignored.
         """
         is_scatter_series = self._is_scatter_series_target()
-        markers_enabled = self.markers_enabled_toggle.isChecked()
+        is_z_driven = self._is_z_driven_series_target()
+        required_marker = self._is_required_marker_target()
+        markers_enabled = self.markers_enabled_toggle.isChecked() or required_marker
         self.marker_header.setEnabled(markers_enabled)
+        self.markers_enabled_toggle.setVisible(not required_marker)
 
         for widget in (
             self.marker_shape_label, self.marker_shape_control,
@@ -1346,21 +1369,29 @@ class StyleTab(QWidget):
         ):
             widget.setVisible(markers_enabled)
 
-        show_match_line_row = markers_enabled and not is_scatter_series
-        self.marker_match_line_label.setVisible(show_match_line_row)
-        self.marker_match_line_toggle.setVisible(show_match_line_row)
+        # "Match line" (matching a drawn line's style.color) and "Match
+        # point color" (Colormap: matching each point's own data-driven
+        # fill) share this one toggle row, relabeled per target. A plain
+        # Scatter has neither a line nor a per-point-varying fill to
+        # match, so the row stays hidden for it -- its edge color is a
+        # simple, always-visible, independently-set swatch.
+        show_match_row = markers_enabled and (not is_scatter_series or is_z_driven)
+        self.marker_match_line_label.setText("Match point color:" if is_z_driven else "Match line:")
+        self.marker_match_line_label.setVisible(show_match_row)
+        self.marker_match_line_toggle.setVisible(show_match_row)
 
-        matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
-        show_colors = markers_enabled and not matching_line
+        matching = show_match_row and self.marker_match_line_toggle.isChecked()
+        show_edge_color = markers_enabled and not matching
         for widget in (self.marker_edge_color_label, self.marker_edge_color_row):
-            widget.setVisible(show_colors)
+            widget.setVisible(show_edge_color)
 
         # A Colormap/Heatmap series' marker fill color is always driven by
         # its Z data through the colormap (see render_colormap_series) --
         # style.marker.marker_color is never read for such a series, so its
-        # "Color:" row is hidden regardless of match-line state rather than
+        # "Color:" row is hidden outright (regardless of the match toggle,
+        # which for this target controls edge color instead) rather than
         # shown as a control that silently does nothing.
-        show_fill_color = show_colors and not self._is_z_driven_series_target()
+        show_fill_color = markers_enabled and not is_z_driven
         for widget in (self.marker_color_label, self.marker_color_row):
             widget.setVisible(show_fill_color)
 
@@ -1588,22 +1619,33 @@ class StyleTab(QWidget):
             series.alpha = self.line_opacity_slider.value()
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
-        # the existing MarkerType.NONE member. "Match line" reuses the
-        # existing "" == inherit-style.color convention for both
-        # marker_color and marker_edge_color (rendering already falls back
-        # to style.color for either field when empty -- see
+        # the existing MarkerType.NONE member -- except for a
+        # required-marker target (Scatter, Colormap), which can never
+        # write NONE regardless of the (hidden) toggle's stored state.
+        # "Match line"/"Match point color" reuses the existing "" ==
+        # inherit convention for marker_color/marker_edge_color (rendering
+        # falls back to style.color for either field when empty -- see
         # series_renderers/line.py and scatter.py; render_colormap_series
-        # doesn't read marker_color at all, since fill color always comes
-        # from z_data there). LineSeriesStyle/ScatterSeriesStyle/
+        # falls back to matplotlib's "face" sentinel for marker_edge_color
+        # instead, and never reads marker_color at all, since fill color
+        # always comes from z_data there). LineSeriesStyle/ScatterSeriesStyle/
         # ColormapSeriesStyle declare marker fields.
         if isinstance(style, (LineSeriesStyle, ScatterSeriesStyle, ColormapSeriesStyle)):
-            if self.markers_enabled_toggle.isChecked():
+            if self.markers_enabled_toggle.isChecked() or self._is_required_marker_target():
                 style.marker.marker_style = self.marker_shape_control.currentValue().value
                 style.marker.marker_size = self.marker_size_slider.value()
-                match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
-                style.marker.marker_color = "" if match_line else self.marker_color_row.currentColor()
-                style.marker.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
                 style.marker.marker_edge_width = self.marker_edge_width_slider.value()
+                if self._is_z_driven_series_target():
+                    # Colormap: the toggle controls edge color only -- fill
+                    # is never read from marker_color for this target, so
+                    # leave it untouched rather than overwrite it with the
+                    # (hidden) fill-color row's stale current value.
+                    matching = self.marker_match_line_toggle.isChecked()
+                    style.marker.marker_edge_color = "" if matching else self.marker_edge_color_row.currentColor()
+                else:
+                    match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
+                    style.marker.marker_color = "" if match_line else self.marker_color_row.currentColor()
+                    style.marker.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
             else:
                 style.marker.marker_style = MarkerType.NONE.value
 
@@ -1724,14 +1766,25 @@ class StyleTab(QWidget):
             self.marker_size_slider.setValue(getattr(marker, "marker_size", 2.0))
 
             # marker_color == "" is the existing "match line color"
-            # convention, now shared by marker_edge_color too.
+            # convention, now shared by marker_edge_color too. For a
+            # Z-driven (Colormap) target the toggle instead reflects
+            # marker_edge_color -- that's the only field it controls there
+            # (marker_color is unused, hidden outright; see
+            # _update_marker_controls_enabled) -- computed from
+            # series.series_type directly (not self._is_z_driven_series_
+            # target(), which reads self._current_target and so would be
+            # stale if this method is ever called without going through
+            # set_selected first, e.g. a direct load in a test).
+            is_z_driven = SERIES_TYPE_SPECS[series.series_type].needs_z_column
             marker_color = getattr(marker, "marker_color", "")
-            self.marker_color_row.setCurrentColor(marker_color or color)
-            self.marker_match_line_toggle.blockSignals(True)
-            self.marker_match_line_toggle.setChecked(marker_color == "")
-            self.marker_match_line_toggle.blockSignals(False)
             marker_edge_color = getattr(marker, "marker_edge_color", "")
+            self.marker_color_row.setCurrentColor(marker_color or color)
             self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
+            self.marker_match_line_toggle.blockSignals(True)
+            self.marker_match_line_toggle.setChecked(
+                marker_edge_color == "" if is_z_driven else marker_color == ""
+            )
+            self.marker_match_line_toggle.blockSignals(False)
             self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
