@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.models.chart.chart_type import ChartType
-from pandaplot.models.chart.series_style import HeatmapSeriesStyle
+from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart, DataSeries
@@ -232,3 +232,75 @@ def test_only_one_colorbar_drawn_for_multiple_colorbar_series():
 
     assert editor._colorbar is not None
     assert len(editor.chart_canvas.fig.axes) == 2  # main axes + 1 colorbar axes
+
+
+def test_heatmap_chart_can_mix_in_a_scatter_series():
+    """A Heatmap chart's allowed_series_types now includes SCATTER/LINE
+    (chart_type_spec.py), so a plain, non-color-mapped Scatter series can
+    sit alongside the gridded matrix -- e.g. marking specific points of
+    interest. Both must render without error, and only the Heatmap series
+    contributes to the shared colorbar."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.SCATTER,
+        label="Points of interest",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    assert len(editor.chart_canvas.axes.collections) >= 2  # QuadMesh + scatter PathCollection
+    handles, labels = editor.chart_canvas.axes.get_legend_handles_labels()
+    assert labels == ["Points of interest"]
+
+
+def test_colormap_chart_can_mix_in_a_line_series():
+    """A Colormap chart's allowed_series_types now includes SCATTER/LINE,
+    so a plain Line series (e.g. a trend line) can sit alongside the
+    color-mapped scatter. Both must render without error, and only the
+    Colormap series contributes to the shared colorbar."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Colormap Chart", chart_type="line")
+    chart.set_chart_type(ChartType.COLORMAP)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+    ))
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.LINE,
+        label="Trend",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    assert len(editor.chart_canvas.axes.lines) == 1
+    assert len(editor.chart_canvas.axes.collections) >= 1  # the colormap scatter
+    handles, labels = editor.chart_canvas.axes.get_legend_handles_labels()
+    assert labels == ["Trend"]
+
+
+def test_switching_a_scatter_chart_to_colormap_does_not_retype_its_series():
+    """compatible_chart_types_for_series (chart_type_spec.py) now reports
+    Colormap/Heatmap as compatible switch targets for a chart holding only
+    SCATTER series, since SCATTER is in both types' allowed_series_types --
+    proving Chart.set_chart_type genuinely does not force-retype existing
+    Scatter series when switching into Colormap."""
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Scatter Chart", chart_type="scatter")
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.SCATTER,
+    ))
+
+    chart.set_chart_type(ChartType.COLORMAP)
+
+    assert chart.data_series[0].series_type == SeriesType.SCATTER
