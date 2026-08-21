@@ -243,6 +243,16 @@ class Chart(Item):
             "dpi": None,
             "legend_columns": 1,
             "legend_bg_alpha": 1.0,
+            # Color Map (shared across every Colormap/Heatmap series on this
+            # chart -- there is only ever one physical colorbar drawn, so
+            # this is chart-level config, not per-series style. See
+            # docs/superpowers/specs/2026-08-21-shared-chart-level-color-map-design.md.
+            "colormap": "viridis",
+            "colorbar_show": True,
+            "colorbar_label": "",
+            "color_scale_auto": True,
+            "color_vmin": 0.0,
+            "color_vmax": 1.0,
         }
 
         self.style = {
