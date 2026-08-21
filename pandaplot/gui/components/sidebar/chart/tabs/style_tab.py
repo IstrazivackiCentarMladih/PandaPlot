@@ -1180,6 +1180,21 @@ class StyleTab(QWidget):
             return False
         return not SERIES_TYPE_SPECS[obj.series_type].supports_color
 
+    def _is_z_driven_series_target(self) -> bool:
+        """Whether the current target is a data series whose fill color is
+        driven by its Z column through a colormap (Colormap/Heatmap --
+        SeriesTypeSpec.needs_z_column), rather than by a fixed marker color.
+        For such a series, style.marker.marker_color is read by no renderer
+        (see render_colormap_series/render_heatmap_series), so the Marker
+        card's "Color:" swatch is hidden outright -- showing it would be a
+        silently-ignored control, the exact bug class this feature is meant
+        to eliminate. Edge color/width, marker shape and size still apply
+        and stay visible."""
+        kind, obj = self._current_target
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return SERIES_TYPE_SPECS[obj.series_type].needs_z_column
+
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
         self._update_target_cards_visibility()
@@ -1337,11 +1352,17 @@ class StyleTab(QWidget):
 
         matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
         show_colors = markers_enabled and not matching_line
-        for widget in (
-            self.marker_color_label, self.marker_color_row,
-            self.marker_edge_color_label, self.marker_edge_color_row,
-        ):
+        for widget in (self.marker_edge_color_label, self.marker_edge_color_row):
             widget.setVisible(show_colors)
+
+        # A Colormap/Heatmap series' marker fill color is always driven by
+        # its Z data through the colormap (see render_colormap_series) --
+        # style.marker.marker_color is never read for such a series, so its
+        # "Color:" row is hidden regardless of match-line state rather than
+        # shown as a control that silently does nothing.
+        show_fill_color = show_colors and not self._is_z_driven_series_target()
+        for widget in (self.marker_color_label, self.marker_color_row):
+            widget.setVisible(show_fill_color)
 
     # -- Color Map controls (Colormap/Heatmap) ------------------------------
 

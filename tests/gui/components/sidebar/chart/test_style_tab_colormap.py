@@ -73,6 +73,44 @@ def test_gridding_controls_hidden_for_colormap_scatter_series():
     assert tab.marker_match_line_toggle.isVisible() is False
 
 
+def test_marker_fill_color_hidden_for_colormap_series_edge_color_stays_visible():
+    """render_colormap_series always drives fill color from z_data through
+    the colormap (c=series_data.z_data) -- style.marker.marker_color is
+    never read, so the "Color:" row must be hidden outright rather than
+    shown as a control that silently does nothing. Edge color/width and
+    shape/size DO apply (read by the renderer) and must stay visible."""
+    tab = _tab()
+    series = DataSeries(
+        dataset_id="ds1", series_type=SeriesType.COLORMAP, style=ColormapSeriesStyle(),
+    )
+    tab.set_chart_type(ChartType.COLORMAP)
+    tab.set_selected("series", series)
+
+    assert tab.marker_card.isVisible() is True
+    assert tab.marker_color_row.isVisible() is False
+    assert tab.marker_color_label.isVisible() is False
+    assert tab.marker_edge_color_row.isVisible() is True
+    assert tab.marker_edge_color_label.isVisible() is True
+    assert tab.marker_shape_control.isVisible() is True
+    assert tab.marker_size_slider.isVisible() is True
+
+
+def test_marker_fill_color_visible_for_a_plain_line_series_target():
+    """Sanity check that the new hide-for-z-driven-series behavior doesn't
+    regress the ordinary case: a Line series' marker fill color must still
+    be shown once markers are enabled."""
+    tab = _tab()
+    series = DataSeries(dataset_id="ds1", series_type=SeriesType.LINE)
+    tab.set_chart_type(ChartType.LINE)
+    tab.set_selected("series", series)
+    tab.markers_enabled_toggle.setChecked(True)
+    tab.marker_match_line_toggle.setChecked(False)
+    tab._update_marker_controls_enabled()
+
+    assert tab.marker_color_row.isVisible() is True
+    assert tab.marker_color_label.isVisible() is True
+
+
 def test_colormap_card_hidden_for_a_line_series_target():
     tab = _tab()
     series = DataSeries(dataset_id="ds1")

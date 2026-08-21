@@ -68,6 +68,74 @@ def _line_chart(dataset):
     return chart
 
 
+def test_heatmap_only_chart_draws_no_empty_legend_box():
+    """The core bug: a fresh Heatmap chart with the default show_legend=True
+    used to always call axes.legend(), which draws an empty framed legend
+    box even though pcolormesh's QuadMesh can never contribute a legend
+    handle (matplotlib has no legend handler for QuadMesh -- confirmed via
+    the "Legend does not support handles for QuadMesh instances" warning,
+    which is also why render_heatmap_series deliberately does not pass
+    label= through to pcolormesh). The fix in chart_editor.py must skip
+    building the legend entirely when there are no real handles."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series[0].label = "Temperature"
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    handles, _ = editor.chart_canvas.axes.get_legend_handles_labels()
+    assert handles == []
+    assert editor.chart_canvas.axes.get_legend() is None
+
+
+def test_legend_still_shown_for_a_labeled_line_series_alongside_heatmap():
+    """Sanity check that the empty-handles guard doesn't over-hide the
+    legend: when a real legend-eligible series (Line) shares the chart with
+    a Heatmap series, its legend entry must still be drawn."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series[0].label = "Temperature"
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.LINE,
+        label="Trend",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    handles, labels = editor.chart_canvas.axes.get_legend_handles_labels()
+    assert labels == ["Trend"]
+    assert len(handles) == 1
+    assert editor.chart_canvas.axes.get_legend() is not None
+
+
+def test_colorbar_does_not_overlap_plot_when_series_on_secondary_axis():
+    """A Colormap/Heatmap series routed to the secondary Y axis must still
+    get its colorbar's space subtracted from the plot area -- otherwise
+    axes2 (not subdivided by fig.colorbar(ax=axes only)) gets re-expanded
+    to full width by tight_layout() and the colorbar overlaps the data."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series[0].y_axis = "secondary"
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    axes_right = editor.chart_canvas.axes.get_position().bounds[0] + \
+        editor.chart_canvas.axes.get_position().bounds[2]
+    colorbar_axes = editor._colorbar.ax
+    colorbar_left = colorbar_axes.get_position().bounds[0]
+    # The colorbar must be positioned to the right of (not overlapping) the
+    # main plotting area.
+    assert colorbar_left >= axes_right - 1e-6
+
+
 def test_heatmap_render_draws_colorbar_and_does_not_shrink_on_rerender():
     _qapp()
     project, dataset = _project_and_dataset()

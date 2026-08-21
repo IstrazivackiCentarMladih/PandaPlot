@@ -21,6 +21,14 @@ def render_heatmap_series(axes, series_data: SeriesData, style: HeatmapSeriesSty
             style.heatmap_gridding, style.heatmap_resolution)
     except ValueError:
         return None
+    # Note: unlike every other renderer here, `label` is deliberately NOT
+    # passed through to pcolormesh. matplotlib's Legend has no handler for
+    # QuadMesh (the artist pcolormesh returns) -- passing a label achieves
+    # nothing (get_legend_handles_labels() drops it) and only produces a
+    # "Legend does not support handles for QuadMesh instances" UserWarning
+    # on every render. The real fix for a Heatmap chart's empty legend box
+    # is in chart_editor.py: skip axes.legend() entirely when there are no
+    # real legend handles, rather than trying to manufacture one here.
     return axes.pcolormesh(
         xs, ys, grid, cmap=style.colormap, vmin=vmin, vmax=vmax,
         shading="nearest", alpha=alpha)

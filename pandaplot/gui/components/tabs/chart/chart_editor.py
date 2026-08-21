@@ -911,6 +911,21 @@ class ChartEditorWidget(PWidget):
                 if colorbar_mappable is not None:
                     self._colorbar = self.chart_canvas.fig.colorbar(
                         colorbar_mappable, ax=self.chart_canvas.axes)
+                    if self.chart_canvas.axes2 is not None:
+                        # fig.colorbar(..., ax=axes) subdivides *only* the
+                        # primary axes' gridspec cell to make room -- axes2
+                        # (a twinx() sharing that same cell) keeps its old,
+                        # full-width subplotspec. Passing both axes to
+                        # colorbar() doesn't help either: with two axes
+                        # sharing a cell, tight_layout() flags the figure as
+                        # "not compatible" and re-expands both back to full
+                        # width, drawing the colorbar on top of the data.
+                        # Explicitly handing axes2 the *same*, now-subdivided
+                        # subplotspec keeps both axes shrunk together and
+                        # keeps tight_layout happy across repeated
+                        # resizes/re-renders.
+                        self.chart_canvas.axes2.set_subplotspec(
+                            self.chart_canvas.axes.get_subplotspec())
                     if colorbar_label:
                         self._colorbar.set_label(colorbar_label)
 
@@ -1199,6 +1214,8 @@ class ChartEditorWidget(PWidget):
             else:
                 self.chart_canvas.axes.grid(False, axis="y", which="minor")
 
+            legend = None
+            placement_kwargs = {}
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 # Combine handles/labels from both axes since twinx() legends
                 # are independent by default.
@@ -1207,25 +1224,28 @@ class ChartEditorWidget(PWidget):
                     handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
                     handles += handles2
                     labels += labels2
-                placement_kwargs = resolve_legend_placement(
-                    config.get("legend_position", "upper right"),
-                    config.get("legend_custom_x", 1.02),
-                    config.get("legend_custom_y", 0.5),
-                    config.get("legend_custom_anchor", "center left"),
-                )
-                legend = build_legend(
-                    self.chart_canvas.axes, handles, labels,
-                    config.get("legend_font_family", "DejaVu Sans"),
-                    config.get("legend_font_size", 10),
-                    config.get("legend_bg_color", "#ffffff"),
-                    config.get("legend_show_frame", True),
-                    config.get("legend_columns", 1),
-                    config.get("legend_bg_alpha", 1.0),
-                    placement_kwargs,
-                )
-            else:
-                legend = None
-                placement_kwargs = {}
+                # Skip drawing the legend when there are no handles to show
+                # (e.g. a chart with only an unlabeled Heatmap series before
+                # PR-review fix, or any chart where nothing has a label) --
+                # matplotlib would otherwise draw an empty framed legend box
+                # over the plot.
+                if handles:
+                    placement_kwargs = resolve_legend_placement(
+                        config.get("legend_position", "upper right"),
+                        config.get("legend_custom_x", 1.02),
+                        config.get("legend_custom_y", 0.5),
+                        config.get("legend_custom_anchor", "center left"),
+                    )
+                    legend = build_legend(
+                        self.chart_canvas.axes, handles, labels,
+                        config.get("legend_font_family", "DejaVu Sans"),
+                        config.get("legend_font_size", 10),
+                        config.get("legend_bg_color", "#ffffff"),
+                        config.get("legend_show_frame", True),
+                        config.get("legend_columns", 1),
+                        config.get("legend_bg_alpha", 1.0),
+                        placement_kwargs,
+                    )
 
             tight_layout_kwargs = dict(
                 pad=config.get("chart_padding", 2.0),
