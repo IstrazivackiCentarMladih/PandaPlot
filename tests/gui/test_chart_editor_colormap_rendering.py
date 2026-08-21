@@ -33,6 +33,7 @@ def _project_and_dataset():
         "x": [1, 2, 3, 1, 2, 3],
         "y": [1, 1, 1, 2, 2, 2],
         "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+        "z2": [1.0, 1.2, 1.4, 1.6, 1.8, 2.0],
     })
     dataset = Dataset(name="ds1", data=df)
     project.add_item(dataset)
@@ -238,14 +239,21 @@ def test_auto_scale_spans_combined_z_data_of_every_colormap_heatmap_series():
     """color_scale_auto must compute (vmin, vmax) from the UNION of every
     Colormap/Heatmap series' z-data on the chart, not just whichever one
     renders first -- otherwise the shared colorbar's scale would silently
-    depend on series order."""
+    depend on series order.
+
+    The Colormap series below deliberately reads a DIFFERENT column ("z2",
+    range [1.0, 2.0]) than the Heatmap series' "z" column (range [0.1, 0.6]).
+    If either series' data alone determined the scale -- "first wins" or
+    "last wins" -- the asserted (0.1, 2.0) span could never result; only
+    combining both series' data produces it.
+    """
     _qapp()
     project, dataset = _project_and_dataset()
     chart = _heatmap_chart(dataset)  # z: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
     chart.data_series.append(DataSeries(
         dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
         y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
-        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z2")),
     ))
     editor = _editor_for(project, chart)
 
@@ -254,7 +262,29 @@ def test_auto_scale_spans_combined_z_data_of_every_colormap_heatmap_series():
     assert editor._colorbar is not None
     vmin, vmax = editor._colorbar.mappable.get_clim()
     assert vmin == 0.1
-    assert vmax == 0.6
+    assert vmax == 2.0
+
+
+def test_manual_color_scale_from_chart_config_reaches_the_colorbar():
+    """When color_scale_auto is False, chart.config's color_vmin/color_vmax
+    must plumb all the way through ChartEditorWidget.update_chart() (via
+    resolve_color_limits) to the rendered colorbar's mappable -- not just
+    avoid crashing. The manual limits (-5.0, 42.0) are deliberately outside
+    the z-data's own range ([0.1, 0.6]), so the assertion could only pass if
+    the manual config values, not the auto-computed data range, reached the
+    renderer."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.config["color_scale_auto"] = False
+    chart.config["color_vmin"] = -5.0
+    chart.config["color_vmax"] = 42.0
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert editor._colorbar is not None
+    assert editor._colorbar.mappable.get_clim() == (-5.0, 42.0)
 
 
 def test_heatmap_chart_can_mix_in_a_scatter_series():
