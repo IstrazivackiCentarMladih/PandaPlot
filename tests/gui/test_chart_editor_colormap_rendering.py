@@ -14,6 +14,7 @@ import pandas as pd
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
+from pandaplot.gui.components.tabs.chart import chart_editor as chart_editor_module
 from pandaplot.gui.components.tabs.chart.chart_editor import ChartEditorWidget
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle
@@ -34,6 +35,7 @@ def _project_and_dataset():
         "y": [1, 1, 1, 2, 2, 2],
         "z": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
         "z2": [1.0, 1.2, 1.4, 1.6, 1.8, 2.0],
+        "z_text": ["a", "b", "c", "d", "e", "f"],
     })
     dataset = Dataset(name="ds1", data=df)
     project.add_item(dataset)
@@ -381,3 +383,64 @@ def test_heatmap_chart_can_mix_in_a_colormap_series():
     assert editor._colorbar is not None
     assert len(editor.chart_canvas.axes.collections) >= 2  # QuadMesh + scatter PathCollection
     assert len(editor.chart_canvas.fig.axes) == 2  # main axes + exactly 1 colorbar axes
+
+
+def test_colorbar_gate_requires_needs_z_column_even_if_a_renderer_returns_a_mappable(monkeypatch):
+    """The colorbar-ownership gate must check
+    SERIES_TYPE_SPECS[series_type].needs_z_column, not merely "the renderer
+    returned a non-None mappable" -- otherwise a future series type whose
+    renderer happens to return a mappable would silently steal the shared
+    colorbar. No such renderer exists today (only Colormap/Heatmap ever
+    return non-None), so this is proven by forcing the Scatter renderer to
+    return a fake mappable and confirming the gate still refuses it because
+    Scatter's spec does not need a Z column."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Scatter Chart", chart_type="scatter")
+    chart.set_chart_type(ChartType.SCATTER)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.SCATTER,
+    ))
+    editor = _editor_for(project, chart)
+
+    fake_mappable = object()
+    monkeypatch.setitem(
+        chart_editor_module.SERIES_RENDERERS, SeriesType.SCATTER,
+        lambda *args, **kwargs: fake_mappable,
+    )
+
+    editor.update_chart()
+
+    assert editor._colorbar is None
+
+
+def test_heatmap_series_with_non_numeric_z_column_fails_only_that_series():
+    """A Z column resolving to non-numeric (text) data must not crash the
+    eager z-data pre-pass that computes the shared color-scale limits --
+    that pre-pass runs before the per-series render loop and outside its
+    per-series error handling, so an unguarded np.asarray(..., dtype=float)
+    there would blank the WHOLE chart instead of failing just this one
+    series. A second, valid Heatmap series on the same chart proves the
+    rest of the chart still renders."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series[0].style.z_column_id = dataset.column_id("z_text")
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.HEATMAP,
+        style=HeatmapSeriesStyle(z_column_id=dataset.column_id("z")),
+        label="Valid Heatmap",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    # The whole-chart exception handler must not have fired.
+    assert "Chart error" not in editor.status_label.text()
+    # The bad series' own per-series error must be recorded instead.
+    assert "Series 1" in editor.status_label.text()
+    # The other, valid Heatmap series must still have rendered normally and
+    # own the shared colorbar.
+    assert editor._colorbar is not None

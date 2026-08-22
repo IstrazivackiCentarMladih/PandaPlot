@@ -688,9 +688,9 @@ class TestChartConfigHasColorMapDefaults:
     """Chart.config gains 6 color map keys with sensible defaults. These keys
     are shared across every Colormap/Heatmap series on a chart (since there is
     only ever one physical colorbar drawn) and live on Chart.config rather than
-    per-series style objects (unlike per-series colormap/colorbar fields on
-    Colormap/HeatmapSeriesStyle, which may eventually be deprecated in favor of
-    these shared chart-level values)."""
+    per-series style objects -- the per-series colormap/colorbar_show/etc.
+    fields that used to live on ColormapSeriesStyle/HeatmapSeriesStyle were
+    removed in favor of these shared chart-level values."""
 
     def test_chart_config_has_color_map_defaults(self):
         chart = Chart(name="C", chart_type="line")
