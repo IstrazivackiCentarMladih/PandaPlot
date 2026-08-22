@@ -412,7 +412,14 @@ def test_colorbar_gate_requires_needs_z_column_even_if_a_renderer_returns_a_mapp
 
     editor.update_chart()
 
+    # Both assertions matter: without the needs_z_column guard, the fake
+    # mappable (a bare `object()`) would crash fig.colorbar()/_resolve_z_label
+    # and land in update_chart()'s outer exception handler -- which ALSO
+    # leaves _colorbar at None, just via a chart-wide error rather than the
+    # gate correctly refusing it. Asserting "Ready" (no chart error) rules
+    # out that false-positive path and proves the gate itself did the work.
     assert editor._colorbar is None
+    assert "Chart error" not in editor.status_label.text()
 
 
 def test_heatmap_series_with_non_numeric_z_column_fails_only_that_series():
