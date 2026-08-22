@@ -637,67 +637,79 @@ class StyleTab(QWidget):
 
         layout.addWidget(vector_card)
 
-        # COLOR MAP group -- shown (in addition to the Marker card, for
-        # Colormap only) instead of Line/Fill/Error Bars for a series whose
-        # type needs a Z column (SeriesTypeSpec.needs_z_column -- Colormap
-        # and Heatmap). The gridding/resolution sub-controls only apply to
-        # Heatmap (SeriesTypeSpec.supports_gridding) -- see
-        # _update_colormap_gridding_visibility.
-        self.colormap_card = Card()
-        colormap_card = self.colormap_card
-        colormap_layout = QGridLayout(colormap_card)
-        colormap_layout.addWidget(SectionHeader("Color Map"), 0, 0, 1, 2)
+        # HEATMAP GRIDDING group -- per-series (SeriesTypeSpec.supports_
+        # gridding -- Heatmap only; Colormap, a plain color-mapped scatter,
+        # needs no gridding at all). The colormap/colorbar/scale that used
+        # to live in this same card moved to a chart-level "Color Map" chip
+        # (see colormap_config_card below) -- there's only ever one
+        # physical colorbar for the whole chart, not one per series.
+        self.heatmap_gridding_card = Card()
+        heatmap_gridding_card = self.heatmap_gridding_card
+        heatmap_gridding_layout = QGridLayout(heatmap_gridding_card)
+        heatmap_gridding_layout.addWidget(SectionHeader("Gridding"), 0, 0, 1, 2)
 
-        colormap_layout.addWidget(QLabel("Colormap:"), 1, 0)
+        # "Exact grid" mode has no resolution to configure (it uses the
+        # data's own lattice, see chart_heatmap.build_heatmap_grid), so the
+        # resolution row is additionally hidden while that mode is selected
+        # (see _on_heatmap_gridding_changed).
+        self.heatmap_gridding_label = QLabel("Gridding:")
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 1, 0)
+        self.heatmap_gridding_control = ValueComboBox(HEATMAP_GRIDDING_OPTIONS)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 1, 1)
+
+        self.heatmap_resolution_label = QLabel("Resolution:")
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 2, 0)
+        self.heatmap_resolution_spin = QSpinBox()
+        self.heatmap_resolution_spin.setRange(2, 500)
+        self.heatmap_resolution_spin.setValue(50)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 2, 1)
+
+        layout.addWidget(heatmap_gridding_card)
+
+        # COLOR MAP group -- chart-level (not per-series): colormap,
+        # colorbar, and color-scale limits are shared across every
+        # Colormap/Heatmap series on the chart, since there's only ever one
+        # physical colorbar drawn. Shown only when the "Color Map" chip in
+        # style_series_chips is selected (see _update_target_cards_
+        # visibility), which itself only appears when the chart has >=1
+        # series with SeriesTypeSpec.needs_z_column (see set_series_list).
+        self.colormap_config_card = Card()
+        colormap_config_card = self.colormap_config_card
+        colormap_config_layout = QGridLayout(colormap_config_card)
+        colormap_config_layout.addWidget(SectionHeader("Color Map"), 0, 0, 1, 2)
+
+        colormap_config_layout.addWidget(QLabel("Colormap:"), 1, 0)
         self.colormap_control = ValueComboBox(COLORMAP_OPTIONS)
-        colormap_layout.addWidget(self.colormap_control, 1, 1)
+        colormap_config_layout.addWidget(self.colormap_control, 1, 1)
 
-        colormap_layout.addWidget(QLabel("Show colorbar:"), 2, 0)
+        colormap_config_layout.addWidget(QLabel("Show colorbar:"), 2, 0)
         self.colorbar_show_toggle = ToggleSwitch(checked=True)
-        colormap_layout.addWidget(self.colorbar_show_toggle, 2, 1)
+        colormap_config_layout.addWidget(self.colorbar_show_toggle, 2, 1)
 
-        colormap_layout.addWidget(QLabel("Colorbar label:"), 3, 0)
+        colormap_config_layout.addWidget(QLabel("Colorbar label:"), 3, 0)
         self.colorbar_label_edit = QLineEdit()
-        colormap_layout.addWidget(self.colorbar_label_edit, 3, 1)
+        colormap_config_layout.addWidget(self.colorbar_label_edit, 3, 1)
 
-        colormap_layout.addWidget(QLabel("Auto scale:"), 4, 0)
+        colormap_config_layout.addWidget(QLabel("Auto scale:"), 4, 0)
         self.color_scale_auto_toggle = ToggleSwitch(checked=True)
-        colormap_layout.addWidget(self.color_scale_auto_toggle, 4, 1)
+        colormap_config_layout.addWidget(self.color_scale_auto_toggle, 4, 1)
 
         self.color_vmin_label = QLabel("Min:")
-        colormap_layout.addWidget(self.color_vmin_label, 5, 0)
+        colormap_config_layout.addWidget(self.color_vmin_label, 5, 0)
         self.color_vmin_spin = QDoubleSpinBox()
         self.color_vmin_spin.setRange(-1e9, 1e9)
         self.color_vmin_spin.setDecimals(3)
-        colormap_layout.addWidget(self.color_vmin_spin, 5, 1)
+        colormap_config_layout.addWidget(self.color_vmin_spin, 5, 1)
 
         self.color_vmax_label = QLabel("Max:")
-        colormap_layout.addWidget(self.color_vmax_label, 6, 0)
+        colormap_config_layout.addWidget(self.color_vmax_label, 6, 0)
         self.color_vmax_spin = QDoubleSpinBox()
         self.color_vmax_spin.setRange(-1e9, 1e9)
         self.color_vmax_spin.setDecimals(3)
         self.color_vmax_spin.setValue(1.0)
-        colormap_layout.addWidget(self.color_vmax_spin, 6, 1)
+        colormap_config_layout.addWidget(self.color_vmax_spin, 6, 1)
 
-        # Heatmap-only: hidden entirely for Colormap (see
-        # _update_colormap_gridding_visibility). "Exact grid" mode has no
-        # resolution to configure (it uses the data's own lattice, see
-        # chart_heatmap.build_heatmap_grid), so the resolution row is
-        # additionally hidden while that mode is selected (see
-        # _on_heatmap_gridding_changed).
-        self.heatmap_gridding_label = QLabel("Gridding:")
-        colormap_layout.addWidget(self.heatmap_gridding_label, 7, 0)
-        self.heatmap_gridding_control = ValueComboBox(HEATMAP_GRIDDING_OPTIONS)
-        colormap_layout.addWidget(self.heatmap_gridding_control, 7, 1)
-
-        self.heatmap_resolution_label = QLabel("Resolution:")
-        colormap_layout.addWidget(self.heatmap_resolution_label, 8, 0)
-        self.heatmap_resolution_spin = QSpinBox()
-        self.heatmap_resolution_spin.setRange(2, 500)
-        self.heatmap_resolution_spin.setValue(50)
-        colormap_layout.addWidget(self.heatmap_resolution_spin, 8, 1)
-
-        layout.addWidget(colormap_card)
+        layout.addWidget(colormap_config_card)
 
         # -- Axes (appearance) section: its own top-level selection in
         # style_series_chips (sibling to "Chart"/series/fit), not nested
@@ -807,6 +819,9 @@ class StyleTab(QWidget):
         elif value == "axes":
             self._current_target = ("axes", None)
             self._update_target_cards_visibility()
+        elif value == "colormap_config":
+            self._current_target = ("colormap_config", None)
+            self._update_target_cards_visibility()
         elif value is not None:
             # The panel (until Task 5) or DataTab (after Task 5) is the
             # source of truth for series/fit selection -- this tab does not
@@ -842,6 +857,8 @@ class StyleTab(QWidget):
         is_axes = kind == "axes"
         for widget in self.axes_style_widgets:
             widget.setVisible(is_axes)
+        is_colormap_config = kind == "colormap_config"
+        self.colormap_config_card.setVisible(is_colormap_config)
         if kind == "series" and isinstance(obj, DataSeries):
             spec = SERIES_TYPE_SPECS[obj.series_type]
         elif self._chart_type:
@@ -873,7 +890,7 @@ class StyleTab(QWidget):
             kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and error_bars_supported
         )
         self.vector_card.setVisible(kind == "series" and spec is not None and spec.needs_secondary_columns)
-        self.colormap_card.setVisible(kind == "series" and spec is not None and spec.needs_z_column)
+        self.heatmap_gridding_card.setVisible(kind == "series" and spec is not None and spec.supports_gridding)
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
@@ -1254,6 +1271,8 @@ class StyleTab(QWidget):
         self._data_series = list(data_series)
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart"), ("Axes", "axes")]
+        if any(SERIES_TYPE_SPECS[series.series_type].needs_z_column for series in data_series):
+            chip_items.append(("Color Map", "colormap_config"))
         for index, series in enumerate(data_series):
             label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
@@ -1278,7 +1297,10 @@ class StyleTab(QWidget):
         # from, so it must not count as "initialized" either, or it would
         # make the *next* call's placeholder "chart" look like a genuine
         # prior selection).
-        if self._series_list_initialized and previous_value in ("chart", "axes"):
+        chip_values = {value for _, value in chip_items}
+        if (self._series_list_initialized
+                and previous_value in ("chart", "axes", "colormap_config")
+                and previous_value in chip_values):
             self.style_series_chips.setCurrentValue(previous_value)
         else:
             self.style_series_chips.setCurrentValue(selected_index)
@@ -1291,6 +1313,9 @@ class StyleTab(QWidget):
             self._update_target_cards_visibility()
         elif final_value == "axes":
             self._current_target = ("axes", None)
+            self._update_target_cards_visibility()
+        elif final_value == "colormap_config":
+            self._current_target = ("colormap_config", None)
             self._update_target_cards_visibility()
         elif final_value < len(data_series):
             self.set_selected("series", data_series[final_value])
@@ -1576,6 +1601,10 @@ class StyleTab(QWidget):
             self.apply_series_style_to(obj)
         elif kind == "fit":
             self.apply_fit_style_to(obj)
+        elif kind == "colormap_config":
+            if self._chart is None:
+                return
+            self.apply_colormap_config_to(self._chart)
         else:
             return
         self.configChanged.emit()
@@ -1593,12 +1622,6 @@ class StyleTab(QWidget):
             return
 
         if isinstance(style, (ColormapSeriesStyle, HeatmapSeriesStyle)):
-            style.colormap = self.colormap_control.currentValue()
-            style.colorbar_show = self.colorbar_show_toggle.isChecked()
-            style.colorbar_label = self.colorbar_label_edit.text()
-            style.color_scale_auto = self.color_scale_auto_toggle.isChecked()
-            style.color_vmin = self.color_vmin_spin.value()
-            style.color_vmax = self.color_vmax_spin.value()
             if isinstance(style, HeatmapSeriesStyle):
                 style.heatmap_gridding = self.heatmap_gridding_control.currentValue()
                 style.heatmap_resolution = self.heatmap_resolution_spin.value()
@@ -1715,23 +1738,8 @@ class StyleTab(QWidget):
             self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
             self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
 
-            # Color Map fields (Colormap/Heatmap only -- read via getattr,
-            # same defensive convention as the rest of this method, so a
-            # hidden Color Map card still gets populated with *some* value
-            # for every other series type without raising).
-            self.colormap_control.setCurrentValue(getattr(style, "colormap", "viridis"))
-            self.colorbar_show_toggle.blockSignals(True)
-            self.colorbar_show_toggle.setChecked(getattr(style, "colorbar_show", True))
-            self.colorbar_show_toggle.blockSignals(False)
-            self.colorbar_label_edit.blockSignals(True)
-            self.colorbar_label_edit.setText(getattr(style, "colorbar_label", ""))
-            self.colorbar_label_edit.blockSignals(False)
-            self.color_scale_auto_toggle.blockSignals(True)
-            self.color_scale_auto_toggle.setChecked(getattr(style, "color_scale_auto", True))
-            self.color_scale_auto_toggle.blockSignals(False)
-            self.color_vmin_spin.setValue(getattr(style, "color_vmin", 0.0))
-            self.color_vmax_spin.setValue(getattr(style, "color_vmax", 1.0))
-            self._update_color_scale_controls()
+            # Heatmap-only gridding fields (colormap/colorbar/scale moved to
+            # the chart-level Color Map card -- see load_colormap_config).
             self.heatmap_gridding_control.setCurrentValue(getattr(style, "heatmap_gridding", "grid"))
             self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
             self._update_colormap_gridding_visibility()
@@ -1865,6 +1873,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self.load_colormap_config(chart)
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
             self.title_font_family_combo.setCurrentValue(chart.config.get("title_font_family", "DejaVu Sans"))
@@ -2032,6 +2041,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self.clear_colormap_config()
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
             self.title_font_family_combo.setCurrentValue("DejaVu Sans")
@@ -2086,6 +2096,55 @@ class StyleTab(QWidget):
                 if axis_form["match_x_colors_toggle"] is not None:
                     axis_form["match_x_colors_toggle"].setChecked(True)
             self.refresh_axis_style_selector(None)
+        finally:
+            self._updating_controls = previous_guard
+
+    # -- Color Map config (chart-level) --------------------------------------
+
+    def load_colormap_config(self, chart):
+        """Populate the chart-level Color Map card from `chart.config`.
+        Called from load_chart_style's call site (chart_properties_panel.py)
+        so it's always populated regardless of which chip is currently
+        selected, matching how Chart-card fields are loaded unconditionally
+        too."""
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.colormap_control.setCurrentValue(chart.config.get("colormap", "viridis"))
+            self.colorbar_show_toggle.blockSignals(True)
+            self.colorbar_show_toggle.setChecked(chart.config.get("colorbar_show", True))
+            self.colorbar_show_toggle.blockSignals(False)
+            self.colorbar_label_edit.blockSignals(True)
+            self.colorbar_label_edit.setText(chart.config.get("colorbar_label", ""))
+            self.colorbar_label_edit.blockSignals(False)
+            self.color_scale_auto_toggle.blockSignals(True)
+            self.color_scale_auto_toggle.setChecked(chart.config.get("color_scale_auto", True))
+            self.color_scale_auto_toggle.blockSignals(False)
+            self.color_vmin_spin.setValue(chart.config.get("color_vmin", 0.0))
+            self.color_vmax_spin.setValue(chart.config.get("color_vmax", 1.0))
+            self._update_color_scale_controls()
+        finally:
+            self._updating_controls = previous_guard
+
+    def apply_colormap_config_to(self, chart):
+        chart.config["colormap"] = self.colormap_control.currentValue()
+        chart.config["colorbar_show"] = self.colorbar_show_toggle.isChecked()
+        chart.config["colorbar_label"] = self.colorbar_label_edit.text()
+        chart.config["color_scale_auto"] = self.color_scale_auto_toggle.isChecked()
+        chart.config["color_vmin"] = self.color_vmin_spin.value()
+        chart.config["color_vmax"] = self.color_vmax_spin.value()
+
+    def clear_colormap_config(self):
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.colormap_control.setCurrentValue("viridis")
+            self.colorbar_show_toggle.setChecked(True)
+            self.colorbar_label_edit.setText("")
+            self.color_scale_auto_toggle.setChecked(True)
+            self.color_vmin_spin.setValue(0.0)
+            self.color_vmax_spin.setValue(1.0)
+            self._update_color_scale_controls()
         finally:
             self._updating_controls = previous_guard
 
@@ -2248,7 +2307,8 @@ class StyleTab(QWidget):
         self.vector_head_width_slider.set_tokens(tokens)
         self.vector_head_length_slider.set_tokens(tokens)
         self.vector_head_axis_length_slider.set_tokens(tokens)
-        self.colormap_card.set_tokens(tokens)
+        self.heatmap_gridding_card.set_tokens(tokens)
+        self.colormap_config_card.set_tokens(tokens)
         self.colormap_control.set_tokens(tokens)
         self.colorbar_show_toggle.set_tokens(tokens)
         self.color_scale_auto_toggle.set_tokens(tokens)
