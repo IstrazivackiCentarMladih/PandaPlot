@@ -44,6 +44,24 @@ def set_figure_mathtext_parsing(fig, enabled: bool) -> None:
         artist.set_parse_math(enabled)
 
 
+def run_with_mathtext_fallback(fig, action):
+    """Run `action()` (a zero-arg callable that renders/lays out `fig`),
+    falling back to literal (non-mathtext) text if it fails on invalid
+    mathtext.
+
+    Mathtext parsing is re-enabled for every text artist before the first
+    attempt, so a label the user has since fixed is rendered as math again
+    rather than staying disabled forever from an earlier failure. Only if
+    that attempt still raises is parsing disabled and `action()` retried."""
+    set_figure_mathtext_parsing(fig, True)
+    try:
+        action()
+    except (ValueError, RuntimeError):
+        logger.debug("invalid mathtext; retrying with mathtext parsing disabled", exc_info=True)
+        set_figure_mathtext_parsing(fig, False)
+        action()
+
+
 def fit_size_cm(viewport_width_px, viewport_height_px, dpi,
                  min_width_cm=2, max_width_cm=50,
                  min_height_cm=2, max_height_cm=40):
@@ -87,12 +105,7 @@ class ChartCanvas(FigureCanvas):
         measured or drawn, so a bad label raises here rather than when it
         was set -- without this, the exception propagates out of draw() and
         the preview is left showing a stale or partially-updated chart."""
-        try:
-            super().draw()
-        except (ValueError, RuntimeError):
-            logger.warning("draw() failed on invalid mathtext; retrying with mathtext parsing disabled", exc_info=True)
-            set_figure_mathtext_parsing(self.fig, False)
-            super().draw()
+        run_with_mathtext_fallback(self.fig, super().draw)
 
     def setup_navigation(self):
         """Set up zoom and pan functionality."""
@@ -253,10 +266,10 @@ class ChartCanvas(FigureCanvas):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
-        except (ValueError, RuntimeError):
-            logger.debug("tight_layout failed on invalid mathtext while resizing chart canvas", exc_info=True)
-            set_figure_mathtext_parsing(self.fig, False)
+            run_with_mathtext_fallback(
+                self.fig,
+                lambda: self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin)),
+            )
         except Exception:
             logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
         self.resize(*self.get_width_height())
@@ -270,10 +283,10 @@ class ChartCanvas(FigureCanvas):
             return
         self.fig.set_dpi(dpi)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
-        except (ValueError, RuntimeError):
-            logger.debug("tight_layout failed on invalid mathtext while changing chart canvas DPI", exc_info=True)
-            set_figure_mathtext_parsing(self.fig, False)
+            run_with_mathtext_fallback(
+                self.fig,
+                lambda: self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin)),
+            )
         except Exception:
             logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())

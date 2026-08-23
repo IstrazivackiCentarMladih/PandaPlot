@@ -28,7 +28,7 @@ from pandaplot.gui.components.tabs.chart.chart_canvas import (
     ChartCanvas,
     cm_to_inches,
     fit_size_cm,
-    set_figure_mathtext_parsing,
+    run_with_mathtext_fallback,
 )
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.components.tabs.chart.chart_heatmap import resolve_color_limits
@@ -320,12 +320,7 @@ def apply_layout_with_legend(fig, tight_layout_kwargs: dict, legend_placed_outsi
     disabled -- falling back to literal text -- if that attempt still fails,
     instead of leaving the layout (and the whole chart preview) stuck
     mid-update."""
-    set_figure_mathtext_parsing(fig, True)
-    try:
-        fig.tight_layout(**tight_layout_kwargs)
-    except (ValueError, RuntimeError):
-        set_figure_mathtext_parsing(fig, False)
-        fig.tight_layout(**tight_layout_kwargs)
+    run_with_mathtext_fallback(fig, lambda: fig.tight_layout(**tight_layout_kwargs))
     if legend_placed_outside:
         fig.tight_layout(**tight_layout_kwargs)
 
