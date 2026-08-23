@@ -103,9 +103,17 @@ class TransformColumnCommand(Command):
         """Remove the added column from dataset or restore original data."""
         try:
             if not self.dataset or not isinstance(self.dataset, Dataset):
+                self.logger.warning(
+                    "TransformColumnCommand.undo: cannot undo for dataset '%s' (dataset found=%s)",
+                    self.dataset_id, self.dataset is not None,
+                )
                 return False
 
             if not hasattr(self.dataset, "data") or self.dataset.data is None:
+                self.logger.warning(
+                    "TransformColumnCommand.undo: dataset '%s' has no data to restore",
+                    self.dataset_id,
+                )
                 return False
 
             df = self.dataset.data.copy()

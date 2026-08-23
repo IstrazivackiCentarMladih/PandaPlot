@@ -1,5 +1,6 @@
 """Tests for RenameProjectCommand (renames the Project itself, not a tree item)."""
 
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -51,6 +52,14 @@ def test_empty_name_rejected(env):
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
+def test_empty_name_rejected_logs_a_warning(env, caplog):
+    app_context, project = env
+    command = RenameProjectCommand(app_context, "   ")
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "Original Name" in caplog.text
+
+
 def test_unchanged_name_is_silent_noop(env):
     app_context, project = env
     command = RenameProjectCommand(app_context, "Original Name")
@@ -66,6 +75,16 @@ def test_no_project_loaded(env):
     command = RenameProjectCommand(app_context, "New Name")
     assert command.execute() is False
     assert project.name == "Original Name"
+
+
+def test_no_project_loaded_logs_a_warning(env, caplog):
+    app_context, project = env
+    app_context.get_app_state.return_value.has_project = False
+
+    command = RenameProjectCommand(app_context, "New Name")
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "New Name" in caplog.text
 
 
 def test_event_emitted_on_rename(env):

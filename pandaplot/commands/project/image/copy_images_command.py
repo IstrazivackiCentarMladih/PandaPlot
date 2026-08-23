@@ -44,10 +44,17 @@ class CopyImagesCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "CopyImagesCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             target_gallery = self.project.find_item(self.target_gallery_id)
             if not isinstance(target_gallery, ImageGallery):
+                self.logger.warning(
+                    "CopyImagesCommand.execute: target gallery '%s' not found or not an ImageGallery (got %s)",
+                    self.target_gallery_id, type(target_gallery).__name__ if target_gallery else None,
+                )
                 self.ui_controller.show_error_message(
                     "Copy Images Error", f"Target gallery '{self.target_gallery_id}' not found."
                 )
@@ -57,6 +64,10 @@ class CopyImagesCommand(Command):
             for image_id in self.image_ids:
                 original = self.project.find_item(image_id)
                 if not isinstance(original, Image):
+                    self.logger.warning(
+                        "CopyImagesCommand.execute: image '%s' not found or not an Image (got %s)",
+                        image_id, type(original).__name__ if original else None,
+                    )
                     self.ui_controller.show_error_message(
                         "Copy Images Error", f"Image '{image_id}' not found."
                     )

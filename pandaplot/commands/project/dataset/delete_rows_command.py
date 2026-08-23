@@ -37,64 +37,84 @@ class DeleteRowsCommand(Command):
             
             # Validate input
             if not self.row_positions:
+                self.logger.warning("DeleteRowsCommand.execute: no row positions specified for deletion")
                 self.ui_controller.show_warning_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     "No rows specified for deletion."
                 )
                 return False
-            
+
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("DeleteRowsCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning("DeleteRowsCommand.execute: has_project is True but current_project is None")
                 return False
-            
+
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "DeleteRowsCommand.execute: dataset '%s' not found", self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "DeleteRowsCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     "Selected item is not a dataset."
                 )
                 return False
-                
+
             self.dataset = found_item
-            
+
             # Get current data
             if self.dataset.data is None or self.dataset.data.empty:
+                self.logger.warning(
+                    "DeleteRowsCommand.execute: dataset '%s' has no data (empty dataset)", self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     "Cannot delete rows from empty dataset."
                 )
                 return False
-            
+
             # Validate row positions
             max_row = len(self.dataset.data) - 1
             invalid_positions = [pos for pos in self.row_positions if pos < 0 or pos > max_row]
             if invalid_positions:
+                self.logger.warning(
+                    "DeleteRowsCommand.execute: invalid row positions %s for dataset '%s' (0-%d)",
+                    invalid_positions, self.dataset_id, max_row,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     f"Invalid row positions: {invalid_positions}. Dataset has {len(self.dataset.data)} rows (0-{max_row})."
                 )
                 return False
-            
+
             # Check for duplicate positions
             if len(set(self.row_positions)) != len(self.row_positions):
+                self.logger.warning(
+                    "DeleteRowsCommand.execute: duplicate row positions in deletion list: %s", self.row_positions,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Rows", 
+                    "Delete Rows",
                     "Duplicate row positions found in the deletion list."
                 )
                 return False
@@ -146,6 +166,11 @@ class DeleteRowsCommand(Command):
 
                 self.logger.info(f"Undid deleting {len(self.row_positions)} rows from dataset '{self.dataset.name}'")
                 return True
+
+            self.logger.warning(
+                "DeleteRowsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
+                self.dataset_id, self.dataset is not None, self.original_data is not None,
+            )
         except Exception as e:
             self.logger.error(f"DeleteRowsBatchCommand Undo Error: {e}")
             return False

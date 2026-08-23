@@ -5,11 +5,15 @@ workbooks yield one correctly-named dataset per selected sheet. The interactive
 wizard and background threading are not exercised here.
 """
 
+import logging
 from unittest.mock import Mock
 
 import pandas as pd
+import pytest
 
 from pandaplot.commands.project.dataset.import_data_command import ImportDataCommand
+from pandaplot.models.state.app_context import AppContext
+from pandaplot.models.state.app_state import AppState
 from pandaplot.services.data_import import CSV_FORMAT, EXCEL_FORMAT, ImportOptions
 
 
@@ -76,3 +80,47 @@ def test_read_frames_falls_back_to_first_sheet_when_none_selected(tmp_path):
 
     assert len(frames) == 1
     assert list(frames[0][1].columns) == ["a"]
+
+
+class TestImportDataCommandLogging:
+    """Tests that genuine failure paths log a warning instead of failing silently."""
+
+    @pytest.fixture
+    def mock_app_context(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        ui_controller = Mock()
+
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = ui_controller
+        app_context.get_task_scheduler.return_value = Mock()
+
+        return app_context, app_state, ui_controller
+
+    def test_execute_logs_warning_when_no_project(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        command = ImportDataCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "no project" in caplog.text.lower()
+
+    def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+        command = ImportDataCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "current_project is None" in caplog.text
+
+    def test_undo_logs_warning_when_nothing_to_undo(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        command = ImportDataCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            command.undo()
+        assert "cannot undo" in caplog.text.lower()

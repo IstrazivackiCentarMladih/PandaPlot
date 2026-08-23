@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -88,6 +89,47 @@ class TestCreateNoteCommand:
         result = command.execute()
         
         assert result is False
+
+    def test_execute_logs_warning_when_no_project_loaded(self, mock_app_context, caplog):
+        """Test execute logs a warning when no project is loaded."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+
+        command = CreateNoteCommand(app_context, "Test Note")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "Test Note" in caplog.text
+
+    def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """Test execute logs a warning when current_project is None despite has_project."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = CreateNoteCommand(app_context, "Test Note")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "CreateNoteCommand.execute" in caplog.text
+
+    def test_redo_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """Test redo logs a warning when current_project is None despite has_project."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = CreateNoteCommand(app_context, "Test Note")
+        command.created_note_id = "test-id"
+        command.created_note = Mock(spec=Note)
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "test-id" in caplog.text
 
     def test_execute_with_default_name(self, mock_app_context, sample_project):
         """Test execute with default note name."""

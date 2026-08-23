@@ -24,28 +24,37 @@ class EditCommand(Command):
         try:
             self.logger.info("Executing EditCommand")
             if not self.app_context.app_state.has_project:
+                self.logger.warning("EditCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
-                    "Edit Cell", 
+                    "Edit Cell",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_context.app_state.current_project
             if not self.project:
+                self.logger.warning("EditCommand.execute: has_project is True but current_project is None")
                 return False
 
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "EditCommand.execute: dataset '%s' not found", self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Edit Cell", 
+                    "Edit Cell",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "EditCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Edit Cell", 
+                    "Edit Cell",
                     "Selected item is not a dataset."
                 )
                 return False
@@ -54,8 +63,11 @@ class EditCommand(Command):
 
             # Get current data
             if self.dataset.data is None:
+                self.logger.warning(
+                    "EditCommand.execute: dataset '%s' has no structure (data is None)", self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Edit Cell", 
+                    "Edit Cell",
                     "Cannot edit cell in dataset without structure."
                 )
                 return False

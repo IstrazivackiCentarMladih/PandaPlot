@@ -69,84 +69,112 @@ class AddColumnsCommand(Command):
             
             # Validate input
             if not self.column_names:
+                self.logger.warning("AddColumnsCommand.execute: no column names provided")
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "No column names provided."
                 )
                 return False
-            
+
             if len(self.column_names) != len(self.reference_positions):
+                self.logger.warning(
+                    "AddColumnsCommand.execute: %d column names but %d reference positions",
+                    len(self.column_names), len(self.reference_positions),
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "Number of column names must match number of reference positions."
                 )
                 return False
-            
+
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("AddColumnsCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning("AddColumnsCommand.execute: has_project is True but current_project is None")
                 return False
-            
+
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "AddColumnsCommand.execute: dataset '%s' not found", self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Add Columns", 
+                    "Add Columns",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "AddColumnsCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "Selected item is not a dataset."
                 )
                 return False
-                
+
             self.dataset = found_item
-            
+
             # Get current data
             if self.dataset.data is None or self.dataset.data.empty:
+                self.logger.warning(
+                    "AddColumnsCommand.execute: dataset '%s' has no data (empty dataset)", self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "Cannot add columns to empty dataset."
                 )
                 return False
-            
+
             # Store original data for undo
             self.original_data = self.dataset.data.copy()
-            
+
             # Validate reference positions
             num_cols = len(self.dataset.data.columns)
             for i, pos in enumerate(self.reference_positions):
                 if pos < 0 or pos >= num_cols:
+                    self.logger.warning(
+                        "AddColumnsCommand.execute: reference position %s for column '%s' out of bounds (0-%d)",
+                        pos, self.column_names[i], num_cols - 1,
+                    )
                     self.ui_controller.show_error_message(
-                        "Add Columns", 
+                        "Add Columns",
                         f"Reference position {pos} for column '{self.column_names[i]}' is out of bounds (0-{num_cols-1})."
                     )
                     return False
-            
+
             # Check for duplicate column names
             existing_columns = set(self.dataset.data.columns)
             duplicate_columns = [name for name in self.column_names if name in existing_columns]
             if duplicate_columns:
+                self.logger.warning(
+                    "AddColumnsCommand.execute: columns already exist in dataset '%s': %s",
+                    self.dataset_id, duplicate_columns,
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     f"The following columns already exist: {', '.join(duplicate_columns)}"
                 )
                 return False
-            
+
             # Check for duplicate names within the new columns
             if len(set(self.column_names)) != len(self.column_names):
+                self.logger.warning(
+                    "AddColumnsCommand.execute: duplicate column names in input: %s", self.column_names,
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Columns", 
+                    "Add Columns",
                     "Duplicate column names found in the list of new columns."
                 )
                 return False
@@ -321,6 +349,11 @@ class AddColumnsCommand(Command):
 
                 self.logger.info(f"Undid adding {len(self.column_names)} columns to dataset '{self.dataset.name}'")
                 return True
+
+            self.logger.warning(
+                "AddColumnsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
+                self.dataset_id, self.dataset is not None, self.original_data is not None,
+            )
         except Exception as e:
             self.logger.error(f"AddColumnsCommand Undo Error: {e}")
             return False

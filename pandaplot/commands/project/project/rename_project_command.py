@@ -30,6 +30,10 @@ class RenameProjectCommand(Command):
     def execute(self) -> bool:
         try:
             if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning(
+                    "RenameProjectCommand.execute: cannot rename to '%s', no project is loaded",
+                    self.new_name,
+                )
                 self.ui_controller.show_warning_message(
                     "Rename Project", "Please open or create a project first.")
                 return False
@@ -37,6 +41,10 @@ class RenameProjectCommand(Command):
 
             self.old_name = project.name
             if not self.new_name:
+                self.logger.warning(
+                    "RenameProjectCommand.execute: rejected empty new name for project '%s'",
+                    self.old_name,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Project", "Project name cannot be empty.")
                 return False

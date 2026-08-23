@@ -71,6 +71,9 @@ class AddRowsColumnsCommand(Command):
             self.logger.info("Executing AddRowsColumnsCommand")
 
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "AddRowsColumnsCommand.execute: no project open; cannot add rows/columns"
+                )
                 self.ui_controller.show_warning_message(
                     "Add Rows / Columns",
                     "Please open or create a project first."
@@ -79,6 +82,9 @@ class AddRowsColumnsCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "AddRowsColumnsCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             # Ask for the target dataset and size unless they were provided
@@ -167,6 +173,9 @@ class AddRowsColumnsCommand(Command):
             options.append(DatasetSize(id=item.id, name=item.name, rows=rows, columns=columns))
 
         if not options:
+            self.logger.warning(
+                "AddRowsColumnsCommand._prompt_for_target: project has no datasets"
+            )
             self.ui_controller.show_warning_message(
                 "Add Rows / Columns",
                 "This project has no datasets. Create or import one first."
@@ -188,6 +197,9 @@ class AddRowsColumnsCommand(Command):
         """Look up the target dataset, reporting why it is unusable if it is."""
         assert self.project is not None
         if not self.dataset_id:
+            self.logger.warning(
+                "AddRowsColumnsCommand._resolve_dataset: no dataset selected"
+            )
             self.ui_controller.show_warning_message(
                 "Add Rows / Columns",
                 "No dataset selected."
@@ -196,6 +208,10 @@ class AddRowsColumnsCommand(Command):
 
         found_item = self.project.find_item(self.dataset_id)
         if not found_item:
+            self.logger.warning(
+                "AddRowsColumnsCommand._resolve_dataset: dataset '%s' not found",
+                self.dataset_id,
+            )
             self.ui_controller.show_error_message(
                 "Add Rows / Columns",
                 f"Dataset with ID '{self.dataset_id}' not found."
@@ -203,6 +219,10 @@ class AddRowsColumnsCommand(Command):
             return None
 
         if not isinstance(found_item, Dataset):
+            self.logger.warning(
+                "AddRowsColumnsCommand._resolve_dataset: item '%s' is not a Dataset (got %s)",
+                self.dataset_id, type(found_item).__name__,
+            )
             self.ui_controller.show_error_message(
                 "Add Rows / Columns",
                 "Selected item is not a dataset."

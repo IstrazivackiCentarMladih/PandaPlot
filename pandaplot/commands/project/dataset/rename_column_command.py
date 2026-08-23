@@ -37,6 +37,10 @@ class RenameColumnCommand(Command):
     def execute(self) -> bool:
         try:
             if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: no project open; cannot rename column in dataset '%s'",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
                     "Rename Column", "Please open or create a project first.")
                 return False
@@ -44,6 +48,10 @@ class RenameColumnCommand(Command):
 
             found_item = project.find_item(self.dataset_id)
             if not isinstance(found_item, Dataset) or found_item.data is None:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: dataset '%s' not found or has no data",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", f"Dataset with ID '{self.dataset_id}' not found.")
                 return False
@@ -51,18 +59,30 @@ class RenameColumnCommand(Command):
 
             columns = list(self.dataset.data.columns)
             if not (0 <= self.column_index < len(columns)):
+                self.logger.warning(
+                    "RenameColumnCommand.execute: column_index %s out of range for dataset '%s' (%d columns)",
+                    self.column_index, self.dataset_id, len(columns),
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", f"Column index {self.column_index} is out of range.")
                 return False
 
             self.old_name = columns[self.column_index]
             if not self.new_name:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: new column name is empty for dataset '%s' index %s",
+                    self.dataset_id, self.column_index,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", "Column name cannot be empty.")
                 return False
             if self.new_name == self.old_name:
                 return False
             if self.new_name in columns:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: column name '%s' already exists in dataset '%s'",
+                    self.new_name, self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column",
                     f"A column named '{self.new_name}' already exists in this dataset.")

@@ -2,6 +2,7 @@
 Unit tests for CreateFolderCommand.
 """
 
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -87,8 +88,22 @@ class TestCreateFolderCommand:
         
         command = CreateFolderCommand(app_context)
         result = command.execute()
-        
+
         assert result is False
+
+    def test_execute_no_current_project_logs_a_warning(self, mock_app_context, caplog):
+        """Test execute logs a warning when has_project is True but current_project is None."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = CreateFolderCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "CreateFolderCommand.execute" in caplog.text
 
     def test_execute_with_default_name_generation(self, mock_app_context, sample_project):
         """Test execute with default name generation when no existing folders."""
@@ -344,8 +359,28 @@ class TestCreateFolderCommand:
         command.created_folder = Folder(name="Test Folder")
         
         result = command.redo()
-        
+
         assert result is False
+
+    def test_redo_no_current_project_logs_a_warning(self, mock_app_context, sample_project, caplog):
+        """Test redo logs a warning when has_project is True but current_project is None."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        command = CreateFolderCommand(app_context, "Test Folder")
+        result = command.execute()
+        assert result is True
+
+        # Now current_project disappears (has_project still True) before redo runs.
+        app_state.current_project = None
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "CreateFolderCommand.redo" in caplog.text
+        assert command.created_folder_id in caplog.text
 
     def test_redo_with_exception(self, mock_app_context, sample_project):
         """Test redo when an exception occurs."""

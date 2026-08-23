@@ -128,6 +128,10 @@ class DescriptiveStatsCommand(Command):
     def undo(self) -> bool:
         try:
             if not self.app_state.current_project:
+                self.logger.warning(
+                    "DescriptiveStatsCommand.undo: no project loaded; cannot undo results '%s'",
+                    self.result_dataset_id,
+                )
                 return False
             project = self.app_state.current_project
 

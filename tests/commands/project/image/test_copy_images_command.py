@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from pandaplot.commands.project.image.copy_images_command import CopyImagesCommand
@@ -99,6 +101,37 @@ class TestCopyImagesCommandBatchAndCrossGallery:
         target_gallery = project.find_item(other_gallery_id)
         assert len([c for c in source_gallery.get_items() if isinstance(c, Image)]) == 1, "original stays put"
         assert len([c for c in target_gallery.get_items() if isinstance(c, Image)]) == 1, "copy lands in target"
+
+
+class TestCopyImagesCommandLogging:
+    def test_execute_logs_a_warning_when_current_project_is_none(self, app_context_with_project, caplog):
+        app_context_with_project.get_app_state().current_project = None
+
+        command = CopyImagesCommand(
+            app_context_with_project, image_ids=[], target_gallery_id="some-gallery"
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "CopyImagesCommand.execute" in caplog.text
+
+    def test_execute_logs_a_warning_when_target_gallery_not_found(self, app_context_with_project, caplog):
+        command = CopyImagesCommand(
+            app_context_with_project, image_ids=[], target_gallery_id="missing-gallery"
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "missing-gallery" in caplog.text
+
+    def test_execute_logs_a_warning_when_image_not_found(self, app_context_with_project, gallery_id, caplog):
+        command = CopyImagesCommand(
+            app_context_with_project, image_ids=["missing-image"], target_gallery_id=gallery_id
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "missing-image" in caplog.text
 
 
 class TestCopyImagesCommandUndo:

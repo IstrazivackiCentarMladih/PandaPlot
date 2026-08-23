@@ -1,5 +1,6 @@
 """Tests for DeleteColumnsCommand (column drop + chart-reference cascade)."""
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -232,6 +233,107 @@ def test_delete_error_bar_column_clears_reference_but_keeps_series(env):
     series = line_chart.data_series[0]
     assert series.style.error_bars.y_error_column_id == ""
     assert series.style.error_bars.y_error_column == ""
+
+
+def test_execute_logs_a_warning_when_no_column_specs(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, [])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "no column specs" in caplog.text.lower()
+
+
+def test_execute_logs_a_warning_when_no_project_open(env, caplog):
+    app_context, dataset, _, _, _ = env
+    app_context.get_app_state.return_value.has_project = False
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "no project" in caplog.text.lower()
+
+
+def test_execute_logs_a_warning_when_dataset_not_found(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, "missing-ds", ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing-ds" in caplog.text
+
+
+def test_execute_logs_a_warning_when_item_is_not_a_dataset(env, caplog):
+    app_context, dataset, _, chart, _ = env
+    # 'chart' is already registered in the project (see env fixture) but is a
+    # Chart, not a Dataset.
+    command = DeleteColumnsCommand(app_context, chart.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert chart.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_dataset_is_empty(env, caplog):
+    import pandas as pd
+
+    from pandaplot.models.project.items import Dataset
+
+    app_context, _, _, _, _ = env
+    empty_ds = Dataset(name="empty", data=pd.DataFrame())
+    app_context.get_app_state.return_value.current_project.add_item(empty_ds)
+    command = DeleteColumnsCommand(app_context, empty_ds.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert empty_ds.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_no_valid_columns_resolved(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, [999])  # out-of-range position
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_columns_missing(env, caplog, monkeypatch):
+    # _resolve_columns() already filters out names that don't exist at
+    # resolution time, so the "missing columns" check in execute() only
+    # guards against the column disappearing between resolution and this
+    # check (e.g. a race). Force that by stubbing _resolve_columns() to
+    # report a column that isn't actually in the dataset.
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    def _fake_resolve():
+        command.column_names = ["ghost"]
+        command.column_positions = [0]
+
+    monkeypatch.setattr(command, "_resolve_columns", _fake_resolve)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "ghost" in caplog.text
+
+
+def test_execute_logs_a_warning_when_duplicate_column_names(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a", "a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_deleting_all_columns(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a", "b", "c", "d"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
 
 
 def test_undo_restores_a_cleared_error_bar_reference(env):

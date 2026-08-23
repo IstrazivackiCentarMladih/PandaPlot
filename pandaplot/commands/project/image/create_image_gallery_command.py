@@ -42,6 +42,9 @@ class CreateImageGalleryCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "CreateImageGalleryCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             if not self.gallery_name:
@@ -53,6 +56,9 @@ class CreateImageGalleryCommand(Command):
                 gallery_name = self.gallery_name.strip()
 
             if not gallery_name:
+                self.logger.warning(
+                    "CreateImageGalleryCommand.execute: gallery name is empty (parent_id=%s)", self.parent_id
+                )
                 self.ui_controller.show_warning_message(
                     "Create Image Gallery",
                     "Gallery name cannot be empty."
@@ -120,6 +126,9 @@ class CreateImageGalleryCommand(Command):
             if self.created_gallery_id and self.created_gallery is not None and self.app_state.has_project:
                 project = self.app_state.current_project
                 if not project:
+                    self.logger.warning(
+                        "CreateImageGalleryCommand.redo: has_project is True but current_project is None"
+                    )
                     return False
 
                 project.add_item(self.created_gallery, parent_id=self.parent_id)

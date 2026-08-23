@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -68,45 +69,88 @@ class TestDeleteItemCommand:
         """Test execute when no project is loaded."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
-        
+
         command = DeleteItemCommand(app_context, "item-123")
         result = command.execute()
-        
+
         assert result is False
         ui_controller.show_warning_message.assert_called_once_with(
-            "Delete Item", 
+            "Delete Item",
             "No project is currently loaded."
         )
+
+    def test_execute_no_project_loaded_logs_a_warning(self, mock_app_context, caplog):
+        """Test execute logs a warning when no project is loaded."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+
+        command = DeleteItemCommand(app_context, "item-123")
+
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "DeleteItemCommand.execute" in caplog.text
 
     def test_execute_no_current_project(self, mock_app_context):
         """Test execute when current project is None."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = True
         app_state.current_project = None
-        
+
         command = DeleteItemCommand(app_context, "item-123")
         result = command.execute()
-        
+
         assert result is False
+
+    def test_execute_no_current_project_logs_a_warning(self, mock_app_context, caplog):
+        """Test execute logs a warning when current_project is None."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = DeleteItemCommand(app_context, "item-123")
+
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "DeleteItemCommand.execute" in caplog.text
 
     def test_execute_item_not_found(self, mock_app_context, sample_project):
         """Test execute when item is not found."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = True
         app_state.current_project = sample_project
-        
+
         # find_item returns None
         sample_project.find_item.return_value = None
-        
+
         command = DeleteItemCommand(app_context, "item-123")
         result = command.execute()
-        
+
         assert result is False
         sample_project.find_item.assert_called_once_with("item-123")
         ui_controller.show_warning_message.assert_called_once_with(
-            "Delete Item", 
+            "Delete Item",
             "Item 'item-123' not found in the project."
         )
+
+    def test_execute_item_not_found_logs_a_warning(self, mock_app_context, sample_project, caplog):
+        """Test execute logs a warning when item is not found."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        sample_project.find_item.return_value = None
+
+        command = DeleteItemCommand(app_context, "item-123")
+
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "item-123" in caplog.text
 
     def test_execute_user_cancels_deletion(self, mock_app_context, sample_project, sample_note):
         """Test execute when user cancels the deletion."""
@@ -287,14 +331,31 @@ class TestDeleteItemCommand:
         """Test undo when no project is loaded."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
-        
+
         command = DeleteItemCommand(app_context, "item-123")
         command.deleted_item_class = Note
         command.deleted_item_data = {"id": "note-123", "name": "Test"}
-        
+
         result = command.undo()
-        
+
         assert result is False
+
+    def test_undo_logs_a_warning_when_current_project_is_none(self, mock_app_context, caplog):
+        """Test undo logs a warning when has_project is True but current_project is None."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = DeleteItemCommand(app_context, "note-123")
+        command.deleted_item_class = Note
+        command.deleted_item_data = {"id": "note-123", "name": "Test"}
+
+        with caplog.at_level(logging.WARNING):
+            result = command.undo()
+
+        assert result is False
+        assert "DeleteItemCommand.undo" in caplog.text
+        assert "note-123" in caplog.text
 
     def test_undo_with_exception(self, mock_app_context, sample_project, sample_note):
         """Test undo when an exception occurs."""
@@ -355,16 +416,51 @@ class TestDeleteItemCommand:
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = True
         app_state.current_project = sample_project
-        
+
         sample_project.find_item.return_value = None
-        
+
         command = DeleteItemCommand(app_context, "note-123")
         command.deleted_item_class = Note
         command.deleted_item_data = {"id": "note-123", "name": "Test"}
-        
+
         result = command.redo()
-        
+
         assert result is False
+
+    def test_redo_item_not_found_logs_a_warning(self, mock_app_context, sample_project, caplog):
+        """Test redo logs a warning when item is not found."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        sample_project.find_item.return_value = None
+
+        command = DeleteItemCommand(app_context, "note-123")
+        command.deleted_item_class = Note
+        command.deleted_item_data = {"id": "note-123", "name": "Test"}
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "note-123" in caplog.text
+
+    def test_redo_logs_a_warning_when_current_project_is_none(self, mock_app_context, caplog):
+        """Test redo logs a warning when has_project is True but current_project is None."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = DeleteItemCommand(app_context, "note-123")
+        command.deleted_item_class = Note
+        command.deleted_item_data = {"id": "note-123", "name": "Test"}
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "DeleteItemCommand.redo" in caplog.text
+        assert "note-123" in caplog.text
 
     def test_redo_with_exception(self, mock_app_context, sample_project, sample_note):
         """Test redo when an exception occurs."""
