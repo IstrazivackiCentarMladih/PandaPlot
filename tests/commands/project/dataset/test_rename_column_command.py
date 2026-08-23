@@ -7,6 +7,7 @@ id (see resolve_series_column). The name fields are only a fallback and are
 intentionally left untouched.
 """
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -105,6 +106,52 @@ def test_duplicate_name_rejected(env):
     assert command.execute() is False
     assert list(dataset.data.columns) == ["a", "b"]
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+
+def test_duplicate_name_rejected_logs_a_warning(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 0, "b")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "b" in caplog.text
+
+
+def test_execute_logs_a_warning_when_no_project_open(env, caplog):
+    app_context, dataset, _, _ = env
+    app_context.get_app_state.return_value.has_project = False
+    command = RenameColumnCommand(app_context, dataset.id, 0, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_dataset_not_found(env, caplog):
+    app_context, _, _, _ = env
+    command = RenameColumnCommand(app_context, "missing-ds", 0, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing-ds" in caplog.text
+
+
+def test_execute_logs_a_warning_when_column_index_out_of_range(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 5, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "5" in caplog.text
+
+
+def test_execute_logs_a_warning_when_new_name_is_empty(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 0, "   ")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
 
 
 def test_empty_name_rejected(env):

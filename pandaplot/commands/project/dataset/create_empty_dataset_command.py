@@ -47,6 +47,7 @@ class CreateEmptyDatasetCommand(Command):
             self.logger.info("Executing CreateEmptyDatasetCommand")
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("CreateEmptyDatasetCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
                     "Create Dataset",
                     "Please open or create a project first."
@@ -55,6 +56,7 @@ class CreateEmptyDatasetCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning("CreateEmptyDatasetCommand.execute: has_project is True but current_project is None")
                 return False
 
             # Get dataset shape/name from the dialog if not provided programmatically
@@ -145,6 +147,11 @@ class CreateEmptyDatasetCommand(Command):
                     self.logger.info(
                         "Undone creation of dataset '%s'", self.dataset_id
                     )
+                    return
+            self.logger.warning(
+                "CreateEmptyDatasetCommand.undo: cannot undo (dataset_id set=%s, has_project=%s)",
+                bool(self.dataset_id), self.app_state.has_project,
+            )
 
         except Exception as e:
             error_msg = f"Failed to undo dataset creation: {str(e)}"
@@ -156,6 +163,9 @@ class CreateEmptyDatasetCommand(Command):
         try:
             if self.dataset_name:
                 return self.execute()
+            self.logger.warning(
+                "CreateEmptyDatasetCommand.redo: cannot redo, no dataset_name recorded (execute() likely never succeeded)"
+            )
         except Exception as e:
             error_msg = f"Failed to redo dataset creation: {str(e)}"
             self.logger.error(error_msg, exc_info=True)

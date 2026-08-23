@@ -86,84 +86,120 @@ class DeleteColumnsCommand(Command):
             
             # Validate input
             if not self.column_specs:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no column specs provided"
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "No columns specified for deletion."
                 )
                 return False
-            
+
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no project open; cannot delete columns"
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: has_project is True but current_project is None"
+                )
                 return False
-            
+
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: dataset '%s' not found", self.dataset_id
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Selected item is not a dataset."
                 )
                 return False
-                
+
             self.dataset = found_item
-            
+
             # Get current data
             if self.dataset.data is None or self.dataset.data.empty:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: dataset '%s' has no data to delete columns from",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Cannot delete columns from empty dataset."
                 )
                 return False
-            
+
             # Resolve column names and positions based on input type
             self._resolve_columns()
-            
+
             # Validate resolved columns
             if not self.column_names:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no valid columns resolved from specs %s for dataset '%s'",
+                    self.column_specs, self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "No valid columns found for deletion."
                 )
                 return False
-            
+
             # Check if all resolved columns exist
             existing_columns = set(self.dataset.data.columns)
             missing_columns = [col for col in self.column_names if col not in existing_columns]
             if missing_columns:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: columns %s not found in dataset '%s'",
+                    missing_columns, self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     f"The following columns do not exist: {', '.join(missing_columns)}"
                 )
                 return False
-            
+
             # Check for duplicate column names
             if len(set(self.column_names)) != len(self.column_names):
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: duplicate column names in deletion list %s for dataset '%s'",
+                    self.column_names, self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Duplicate column names found in the deletion list."
                 )
                 return False
-            
+
             # Check if we're trying to delete all columns
             remaining_columns = len(self.dataset.data.columns) - len(self.column_names)
             if remaining_columns <= 0:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: refusing to delete all %d columns from dataset '%s'",
+                    len(self.dataset.data.columns), self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Cannot delete all columns from dataset. Dataset must have at least one column."
                 )
                 return False

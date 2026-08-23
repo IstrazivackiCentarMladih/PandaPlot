@@ -156,6 +156,10 @@ class SignalAnalysisCommand(Command):
                 not self.result_dataset_id
                 or not self.app_state.current_project
             ):
+                self.logger.warning(
+                    "SignalAnalysisCommand.undo: cannot undo (result_dataset_id=%s, project loaded=%s)",
+                    self.result_dataset_id, bool(self.app_state.current_project),
+                )
                 return False
 
             project = self.app_state.current_project

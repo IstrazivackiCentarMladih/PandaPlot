@@ -42,6 +42,9 @@ class CreateFolderCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "CreateFolderCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             # Get folder name if not provided
@@ -132,6 +135,10 @@ class CreateFolderCommand(Command):
             if self.created_folder_id and self.created_folder is not None and self.app_state.has_project:
                 project = self.app_state.current_project
                 if not project:
+                    self.logger.warning(
+                        "CreateFolderCommand.redo: has_project is True but current_project is None (folder id=%s)",
+                        self.created_folder_id,
+                    )
                     return False
 
                 # Re-add the same folder object to the project

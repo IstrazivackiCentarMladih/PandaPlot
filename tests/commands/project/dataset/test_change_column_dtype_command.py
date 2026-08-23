@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 import pandas as pd
@@ -47,3 +48,119 @@ class TestChangeColumnDtypeCommand:
 
         assert result is True
         assert str(dataset.data["a"].dtype) == "float64"
+
+
+class TestChangeColumnDtypeCommandLogging:
+    """Tests that genuine failure paths log a warning instead of failing silently."""
+
+    @pytest.fixture
+    def mock_app_context(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        ui_controller = Mock(spec=UIController)
+
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = ui_controller
+        app_context.event_bus = Mock()
+        app_context.event_bus.emit = Mock()
+
+        return app_context, app_state, ui_controller
+
+    @pytest.fixture
+    def sample_project(self):
+        project = Mock()
+        project.find_item = Mock()
+        return project
+
+    def test_execute_logs_warning_when_no_project(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "no project" in caplog.text.lower()
+
+    def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "current_project is None" in caplog.text
+
+    def test_execute_logs_warning_when_dataset_not_found(self, mock_app_context, sample_project, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        sample_project.find_item.return_value = None
+        command = ChangeColumnDtypeCommand(app_context, "missing-ds", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "missing-ds" in caplog.text
+
+    def test_execute_logs_warning_when_item_not_a_dataset(self, mock_app_context, sample_project, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        sample_project.find_item.return_value = object()
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "ds-1" in caplog.text and "not a Dataset" in caplog.text
+
+    def test_execute_logs_warning_when_dataset_empty(self, mock_app_context, sample_project, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame())
+        sample_project.find_item.return_value = dataset
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "ds-1" in caplog.text and "no data" in caplog.text.lower()
+
+    def test_execute_logs_warning_when_column_index_out_of_range(self, mock_app_context, sample_project, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1, 2]}))
+        sample_project.find_item.return_value = dataset
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 5, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "5" in caplog.text
+
+    def test_execute_logs_warning_when_conversion_fails(self, mock_app_context, sample_project, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1, 2]}))
+        sample_project.find_item.return_value = dataset
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "unsupported_type")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "ds-1" in caplog.text and "conversion" in caplog.text.lower()
+
+    def test_undo_logs_warning_when_nothing_to_undo(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            command.undo()
+        assert "ds-1" in caplog.text
+
+    def test_redo_logs_warning_when_nothing_to_redo(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+
+        with caplog.at_level(logging.WARNING):
+            command.redo()
+        assert "ds-1" in caplog.text

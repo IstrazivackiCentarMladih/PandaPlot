@@ -30,28 +30,37 @@ class EditBatchCommand(Command):
         try:
             self.logger.info("Executing EditBatchCommand")
             if not self.app_context.app_state.has_project:
+                self.logger.warning("EditBatchCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
-                    "Batch Edit", 
+                    "Batch Edit",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_context.app_state.current_project
             if not self.project:
+                self.logger.warning("EditBatchCommand.execute: has_project is True but current_project is None")
                 return False
 
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "EditBatchCommand.execute: dataset '%s' not found", self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Batch Edit", 
+                    "Batch Edit",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "EditBatchCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Batch Edit", 
+                    "Batch Edit",
                     "Selected item is not a dataset."
                 )
                 return False
@@ -60,16 +69,20 @@ class EditBatchCommand(Command):
 
             # Get current data
             if self.dataset.data is None:
+                self.logger.warning(
+                    "EditBatchCommand.execute: dataset '%s' has no structure (data is None)", self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Batch Edit", 
+                    "Batch Edit",
                     "Cannot edit cells in dataset without structure."
                 )
                 return False
 
             # Validate input data
             if not self.new_data:
+                self.logger.warning("EditBatchCommand.execute: no data provided for batch edit")
                 self.ui_controller.show_warning_message(
-                    "Batch Edit", 
+                    "Batch Edit",
                     "No data provided for batch edit."
                 )
                 return False
@@ -78,8 +91,12 @@ class EditBatchCommand(Command):
             expected_cols = len(self.new_data[0])
             for i, row in enumerate(self.new_data):
                 if len(row) != expected_cols:
+                    self.logger.warning(
+                        "EditBatchCommand.execute: row %d has %d columns, expected %d",
+                        i, len(row), expected_cols,
+                    )
                     self.ui_controller.show_error_message(
-                        "Batch Edit", 
+                        "Batch Edit",
                         f"Row {i} has {len(row)} columns, expected {expected_cols}. All rows must have the same length."
                     )
                     return False
@@ -96,22 +113,29 @@ class EditBatchCommand(Command):
                 if current_rows == 0:
                     # Special case: empty dataset, we need to handle this differently
                     # This shouldn't happen in practice since we validate data exists above
+                    self.logger.warning(
+                        "EditBatchCommand.execute: cannot add rows to completely empty dataset '%s'", self.dataset_id,
+                    )
                     self.ui_controller.show_error_message(
-                        "Batch Edit", 
+                        "Batch Edit",
                         "Cannot add rows to completely empty dataset."
                     )
                     return False
-                
+
                 add_rows_command = AddRowsCommand(
                     app_context=self.app_context,
                     dataset_id=self.dataset_id,
                     reference_positions=[current_rows - 1] * rows_to_add,  # Reference last row
                     side="below"  # Insert below the last row
                 )
-                
+
                 if not add_rows_command.execute():
+                    self.logger.warning(
+                        "EditBatchCommand.execute: failed to add %d rows to dataset '%s'",
+                        rows_to_add, self.dataset_id,
+                    )
                     self.ui_controller.show_error_message(
-                        "Batch Edit", 
+                        "Batch Edit",
                         f"Failed to add {rows_to_add} rows to accommodate new data."
                     )
                     return False
@@ -137,12 +161,15 @@ class EditBatchCommand(Command):
                 # Use AddColumnsCommand to add the required columns
                 if current_cols == 0:
                     # Special case: no columns, this shouldn't happen since we validate data exists above
+                    self.logger.warning(
+                        "EditBatchCommand.execute: cannot add columns to dataset '%s' without any columns", self.dataset_id,
+                    )
                     self.ui_controller.show_error_message(
-                        "Batch Edit", 
+                        "Batch Edit",
                         "Cannot add columns to dataset without any columns."
                     )
                     return False
-                
+
                 add_columns_command = AddColumnsCommand(
                     app_context=self.app_context,
                     dataset_id=self.dataset_id,
@@ -151,10 +178,14 @@ class EditBatchCommand(Command):
                     side="right",  # Insert to the right of the last column
                     default_values=[0] * cols_to_add  # Default to 0 for new columns
                 )
-                
+
                 if not add_columns_command.execute():
+                    self.logger.warning(
+                        "EditBatchCommand.execute: failed to add %d columns to dataset '%s'",
+                        cols_to_add, self.dataset_id,
+                    )
                     self.ui_controller.show_error_message(
-                        "Batch Edit", 
+                        "Batch Edit",
                         f"Failed to add {cols_to_add} columns to accommodate new data."
                     )
                     return False
@@ -216,7 +247,13 @@ class EditBatchCommand(Command):
                 "new_data": self.old_data.values.tolist(),
                 "old_data": self.new_data
             })
-    
+            return
+
+        self.logger.warning(
+            "EditBatchCommand.undo: cannot undo for dataset '%s' (old_data set=%s, dataset found=%s)",
+            self.dataset_id, self.old_data is not None, getattr(self, "dataset", None) is not None,
+        )
+
     def redo(self):
         """Reapply the batch edit"""
         # Re-execute any expansion commands first
@@ -240,3 +277,8 @@ class EditBatchCommand(Command):
                 "new_data": self.new_data,
                 "old_data": self.old_data.values.tolist() if self.old_data is not None else None
             })
+        else:
+            self.logger.warning(
+                "EditBatchCommand.redo: cannot redo for dataset '%s' (dataset found=%s)",
+                self.dataset_id, getattr(self, "dataset", None) is not None,
+            )

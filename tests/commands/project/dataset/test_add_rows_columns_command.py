@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 import pandas as pd
@@ -182,6 +183,27 @@ class TestAddRowsColumnsCommand:
         assert command.execute() is False
         ui_controller.show_warning_message.assert_called_once()
 
+    def test_requires_an_open_project_logs_a_warning(self, mock_app_context, caplog):
+        app_context, app_state, _ = mock_app_context
+        app_state.has_project = False
+
+        command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "no project" in caplog.text.lower()
+
+    def test_current_project_none_logs_a_warning(self, mock_app_context, caplog):
+        app_context, app_state, _ = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "current_project is none" in caplog.text.lower()
+
     def test_reports_a_missing_dataset(self, mock_app_context, project_with):
         app_context, _, ui_controller = mock_app_context
         project = project_with(Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]})))
@@ -191,6 +213,37 @@ class TestAddRowsColumnsCommand:
 
         assert command.execute() is False
         ui_controller.show_error_message.assert_called_once()
+
+    def test_reports_a_missing_dataset_logs_a_warning(self, mock_app_context, project_with, caplog):
+        app_context, _, _ = mock_app_context
+        project = project_with(Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]})))
+        project.find_item.return_value = None
+
+        command = AddRowsColumnsCommand(app_context, "missing-ds", target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "missing-ds" in caplog.text
+
+    def test_no_dataset_selected_logs_a_warning(self, mock_app_context, project_with, caplog):
+        app_context, _, _ = mock_app_context
+        project_with(Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]})))
+
+        command = AddRowsColumnsCommand(app_context, dataset_id=None, target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "no dataset selected" in caplog.text.lower()
+
+    def test_item_not_a_dataset_logs_a_warning(self, mock_app_context, project_with, caplog):
+        app_context, _, _ = mock_app_context
+        project_with(Mock(spec=[]))  # not a Dataset instance
+
+        command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "ds-1" in caplog.text
 
 
 class TestAddRowsColumnsCommandPrompt:
@@ -245,3 +298,15 @@ class TestAddRowsColumnsCommandPrompt:
 
         assert command.execute() is False
         ui_controller.show_warning_message.assert_called_once()
+
+    def test_warns_when_the_project_has_no_datasets_logs_a_warning(self, mock_app_context, caplog):
+        app_context, app_state, _ = mock_app_context
+        project = Mock()
+        project.get_all_items = Mock(return_value=[])
+        app_state.current_project = project
+
+        command = AddRowsColumnsCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "no datasets" in caplog.text.lower()

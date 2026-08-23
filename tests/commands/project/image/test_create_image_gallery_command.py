@@ -4,6 +4,8 @@
 # fixture setup (see conftest.py in this directory for the AppContext/
 # app_state/ui_controller mock construction this test relies on).
 
+import logging
+
 from pandaplot.commands.project.image.create_image_gallery_command import (
     CreateImageGalleryCommand,
 )
@@ -46,3 +48,32 @@ class TestCreateImageGalleryCommand:
         assert command.redo() is True
         project = app_context_with_project.get_app_state().current_project
         assert project.find_item(command.created_gallery_id) is not None
+
+
+class TestCreateImageGalleryCommandLogging:
+    def test_execute_logs_a_warning_when_current_project_is_none(self, app_context_with_project, caplog):
+        app_context_with_project.get_app_state().current_project = None
+
+        command = CreateImageGalleryCommand(app_context_with_project, gallery_name="Trip")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "CreateImageGalleryCommand.execute" in caplog.text
+
+    def test_execute_logs_a_warning_when_gallery_name_is_empty(self, app_context_with_project, caplog):
+        command = CreateImageGalleryCommand(app_context_with_project, gallery_name="   ")
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "CreateImageGalleryCommand.execute" in caplog.text
+
+    def test_redo_logs_a_warning_when_current_project_is_none(self, app_context_with_project, caplog):
+        command = CreateImageGalleryCommand(app_context_with_project, gallery_name="Trip")
+        command.execute()
+        command.undo()
+
+        app_context_with_project.get_app_state().current_project = None
+
+        with caplog.at_level(logging.WARNING):
+            assert command.redo() is False
+        assert "CreateImageGalleryCommand.redo" in caplog.text

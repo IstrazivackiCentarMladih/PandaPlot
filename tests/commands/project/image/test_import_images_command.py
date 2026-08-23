@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 from unittest.mock import Mock, patch
 
@@ -130,6 +131,41 @@ class TestImportImagesCommandErrors:
         )
 
         assert command.execute() is False
+
+
+class TestImportImagesCommandLogging:
+    def test_execute_logs_a_warning_when_current_project_is_none(self, app_context_with_project, caplog):
+        app_context_with_project.get_app_state().current_project = None
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id="some-gallery", sources=["/no/such/file.png"],
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "ImportImagesCommand.execute" in caplog.text
+
+    def test_execute_logs_a_warning_when_gallery_not_found(self, app_context_with_project, tmp_path, caplog):
+        png_path = tmp_path / "photo.png"
+        _write_test_png(png_path)
+
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id="does-not-exist",
+            sources=[str(png_path)], copy_into_project=True,
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert "does-not-exist" in caplog.text
+
+    def test_execute_logs_a_warning_when_no_sources_given(self, app_context_with_project, gallery_id, caplog):
+        command = ImportImagesCommand(
+            app_context_with_project, gallery_id=gallery_id, sources=[],
+        )
+
+        with caplog.at_level(logging.WARNING):
+            assert command.execute() is False
+        assert gallery_id in caplog.text
 
 
 class TestImportImagesCommandModifiedTime:

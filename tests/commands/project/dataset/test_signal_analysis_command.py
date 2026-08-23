@@ -1,5 +1,6 @@
 """Tests for SignalAnalysisCommand."""
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -124,3 +125,22 @@ class TestSignalAnalysisCommand:
         assert command.execute() is False
 
         assert command.result_dataset_id is None
+
+    def test_undo_logs_a_warning_when_nothing_to_undo(
+        self,
+        app_context_with_project,
+        caplog,
+    ):
+        app_context, _ = app_context_with_project
+
+        command = SignalAnalysisCommand(
+            app_context,
+            "ds-1",
+            SignalAnalysisType.PEAKS,
+            "signal",
+        )
+        # undo() called without a prior successful execute(): result_dataset_id is None.
+
+        with caplog.at_level(logging.WARNING):
+            assert command.undo() is False
+        assert "SignalAnalysisCommand.undo" in caplog.text

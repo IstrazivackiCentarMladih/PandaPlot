@@ -77,6 +77,10 @@ class ApplyFitCommand(Command):
         chart = self._find_chart()
 
         if chart is None:
+            self.logger.warning(
+                "ApplyFitCommand.execute: chart '%s' not found or not a Chart",
+                self.chart_id,
+            )
             return False
 
         results = self.fit_results
@@ -121,6 +125,10 @@ class ApplyFitCommand(Command):
         chart = self._find_chart()
 
         if chart is None or self.added_index is None:
+            self.logger.warning(
+                "ApplyFitCommand.undo: cannot undo for chart '%s' (chart found=%s, added_index set=%s)",
+                self.chart_id, chart is not None, self.added_index is not None,
+            )
             return
 
         chart.remove_fit_data(self.added_index)

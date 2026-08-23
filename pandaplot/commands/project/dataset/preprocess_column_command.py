@@ -106,6 +106,10 @@ class PreprocessColumnCommand(Command):
         """Restore replaced columns and drop newly created ones."""
         try:
             if not isinstance(self.dataset, Dataset) or self.dataset.data is None:
+                self.logger.warning(
+                    "PreprocessColumnCommand.undo: cannot undo for dataset '%s' (dataset found=%s)",
+                    self.dataset_id, isinstance(self.dataset, Dataset),
+                )
                 return False
 
             df = self.dataset.data.copy()

@@ -56,7 +56,14 @@ class PerformFitCommand(Command):
                 custom_parameters=self.custom_parameters,
                 fixed_parameters=self.fixed_parameters)
 
-            return self.result is not None
+            if self.result is None:
+                self.logger.warning(
+                    "PerformFitCommand.execute: fit_service returned no result for fit_type=%s",
+                    self.fit_type,
+                )
+                return False
+
+            return True
 
         except Exception as e:
             self.logger.exception("PerformFitCommand failed")

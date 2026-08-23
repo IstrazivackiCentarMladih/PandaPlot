@@ -59,16 +59,26 @@ class ImportImagesCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "ImportImagesCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             gallery = self.project.find_item(self.gallery_id)
             if not isinstance(gallery, ImageGallery):
+                self.logger.warning(
+                    "ImportImagesCommand.execute: gallery '%s' not found or not an ImageGallery (got %s)",
+                    self.gallery_id, type(gallery).__name__ if gallery else None,
+                )
                 self.ui_controller.show_error_message(
                     "Import Images Error", f"Gallery '{self.gallery_id}' not found."
                 )
                 return False
 
             if not self.sources:
+                self.logger.warning(
+                    "ImportImagesCommand.execute: no sources given for gallery '%s'", self.gallery_id
+                )
                 self.ui_controller.show_warning_message("Import Images", "No images selected to import.")
                 return False
 
