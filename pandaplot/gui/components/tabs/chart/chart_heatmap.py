@@ -49,11 +49,24 @@ def pivot_to_grid(x_data, y_data, z_data):
 
     Raises ``ValueError`` when there are no points to grid, so the caller can
     surface a "no data" state rather than drawing an empty axes.
+
+    Rows with a non-finite X or Y are dropped before gridding --
+    ``pcolormesh`` rejects non-finite coordinate arrays outright, and that
+    exception would occur after this function returns, escaping the
+    caller's ``ValueError`` guard. A non-finite Z at an otherwise-finite
+    (x, y), by contrast, is left in place: it becomes that cell's stored
+    value, which already renders as a transparent cell (NaN), the same
+    outcome as a cell nothing ever sampled.
     """
     x = np.asarray(x_data, dtype=float)
     y = np.asarray(y_data, dtype=float)
     z = np.asarray(z_data, dtype=float)
     if x.size == 0 or y.size == 0 or z.size == 0:
+        raise ValueError("no data to grid")
+
+    finite_xy = np.isfinite(x) & np.isfinite(y)
+    x, y, z = x[finite_xy], y[finite_xy], z[finite_xy]
+    if x.size == 0:
         raise ValueError("no data to grid")
 
     xs = np.unique(x)
@@ -79,11 +92,23 @@ def bin_to_grid(x_data, y_data, z_data, bins: int):
     len(x_centers))``, ready for pcolormesh with ``shading="nearest"``.
 
     Raises ``ValueError`` when there are no points to bin.
+
+    A non-finite X, Y, or Z drops the whole (x, y, z) triple before
+    binning: a non-finite X/Y breaks ``histogram2d``'s auto-detected
+    range outright, and a non-finite Z would silently contaminate the
+    weighted sum for an otherwise-valid bin shared with finite points.
+    Dropping the triple is equivalent to that point never having been
+    sampled, which this function already treats as an empty (NaN) cell.
     """
     x = np.asarray(x_data, dtype=float)
     y = np.asarray(y_data, dtype=float)
     z = np.asarray(z_data, dtype=float)
     if x.size == 0 or y.size == 0 or z.size == 0:
+        raise ValueError("no data to bin")
+
+    finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+    x, y, z = x[finite], y[finite], z[finite]
+    if x.size == 0:
         raise ValueError("no data to bin")
     bins = max(1, int(bins))
 
@@ -110,6 +135,12 @@ def interpolate_to_grid(x_data, y_data, z_data, resolution: int, method: str = "
     back to "nearest", which always produces a full field. Returns
     ``(x_centers, y_centers, grid)`` shaped for pcolormesh, or raises
     ``ValueError`` when there's nothing to interpolate.
+
+    A non-finite X, Y, or Z drops the whole (x, y, z) triple first: a
+    non-finite X/Y would make ``x.min()``/``y.min()`` non-finite, breaking
+    both the primary interpolation and the "nearest" fallback outright and
+    discarding all otherwise-valid points; a non-finite Z would corrupt
+    ``griddata``'s own output near that point regardless.
     """
     from scipy.interpolate import griddata
 
@@ -117,6 +148,11 @@ def interpolate_to_grid(x_data, y_data, z_data, resolution: int, method: str = "
     y = np.asarray(y_data, dtype=float)
     z = np.asarray(z_data, dtype=float)
     if x.size == 0 or y.size == 0 or z.size == 0:
+        raise ValueError("no data to interpolate")
+
+    finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+    x, y, z = x[finite], y[finite], z[finite]
+    if x.size == 0:
         raise ValueError("no data to interpolate")
     resolution = max(2, int(resolution))
 

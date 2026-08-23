@@ -90,7 +90,6 @@ def render_wizard_preview(
         data = resolve_series_data(project, series, chart_type)
         if data.error is not None:
             continue
-        any_plotted = True
         label = _series_label(project, config)
         if chart_type == "line":
             axes.plot(data.x_data, data.y_data, label=label)
@@ -111,9 +110,13 @@ def render_wizard_preview(
                     data.x_data, data.y_data, data.z_data,
                     config.get("heatmap_gridding", "grid"), config.get("heatmap_resolution", 50))
             except ValueError:
-                any_plotted = False
+                # This series alone failed to grid -- must not erase an
+                # earlier series' successful plot by resetting any_plotted
+                # (PR #190 review). any_plotted is set once, below, only
+                # for a series that actually drew something.
                 continue
             axes.pcolormesh(xs, ys, grid, cmap="viridis", shading="nearest")
+        any_plotted = True
 
     if not any_plotted:
         # No resolvable series yet (wizard just opened, or the user hasn't

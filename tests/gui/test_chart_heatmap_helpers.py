@@ -64,6 +64,36 @@ def test_pivot_to_grid_empty_raises():
         pivot_to_grid([], [], [])
 
 
+def test_pivot_to_grid_drops_non_finite_coordinates_without_raising():
+    """pcolormesh rejects non-finite coordinate arrays -- a single NaN/Inf
+    X or Y would otherwise reach it (after this helper returns, outside
+    the renderer's ValueError guard) and blank the whole chart. The row
+    with the bad coordinate is dropped; the rest of the data still grids.
+    Flagged in PR #190 review."""
+    xs, ys, grid = pivot_to_grid([0, np.nan, 1], [0, 0, 1], [10, 999, 40])
+    assert list(xs) == [0.0, 1.0]
+    assert list(ys) == [0.0, 1.0]
+    assert grid[0, 0] == 10.0
+    assert grid[1, 1] == 40.0
+    assert np.isnan(grid[0, 1])  # (1, 0) was never sampled -- unaffected
+    assert np.isnan(grid[1, 0])  # (0, 1) was never sampled -- unaffected
+
+
+def test_pivot_to_grid_keeps_non_finite_z_as_a_transparent_cell():
+    """Unlike a non-finite X/Y coordinate, a non-finite Z at an otherwise
+    valid (x, y) is meaningful data ("no value recorded here") and must
+    stay in the grid as NaN -- not be dropped -- so it renders as a
+    transparent cell rather than a hole with no rendered marker at all."""
+    xs, ys, grid = pivot_to_grid([0, 1], [0, 0], [10.0, np.nan])
+    assert grid[0, 0] == 10.0
+    assert np.isnan(grid[0, 1])
+
+
+def test_pivot_to_grid_all_coordinates_non_finite_raises():
+    with pytest.raises(ValueError):
+        pivot_to_grid([np.nan, np.inf], [np.nan, np.inf], [1.0, 2.0])
+
+
 # --- scattered-data gridding: bin_to_grid ---
 
 def test_bin_to_grid_shape_and_mean_aggregation():
@@ -91,6 +121,21 @@ def test_bin_to_grid_empty_raises():
         bin_to_grid([], [], [], bins=4)
 
 
+def test_bin_to_grid_drops_non_finite_triples_without_raising():
+    """A non-finite X/Y breaks histogram2d's inferred range; a non-finite Z
+    contaminates the weighted sum for an otherwise-valid bin. Dropping the
+    whole (x, y, z) triple is safe -- it's equivalent to that point never
+    having been sampled, which bin_to_grid already treats as an empty
+    (NaN) cell. Flagged in PR #190 review."""
+    x = [0.1, np.nan, 0.2, 0.9]
+    y = [0.1, 0.0, np.nan, 0.9]
+    z = [10.0, 999.0, 999.0, 100.0]
+    xs, ys, grid = bin_to_grid(x, y, z, bins=2)
+    assert grid.shape == (2, 2)
+    assert grid[0, 0] == 10.0
+    assert grid[1, 1] == 100.0
+
+
 # --- scattered-data gridding: interpolate_to_grid ---
 
 def test_interpolate_to_grid_shape_and_fills_interior():
@@ -109,6 +154,19 @@ def test_interpolate_to_grid_collinear_falls_back_to_nearest():
     xs, ys, grid = interpolate_to_grid([0, 0, 0], [0, 1, 2], [1, 2, 3], resolution=5)
     assert grid.shape == (5, 5)
     assert np.all(np.isfinite(grid))
+
+
+def test_interpolate_to_grid_drops_non_finite_triples_without_raising():
+    """A non-finite X/Y makes x.min()/y.min() non-finite, which would
+    break BOTH the primary interpolation and the "nearest" fallback,
+    discarding all otherwise-valid points. Flagged in PR #190 review."""
+    rng = np.random.default_rng(0)
+    x = np.concatenate([rng.random(50), [np.nan]])
+    y = np.concatenate([rng.random(50), [0.0]])
+    z = np.concatenate([x[:50] + y[:50], [999.0]])
+    xs, ys, grid = interpolate_to_grid(x, y, z, resolution=10)
+    assert grid.shape == (10, 10)
+    assert np.isfinite(grid).any()
 
 
 # --- dispatch: build_heatmap_grid ---

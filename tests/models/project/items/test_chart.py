@@ -773,3 +773,37 @@ class TestRetypeSeriesToColormapCarriesOverMarker:
         assert series.series_type == SeriesType.HEATMAP
         assert isinstance(series.style, HeatmapSeriesStyle)
         assert not hasattr(series.style, "marker")
+
+    def test_retyping_heatmap_to_colormap_carries_over_z_column(self):
+        """Heatmap and Colormap both require a Z column -- retyping between
+        them must not force the user to re-pick the same column. Flagged in
+        PR #190 review: retype_series built a fresh style() and dropped
+        z_column_id/z_column entirely, silently unresolving the series."""
+        chart = Chart(name="C", chart_type="heatmap")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=HeatmapSeriesStyle(z_column_id="z-id", z_column="z"),
+        )
+
+        chart.retype_series(0, "colormap")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.COLORMAP
+        assert isinstance(series.style, ColormapSeriesStyle)
+        assert series.style.z_column_id == "z-id"
+        assert series.style.z_column == "z"
+
+    def test_retyping_colormap_to_heatmap_carries_over_z_column(self):
+        chart = Chart(name="C", chart_type="colormap")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=ColormapSeriesStyle(z_column_id="z-id", z_column="z"),
+        )
+
+        chart.retype_series(0, "heatmap")
+
+        series = chart.data_series[0]
+        assert series.series_type == SeriesType.HEATMAP
+        assert isinstance(series.style, HeatmapSeriesStyle)
+        assert series.style.z_column_id == "z-id"
+        assert series.style.z_column == "z"

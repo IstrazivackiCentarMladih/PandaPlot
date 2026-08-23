@@ -451,3 +451,70 @@ def test_heatmap_series_with_non_numeric_z_column_fails_only_that_series():
     # The other, valid Heatmap series must still have rendered normally and
     # own the shared colorbar.
     assert editor._colorbar is not None
+
+
+def test_colormap_series_with_non_numeric_z_column_fails_only_that_series():
+    """Same failure mode as Heatmap's non-numeric-Z test, but for Colormap:
+    render_colormap_series must not pass raw text straight to
+    axes.scatter(c=...) -- matplotlib either raises (caught by nothing in
+    the main render loop, blanking the whole chart) or, worse, silently
+    treats valid color-name strings as literal marker colors instead of
+    values to map through the colormap. Flagged in PR #190 review."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = Chart(name="Colormap Chart", chart_type="line")
+    chart.set_chart_type(ChartType.COLORMAP)
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z_text")),
+        label="Bad Colormap",
+    ))
+    chart.data_series.append(DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+        label="Valid Colormap",
+    ))
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+
+    assert "Chart error" not in editor.status_label.text()
+    assert "Bad Colormap" in editor.status_label.text()
+    assert editor._colorbar is not None
+
+
+def test_secondary_axis_subplotspec_stays_synced_after_colorbar_is_removed():
+    """A render that draws a colorbar subdivides the primary axes' gridspec
+    and explicitly re-syncs axes2's *subplotspec* to match (not just its
+    visual position -- Axes.set_subplotspec()'s internal _set_position()
+    already propagates the resulting bbox to every twinned sibling
+    automatically, per matplotlib's own _twinned_axes.get_siblings() loop,
+    which is why axes2 stays visually aligned even without an explicit
+    sync; get_subplotspec() itself, unlike position, is NOT propagated
+    this way, so it silently goes stale on axes2). A LATER render that no
+    longer draws a colorbar (colorbar_show turned off, here) must still
+    reset BOTH axes' subplotspec to the same fresh one -- not just the
+    primary axes' -- so the two stay logically consistent for any future
+    code (in this file or a later matplotlib version) that reads
+    axes2.get_subplotspec() directly, rather than relying on today's
+    incidental position-propagation side effect. Flagged in PR #190 review."""
+    _qapp()
+    project, dataset = _project_and_dataset()
+    chart = _heatmap_chart(dataset)
+    chart.data_series[0].y_axis = "secondary"
+    editor = _editor_for(project, chart)
+
+    editor.update_chart()
+    assert editor._colorbar is not None
+    assert editor.chart_canvas.axes2 is not None
+    # After the colorbar draw, axes2's subplotspec was explicitly synced to
+    # the subdivided one -- confirm the premise before testing the fix.
+    assert editor.chart_canvas.axes2.get_subplotspec() == editor.chart_canvas.axes.get_subplotspec()
+
+    chart.config["colorbar_show"] = False
+    editor.update_chart()
+
+    assert editor._colorbar is None
+    assert editor.chart_canvas.axes2.get_subplotspec() == editor.chart_canvas.axes.get_subplotspec()

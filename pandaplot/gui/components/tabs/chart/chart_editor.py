@@ -818,11 +818,22 @@ class ChartEditorWidget(PWidget):
             # reset, every re-render of a colormap/heatmap chart would steal
             # space from the already-shrunk axes, making the plot
             # progressively smaller (PR #156 review comment).
+            #
+            # An existing secondary axis (axes2, a twinx() sharing the same
+            # gridspec cell) must be reset to the SAME fresh spec here too,
+            # unconditionally -- not only when a new colorbar ends up being
+            # drawn below. Otherwise a render that removes/skips the
+            # colorbar (colorbar_show=False, or the chart no longer has a
+            # z-driven series) leaves axes2 on its old, possibly-subdivided
+            # spec while axes just got the fresh one, and tight_layout()
+            # misaligns the two axes (PR #190 review).
             from matplotlib.gridspec import GridSpec
             subplotspec = self.chart_canvas.axes.get_subplotspec()
             if subplotspec is not None:
-                self.chart_canvas.axes.set_subplotspec(
-                    GridSpec(1, 1, figure=self.chart_canvas.fig)[0])
+                fresh_subplotspec = GridSpec(1, 1, figure=self.chart_canvas.fig)[0]
+                self.chart_canvas.axes.set_subplotspec(fresh_subplotspec)
+                if self.chart_canvas.axes2 is not None:
+                    self.chart_canvas.axes2.set_subplotspec(fresh_subplotspec)
 
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")

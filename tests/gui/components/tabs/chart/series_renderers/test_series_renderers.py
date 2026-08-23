@@ -234,6 +234,39 @@ def test_render_colormap_series_uses_the_shared_color_limits_not_its_own_data():
 
     assert mappable.get_clim() == (-10.0, 10.0)
     assert mappable.get_cmap().name == "plasma"
+
+
+def test_render_colormap_series_returns_none_for_non_numeric_z_data():
+    """The Data tab's Z-column picker permits any column, including
+    non-numeric ones -- passing raw strings straight to scatter(c=...)
+    either raises or silently treats color-name strings as literal marker
+    colors. Must return None (matching render_heatmap_series' contract)
+    instead, so chart_editor.py surfaces a per-series error."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(z_data=["a", "b", "c"])
+    style = ColormapSeriesStyle()
+
+    mappable = render_colormap_series(ax, data, style, "S", 1.0, True,
+                                       {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is None
+    plt.close(fig)
+
+
+def test_render_colormap_series_returns_none_for_empty_z_data():
+    """An empty Z series must not produce a meaningless colorbar."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(x_data=[], y_data=[], z_data=[])
+    style = ColormapSeriesStyle()
+
+    mappable = render_colormap_series(ax, data, style, "S", 1.0, True,
+                                       {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is None
     plt.close(fig)
 
 

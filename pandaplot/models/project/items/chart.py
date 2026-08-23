@@ -312,6 +312,12 @@ class Chart(Item):
             new_style.marker = copy.deepcopy(old_style.marker)
         if hasattr(old_style, "error_bars") and hasattr(new_style, "error_bars"):
             new_style.error_bars = copy.deepcopy(old_style.error_bars)
+        if hasattr(old_style, "z_column_id") and hasattr(new_style, "z_column_id"):
+            # Colormap <-> Heatmap both require a Z column -- retyping
+            # between them must not force the user to re-pick the same
+            # column (PR #190 review).
+            new_style.z_column_id = old_style.z_column_id
+            new_style.z_column = old_style.z_column
         series.style = new_style
         self.update_modified_time()
 
