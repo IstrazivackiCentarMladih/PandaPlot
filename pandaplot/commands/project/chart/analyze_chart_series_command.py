@@ -75,6 +75,8 @@ class AnalyzeChartSeriesCommand(Command):
                 raise ValueError("Selected fit no longer exists.")
             fit = chart.fit_data[self.source_index]
             dataset = self.app_state.current_project.find_item(fit.source_dataset_id)
+            if not isinstance(dataset, Dataset):
+                dataset = None
             x_label = resolve_series_column(dataset, fit.source_x_column_id, fit.source_x_column) or "x"
             x = pd.Series(np.asarray(fit.x_data), dtype="float64")
             y = pd.Series(np.asarray(fit.y_data), dtype="float64")
@@ -108,6 +110,22 @@ class AnalyzeChartSeriesCommand(Command):
         y = pd.to_numeric(y_full[mask], errors="coerce").reset_index(drop=True)
         label = series.label or y_name
         return x, y, x_label, label
+
+    def source_length(self) -> int:
+        """Best-effort length of the resolved series, after NaN-dropping.
+
+        Used by the UI to bound the segment start/end indices to what
+        ``_resolve_xy`` will actually produce — the raw dataset row count can
+        be larger once rows with missing x/y are dropped.
+        """
+        try:
+            chart = self._get_chart()
+            if chart is None:
+                return 0
+            x, _y, _x_label, _y_label = self._resolve_xy(chart)
+            return len(x)
+        except (ValueError, AttributeError):
+            return 0
 
     # -- analysis ---------------------------------------------------------
 

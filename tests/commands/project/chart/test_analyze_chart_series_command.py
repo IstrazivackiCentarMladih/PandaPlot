@@ -123,3 +123,20 @@ class TestAnalyzeChartSeriesCommand:
     def test_invalid_source_index_fails(self, ctx):
         command = _cmd(ctx, source_kind="fit", source_index=9)
         assert command.execute() is False
+
+    def test_source_length_excludes_nan_rows(self, ctx):
+        _, project = ctx
+        dataset = project.find_item("ds-1")
+        # Two of 101 rows become unanalyzable once a y value goes missing.
+        dataset.data.loc[3, "sq"] = np.nan
+        command = _cmd(ctx, source_kind="series")
+        assert command.source_length() == len(dataset.data) - 1
+
+    def test_fit_source_dataset_of_wrong_type_does_not_raise(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        # Point the fit at a non-Dataset item id (the chart itself) to
+        # simulate a stale/mistyped reference.
+        chart.fit_data[0].source_dataset_id = "chart-1"
+        command = _cmd(ctx, source_kind="fit", analysis_type=AnalysisType.INTEGRAL)
+        assert command.execute() is True

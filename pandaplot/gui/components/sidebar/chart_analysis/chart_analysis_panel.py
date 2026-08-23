@@ -320,21 +320,22 @@ class ChartAnalysisPanel(PWidget):
     # -- chart context ----------------------------------------------------
 
     def _series_length(self, kind: str, index: int) -> int:
-        """Best-effort length of a source series, for the segment bounds."""
-        chart = self.current_chart
-        if chart is None:
+        """Best-effort length of a source series, for the segment bounds.
+
+        Delegates to the command's own resolution so the bounds match what
+        will actually be analyzed — a data series' raw row count can be
+        larger once rows with missing x/y are dropped.
+        """
+        if self.current_chart is None or self.current_chart_id is None:
             return 0
-        try:
-            if kind == "fit":
-                return len(chart.fit_data[index].x_data)
-            series = chart.data_series[index]
-            project = self.app_context.get_app_state().current_project
-            dataset = project.find_item(series.dataset_id) if project else None
-            if dataset is not None and dataset.data is not None:
-                return len(dataset.data)
-        except (IndexError, AttributeError):
-            return 0
-        return 0
+        command = AnalyzeChartSeriesCommand(
+            self.app_context,
+            chart_id=self.current_chart_id,
+            source_kind=kind,
+            source_index=index,
+            analysis_type=AnalysisType.DERIVATIVE,
+        )
+        return command.source_length()
 
     def _on_source_changed(self):
         source = self._selected_source()
