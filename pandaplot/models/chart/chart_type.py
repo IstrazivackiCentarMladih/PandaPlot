@@ -16,3 +16,5 @@ class ChartType(str, Enum):
     BAR = "bar"
     HIST = "hist"
     VECTOR = "vector"
+    COLORMAP = "colormap"
+    HEATMAP = "heatmap"

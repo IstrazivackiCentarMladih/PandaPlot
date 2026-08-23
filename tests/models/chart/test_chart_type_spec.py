@@ -13,9 +13,10 @@ from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS, get_chart_t
 from pandaplot.models.chart.series_type import SeriesType
 
 
-def test_all_five_chart_types_are_registered():
+def test_all_seven_chart_types_are_registered():
     assert set(CHART_TYPE_SPECS.keys()) == {
         ChartType.LINE, ChartType.SCATTER, ChartType.BAR, ChartType.HIST, ChartType.VECTOR,
+        ChartType.COLORMAP, ChartType.HEATMAP,
     }
 
 
@@ -66,8 +67,12 @@ def test_allowed_series_types_is_genuinely_immutable():
         spec.allowed_series_types.add(SeriesType.HIST)
 
 
-def test_all_chart_types_allow_fit():
-    assert all(spec.allows_fit for spec in CHART_TYPE_SPECS.values())
+def test_all_chart_types_allow_fit_except_colormap_and_heatmap():
+    # COLORMAP/HEATMAP are the first chart types with allows_fit=False --
+    # curve fitting doesn't apply to a Z-column (color) series.
+    no_fit = {ChartType.COLORMAP, ChartType.HEATMAP}
+    for chart_type, spec in CHART_TYPE_SPECS.items():
+        assert spec.allows_fit == (chart_type not in no_fit)
 
 
 def test_default_series_type_matches_chart_type():

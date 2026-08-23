@@ -18,7 +18,8 @@ from pandaplot.models.project.project import Project
 @pytest.fixture
 def project_with_series():
     project = Project(name="P")
-    dataset = Dataset(id="ds-1", name="Data", data=pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]}))
+    dataset = Dataset(id="ds-1", name="Data",
+                       data=pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6], "z": [7, 8, 9]}))
     project.add_item(dataset)
     return project, dataset
 
@@ -101,3 +102,30 @@ def test_compute_axis_data_range_uses_each_series_own_type_not_a_shared_chart_ty
     result = compute_axis_data_range(project, [hist_series, line_series], "x")
 
     assert result == (1.0, 3.0)  # from project_with_series' x column: [1, 2, 3]
+
+
+def test_resolve_series_data_resolves_z_column_for_colormap(project_with_series):
+    project, dataset = project_with_series
+    from pandaplot.models.chart.series_style import ColormapSeriesStyle
+
+    series = DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.COLORMAP,
+        style=ColormapSeriesStyle(z_column_id=dataset.column_id("z")),
+    )
+    data = resolve_series_data(project, series)
+    assert data.error is None
+    assert list(data.z_data) == list(dataset.data["z"])
+
+
+def test_resolve_series_data_missing_z_column_errors(project_with_series):
+    project, dataset = project_with_series
+    from pandaplot.models.chart.series_style import HeatmapSeriesStyle
+
+    series = DataSeries(
+        dataset_id=dataset.id, x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"), series_type=SeriesType.HEATMAP,
+        style=HeatmapSeriesStyle(z_column_id=""),
+    )
+    data = resolve_series_data(project, series)
+    assert data.error is not None

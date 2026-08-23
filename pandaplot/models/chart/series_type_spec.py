@@ -15,6 +15,8 @@ from typing import Literal
 
 from pandaplot.models.chart.series_style import (
     BarSeriesStyle,
+    ColormapSeriesStyle,
+    HeatmapSeriesStyle,
     HistSeriesStyle,
     LineSeriesStyle,
     ScatterSeriesStyle,
@@ -41,6 +43,13 @@ class SeriesTypeSpec:
     supports_error_bars: bool
     needs_x_column: bool
     needs_secondary_columns: bool
+    # Whether this type needs a Z (color) column, picked on the Data tab
+    # via a dedicated combo (mirrors needs_secondary_columns for Vector's
+    # U/V/magnitude). True only for COLORMAP/HEATMAP.
+    needs_z_column: bool
+    # Heatmap-only: whether the Style tab's gridding mode + resolution
+    # controls apply. False for COLORMAP (scatter needs no gridding).
+    supports_gridding: bool
     style_cls: type[SeriesStyleBase]
 
 
@@ -48,26 +57,43 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
     SeriesType.LINE: SeriesTypeSpec(
         marker_mode="optional", supports_line_style=True, supports_color=True, supports_fill=True,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        needs_z_column=False, supports_gridding=False,
         style_cls=LineSeriesStyle,
     ),
     SeriesType.SCATTER: SeriesTypeSpec(
         marker_mode="required", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        needs_z_column=False, supports_gridding=False,
         style_cls=ScatterSeriesStyle,
     ),
     SeriesType.BAR: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
+        needs_z_column=False, supports_gridding=False,
         style_cls=BarSeriesStyle,
     ),
     SeriesType.HIST: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=True, supports_fill=False,
         supports_error_bars=False, needs_x_column=False, needs_secondary_columns=False,
+        needs_z_column=False, supports_gridding=False,
         style_cls=HistSeriesStyle,
     ),
     SeriesType.VECTOR: SeriesTypeSpec(
         marker_mode="unsupported", supports_line_style=False, supports_color=False, supports_fill=False,
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=True,
+        needs_z_column=False, supports_gridding=False,
         style_cls=VectorSeriesStyle,
+    ),
+    SeriesType.COLORMAP: SeriesTypeSpec(
+        marker_mode="required", supports_line_style=False, supports_color=False, supports_fill=False,
+        supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
+        needs_z_column=True, supports_gridding=False,
+        style_cls=ColormapSeriesStyle,
+    ),
+    SeriesType.HEATMAP: SeriesTypeSpec(
+        marker_mode="unsupported", supports_line_style=False, supports_color=False, supports_fill=False,
+        supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
+        needs_z_column=True, supports_gridding=True,
+        style_cls=HeatmapSeriesStyle,
     ),
 }

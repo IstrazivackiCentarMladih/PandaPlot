@@ -24,10 +24,12 @@ from pandaplot.models.chart.chart_type_spec import ChartTypeSpec
 _ROLE_LABELS = {
     "x": "X column", "y": "Y column", "values": "Values column",
     "u": "U column", "v": "V column", "magnitude": "Color-by column (optional)",
+    "z": "Z (color) column",
 }
 _ROLE_TO_FIELD = {
     "x": "x_column_id", "y": "y_column_id", "values": "y_column_id",
     "u": "u_column_id", "v": "v_column_id", "magnitude": "magnitude_column_id",
+    "z": "z_column_id",
 }
 
 
@@ -262,6 +264,7 @@ class SeriesConfigCard(Card):
             "x_error_minus_column_id": "",
             "y_error_minus_column_id": "",
             "error_symmetric": True,
+            "z_column_id": "",
         }
         for role in self._role_spec.roles:
             config[_ROLE_TO_FIELD[role]] = self._role_combos[role].currentData() or ""

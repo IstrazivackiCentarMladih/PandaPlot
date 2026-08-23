@@ -462,6 +462,7 @@ class ChartPropertiesPanel(SidebarPanel):
 
         # Update basic chart properties
         self.style_tab.apply_chart_style_to(chart)
+        self.style_tab.apply_colormap_config_to(chart)
         self.chart_tab.apply_to(chart)
         self.axes_tab.apply_to(chart)
         self.legend_tab.apply_to(chart)

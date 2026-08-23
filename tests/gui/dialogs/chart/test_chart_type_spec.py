@@ -47,5 +47,7 @@ def test_unknown_chart_type_raises_value_error():
         get_chart_type_spec("violin")
 
 
-def test_exactly_five_chart_types_are_registered():
-    assert set(CHART_TYPE_SPECS.keys()) == {"line", "scatter", "bar", "hist", "vector"}
+def test_exactly_seven_chart_types_are_registered():
+    assert set(CHART_TYPE_SPECS.keys()) == {
+        "line", "scatter", "bar", "hist", "vector", "colormap", "heatmap",
+    }

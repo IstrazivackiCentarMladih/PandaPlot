@@ -149,25 +149,31 @@ class DataTab(QWidget):
         self.y_column_combo = QComboBox()
         series_config_layout.addWidget(self.y_column_combo, 2, 1)
 
+        self.z_column_label = QLabel("Z Column:")
+        series_config_layout.addWidget(self.z_column_label, 3, 0)
+        self.z_column_combo = QComboBox()
+        self.z_column_combo.setToolTip("Column mapped to color (Colormap/Heatmap series)")
+        series_config_layout.addWidget(self.z_column_combo, 3, 1)
+
         self.u_column_label = QLabel("U Column:")
-        series_config_layout.addWidget(self.u_column_label, 3, 0)
+        series_config_layout.addWidget(self.u_column_label, 4, 0)
         self.u_column_combo = QComboBox()
-        series_config_layout.addWidget(self.u_column_combo, 3, 1)
+        series_config_layout.addWidget(self.u_column_combo, 4, 1)
 
         self.v_column_label = QLabel("V Column:")
-        series_config_layout.addWidget(self.v_column_label, 4, 0)
+        series_config_layout.addWidget(self.v_column_label, 5, 0)
         self.v_column_combo = QComboBox()
-        series_config_layout.addWidget(self.v_column_combo, 4, 1)
+        series_config_layout.addWidget(self.v_column_combo, 5, 1)
 
-        series_config_layout.addWidget(QLabel("Y Axis:"), 5, 0)
+        series_config_layout.addWidget(QLabel("Y Axis:"), 6, 0)
         self.series_y_axis_control = SegmentedControl(
             [("Y₁ left", YAxis.PRIMARY), ("Y₂ right", YAxis.SECONDARY)]
         )
-        series_config_layout.addWidget(self.series_y_axis_control, 5, 1)
+        series_config_layout.addWidget(self.series_y_axis_control, 6, 1)
 
-        series_config_layout.addWidget(QLabel("Label:"), 6, 0)
+        series_config_layout.addWidget(QLabel("Label:"), 7, 0)
         self.series_label_edit = QLineEdit()
-        series_config_layout.addWidget(self.series_label_edit, 6, 1)
+        series_config_layout.addWidget(self.series_label_edit, 7, 1)
 
         # Checked -> pick independent +/- error columns below; unchecked
         # (default) -> a single column supplies a symmetric magnitude (the
@@ -177,43 +183,44 @@ class DataTab(QWidget):
         self.error_asymmetric_check.setToolTip(
             "When checked, pick separate +/- error columns for independent "
             "upper/lower magnitudes instead of one symmetric column.")
-        series_config_layout.addWidget(self.error_asymmetric_check, 7, 0, 1, 2)
+        series_config_layout.addWidget(self.error_asymmetric_check, 8, 0, 1, 2)
 
         # Label text switches between "X Error Column" (symmetric magnitude)
         # and "X Error (+) Column" (asymmetric upper magnitude) depending on
         # the checkbox above; see _update_error_bar_mode_controls.
         self.x_error_column_label = QLabel("X Error Column:")
-        series_config_layout.addWidget(self.x_error_column_label, 8, 0)
+        series_config_layout.addWidget(self.x_error_column_label, 9, 0)
         self.x_error_column_combo = QComboBox()
-        series_config_layout.addWidget(self.x_error_column_combo, 8, 1)
+        series_config_layout.addWidget(self.x_error_column_combo, 9, 1)
 
         self.x_error_minus_label = QLabel("X Error (-) Column:")
-        series_config_layout.addWidget(self.x_error_minus_label, 9, 0)
+        series_config_layout.addWidget(self.x_error_minus_label, 10, 0)
         self.x_error_minus_column_combo = QComboBox()
-        series_config_layout.addWidget(self.x_error_minus_column_combo, 9, 1)
+        series_config_layout.addWidget(self.x_error_minus_column_combo, 10, 1)
 
         self.y_error_column_label = QLabel("Y Error Column:")
-        series_config_layout.addWidget(self.y_error_column_label, 10, 0)
+        series_config_layout.addWidget(self.y_error_column_label, 11, 0)
         self.y_error_column_combo = QComboBox()
-        series_config_layout.addWidget(self.y_error_column_combo, 10, 1)
+        series_config_layout.addWidget(self.y_error_column_combo, 11, 1)
 
         # Only shown when "Asymmetric Error Bars" is checked, to supply the
         # lower-side (-) magnitude.
         self.y_error_minus_label = QLabel("Y Error (-) Column:")
-        series_config_layout.addWidget(self.y_error_minus_label, 11, 0)
+        series_config_layout.addWidget(self.y_error_minus_label, 12, 0)
         self.y_error_minus_column_combo = QComboBox()
-        series_config_layout.addWidget(self.y_error_minus_column_combo, 11, 1)
+        series_config_layout.addWidget(self.y_error_minus_column_combo, 12, 1)
 
         self.magnitude_column_label = QLabel("Color-by Column (optional):")
-        series_config_layout.addWidget(self.magnitude_column_label, 12, 0)
+        series_config_layout.addWidget(self.magnitude_column_label, 13, 0)
         self.magnitude_column_combo = QComboBox()
-        series_config_layout.addWidget(self.magnitude_column_combo, 12, 1)
+        series_config_layout.addWidget(self.magnitude_column_combo, 13, 1)
 
-        series_config_layout.addWidget(QLabel("Series Type:"), 13, 0)
+        series_config_layout.addWidget(QLabel("Series Type:"), 14, 0)
         self.series_type_combo = QComboBox()
-        series_config_layout.addWidget(self.series_type_combo, 13, 1)
+        series_config_layout.addWidget(self.series_type_combo, 14, 1)
 
         for widget in (
+            self.z_column_label, self.z_column_combo,
             self.u_column_label, self.u_column_combo,
             self.v_column_label, self.v_column_combo,
             self.magnitude_column_label, self.magnitude_column_combo,
@@ -232,6 +239,7 @@ class DataTab(QWidget):
         self.y_error_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.x_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.y_error_minus_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.z_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.u_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.v_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.magnitude_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
@@ -589,6 +597,7 @@ class DataTab(QWidget):
         u_column_id = self.u_column_combo.currentData() if self.u_column_combo.count() > 0 else ""
         v_column_id = self.v_column_combo.currentData() if self.v_column_combo.count() > 0 else ""
         magnitude_column_id = self.magnitude_column_combo.currentData() if self.magnitude_column_combo.count() > 0 else ""
+        z_column_id = self.z_column_combo.currentData() if self.z_column_combo.count() > 0 else ""
 
         # A new series always gets the chart's own default type -- NOT
         # whatever the Series Type combo currently shows, since that combo
@@ -621,6 +630,8 @@ class DataTab(QWidget):
                     v_column_id=v_column_id if needs_secondary_columns else "",
                     magnitude_column_id=magnitude_column_id if needs_secondary_columns else "",
                 )
+            elif new_series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+                style = style_cls(z_column_id=z_column_id or "")
             else:
                 style = style_cls(color=color)
 
@@ -729,6 +740,8 @@ class DataTab(QWidget):
                 series.style.u_column_id = self.u_column_combo.currentData() or ""
                 series.style.v_column_id = self.v_column_combo.currentData() or ""
                 series.style.magnitude_column_id = self.magnitude_column_combo.currentData() or ""
+            if self._selected_series_needs_z_column():
+                series.style.z_column_id = self.z_column_combo.currentData() or ""
 
             # Refresh the Axes-tab Y2 chip immediately so switching a series
             # to the secondary axis is reflected without waiting for Apply
@@ -865,7 +878,9 @@ class DataTab(QWidget):
             self._populate_column_combos(series.dataset_id)
             self._populate_error_column_combos(series.dataset_id)
             self._populate_vector_column_combos(series.dataset_id)
+            self._populate_z_column_combo(series.dataset_id)
             self._update_vector_field_visibility()
+            self._update_z_column_field_visibility()
 
             # Set columns by stable id (combos carry the id as itemData)
             x_index = self.x_column_combo.findData(series.x_column_id)
@@ -897,6 +912,7 @@ class DataTab(QWidget):
                 (self.u_column_combo, getattr(series.style, "u_column_id", "")),
                 (self.v_column_combo, getattr(series.style, "v_column_id", "")),
                 (self.magnitude_column_combo, getattr(series.style, "magnitude_column_id", "")),
+                (self.z_column_combo, getattr(series.style, "z_column_id", "")),
             ):
                 combo.blockSignals(True)
                 index = combo.findData(column_id)
@@ -936,8 +952,10 @@ class DataTab(QWidget):
             self.u_column_combo.setEnabled(False)
             self.v_column_combo.setEnabled(False)
             self.magnitude_column_combo.setEnabled(False)
+            self.z_column_combo.setEnabled(False)
             self.series_type_combo.setEnabled(False)
             self._update_vector_field_visibility()
+            self._update_z_column_field_visibility()
             self.error_asymmetric_check.setEnabled(False)
             self._update_error_bar_mode_controls()
 
@@ -1018,6 +1036,7 @@ class DataTab(QWidget):
         self.u_column_combo.setEnabled(True)
         self.v_column_combo.setEnabled(True)
         self.magnitude_column_combo.setEnabled(True)
+        self.z_column_combo.setEnabled(True)
         self.series_type_combo.setEnabled(True)
         self.error_asymmetric_check.setEnabled(True)
 
@@ -1167,6 +1186,27 @@ class DataTab(QWidget):
             for combo in combos:
                 combo.blockSignals(False)
 
+    def _populate_z_column_combo(self, dataset_id):
+        """Fill the Z column combo with the given dataset's columns, preceded
+        by a leading "None" entry (itemData "") -- mirrors
+        _populate_vector_column_combos' item-data convention (column id, or
+        "" for "None"), since an untouched z_column_id is genuinely "" (e.g.
+        right after retyping an existing series to Colormap/Heatmap)."""
+        combo = self.z_column_combo
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            combo.addItem("None", "")
+
+            if dataset_id and self.current_project:
+                dataset = self.current_project.find_item(dataset_id)
+                if isinstance(dataset, Dataset) and dataset.data is not None:
+                    for column in dataset.data.columns:
+                        column_id = dataset.column_id(column) or ""
+                        combo.addItem(column, column_id)
+        finally:
+            combo.blockSignals(False)
+
     def _selected_series_is_vector(self) -> bool:
         """Whether the currently expanded, already-existing series is
         itself a VECTOR series. This exists specifically for the
@@ -1215,6 +1255,25 @@ class DataTab(QWidget):
         ):
             widget.setVisible(is_vector)
 
+    def _selected_series_needs_z_column(self) -> bool:
+        """Whether the currently expanded, already-existing series' own
+        type needs a Z column (COLORMAP/HEATMAP), mirroring
+        _selected_series_is_vector's reasoning: driven by the series' own
+        type, not the chart's."""
+        if not self.current_chart:
+            return False
+        row = self._expanded_series_index
+        if row < 0 or row >= len(self.current_chart.data_series):
+            return False
+        return SERIES_TYPE_SPECS[self.current_chart.data_series[row].series_type].needs_z_column
+
+    def _update_z_column_field_visibility(self):
+        """Show the Z Column row only when editing a series whose own type
+        needs it (Colormap/Heatmap) -- mirrors _update_vector_field_visibility."""
+        show = self._selected_series_needs_z_column()
+        self.z_column_label.setVisible(show)
+        self.z_column_combo.setVisible(show)
+
     def refresh_vector_fields(self):
         """Re-evaluate the Series Type combo's options and the selected
         series' vector-field visibility/combos after the chart's own
@@ -1228,10 +1287,12 @@ class DataTab(QWidget):
         self._populate_series_type_combo()
         if not self.current_chart:
             self._update_vector_field_visibility()
+            self._update_z_column_field_visibility()
             return
         current_row = self._expanded_series_index
         if current_row < 0 or current_row >= len(self.current_chart.data_series):
             self._update_vector_field_visibility()
+            self._update_z_column_field_visibility()
             return
         self._load_series_into_controls(self.current_chart.data_series[current_row])
 
@@ -1241,6 +1302,7 @@ class DataTab(QWidget):
         columns = self._populate_column_combos(dataset_id)
         self._populate_error_column_combos(dataset_id)
         self._populate_vector_column_combos(dataset_id)
+        self._populate_z_column_combo(dataset_id)
 
         # Set defaults if possible
         if columns:
@@ -1332,6 +1394,8 @@ class DataTab(QWidget):
                 style_kwargs["u_column_id"] = self.u_column_combo.currentData() or ""
                 style_kwargs["v_column_id"] = self.v_column_combo.currentData() or ""
                 style_kwargs["magnitude_column_id"] = self.magnitude_column_combo.currentData() or ""
+            if type_spec.needs_z_column:
+                style_kwargs["z_column_id"] = self.z_column_combo.currentData() or ""
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,

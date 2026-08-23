@@ -256,6 +256,8 @@ class CreateChartFromWizardCommand(Command):
                             v_column_id=series_config.get("v_column_id", ""),
                             magnitude_column_id=series_config.get("magnitude_column_id", ""),
                         )
+                    elif series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+                        style = style_cls(z_column_id=series_config.get("z_column_id", ""))
                     else:
                         style = style_cls(color=color)
                     chart.add_data_series(

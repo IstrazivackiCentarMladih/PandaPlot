@@ -21,3 +21,4 @@ class SeriesData:
     u_data: Optional[Any] = None
     v_data: Optional[Any] = None
     magnitude_data: Optional[Any] = None
+    z_data: Optional[Any] = None

@@ -68,6 +68,29 @@ CHART_TYPE_SPECS: dict[ChartType, ChartTypeSpec] = {
         allowed_series_types=frozenset({SeriesType.LINE, SeriesType.SCATTER, SeriesType.VECTOR}),
         allows_fit=True, default_series_type=SeriesType.VECTOR,
     ),
+    ChartType.COLORMAP: ChartTypeSpec(
+        display_name="Color Map", roles=("x", "y", "z"), required_roles=("x", "y", "z"),
+        # Also allows plain Scatter/Line series alongside the color-mapped
+        # points (e.g. an overlay of uncolored reference points or a trend
+        # line -- the same "mixed series types on one chart" pattern
+        # LINE/SCATTER/VECTOR chart types already use), and Heatmap series
+        # (a gridded matrix on the same axes as color-mapped points).
+        allowed_series_types=frozenset({
+            SeriesType.COLORMAP, SeriesType.SCATTER, SeriesType.LINE, SeriesType.HEATMAP,
+        }),
+        allows_fit=False, default_series_type=SeriesType.COLORMAP,
+    ),
+    ChartType.HEATMAP: ChartTypeSpec(
+        display_name="Heatmap", roles=("x", "y", "z"), required_roles=("x", "y", "z"),
+        # Also allows plain Scatter/Line series alongside the gridded
+        # matrix (e.g. marking specific points or overlaying a trend
+        # line), and Colormap series (a color-mapped scatter overlay on
+        # the same grid).
+        allowed_series_types=frozenset({
+            SeriesType.HEATMAP, SeriesType.SCATTER, SeriesType.LINE, SeriesType.COLORMAP,
+        }),
+        allows_fit=False, default_series_type=SeriesType.HEATMAP,
+    ),
 }
 
 

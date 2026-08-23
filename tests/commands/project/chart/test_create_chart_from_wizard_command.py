@@ -797,6 +797,34 @@ def test_error_bar_series_config_passes_through_to_style(mock_wizard_cls, app_co
     assert series.style.error_bars.error_symmetric is False
 
 
+@pytest.mark.parametrize("chart_type", ["colormap", "heatmap"])
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_colormap_and_heatmap_series_config_passes_through_z_column(
+        mock_wizard_cls, app_context_with_project, chart_type):
+    from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle
+
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-x", "y_column_id": "col-y",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        "z_column_id": "col-z",
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type=chart_type, series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.chart_type == chart_type
+    series = created_chart.data_series[0]
+    expected_style_cls = ColormapSeriesStyle if chart_type == "colormap" else HeatmapSeriesStyle
+    assert isinstance(series.style, expected_style_cls)
+    assert series.style.z_column_id == "col-z"
+
+
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project

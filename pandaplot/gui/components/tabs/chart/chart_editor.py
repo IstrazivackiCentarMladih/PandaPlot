@@ -26,6 +26,7 @@ from shiboken6 import isValid
 
 from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.gui.components.tabs.chart.chart_heatmap import resolve_color_limits
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
 from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
@@ -340,7 +341,10 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     y_err_minus are only meaningful when style.error_bars.error_symmetric
     is False.
     Secondary columns (u_data/v_data, required; magnitude_data, optional)
-    are resolved the same way, keyed off needs_secondary_columns.
+    are resolved the same way, keyed off needs_secondary_columns. The Z
+    (color) column for Colormap/Heatmap series is resolved the same way
+    too, keyed off needs_z_column: required, so a missing/unresolvable
+    Z column errors out just like a missing U/V column does.
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -391,8 +395,17 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         if magnitude_column and magnitude_column in df.columns:
             magnitude_data = df[magnitude_column]
 
+    z_data = None
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_z_column:
+        z_column = resolve_series_column(dataset, series.style.z_column_id, series.style.z_column)
+        if not z_column:
+            return SeriesData(None, None, None, None, None, None, "no Z column configured")
+        if z_column not in df.columns:
+            return SeriesData(None, None, None, None, None, None, f"Z column '{z_column}' not found")
+        z_data = df[z_column]
+
     return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None,
-                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data)
+                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data, z_data=z_data)
 
 
 def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
@@ -448,6 +461,12 @@ class ChartEditorWidget(PWidget):
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
+
+        # Colorbar drawn for the current colormap/heatmap render, if any. It
+        # lives on its own figure axes (not the main axes cleared each
+        # render), so update_chart must explicitly remove the previous one
+        # before drawing again, or stale colorbars would accumulate.
+        self._colorbar = None
 
         self._initialize()
         self.load_chart_config()
@@ -759,6 +778,15 @@ class ChartEditorWidget(PWidget):
         order = np.argsort(xp)
         return np.interp(np.asarray(query, dtype=float), xp[order], fp[order])
 
+    def _resolve_z_label(self, project, series) -> str:
+        """Current display name of a series' Z (color) column, for the
+        default colorbar label. Empty when it can't be resolved (missing
+        dataset/column) so the colorbar just goes unlabeled rather than
+        erroring."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.style.z_column_id, series.style.z_column) or ""
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -767,8 +795,45 @@ class ChartEditorWidget(PWidget):
             return
 
         try:
+            # Remove the previous colorbar (a colormap/heatmap render adds
+            # one on its own figure axes, which axes.clear() below doesn't
+            # touch). This must happen BEFORE axes.clear(): clearing the
+            # main axes detaches the mappable the colorbar refers to, which
+            # makes Colorbar.remove() raise (its mappable's axes becomes
+            # None) instead of cleanly removing the colorbar axes.
+            if self._colorbar is not None:
+                try:
+                    self._colorbar.remove()
+                except Exception:
+                    self.logger.debug("Failed to remove stale colorbar", exc_info=True)
+                self._colorbar = None
+
             # Clear the current plot
             self.chart_canvas.axes.clear()
+
+            # Reset the main axes to a fresh full-figure 1x1 gridspec. A
+            # colorbar created with the default use_gridspec=True
+            # *subdivides* the axes' gridspec to make room, and that
+            # subdivision survives colorbar.remove() -- so without this
+            # reset, every re-render of a colormap/heatmap chart would steal
+            # space from the already-shrunk axes, making the plot
+            # progressively smaller (PR #156 review comment).
+            #
+            # An existing secondary axis (axes2, a twinx() sharing the same
+            # gridspec cell) must be reset to the SAME fresh spec here too,
+            # unconditionally -- not only when a new colorbar ends up being
+            # drawn below. Otherwise a render that removes/skips the
+            # colorbar (colorbar_show=False, or the chart no longer has a
+            # z-driven series) leaves axes2 on its old, possibly-subdivided
+            # spec while axes just got the fresh one, and tight_layout()
+            # misaligns the two axes (PR #190 review).
+            from matplotlib.gridspec import GridSpec
+            subplotspec = self.chart_canvas.axes.get_subplotspec()
+            if subplotspec is not None:
+                fresh_subplotspec = GridSpec(1, 1, figure=self.chart_canvas.fig)[0]
+                self.chart_canvas.axes.set_subplotspec(fresh_subplotspec)
+                if self.chart_canvas.axes2 is not None:
+                    self.chart_canvas.axes2.set_subplotspec(fresh_subplotspec)
 
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
@@ -789,17 +854,52 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.original_ylim2 = None
 
             series_errors = []
+            colorbar_mappable = None
+            colorbar_label = ""
             if not self.chart.data_series:
                 self.dataset_label.setText("No Data Loaded")
             else:
                 project = self.app_context.get_app_state().current_project
-                for i, series in enumerate(self.chart.data_series):
+
+                # Resolve every series' data once, up front: a shared color
+                # scale for Colormap/Heatmap series must be computed from
+                # ALL of their z-data before any of them render, not just
+                # whichever one happens to render first (see
+                # docs/superpowers/specs/2026-08-21-shared-chart-level-color-map-design.md).
+                resolved_data = [resolve_series_data(project, series) for series in self.chart.data_series]
+                color_scale_auto = self.chart.config.get("color_scale_auto", True)
+                # Only gather z-data when the scale is auto-computed: a
+                # manual scale never reads it (see resolve_color_limits),
+                # so skip the work entirely in that case. Each array is
+                # built individually inside its own try/except so a single
+                # series with non-numeric (e.g. text) Z data can't blow up
+                # this up-front pre-pass and blank the whole chart -- that
+                # series is simply left out of the combined scale here and
+                # still gets its own per-series error below, when its
+                # renderer runs in the main loop.
+                z_arrays: list[np.ndarray] = []
+                if color_scale_auto:
+                    for series, data in zip(self.chart.data_series, resolved_data):
+                        if not SERIES_TYPE_SPECS[series.series_type].needs_z_column or data.error is not None:
+                            continue
+                        try:
+                            z_arrays.append(np.asarray(data.z_data, dtype=float))
+                        except (ValueError, TypeError):
+                            continue
+                combined_z = np.concatenate(z_arrays) if z_arrays else np.array([])
+                color_limits = resolve_color_limits(
+                    combined_z,
+                    color_scale_auto,
+                    self.chart.config.get("color_vmin", 0.0),
+                    self.chart.config.get("color_vmax", 1.0),
+                )
+
+                for i, (series, series_data) in enumerate(zip(self.chart.data_series, resolved_data)):
                     # Route this series to its configured Y axis
                     target_axes = (self.chart_canvas.axes2
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    series_data = resolve_series_data(project, series)
                     x_data = series_data.x_data
                     y_data = series_data.y_data
                     x_err = series_data.x_err
@@ -838,13 +938,47 @@ class ChartEditorWidget(PWidget):
                                 alpha=alpha)
 
                     renderer = SERIES_RENDERERS[series_type]
-                    renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                    mappable = renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
                         "bins": self.chart.config.get("hist_bins", 20),
                         "resolve_fill_baseline": (
                             lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
                                 project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
                         ),
+                        "colormap": self.chart.config.get("colormap", "viridis"),
+                        "color_limits": color_limits,
                     })
+                    if mappable is None and series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+                        series_errors.append(f"{series.label or f'Series {i + 1}'}: no data to grid")
+                        continue
+                    if (mappable is not None and colorbar_mappable is None
+                            and SERIES_TYPE_SPECS[series_type].needs_z_column
+                            and self.chart.config.get("colorbar_show", True)):
+                        colorbar_mappable = mappable
+                        colorbar_label = (
+                            self.chart.config.get("colorbar_label", "")
+                            or self._resolve_z_label(project, series)
+                        )
+
+                if colorbar_mappable is not None:
+                    self._colorbar = self.chart_canvas.fig.colorbar(
+                        colorbar_mappable, ax=self.chart_canvas.axes)
+                    if self.chart_canvas.axes2 is not None:
+                        # fig.colorbar(..., ax=axes) subdivides *only* the
+                        # primary axes' gridspec cell to make room -- axes2
+                        # (a twinx() sharing that same cell) keeps its old,
+                        # full-width subplotspec. Passing both axes to
+                        # colorbar() doesn't help either: with two axes
+                        # sharing a cell, tight_layout() flags the figure as
+                        # "not compatible" and re-expands both back to full
+                        # width, drawing the colorbar on top of the data.
+                        # Explicitly handing axes2 the *same*, now-subdivided
+                        # subplotspec keeps both axes shrunk together and
+                        # keeps tight_layout happy across repeated
+                        # resizes/re-renders.
+                        self.chart_canvas.axes2.set_subplotspec(
+                            self.chart_canvas.axes.get_subplotspec())
+                    if colorbar_label:
+                        self._colorbar.set_label(colorbar_label)
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
@@ -1131,6 +1265,8 @@ class ChartEditorWidget(PWidget):
             else:
                 self.chart_canvas.axes.grid(False, axis="y", which="minor")
 
+            legend = None
+            placement_kwargs = {}
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 # Combine handles/labels from both axes since twinx() legends
                 # are independent by default.
@@ -1139,25 +1275,28 @@ class ChartEditorWidget(PWidget):
                     handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
                     handles += handles2
                     labels += labels2
-                placement_kwargs = resolve_legend_placement(
-                    config.get("legend_position", "upper right"),
-                    config.get("legend_custom_x", 1.02),
-                    config.get("legend_custom_y", 0.5),
-                    config.get("legend_custom_anchor", "center left"),
-                )
-                legend = build_legend(
-                    self.chart_canvas.axes, handles, labels,
-                    config.get("legend_font_family", "DejaVu Sans"),
-                    config.get("legend_font_size", 10),
-                    config.get("legend_bg_color", "#ffffff"),
-                    config.get("legend_show_frame", True),
-                    config.get("legend_columns", 1),
-                    config.get("legend_bg_alpha", 1.0),
-                    placement_kwargs,
-                )
-            else:
-                legend = None
-                placement_kwargs = {}
+                # Skip drawing the legend when there are no handles to show
+                # (e.g. a chart with only an unlabeled Heatmap series before
+                # PR-review fix, or any chart where nothing has a label) --
+                # matplotlib would otherwise draw an empty framed legend box
+                # over the plot.
+                if handles:
+                    placement_kwargs = resolve_legend_placement(
+                        config.get("legend_position", "upper right"),
+                        config.get("legend_custom_x", 1.02),
+                        config.get("legend_custom_y", 0.5),
+                        config.get("legend_custom_anchor", "center left"),
+                    )
+                    legend = build_legend(
+                        self.chart_canvas.axes, handles, labels,
+                        config.get("legend_font_family", "DejaVu Sans"),
+                        config.get("legend_font_size", 10),
+                        config.get("legend_bg_color", "#ffffff"),
+                        config.get("legend_show_frame", True),
+                        config.get("legend_columns", 1),
+                        config.get("legend_bg_alpha", 1.0),
+                        placement_kwargs,
+                    )
 
             tight_layout_kwargs = dict(
                 pad=config.get("chart_padding", 2.0),

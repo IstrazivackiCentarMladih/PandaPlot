@@ -9,6 +9,8 @@ site instead of branching to decide which arguments to gather.
 from typing import Callable
 
 from pandaplot.gui.components.tabs.chart.series_renderers.bar import render_bar_series
+from pandaplot.gui.components.tabs.chart.series_renderers.colormap import render_colormap_series
+from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
 from pandaplot.gui.components.tabs.chart.series_renderers.hist import render_hist_series
 from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
 from pandaplot.gui.components.tabs.chart.series_renderers.scatter import render_scatter_series
@@ -21,6 +23,8 @@ SERIES_RENDERERS: dict[SeriesType, Callable] = {
     SeriesType.BAR: render_bar_series,
     SeriesType.HIST: render_hist_series,
     SeriesType.VECTOR: render_vector_series,
+    SeriesType.COLORMAP: render_colormap_series,
+    SeriesType.HEATMAP: render_heatmap_series,
 }
 
 __all__ = [
@@ -30,4 +34,6 @@ __all__ = [
     "render_bar_series",
     "render_hist_series",
     "render_vector_series",
+    "render_colormap_series",
+    "render_heatmap_series",
 ]

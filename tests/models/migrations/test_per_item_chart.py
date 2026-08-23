@@ -338,11 +338,27 @@ def test_style_field_names_match_the_real_style_dataclasses():
     top-level field names. So direct fields are checked against the
     style class's own top-level names (minus "marker"/"error_bars"
     themselves), and the marker/error-bar field tuples are checked
-    separately against MarkerStyle/ErrorBarConfig's own fields."""
+    separately against MarkerStyle/ErrorBarConfig's own fields.
+
+    COLORMAP/HEATMAP are deliberately excluded from this per-type loop:
+    they were added long after CURRENT_SCHEMA_VERSION was bumped to 1
+    (see schema_version.py), so no project file ever saved by a real
+    user could contain a legacy (schema_version 0 / absent) chart with
+    chart_type "colormap"/"heatmap" -- those chart_type strings simply
+    didn't exist yet when schema_version 0 data was the only kind being
+    written. migrate_chart_legacy_to_v1 is only ever invoked for
+    schema_version 0 data (see migrate_chart's dispatch loop and
+    ChartDataManager's call site), so this migration's dicts genuinely
+    have nothing to do for these two types -- there is no legacy shape
+    to convert. A separate assertion below locks in that the two dicts
+    stay free of entries for them, so a future contributor doesn't
+    "helpfully" add placeholder entries that no legacy data will ever
+    exercise."""
     import dataclasses
 
     from pandaplot.models.chart.error_bar_config import ErrorBarConfig
     from pandaplot.models.chart.marker_style import MarkerStyle
+    from pandaplot.models.chart.series_type import SeriesType
     from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
     from pandaplot.models.migrations.per_item.chart import (
         _DIRECT_STYLE_FIELDS_BY_CHART_TYPE,
@@ -350,10 +366,29 @@ def test_style_field_names_match_the_real_style_dataclasses():
         _MARKER_FIELDS_BY_CHART_TYPE,
     )
 
+    # Chart types that predate the typed-style migration architecture --
+    # i.e. could genuinely have a schema_version-0 project file saved by
+    # a real user, with legacy flat fields for this migration to convert.
+    # Derived directly from the production dicts' own keys (rather than a
+    # hand-maintained parallel list) so this test can't silently stop
+    # covering a type if a future contributor adds it to those dicts but
+    # forgets to update a separate list here.
+    _PRE_MIGRATION_SERIES_TYPES = {
+        SeriesType(chart_type)
+        for chart_type in set(_DIRECT_STYLE_FIELDS_BY_CHART_TYPE) | set(_MARKER_FIELDS_BY_CHART_TYPE)
+    }
+    assert SeriesType.COLORMAP not in _PRE_MIGRATION_SERIES_TYPES
+    assert SeriesType.HEATMAP not in _PRE_MIGRATION_SERIES_TYPES
+    assert "colormap" not in _DIRECT_STYLE_FIELDS_BY_CHART_TYPE
+    assert "heatmap" not in _DIRECT_STYLE_FIELDS_BY_CHART_TYPE
+    assert "colormap" not in _MARKER_FIELDS_BY_CHART_TYPE
+    assert "heatmap" not in _MARKER_FIELDS_BY_CHART_TYPE
+
     marker_field_names = {f.name for f in dataclasses.fields(MarkerStyle)}
     error_bar_field_names = {f.name for f in dataclasses.fields(ErrorBarConfig)}
 
-    for series_type, spec in SERIES_TYPE_SPECS.items():
+    for series_type in _PRE_MIGRATION_SERIES_TYPES:
+        spec = SERIES_TYPE_SPECS[series_type]
         top_level_field_names = {f.name for f in dataclasses.fields(spec.style_cls)}
         expected_direct = top_level_field_names - {"marker", "error_bars"}
         actual_direct = set(_DIRECT_STYLE_FIELDS_BY_CHART_TYPE[series_type.value])

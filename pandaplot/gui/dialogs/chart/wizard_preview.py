@@ -76,6 +76,8 @@ def render_wizard_preview(
                 v_column_id=config.get("v_column_id", ""),
                 magnitude_column_id=config.get("magnitude_column_id", ""),
             )
+        elif series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+            style = style_cls(z_column_id=config.get("z_column_id", ""))
         else:
             style = style_cls()
         series = DataSeries(
@@ -88,7 +90,6 @@ def render_wizard_preview(
         data = resolve_series_data(project, series, chart_type)
         if data.error is not None:
             continue
-        any_plotted = True
         label = _series_label(project, config)
         if chart_type == "line":
             axes.plot(data.x_data, data.y_data, label=label)
@@ -100,6 +101,22 @@ def render_wizard_preview(
             axes.hist(data.y_data, bins=10, label=label)
         elif chart_type == "vector":
             axes.quiver(data.x_data, data.y_data, data.u_data, data.v_data, label=label)
+        elif chart_type == "colormap":
+            axes.scatter(data.x_data, data.y_data, c=data.z_data, cmap="viridis", label=label)
+        elif chart_type == "heatmap":
+            from pandaplot.gui.components.tabs.chart.chart_heatmap import build_heatmap_grid
+            try:
+                xs, ys, grid = build_heatmap_grid(
+                    data.x_data, data.y_data, data.z_data,
+                    config.get("heatmap_gridding", "grid"), config.get("heatmap_resolution", 50))
+            except ValueError:
+                # This series alone failed to grid -- must not erase an
+                # earlier series' successful plot by resetting any_plotted
+                # (PR #190 review). any_plotted is set once, below, only
+                # for a series that actually drew something.
+                continue
+            axes.pcolormesh(xs, ys, grid, cmap="viridis", shading="nearest")
+        any_plotted = True
 
     if not any_plotted:
         # No resolvable series yet (wizard just opened, or the user hasn't
@@ -115,6 +132,12 @@ def render_wizard_preview(
             axes.hist(_SAMPLE_Y, bins=5)
         elif chart_type == "vector":
             axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
+        elif chart_type == "colormap":
+            axes.scatter(_SAMPLE_X, _SAMPLE_Y, c=_SAMPLE_Y, cmap="viridis")
+        elif chart_type == "heatmap":
+            import numpy as np
+            grid = np.arange(16).reshape(4, 4)
+            axes.pcolormesh(grid, cmap="viridis")
 
     axes.set_title(f"{title}\n{subtitle}" if subtitle else title)
     axes.set_xlabel(x_label)
