@@ -1,5 +1,6 @@
 """Tests for StatisticalTestCommand."""
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -67,3 +68,14 @@ class TestStatisticalTestCommand:
         )
         assert command.execute() is False
         assert command.result_dataset_id is None
+
+    def test_undo_logs_warning_when_nothing_to_undo(self, app_context_with_project, caplog):
+        app_context, _ = app_context_with_project
+        command = StatisticalTestCommand(
+            app_context, "ds-1", StatTestType.PEARSON, ["A", "B"]
+        )
+        # execute() never ran, so result_dataset_id is unset.
+
+        with caplog.at_level(logging.WARNING):
+            assert command.undo() is False
+        assert "cannot undo" in caplog.text.lower()

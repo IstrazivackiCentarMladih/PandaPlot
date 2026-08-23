@@ -1,0 +1,24 @@
+[project]
+name = "pandaplot-storybook"
+version = "0.1.0"
+description = "Interactive PySide6 gallery for PandaPlot's reusable UI widgets, with live theme switching."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyside6>=6.11.1",
+    "matplotlib>=3.11.0",
+    "pandas>=3.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-qt>=4.5.0",
+    "ruff>=0.15.22",
+]
+
+[tool.ruff]
+line-length = 150
+
+[tool.ruff.lint]
+extend-select = ["B", "Q", "I"]

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
+from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.project.items.chart import FitData
 
 
@@ -20,14 +21,14 @@ def _qapp():
     return QApplication.instance() or QApplication(sys.argv)
 
 
-def _fit(**kwargs):
+def _fit(**style_kwargs):
     return FitData(
         source_dataset_id="ds1",
         fit_type="linear",
         x_data=np.array([1.0, 2.0]),
         y_data=np.array([1.0, 2.0]),
         label="Fit",
-        **kwargs,
+        style=FitStyle(**style_kwargs),
     )
 
 
@@ -53,4 +54,4 @@ def test_apply_fit_style_persists_opacity_slider_to_alpha():
 
     style_tab.apply_fit_style_to(fit)
 
-    assert fit.alpha == 0.3
+    assert fit.style.alpha == 0.3

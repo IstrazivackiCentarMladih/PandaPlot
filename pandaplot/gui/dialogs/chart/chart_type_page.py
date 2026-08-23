@@ -20,15 +20,17 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.core.widget_extension import PWizardPage
-from pandaplot.gui.dialogs.chart.chart_role_spec import CHART_ROLE_SPECS
 from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
 from pandaplot.gui.dialogs.chart.wizard_footer import WizardFooter
 from pandaplot.gui.dialogs.chart.wizard_step_rail import WizardStepRail
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 _SAMPLE_X = [1, 2, 3, 4, 5]
 _SAMPLE_Y = [2, 3, 1, 4, 3]
+_SAMPLE_U = [1.0, 0.5, -1.0, 0.5, -0.5]
+_SAMPLE_V = [0.5, -1.0, 0.5, 1.0, -0.5]
 
 
 class ChartTypePage(PWizardPage):
@@ -61,7 +63,7 @@ class ChartTypePage(PWizardPage):
         type_layout.addWidget(SectionHeader("Chart type"))
 
         self.type_list = QListWidget()
-        for chart_type, spec in CHART_ROLE_SPECS.items():
+        for chart_type, spec in CHART_TYPE_SPECS.items():
             item = QListWidgetItem(spec.display_name)
             item.setData(Qt.ItemDataRole.UserRole, chart_type)
             self.type_list.addItem(item)
@@ -148,6 +150,14 @@ class ChartTypePage(PWizardPage):
             axes.bar(_SAMPLE_X, _SAMPLE_Y)
         elif chart_type == "hist":
             axes.hist(_SAMPLE_Y, bins=5)
+        elif chart_type == "vector":
+            axes.quiver(_SAMPLE_X, _SAMPLE_Y, _SAMPLE_U, _SAMPLE_V)
+        elif chart_type == "colormap":
+            axes.scatter(_SAMPLE_X, _SAMPLE_Y, c=_SAMPLE_Y, cmap="viridis")
+        elif chart_type == "heatmap":
+            import numpy as np
+            grid = np.arange(16).reshape(4, 4)
+            axes.pcolormesh(grid, cmap="viridis")
         canvas.draw()
 
         self.preview_container.layout().addWidget(canvas)

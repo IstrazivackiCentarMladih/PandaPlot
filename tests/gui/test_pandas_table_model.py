@@ -34,7 +34,7 @@ def mock_app_context():
 def sample_dataset():
     """Create a dataset with mixed data: NaN, normal values, and literal "nan" string."""
     data = pd.DataFrame({
-        "float_col": [1.5, float('nan'), 3.5],
+        "float_col": [1.5, float("nan"), 3.5],
         "str_col": ["a", "nan", "c"],
         "int_col": [1, 2, 3],
     })

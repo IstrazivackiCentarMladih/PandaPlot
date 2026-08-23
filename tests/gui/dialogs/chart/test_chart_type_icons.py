@@ -3,7 +3,7 @@ import pytest
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from pandaplot.gui.dialogs.chart.chart_type_icons import chart_type_icon
+from pandaplot.gui.dialogs.chart.chart_type_icons import _vector_arrow_geometry, chart_type_icon
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -12,7 +12,7 @@ def qapp():
     yield app
 
 
-@pytest.mark.parametrize("chart_type", ["line", "scatter", "bar", "hist"])
+@pytest.mark.parametrize("chart_type", ["line", "scatter", "bar", "hist", "vector", "colormap", "heatmap"])
 def test_icon_renders_a_non_empty_pixmap(chart_type):
     icon = chart_type_icon(chart_type, "#4A56C6")
 
@@ -32,3 +32,14 @@ def test_icon_renders_a_non_empty_pixmap(chart_type):
 def test_unknown_chart_type_raises():
     with pytest.raises(KeyError):
         chart_type_icon("pie", "#4A56C6")
+
+
+def test_vector_arrow_geometry_stays_within_canvas_bounds():
+    """Regression test: both arrowhead wings on both arrows must stay inside
+    the [0, size] icon canvas at the default size, otherwise the icon renders
+    a clipped/asymmetric arrowhead."""
+    size = 14
+    for start, end, wings in _vector_arrow_geometry(size):
+        for point in (start, end, *wings):
+            assert 0 <= point.x() <= size, f"x={point.x()} out of [0, {size}]"
+            assert 0 <= point.y() <= size, f"y={point.y()} out of [0, {size}]"

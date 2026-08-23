@@ -13,13 +13,14 @@ class DeleteItemCommand(Command):
     This command works with any item type that extends the Item base class.
     """
 
-    def __init__(self, app_context: AppContext, item_id: str):
+    def __init__(self, app_context: AppContext, item_id: str, confirm: bool = True):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
         self.ui_controller: UIController = app_context.get_ui_controller()
 
         self.item_id = item_id
+        self.confirm = confirm
 
         # Store state for undo
         self.deleted_item_data: Optional[Dict[str, Any]] = None
@@ -32,6 +33,7 @@ class DeleteItemCommand(Command):
         try:
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("DeleteItemCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
                     "Delete Item",
                     "No project is currently loaded."
@@ -40,11 +42,15 @@ class DeleteItemCommand(Command):
 
             project = self.app_state.current_project
             if not project:
+                self.logger.warning(
+                    "DeleteItemCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             # Find the item to delete
             item = project.find_item(self.item_id)
             if item is None:
+                self.logger.warning("DeleteItemCommand.execute: item '%s' not found", self.item_id)
                 self.ui_controller.show_warning_message(
                     "Delete Item",
                     f"Item '{self.item_id}' not found in the project."
@@ -63,13 +69,15 @@ class DeleteItemCommand(Command):
             item_name = getattr(item, "name", self.item_id)
             item_type = self.deleted_item_class.__name__.lower()
 
-            # Confirm deletion
-            response = self.ui_controller.show_question(
-                "Delete Item",
-                f"Are you sure you want to delete the {item_type} '{item_name}'?\nThis action cannot be undone."
-            )
-            if not response:
-                return False
+            # Confirm deletion (skipped when the caller already confirmed a
+            # batch operation, e.g. bulk delete in the gallery tab)
+            if self.confirm:
+                response = self.ui_controller.show_question(
+                    "Delete Item",
+                    f"Are you sure you want to delete the {item_type} '{item_name}'?\nThis action cannot be undone."
+                )
+                if not response:
+                    return False
 
             # Remove the item from the project
             project.remove_item(item)
@@ -107,6 +115,10 @@ class DeleteItemCommand(Command):
 
             project = self.app_state.current_project
             if not project:
+                self.logger.warning(
+                    "DeleteItemCommand.undo: has_project is True but current_project is None (item_id=%s)",
+                    self.item_id,
+                )
                 return False
 
             # Recreate the item from its serialized data
@@ -157,11 +169,16 @@ class DeleteItemCommand(Command):
 
             project = self.app_state.current_project
             if not project:
+                self.logger.warning(
+                    "DeleteItemCommand.redo: has_project is True but current_project is None (item_id=%s)",
+                    self.item_id,
+                )
                 return False
 
             # Find the restored item and delete it again
             item = project.find_item(self.item_id)
             if item is None:
+                self.logger.warning("DeleteItemCommand.redo: item '%s' not found", self.item_id)
                 return False
 
             # Remove the item from the project

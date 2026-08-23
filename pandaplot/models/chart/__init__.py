@@ -1,11 +1,21 @@
 """Chart models for pandaplot application."""
 
-from .chart_configuration import AxisStyle, ChartConfiguration, LegendStyle, LineStyle, MarkerStyle
+from .chart_configuration import LegendPosition, LineStyleType, MarkerType, ScaleType
+from .chart_type import ChartType
+from .chart_type_spec import CHART_TYPE_SPECS, ChartTypeSpec, get_chart_type_spec
+from .series_type import SeriesType
+from .series_type_spec import SERIES_TYPE_SPECS, SeriesTypeSpec
 
 __all__ = [
-    "LineStyle",
-    "MarkerStyle",
-    "AxisStyle",
-    "LegendStyle",
-    "ChartConfiguration",
+    "LineStyleType",
+    "MarkerType",
+    "ScaleType",
+    "LegendPosition",
+    "ChartType",
+    "ChartTypeSpec",
+    "CHART_TYPE_SPECS",
+    "get_chart_type_spec",
+    "SeriesType",
+    "SeriesTypeSpec",
+    "SERIES_TYPE_SPECS",
 ]

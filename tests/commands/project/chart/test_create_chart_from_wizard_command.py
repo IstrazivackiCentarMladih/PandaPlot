@@ -6,6 +6,7 @@ These unit tests therefore drive that slot directly instead of relying on a
 return value from `dialog.exec()`.
 """
 import gc
+import logging
 from types import MethodType
 from unittest.mock import Mock, patch
 
@@ -316,15 +317,17 @@ def test_execute_succeeds_before_the_wizard_has_finished(mock_wizard_cls, app_co
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
-def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project):
+def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project, caplog):
     app_context, _ = app_context_with_project
     app_context.get_app_state.return_value.has_project = False
     mock_wizard_cls.return_value = _fake_wizard()
 
     command = CreateChartFromWizardCommand(app_context)
 
-    assert command.execute() is False
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
     mock_wizard_cls.assert_not_called()
+    assert "no project" in caplog.text.lower()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -358,6 +361,36 @@ def test_empty_path_creates_a_line_chart_with_no_series(mock_wizard_cls, app_con
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_wizard_created_chart_gets_explicit_default_size(mock_wizard_cls, app_context_with_project):
+    """Reported live: "when creating chart through wizard, the chart is
+    too small (it didn't use app default size)." Root cause: charts with
+    config["width_cm"]/["height_cm"] left as None fall through to
+    ChartEditorWidget's auto-fit-to-viewport path, which races a brand
+    new tab's not-yet-settled layout and can bake in an undersized
+    result. Setting the app defaults explicitly at creation time skips
+    that racy path entirely for wizard charts."""
+    app_context, project = app_context_with_project
+    # `app_context_with_project` gives `app_context` as a bare `Mock()`, which
+    # auto-creates a truthy attribute chain for any `get_manager(...)` call
+    # instead of the real `AppContext.get_manager`'s `KeyError` when no
+    # `ConfigManager` is registered -- that would make the code under test
+    # read a `Mock` as a "real" `chart_display.default_width_cm` and never
+    # fall through to its own literal defaults. Simulate the unregistered
+    # manager explicitly so this test exercises the same fallback path a
+    # real, config-manager-less `AppContext` would take.
+    app_context.get_manager.side_effect = KeyError("ConfigManager not found")
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.config["width_cm"] == pytest.approx(20.0)
+    assert created_chart.config["height_cm"] == pytest.approx(15.0)
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_project):
     app_context, project = app_context_with_project
     series_configs = [{
@@ -381,6 +414,32 @@ def test_series_configs_become_data_series(mock_wizard_cls, app_context_with_pro
     assert created_chart.data_series[0].dataset_id == "ds-1"
     assert created_chart.data_series[0].x_column_id == "col-date"
     assert created_chart.data_series[0].y_column_id == "col-rev"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_multiple_series_get_distinct_default_colors(mock_wizard_cls, app_context_with_project):
+    """Regression test: every wizard-created series used to land on its
+    style class's own single hardcoded default color (no color= kwarg
+    was ever passed), so a multi-series chart came out of the wizard
+    with every series visually indistinguishable."""
+    app_context, project = app_context_with_project
+    series_configs = [
+        {
+            "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": f"col-{i}",
+            "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        }
+        for i in range(3)
+    ]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    colors = [series.style.color for series in created_chart.data_series]
+    assert len(set(colors)) == len(colors), f"expected distinct colors, got {colors}"
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
@@ -689,3 +748,98 @@ def test_redo_reinserts_the_chart_into_its_original_folder(mock_wizard_cls, app_
     command.redo()
 
     assert project.add_item.call_args.kwargs["parent_id"] == "folder-1"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_vector_series_config_passes_through_u_v_magnitude(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-x", "y_column_id": "col-y",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        "u_column_id": "col-u", "v_column_id": "col-v", "magnitude_column_id": "col-m",
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="vector", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.chart_type == "vector"
+    series = created_chart.data_series[0]
+    assert series.style.u_column_id == "col-u"
+    assert series.style.v_column_id == "col-v"
+    assert series.style.magnitude_column_id == "col-m"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_error_bar_series_config_passes_through_to_style(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "col-xerr", "y_error_column_id": "col-yerr",
+        "error_symmetric": False,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    series = created_chart.data_series[0]
+    assert series.style.error_bars.x_error_column_id == "col-xerr"
+    assert series.style.error_bars.y_error_column_id == "col-yerr"
+    assert series.style.error_bars.error_symmetric is False
+
+
+@pytest.mark.parametrize("chart_type", ["colormap", "heatmap"])
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_colormap_and_heatmap_series_config_passes_through_z_column(
+        mock_wizard_cls, app_context_with_project, chart_type):
+    from pandaplot.models.chart.series_style import ColormapSeriesStyle, HeatmapSeriesStyle
+
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1",
+        "x_column_id": "col-x", "y_column_id": "col-y",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+        "z_column_id": "col-z",
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type=chart_type, series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    created_chart = project.add_item.call_args[0][0]
+    assert created_chart.chart_type == chart_type
+    series = created_chart.data_series[0]
+    expected_style_cls = ColormapSeriesStyle if chart_type == "colormap" else HeatmapSeriesStyle
+    assert isinstance(series.style, expected_style_cls)
+    assert series.style.z_column_id == "col-z"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    series_configs = [{
+        "dataset_id": "ds-1", "x_column_id": "col-date", "y_column_id": "col-rev",
+        "x_error_column_id": "", "y_error_column_id": "", "error_symmetric": True,
+    }]
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", series_configs=series_configs)
+
+    command = CreateChartFromWizardCommand(app_context)
+
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    series = project.add_item.call_args[0][0].data_series[0]
+    assert not hasattr(series.style, "u_column_id")
+    assert not hasattr(series.style, "v_column_id")
+    assert not hasattr(series.style, "magnitude_column_id")

@@ -4,7 +4,7 @@ Note tab widget for displaying and editing notes in the main tab container.
 from typing import override
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QFont, QKeySequence
+from PySide6.QtGui import QAction, QFont, QKeySequence, QTextCursor
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.commands.project.note import EditNoteCommand
 from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import NoteEvents
+from pandaplot.models.events import NoteEvents, UIEvents
 from pandaplot.models.project.items import Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
@@ -54,6 +54,12 @@ class NoteEditorWidget(PWidget):
 
         # Since we can't check if the preview is connected, track it with a flag
         self.preview_connected = False
+
+        # Re-entrancy guard so proportional scroll syncing between the source
+        # and preview panes doesn't ping-pong into an infinite loop.
+        self._syncing_scroll = False
+        # Whether split-view scroll positions track each other.
+        self.scroll_sync_enabled = True
 
         self._initialize()
         self.setup_connections()
@@ -224,6 +230,11 @@ class NoteEditorWidget(PWidget):
             self._changePreviewConnection(True)
             self.update_preview()
             self.stack.setCurrentIndex(2)
+            # Align the freshly rendered preview to where the editor is scrolled.
+            # Deferred so the preview has laid out and its scrollbar range is set.
+            if self.scroll_sync_enabled:
+                QTimer.singleShot(
+                    0, lambda: self._sync_scroll(self.text_edit, self.preview))
 
     def _changePreviewConnection(self, shouldBeConnected: bool):
         """Change the connection state of the preview."""
@@ -326,6 +337,21 @@ class NoteEditorWidget(PWidget):
             lambda: self.set_mode("split"))
         toolbar.addAction(self.split_mode_action)
 
+        # Toggle for synced scrolling between the two split-view panes.
+        self.scroll_sync_action = QAction("🔗 Sync Scroll", self)
+        self.scroll_sync_action.setCheckable(True)
+        self.scroll_sync_action.setChecked(self.scroll_sync_enabled)
+        self.scroll_sync_action.setToolTip(
+            "Keep the source and preview scrolled to the same place in split view")
+        self.scroll_sync_action.toggled.connect(self._on_scroll_sync_toggled)
+        toolbar.addAction(self.scroll_sync_action)
+
+    def _on_scroll_sync_toggled(self, enabled: bool):
+        """Enable/disable split-view scroll syncing and align immediately."""
+        self.scroll_sync_enabled = enabled
+        if enabled and self.stack.currentIndex() == 2:
+            self._sync_scroll(self.text_edit, self.preview)
+
     def create_status_section(self, layout: QLayout):
         """Create the status section with statistics."""
         self.status_frame = QFrame()
@@ -349,9 +375,86 @@ class NoteEditorWidget(PWidget):
         """Set up signal connections and event subscriptions."""
         self.text_edit.textChanged.connect(self.on_content_changed)
 
+        # Keep the two panes' scroll positions in sync while in split mode, so
+        # the same part of the note is visible on both sides while editing.
+        self.text_edit.verticalScrollBar().valueChanged.connect(
+            self._on_editor_scrolled)
+        self.preview.verticalScrollBar().valueChanged.connect(
+            self._on_preview_scrolled)
+
         # Subscribe to external rename/content change events for this note
         self.subscribe_to_event(
             NoteEvents.NOTE_CONTENT_CHANGED, self.on_note_content_changed_event)
+        # Jump to a match when note search asks to reveal one in this note.
+        self.subscribe_to_event(
+            UIEvents.NOTE_REVEAL_MATCH, self.on_reveal_match_event)
+
+    def on_reveal_match_event(self, event_data: dict):
+        """Move the cursor to (and select) a match requested by note search."""
+        if event_data.get("note_id") != self.note.id:
+            return
+
+        line_number = event_data.get("line_number")
+        match_start = event_data.get("match_start")
+        match_end = event_data.get("match_end")
+        if line_number is None or match_start is None or match_end is None:
+            return
+
+        # The match must be visible in the source editor, so ensure the text
+        # pane is showing (split keeps the preview too).
+        if self.stack.currentIndex() == 1:  # preview-only
+            self.set_mode("split")
+
+        document = self.text_edit.document()
+        block = document.findBlockByLineNumber(max(0, line_number - 1))
+        if not block.isValid():
+            return
+
+        cursor = QTextCursor(block)
+        cursor.setPosition(block.position() + match_start)
+        cursor.setPosition(
+            block.position() + match_end, QTextCursor.MoveMode.KeepAnchor
+        )
+        self.text_edit.setTextCursor(cursor)
+        self.text_edit.ensureCursorVisible()
+        self.text_edit.setFocus()
+
+    def _on_editor_scrolled(self, _value: int):
+        """Mirror the source editor's scroll position onto the preview."""
+        if self.scroll_sync_enabled and self.stack.currentIndex() == 2:
+            self._sync_scroll(self.text_edit, self.preview)
+
+    def _on_preview_scrolled(self, _value: int):
+        """Mirror the preview's scroll position onto the source editor."""
+        if self.scroll_sync_enabled and self.stack.currentIndex() == 2:
+            self._sync_scroll(self.preview, self.text_edit)
+
+    def _sync_scroll(self, source: QWidget, target: QWidget):
+        """Scroll ``target`` to the same relative position as ``source``.
+
+        Uses proportional (percentage-of-scrollable-range) mapping: the two
+        panes have different heights because Markdown/LaTeX renders differently
+        from its source, so an exact line mapping isn't available, but keeping
+        the same fraction scrolled lines them up closely enough to navigate.
+        """
+        if self._syncing_scroll:
+            return
+        source_bar = source.verticalScrollBar()
+        target_bar = target.verticalScrollBar()
+
+        source_range = source_bar.maximum() - source_bar.minimum()
+        ratio = (source_bar.value() - source_bar.minimum()) / source_range if source_range else 0.0
+
+        target_range = target_bar.maximum() - target_bar.minimum()
+        new_value = round(target_bar.minimum() + ratio * target_range)
+
+        # Setting the target's value re-emits valueChanged; the guard stops that
+        # from bouncing straight back and fighting the user's scroll.
+        self._syncing_scroll = True
+        try:
+            target_bar.setValue(new_value)
+        finally:
+            self._syncing_scroll = False
 
     def load_note_content(self):
         """Load the note content into the editor."""

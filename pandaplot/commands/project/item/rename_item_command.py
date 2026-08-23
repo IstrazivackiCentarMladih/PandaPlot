@@ -29,6 +29,7 @@ class RenameItemCommand(Command):
         try:
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("RenameItemCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
                     "Rename Item",
                     "No project is currently loaded."
@@ -37,12 +38,16 @@ class RenameItemCommand(Command):
 
             project = self.app_state.current_project
             if not project:
+                self.logger.warning(
+                    "RenameItemCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             # Check in metadata notes
             item = project.find_item(self.item_id)
 
             if item is None:
+                self.logger.warning("RenameItemCommand.execute: item '%s' not found", self.item_id)
                 self.ui_controller.show_warning_message(
                     "Rename Item",
                     f"Item with ID '{self.item_id}' not found."
@@ -77,10 +82,14 @@ class RenameItemCommand(Command):
             if self.old_name and self.app_state.has_project:
                 project = self.app_state.current_project
                 if not project:
+                    self.logger.warning(
+                        "RenameItemCommand.undo: has_project is True but current_project is None"
+                    )
                     return
 
                 item = project.find_item(self.item_id)
                 if item is None:
+                    self.logger.warning("RenameItemCommand.undo: item '%s' not found", self.item_id)
                     self.ui_controller.show_warning_message(
                         "Undo Rename Item",
                         f"Item with ID '{self.item_id}' not found."

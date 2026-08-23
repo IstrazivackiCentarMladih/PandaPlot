@@ -1,31 +1,29 @@
-from typing import Optional, override, List
+from typing import List, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QGroupBox,
-    QLabel,
+    QDoubleSpinBox,
     QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QSpinBox,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
-    QDoubleSpinBox,
-    QSpinBox,
-    QPushButton,
-    QTextEdit,
-    QScrollArea,
-    QHBoxLayout,
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
-from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.state.app_context import AppContext
-from pandaplot.models.project.items import Dataset
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class SignalPanel(PWidget):
+class SignalPanel(SidebarPanel):
     """Sidebar panel for signal analysis."""
 
     def __init__(
@@ -44,25 +42,14 @@ class SignalPanel(PWidget):
 
     @override
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
+        self._init_panel_layout()
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        self._set_title("📡 Signal Analysis")
 
         content_widget = QWidget()
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(8)
-
-        self.title_label = QLabel("📡 Signal Analysis")
-        layout.addWidget(self.title_label)
 
         # Analysis selector
         group = QGroupBox("Analysis")
@@ -114,8 +101,7 @@ class SignalPanel(PWidget):
         results_group = QGroupBox("Results")
         results_layout = QVBoxLayout()
 
-        self.run_btn = QPushButton("▶ Run Analysis")
-        self.run_btn.clicked.connect(self.run_analysis)
+        self.run_btn = PButton("Run", role="secondary", on_click=self.run_analysis)
 
         results_layout.addWidget(self.run_btn)
 
@@ -129,12 +115,11 @@ class SignalPanel(PWidget):
 
         button_layout = QHBoxLayout()
 
-        self.add_btn = QPushButton("➕ Add Results to Project")
-        self.add_btn.clicked.connect(self.add_results_to_project)
-        self.add_btn.setEnabled(False)
+        self.add_btn = PButton(
+            "Add to Project", role="primary", on_click=self.add_results_to_project, enabled=False
+        )
 
-        self.clear_btn = QPushButton("🔄 Clear")
-        self.clear_btn.clicked.connect(self.clear)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear)
 
         button_layout.addWidget(self.add_btn)
         button_layout.addWidget(self.clear_btn)
@@ -143,8 +128,7 @@ class SignalPanel(PWidget):
 
         layout.addStretch()
 
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
         self._on_analysis_changed()
 
     def _on_analysis_changed(self):
@@ -496,9 +480,6 @@ class SignalPanel(PWidget):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             QGroupBox {{
@@ -520,52 +501,7 @@ class SignalPanel(PWidget):
             }}
         """)
 
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
-
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-
-        self.add_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         self.results_text.setStyleSheet(f"""
             QTextEdit {{
@@ -573,21 +509,6 @@ class SignalPanel(PWidget):
                 color: {base_fg};
                 border: 1px solid {card_border};
                 border-radius: 4px;
-            }}
-        """)
-
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-
-            QPushButton:hover {{
-                background-color: #7f8c8d;
             }}
         """)
 

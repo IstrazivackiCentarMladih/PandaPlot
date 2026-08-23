@@ -6,6 +6,9 @@ from PySide6.QtWidgets import QMenu, QWidget
 from pandaplot.commands.app.exit_command import ExitCommand
 from pandaplot.commands.project.chart import CreateChartFromWizardCommand
 from pandaplot.commands.project.dataset import ImportDataCommand
+from pandaplot.commands.project.dataset.add_rows_columns_command import (
+    AddRowsColumnsCommand,
+)
 from pandaplot.commands.project.dataset.create_empty_dataset_command import (
     CreateEmptyDatasetCommand,
 )
@@ -26,6 +29,9 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 class MainMenu(PMenuBar):
     def __init__(self, parent: QWidget, app_context: AppContext):
         super().__init__(app_context=app_context, parent=parent)
+        # Dataset of the currently active tab, if any -- used to preselect the
+        # dataset in dialogs opened from the menu.
+        self.active_dataset_id: str | None = None
         self._initialize()
 
     @override
@@ -60,7 +66,7 @@ class MainMenu(PMenuBar):
             }}
             QMenuBar::item:pressed {{
                 background-color: {card_pressed};
-                color: white;
+                color: {base_fg};
             }}
             QMenu {{
                 background-color: {card_bg};
@@ -79,7 +85,7 @@ class MainMenu(PMenuBar):
             }}
             QMenu::item:pressed {{
                 background-color: {card_pressed};
-                color: white;
+                color: {base_fg};
             }}
             QMenu::separator {{
                 height: 1px;
@@ -114,7 +120,7 @@ class MainMenu(PMenuBar):
         settings_menu = QMenu("Settings", self)
         self.addMenu(settings_menu)
 
-        preferences_action = QAction("⚙️ Preferences...", self)
+        preferences_action = QAction("Preferences...", self)
         # TODO: consider showing settings dialog by triggering event which invokes a command
         preferences_action.triggered.connect(self.show_settings_dialog)
         settings_menu.addAction(preferences_action)
@@ -195,10 +201,19 @@ class MainMenu(PMenuBar):
         ).execute_command(ImportDataCommand(self.app_context)))
         data_menu.addAction(import_data_action)
 
-        create_empty_dataset_action = QAction("Create Empty Dataset", self)
+        create_empty_dataset_action = QAction("Add Dataset", self)
         create_empty_dataset_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(CreateEmptyDatasetCommand(self.app_context)))
         data_menu.addAction(create_empty_dataset_action)
+
+        import_images_action = QAction("Import Images...", self)
+        import_images_action.triggered.connect(self._on_import_images_from_menu)
+        data_menu.addAction(import_images_action)
+
+        self.add_rows_columns_action = QAction("Add Rows / Columns...", self)
+        self.add_rows_columns_action.triggered.connect(lambda: self.app_context.get_command_executor(
+        ).execute_command(AddRowsColumnsCommand(self.app_context, dataset_id=self.active_dataset_id)))
+        data_menu.addAction(self.add_rows_columns_action)
 
         data_menu.addSeparator()
 
@@ -208,6 +223,31 @@ class MainMenu(PMenuBar):
         data_menu.addAction(new_note_action)
         return data_menu
 
+    def _on_import_images_from_menu(self):
+        """Import Images from the Data menu always targets a brand-new top-level
+        gallery -- unlike the sidebar's version, this menu has no tree
+        selection context to reuse an existing gallery from."""
+        from PySide6.QtWidgets import QDialog
+
+        from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
+        from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
+
+        dialog = ImageImportDialog(self.app_context, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        create_command = CreateImageGalleryCommand(self.app_context, parent_id=None)
+        self.app_context.get_command_executor().execute_command(create_command)
+        gallery_id = create_command.created_gallery_id
+        if gallery_id is None:
+            return
+
+        import_command = ImportImagesCommand(
+            self.app_context, gallery_id=gallery_id,
+            sources=dialog.get_sources(), copy_into_project=dialog.get_copy_into_project(),
+        )
+        self.app_context.get_command_executor().execute_command(import_command)
+
     def _create_chart_menu(self) -> QMenu:
         chart_menu = QMenu("Chart", self)
 
@@ -216,10 +256,11 @@ class MainMenu(PMenuBar):
         ).execute_command(CreateChartFromWizardCommand(self.app_context)))
         chart_menu.addAction(self.create_chart_action)
 
-        self._update_create_chart_action_enabled()
+        self._update_dataset_dependent_actions()
         return chart_menu
 
-    def _update_create_chart_action_enabled(self):
+    def _update_dataset_dependent_actions(self):
+        """Enable the actions that need an existing dataset to act on."""
         app_state = self.app_context.get_app_state()
         has_datasets = False
         if app_state.has_project and app_state.current_project:
@@ -227,14 +268,20 @@ class MainMenu(PMenuBar):
                 isinstance(item, Dataset) for item in app_state.current_project.get_all_items()
             )
         self.create_chart_action.setEnabled(has_datasets)
+        self.add_rows_columns_action.setEnabled(has_datasets)
+
+    def _on_tab_changed(self, event_data: dict):
+        """Track the active tab's dataset so menu dialogs can preselect it."""
+        self.active_dataset_id = event_data.get("dataset_id")
 
     @override
     def setup_event_subscriptions(self):
-        from pandaplot.models.events import ProjectEvents
-        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_create_chart_action_enabled())
-        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_create_chart_action_enabled())
+        from pandaplot.models.events import ProjectEvents, UIEvents
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_dataset_dependent_actions())
+        self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
 
     def show_settings_dialog(self):
         """Show the settings dialog."""

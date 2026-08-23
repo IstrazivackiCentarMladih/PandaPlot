@@ -116,6 +116,10 @@ class StatisticalTestCommand(Command):
     def undo(self) -> bool:
         try:
             if not self.result_dataset_id or not self.app_state.current_project:
+                self.logger.warning(
+                    "StatisticalTestCommand.undo: cannot undo (result_dataset_id set=%s, current_project set=%s)",
+                    bool(self.result_dataset_id), self.app_state.current_project is not None,
+                )
                 return False
             project = self.app_state.current_project
             dataset = project.find_item(self.result_dataset_id)

@@ -1,3 +1,4 @@
+import logging
 import math
 from unittest.mock import Mock, patch
 
@@ -5,7 +6,6 @@ import pytest
 
 from pandaplot.commands.project.dataset.create_empty_dataset_command import CreateEmptyDatasetCommand
 from pandaplot.gui.controllers.ui_controller import UIController
-from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project import Project
 from pandaplot.models.state import AppContext, AppState
 
@@ -185,13 +185,13 @@ class TestCreateEmptyDatasetCommand:
             assert str(dataset.data["Column1"].dtype) == "float64"
             assert dataset.data["Column1"].isna().all()
 
-    def test_no_project_loaded_shows_warning_before_opening_dialog(self, mock_app_context):
+    def test_no_project_loaded_shows_warning_before_opening_dialog(self, mock_app_context, caplog):
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
 
         with patch(
             "pandaplot.commands.project.dataset.create_empty_dataset_command.NewDatasetDialog"
-        ) as mock_dialog_cls:
+        ) as mock_dialog_cls, caplog.at_level(logging.WARNING):
             command = CreateEmptyDatasetCommand(app_context)
             result = command.execute()
 
@@ -200,3 +200,33 @@ class TestCreateEmptyDatasetCommand:
         ui_controller.show_warning_message.assert_called_once_with(
             "Create Dataset", "Please open or create a project first."
         )
+        assert "no project" in caplog.text.lower()
+
+    def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = CreateEmptyDatasetCommand(app_context, dataset_name="Programmatic")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "current_project is None" in caplog.text
+
+    def test_undo_logs_warning_when_nothing_to_undo(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        command = CreateEmptyDatasetCommand(app_context, dataset_name="Never executed")
+
+        with caplog.at_level(logging.WARNING):
+            command.undo()
+        assert "cannot undo" in caplog.text.lower()
+
+    def test_redo_logs_warning_when_no_dataset_name(self, mock_app_context, caplog):
+        app_context, app_state, ui_controller = mock_app_context
+        command = CreateEmptyDatasetCommand(app_context)
+
+        with caplog.at_level(logging.WARNING):
+            command.redo()
+        assert "cannot redo" in caplog.text.lower()

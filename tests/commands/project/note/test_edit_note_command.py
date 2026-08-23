@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import Mock
 
 import pytest
@@ -119,6 +120,45 @@ class TestEditNoteCommand:
             "Edit Note", 
             "Note 'note-123' not found in the project."
         )
+
+    def test_execute_logs_warning_when_no_project_loaded(self, mock_app_context, caplog):
+        """Test execute logs a warning when no project is loaded."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "note-123" in caplog.text
+
+    def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """Test execute logs a warning when current_project is None despite has_project."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "EditNoteCommand.execute" in caplog.text
+
+    def test_execute_logs_warning_when_note_not_found(self, mock_app_context, sample_project, caplog):
+        """Test execute logs a warning when note is not found."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        sample_project.find_item.return_value = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        with caplog.at_level(logging.WARNING):
+            result = command.execute()
+
+        assert result is False
+        assert "note-123" in caplog.text
 
     def test_execute_successful(self, mock_app_context, sample_project, sample_note):
         """Test successful execute operation."""
@@ -279,6 +319,37 @@ class TestEditNoteCommand:
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to undo edit note: Test error" in ui_controller.show_error_message.call_args[0][1]
 
+    def test_undo_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """Test undo logs a warning when current_project is None despite has_project."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        command.old_content = "Original content"
+
+        with caplog.at_level(logging.WARNING):
+            result = command.undo()
+
+        assert result is False
+        assert "note-123" in caplog.text
+
+    def test_undo_logs_warning_when_note_not_found(self, mock_app_context, sample_project, caplog):
+        """Test undo logs a warning when note is not found."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        sample_project.find_item.return_value = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        command.old_content = "Original content"
+
+        with caplog.at_level(logging.WARNING):
+            result = command.undo()
+
+        assert result is False
+        assert "note-123" in caplog.text
+
     def test_redo_successful(self, mock_app_context, sample_project, sample_note):
         """Test successful redo operation."""
         app_context, app_state, ui_controller = mock_app_context
@@ -385,6 +456,37 @@ class TestEditNoteCommand:
         assert result is False
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to redo edit note: Test error" in ui_controller.show_error_message.call_args[0][1]
+
+    def test_redo_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """Test redo logs a warning when current_project is None despite has_project."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        command.old_content = "Original content"
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "note-123" in caplog.text
+
+    def test_redo_logs_warning_when_note_not_found(self, mock_app_context, sample_project, caplog):
+        """Test redo logs a warning when note is not found."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+        sample_project.find_item.return_value = None
+
+        command = EditNoteCommand(app_context, "note-123", "New content")
+        command.old_content = "Original content"
+
+        with caplog.at_level(logging.WARNING):
+            result = command.redo()
+
+        assert result is False
+        assert "note-123" in caplog.text
 
     def test_content_storage_during_execute(self, mock_app_context, sample_project, sample_note):
         """Test that old content is properly stored during execute."""

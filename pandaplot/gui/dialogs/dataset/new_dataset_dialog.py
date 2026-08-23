@@ -4,9 +4,9 @@ import math
 from typing import Optional
 
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
-    QComboBox,
     QFormLayout,
     QLineEdit,
     QSpinBox,

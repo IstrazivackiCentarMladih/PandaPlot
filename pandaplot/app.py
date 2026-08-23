@@ -8,8 +8,9 @@ from pandaplot.commands.command_executor import CommandExecutor
 from pandaplot.commands.project.project import LoadProjectCommand
 from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
+from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import EventBus
-from pandaplot.models.project.items import Chart, Dataset, Folder, Note
+from pandaplot.models.project.items import Chart, Dataset, Folder, Image, ImageGallery, Note
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config import ConfigManager
 from pandaplot.services.qtasks import TaskScheduler
@@ -18,6 +19,8 @@ from pandaplot.services.theme import ThemeManager
 from pandaplot.storage.chart_data_manager import ChartDataManager
 from pandaplot.storage.dataset_data_manager import DatasetDataManager
 from pandaplot.storage.folder_data_manager import FolderDataManager
+from pandaplot.storage.image_data_manager import ImageDataManager
+from pandaplot.storage.image_gallery_data_manager import ImageGalleryDataManager
 from pandaplot.storage.item_data_manager_factory import ItemDataManagerFactory
 from pandaplot.storage.note_data_manager import NoteDataManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
@@ -32,6 +35,8 @@ def create_project_data_manager() -> ProjectDataManager:
     factory.register("folder", Folder, FolderDataManager(), "folder")
     factory.register("chart", Chart, ChartDataManager(), "chart")
     factory.register("dataset", Dataset, DatasetDataManager(), "dataset")
+    factory.register("image", Image, ImageDataManager(), "image")
+    factory.register("imagegallery", ImageGallery, ImageGalleryDataManager(), "imagegallery")
     return ProjectDataManager(factory)
 
 
@@ -62,6 +67,7 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
     if argv is None:
         argv = sys.argv
     app = QApplication(argv)
+    app.setWindowIcon(create_app_icon())
 
     # Kick off the background import warm-up right after QApplication exists
     # (QObject-based signals -- which the worker uses to report completion --
@@ -89,7 +95,8 @@ def create_qt_application(app_context: AppContext, argv: list[str] | None = None
 
 def _warm_up_heavy_imports(progress_callback=None) -> None:
     """Pre-import dependencies that are otherwise lazily loaded on first use
-    (running a fit, opening a chart tab, opening a note tab). Each of those
+    (running a fit, opening a chart tab, opening a note tab, running signal
+    analysis or LOWESS smoothing). Each of those
     imports costs 1+ seconds; without warm-up, that cost is paid synchronously
     on the UI thread the first time the user triggers the feature, which
     looks like a freeze. Runs on a background thread, so import errors here
@@ -101,7 +108,9 @@ def _warm_up_heavy_imports(progress_callback=None) -> None:
         from matplotlib.backends.backend_qt import NavigationToolbar2QT  # noqa: F401
         from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg  # noqa: F401
         from matplotlib.figure import Figure  # noqa: F401
+        from scipy import signal  # noqa: F401
         from scipy.optimize import curve_fit  # noqa: F401
+        from statsmodels.nonparametric.smoothers_lowess import lowess  # noqa: F401
     except Exception:
         logging.getLogger(__name__).exception("Background import warm-up failed (non-fatal)")
 

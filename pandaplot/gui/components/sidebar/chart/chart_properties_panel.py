@@ -4,7 +4,6 @@ from typing import Optional, override
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QLabel,
     QScrollArea,
     QTabWidget,
     QVBoxLayout,
@@ -18,14 +17,14 @@ from pandaplot.gui.components.sidebar.chart.tabs.chart_tab import ChartTab
 from pandaplot.gui.components.sidebar.chart.tabs.data_tab import DataTab
 from pandaplot.gui.components.sidebar.chart.tabs.legend_tab import LegendTab
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class ChartPropertiesPanel(PWidget):
+class ChartPropertiesPanel(SidebarPanel):
     """Side panel for configuring chart properties."""
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
@@ -45,14 +44,10 @@ class ChartPropertiesPanel(PWidget):
     @override
     def _init_ui(self):
         """Set up the user interface."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        self._init_panel_layout()
 
         # Header
-        self.title_label = QLabel("📊 Chart Properties", self)
-        layout.addWidget(self.title_label)
-        layout.addSpacing(6)
+        self._set_title("📈 Chart Properties")
 
         # Tab widget for organizing chart properties. When the tab bar
         # doesn't fit the panel's width, `resizeEvent` swaps it for
@@ -63,7 +58,6 @@ class ChartPropertiesPanel(PWidget):
         self.tab_selector_combo.addItems(self._tab_titles)
         self.tab_selector_combo.setVisible(False)
         self.tab_selector_combo.currentIndexChanged.connect(self._on_tab_selector_combo_changed)
-        layout.addWidget(self.tab_selector_combo)
 
         self.tab_widget = QTabWidget(self)
         self.tab_widget.currentChanged.connect(self._on_tab_widget_current_changed)
@@ -78,6 +72,7 @@ class ChartPropertiesPanel(PWidget):
         self.chart_tab = ChartTab(self)
         self.chart_tab.configChanged.connect(self._on_any_tab_config_changed)
         self.chart_tab.chartTypeChanged.connect(self.style_tab.set_chart_type)
+        self.chart_tab.chartTypeChanged.connect(lambda _value: self.data_tab.refresh_vector_fields())
         self.tab_widget.addTab(self._wrap_in_scroll_area(self.chart_tab), "Chart")
 
         # Axes tab: constructed before the Data tab (though added to the tab
@@ -109,13 +104,20 @@ class ChartPropertiesPanel(PWidget):
         self.legend_tab.configChanged.connect(self._on_any_tab_config_changed)
         self.tab_widget.addTab(self._wrap_in_scroll_area(self.legend_tab), "Legend")
 
-        layout.addWidget(self.tab_widget, stretch=1)
-
         # Footer: dirty-state indicator + Revert/Apply
         self.footer = DirtyFooter(self)
         self.footer.applyClicked.connect(self._on_apply)
         self.footer.revertClicked.connect(self._on_reset)
-        layout.addWidget(self.footer)
+
+        body_widget = QWidget(self)
+        body_layout = QVBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+        body_layout.addWidget(self.tab_selector_combo)
+        body_layout.addWidget(self.tab_widget, stretch=1)
+        body_layout.addWidget(self.footer)
+
+        self._set_content(body_widget, scrollable=False)
 
     def _wrap_in_scroll_area(self, widget: QWidget) -> QScrollArea:
         """Wrap a tab's content in a vertically-scrolling QScrollArea.
@@ -198,16 +200,7 @@ class ChartPropertiesPanel(PWidget):
         """)
         
         # Title label with improved styling
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Tab widget with theme-aware colors
         self.tab_widget.setStyleSheet(f"""
@@ -469,6 +462,7 @@ class ChartPropertiesPanel(PWidget):
 
         # Update basic chart properties
         self.style_tab.apply_chart_style_to(chart)
+        self.style_tab.apply_colormap_config_to(chart)
         self.chart_tab.apply_to(chart)
         self.axes_tab.apply_to(chart)
         self.legend_tab.apply_to(chart)
@@ -489,7 +483,9 @@ class ChartPropertiesPanel(PWidget):
 
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
-                    current_row, series.label, series.color, series.marker_color
+                    current_row, series.label,
+                    getattr(series.style, "color", None),
+                    getattr(getattr(series.style, "marker", None), "marker_color", None),
                 )
             else:
                 # Update fit data
@@ -500,7 +496,7 @@ class ChartPropertiesPanel(PWidget):
 
                     self.logger.debug(
                         "Applied style to fit data %d: %s (color=%s)",
-                        fit_index, fit.label, fit.color
+                        fit_index, fit.label, fit.style.color
                     )
 
         # Data-tab-owned fields: re-asserts the selected series' y_axis, and
@@ -520,9 +516,12 @@ class ChartPropertiesPanel(PWidget):
             # DataSeries dataclass defaults rather than being overwritten
             # from whatever the Style tab happens to be showing.
             new_series = chart.data_series[-1]
-            new_series.color = self.style_tab.line_color_row.currentColor()
-            new_series.line_width = self.style_tab.line_width_slider.value()
-            new_series.marker_size = self.style_tab.marker_size_slider.value()
+            if hasattr(new_series.style, "color"):
+                new_series.style.color = self.style_tab.line_color_row.currentColor()
+            if hasattr(new_series.style, "line_width"):
+                new_series.style.line_width = self.style_tab.line_width_slider.value()
+            if hasattr(new_series.style, "marker"):
+                new_series.style.marker.marker_size = self.style_tab.marker_size_slider.value()
 
         chart.update_modified_time()
     

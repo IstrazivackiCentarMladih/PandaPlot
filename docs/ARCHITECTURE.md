@@ -19,11 +19,18 @@ PandaPlot is a Python-based desktop application for scientific data visualizatio
 pandaplot/
 ├── app.py              # Entry point - wires all components together
 ├── models/             # Data models and event/state infrastructure
-├── commands/           # Command pattern (50+ commands, undo/redo)
-├── analysis/           # Analysis algorithms (scipy-based)
-├── services/           # Config, theme, task scheduling, curve fitting
+├── commands/           # Command pattern (~50 commands, undo/redo)
+├── analysis/           # Analysis algorithms (scipy-based): fitting,
+│                       # descriptive stats, preprocessing, signal processing
+├── services/           # Config, theme, task scheduling, curve fitting,
+│                       # data import, data managers, note rendering/search, session
 ├── storage/            # ZIP-based project persistence
+├── utils/              # Shared helpers (logging, pandas utilities, examples)
 └── gui/                # PySide6 UI components and controllers
+
+pandaplot_storybook/    # Standalone sub-project: PySide6 component storybook
+                        # with light/dark theme switching, for previewing
+                        # shared widgets (e.g. PButton) in isolation
 ```
 
 ## Architectural Layers
@@ -37,13 +44,16 @@ pandaplot/
 │   CommandExecutor │ 50+ Command classes │ Undo/Redo      │
 ├─────────────────────────────────────────────────────────┤
 │                     Service Layer                        │
-│   ConfigManager │ ThemeManager │ TaskScheduler │ FitSvc  │
+│ ConfigManager │ ThemeManager │ TaskScheduler │ FitSvc    │
+│ DataImport │ DataManagers │ NoteRender │ NoteSearch │... │
 ├───────────────────────────┬─────────────────────────────┤
 │        Models             │       Storage               │
 │  Project │ Items │ Events │  ProjectDataManager + ZIPs  │
 ├───────────────────────────┴─────────────────────────────┤
 │                     Analysis Layer                       │
-│   AnalysisEngine (derivative, integral, smooth, interp)  │
+│  AnalysisEngine │ DescriptiveEngine │ PreprocessingEngine│
+│  │ StatsEngine │ SignalEngine (derivative, integral,     │
+│  smooth, interp, stats, signal processing)               │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -66,6 +76,7 @@ pandaplot/
 | Template Method | `WidgetExtension` lifecycle (`_init_ui` → `_apply_theme`) |
 | Strategy | `AnalysisEngine` (runtime algorithm selection) |
 | Factory | `ItemDataManagerFactory` (per-type serializers) |
+| Visitor | `models/project/visitors/` (traversal over project item trees) |
 
 ## Detailed Architecture Documents
 

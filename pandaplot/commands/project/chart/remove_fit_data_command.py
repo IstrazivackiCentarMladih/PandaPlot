@@ -1,7 +1,7 @@
 """Command for removing fit data from a chart."""
 
-from dataclasses import asdict
-from typing import Any, Dict, Optional, override
+import copy
+from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
@@ -17,7 +17,7 @@ class RemoveFitDataCommand(Command):
         self.app_context = app_context
         self.chart_id = chart_id
         self.fit_index = fit_index
-        self.removed_fit_data: Optional[Dict[str, Any]] = None
+        self.removed_fit_data: Optional[FitData] = None
 
     def _find_chart(self) -> Optional[Chart]:
         app_state = self.app_context.get_app_state()
@@ -29,14 +29,22 @@ class RemoveFitDataCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "RemoveFitDataCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         if self.fit_index < 0 or self.fit_index >= len(chart.fit_data):
+            self.logger.warning(
+                "RemoveFitDataCommand.execute: fit_index %s out of range for chart '%s' (%d fits)",
+                self.fit_index, self.chart_id, len(chart.fit_data),
+            )
             return False
 
         # Snapshot the fit data before removing
         fit = chart.fit_data[self.fit_index]
-        self.removed_fit_data = asdict(fit)
+        self.removed_fit_data = copy.deepcopy(fit)
 
         chart.remove_fit_data(self.fit_index)
 
@@ -51,10 +59,14 @@ class RemoveFitDataCommand(Command):
     def undo(self):
         chart = self._find_chart()
         if not chart or self.removed_fit_data is None:
+            self.logger.warning(
+                "RemoveFitDataCommand.undo: cannot undo for chart '%s' (chart found=%s, removed_fit_data set=%s)",
+                self.chart_id, chart is not None, self.removed_fit_data is not None,
+            )
             return
 
         # Re-create and insert at original position
-        fit = FitData(**self.removed_fit_data)
+        fit = copy.deepcopy(self.removed_fit_data)
         chart.fit_data.insert(self.fit_index, fit)
         chart.update_modified_time()
 

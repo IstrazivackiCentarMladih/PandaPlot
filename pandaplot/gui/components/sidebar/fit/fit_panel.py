@@ -1,10 +1,9 @@
 """Curve fitting panel for performing regression analysis on chart data."""
 import logging
-from dataclasses import replace
 from typing import Optional, override
 
 import pandas as pd
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,23 +13,25 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from pandaplot.gui.core.widget_extension import PWidget
-from pandaplot.models.events import ChartEvents, FitEvents, UIEvents
+from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
+from pandaplot.commands.project.fit.perform_fit_command import PerformFitCommand
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
+from pandaplot.models.events import ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import resolve_series_column
 from pandaplot.models.state import AppContext
-from pandaplot.services.fit.fit_service import FitService
+from pandaplot.services.fit.fit_service import MIN_FIT_POINTS, FitService
 from pandaplot.services.theme import ThemeManager
 
 
-class FitPanel(PWidget):
+class FitPanel(SidebarPanel):
     """Side panel for performing curve fitting on chart data."""
 
     fit_completed = Signal(dict)  # Emitted when fit is completed with results
@@ -38,13 +39,14 @@ class FitPanel(PWidget):
 
     def __init__(self, app_context: AppContext, parent: Optional[QWidget]=None):
         super().__init__(app_context=app_context, parent=parent)
-        self.fit_command=FitService(self)
+        self.fit_service = FitService()
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self.app_context = app_context
         self.current_project = None
         self.current_chart = None
-        self.fit_command.fit_results = None
+        self.fit_results = None
+        self.fit_fixed_parameters: Optional[str] = None
         self.datasets = []
 
         # Check scipy availability lazily (only when FitPanel is instantiated)
@@ -60,40 +62,33 @@ class FitPanel(PWidget):
         """Check if scipy is installed without importing it (import is deferred to fit time)."""
         import importlib.util
         return importlib.util.find_spec("scipy") is not None
-    
+
     @override
     def _init_ui(self):
         """Set up the user interface."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        
-        # Title
-        self.title_label = QLabel("Curve Fitting")
-        layout.addWidget(self.title_label)
+        self._init_panel_layout()
 
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        # Title
+        self._set_title("📐 Curve Fitting")
+
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
-        
+        content_layout.setContentsMargins(4, 4, 4, 4)
+        content_layout.setSpacing(6)
+
         # Data source section
         self._create_data_source_section(content_layout)
-        
+
         # Fit configuration section
         self._create_fit_config_section(content_layout)
-        
+
         # Results section
         self._create_results_section(content_layout)
 
         # Action buttons
         self._create_action_buttons(content_layout)
-        
-        scroll.setWidget(content_widget)
-        layout.addWidget(scroll)
+
+        self._set_content(content_widget, scrollable=True)
 
     @override
     def _apply_theme(self):
@@ -105,7 +100,6 @@ class FitPanel(PWidget):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         # Apply theme to main widget
         self.setStyleSheet(f"""
@@ -131,80 +125,10 @@ class FitPanel(PWidget):
             }}
         """)
 
-        # Title label with improved styling
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        # Title label with shared styling
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
-        # Main action buttons
-        self._apply_button_styling()
-
-    def _apply_button_styling(self):
-        """Apply theme styling to action buttons."""
-        theme_manager = self.app_context.get_manager(ThemeManager)
-        palette = theme_manager.get_surface_palette()
-
-        # Get colors with fallbacks
-        accent = palette.get("accent", "#4CAF50")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        base_fg = palette.get("base_fg", "#333333")
-        card_border = palette.get("card_border", "#dee2e6")
-        card_bg = palette.get("card_bg", "#ffffff")
-
-        # Primary button (Perform Fit)
-        primary_style = f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                padding: 6px 14px;
-                border: none;
-                border-radius: 4px;
-                font-weight: 600;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """
-        self.fit_button.setStyleSheet(primary_style)
-
-        # Secondary buttons (Apply to Chart, Clear Results)
-        secondary_style = f"""
-            QPushButton {{
-                background-color: {card_hover};
-                color: {base_fg};
-                padding: 6px 14px;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {card_hover};
-                color: {secondary_fg};
-            }}
-        """
-        for button in [self.apply_button, self.clear_button]:
-            button.setStyleSheet(secondary_style)
+        self.update_data_points_display()
 
     def _apply_menu_styling(self):
             """Apply theme styling to the function menu"""
@@ -216,29 +140,6 @@ class FitPanel(PWidget):
             card_border = palette.get("card_border", "#dee2e6")
             base_fg = palette.get("base_fg", "#333333")
             card_hover = palette.get("card_hover", "#e5f3ff")
-            secondary_fg = palette.get("secondary_fg", "#666666")
-
-            # Function button styling
-            function_button_style = f"""
-            QPushButton {{
-                background-color: {card_hover};
-                color: {base_fg};
-                padding: 6px 14px;
-                border: 1px solid {card_border};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {card_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {card_border};
-            }}
-            QPushButton:disabled {{
-                background-color: {card_hover};
-                color: {secondary_fg};
-            }}
-        """
-            self.function_button.setStyleSheet(function_button_style)
 
             # Menu styling
             menu_style = f"""
@@ -274,16 +175,26 @@ class FitPanel(PWidget):
         data_layout.addWidget(self.series_combo, 0, 1)
 
         data_layout.addWidget(QLabel("Data Points:"), 1, 0)
+
+        points_layout = QHBoxLayout()
         self.data_points_label = QLabel("No data selected")
-        data_layout.addWidget(self.data_points_label, 1, 1)
-        
+        points_layout.addWidget(self.data_points_label)
+
+        self.data_points_warning_icon = QLabel("⚠")
+        self.data_points_warning_icon.setStyleSheet("color: red;")
+        self.data_points_warning_icon.setVisible(False)
+        points_layout.addWidget(self.data_points_warning_icon)
+        points_layout.addStretch()
+
+        data_layout.addLayout(points_layout, 1, 1)
+
         layout.addWidget(data_group)
-    
+
     def _create_fit_config_section(self, layout):
         """Create the fit configuration section."""
         fit_group = QGroupBox("Fit Configuration")
         fit_layout = QVBoxLayout(fit_group)
-        
+
         # Fit type selection
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("Fit Type:"))
@@ -299,17 +210,20 @@ class FitPanel(PWidget):
         type_layout.addWidget(self.fit_type_combo)
         type_layout.addStretch()
         fit_layout.addLayout(type_layout)
-        
+
         # Custom function input (initially hidden)
         self.custom_group = QGroupBox("Custom Function")
         custom_layout = QGridLayout(self.custom_group)
-        
+
         custom_layout.addWidget(QLabel("Function:"), 0, 0)
         self.custom_function_edit = QLineEdit()
         self.custom_function_edit.setPlaceholderText("e.g., a*x**2 + b*x + c")
         custom_layout.addWidget(self.custom_function_edit, 0, 1)
         #show menu
-        self.function_button = QPushButton("Functions")
+        self.function_button = PButton(
+            "Functions", role="secondary",
+            on_click=lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
+        )
         custom_layout.addWidget(self.function_button, 0, 2)
         self.menu = QMenu()
         self.function_names = ["sin", "cos","tan", "sqrt", "exp", "log", "arcsin", "arccos"]
@@ -317,18 +231,13 @@ class FitPanel(PWidget):
 
         for name in self.function_names:
             action = self.menu.addAction(name)
-            action.triggered.connect(lambda checked, f=name: self.fit_command.insert_function(f + "("))
+            action.triggered.connect(lambda checked, f=name: self._insert_function(f + "("))
 
-        #connect buttons to menu
-        self.function_button.clicked.connect(
-            lambda: self.menu.exec_(self.function_button.mapToGlobal(self.function_button.rect().bottomLeft()))
-        )
-        
         custom_layout.addWidget(QLabel("Parameters:"), 1, 0)
         self.custom_params_edit = QLineEdit()
         self.custom_params_edit.setPlaceholderText("e.g., a, b, c")
         custom_layout.addWidget(self.custom_params_edit, 1, 1)
-        
+
         custom_layout.addWidget(QLabel("Define parameters values:"), 2, 0)
         self.initial_guess_edit = QLineEdit()
         self.initial_guess_edit.setPlaceholderText("e.g. b=2.1, c=1")
@@ -365,13 +274,13 @@ class FitPanel(PWidget):
         """Create the results display section."""
         results_group = QGroupBox("Fit Results")
         results_layout = QVBoxLayout(results_group)
-        
+
         # Results text area
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setPlaceholderText("Fit results will appear here...")
         results_layout.addWidget(self.results_text, stretch=1)
-        
+
         # Equation display
         equation_layout = QHBoxLayout()
         equation_layout.addWidget(QLabel("Equation:"))
@@ -380,22 +289,22 @@ class FitPanel(PWidget):
         self.equation_label.setStyleSheet("font-family: monospace; background-color: #f5f5f5; color: #333333; padding: 5px; border: 1px solid #ddd;")
         equation_layout.addWidget(self.equation_label)
         results_layout.addLayout(equation_layout)
-        
+
         layout.addWidget(results_group)
 
     def _create_action_buttons(self, layout):
         """Create action buttons."""
         button_layout = QHBoxLayout()
 
-        self.fit_button = QPushButton("Perform Fit")
-        self.fit_button.setEnabled(self.scipy_available)
+        self.fit_button = PButton(
+            "Perform Fit", role="primary", on_click=self._perform_fit, enabled=self.scipy_available
+        )
         button_layout.addWidget(self.fit_button)
 
-        self.apply_button = QPushButton("Apply to Chart")
-        self.apply_button.setEnabled(False)
+        self.apply_button = PButton("Apply", role="secondary", on_click=self._apply_fit, enabled=False)
         button_layout.addWidget(self.apply_button)
-        
-        self.clear_button = QPushButton("Clear Results")
+
+        self.clear_button = PButton("Clear Results", role="secondary", on_click=self._clear_results)
         button_layout.addWidget(self.clear_button)
         
         layout.addLayout(button_layout)
@@ -404,9 +313,6 @@ class FitPanel(PWidget):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
-        self.fit_button.clicked.connect(self.fit_command.perform_fit)
-        self.apply_button.clicked.connect(self._apply_fit)
-        self.clear_button.clicked.connect(self._clear_results)
     
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
@@ -429,30 +335,54 @@ class FitPanel(PWidget):
     def get_current_data(self):
         """Get data from selected chart series."""
         series = self.series_combo.currentData()
-        if not self.current_project:
+
+        self.logger.info("get_current_data: current_project=%r, series=%r, combo_count=%d",
+            self.current_project, series, self.series_combo.count())
+
+        if series is None:
+            self.logger.warning("No series selected in series_combo")
             return None
+
+        if not self.current_project:
+            self.logger.warning("No current project in FitPanel")
+            return None
+
+        self.logger.info("Selected series: dataset_id=%r, x=%r, y=%r",
+            series.dataset_id, series.x_column, series.y_column)
 
         dataset = self.current_project.find_item(series.dataset_id)
 
         if not isinstance(dataset, Dataset):
-            self.logger.warning("Dataset not found")
-            return None
-
-        if dataset.data is None:
-            self.logger.warning("Dataset contains no data")
+            self.logger.warning("Dataset not found: id=%r, result=%r",
+                series.dataset_id, dataset)
             return None
 
         df = dataset.data
 
-        x_column = series.x_column
-        y_column = series.y_column
+        if df is None:
+            self.logger.warning("Dataset contains no data: id=%r", series.dataset_id)
+            return None
 
-        if x_column not in df.columns or y_column not in df.columns:
+        self.logger.info("Dataset found: %r, dataframe shape=%s, columns=%s",
+            dataset, df.shape, list(df.columns))
+
+        x_column = resolve_series_column(dataset, series.x_column_id, series.x_column)
+        y_column = resolve_series_column(dataset, series.y_column_id, series.y_column)
+
+        if not x_column or not y_column or x_column not in df.columns or y_column not in df.columns:
+            self.logger.warning(
+                "Columns not found: x=%r y=%r columns=%s",
+                x_column,
+                y_column,
+                list(df.columns),
+            )
             return None
 
         mask = ~(pd.isna(df[x_column]) | pd.isna(df[y_column]))
         x_data = df[x_column][mask].values
         y_data = df[y_column][mask].values
+
+        self.logger.info("Extracted %d data points", len(x_data))
 
         return df, mask, x_data, y_data, series
 
@@ -494,104 +424,159 @@ class FitPanel(PWidget):
             self.logger.debug("Fit panel context cleared")
 
     def update_data_points_display(self):
-        """Update the data points display."""
+        """Update the data points display and enable/disable the Fit button accordingly."""
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+        base_fg = palette.get("base_fg", "#333333")
+        secondary_fg = palette.get("secondary_fg", "#555555")
+
         current_data = self.get_current_data()
         if current_data is not None:
             df, mask, x_data, y_data, series = current_data
             self.data_points_label.setText(f"{len(x_data)} points")
-            self.data_points_label.setStyleSheet("color: #333;")
+
+            if len(x_data) < MIN_FIT_POINTS:
+                tooltip = f"At least {MIN_FIT_POINTS} valid (x, y) data points are required to perform a fit."
+                self.data_points_label.setStyleSheet("color: red;")
+                self.data_points_label.setToolTip(tooltip)
+                self.data_points_warning_icon.setToolTip(tooltip)
+                self.data_points_warning_icon.setVisible(True)
+                self.fit_button.setEnabled(False)
+                self.fit_button.setToolTip(tooltip)
+            else:
+                self.data_points_label.setStyleSheet(f"color: {base_fg};")
+                self.data_points_label.setToolTip("")
+                self.data_points_warning_icon.setVisible(False)
+                self.fit_button.setEnabled(self.scipy_available)
+                self.fit_button.setToolTip("")
         else:
+            tooltip = "Select a chart series with valid data to perform a fit."
             self.data_points_label.setText("No data selected")
-            self.data_points_label.setStyleSheet("color: #666; font-style: italic;")
-    
+            self.data_points_label.setStyleSheet(f"color: {secondary_fg}; font-style: italic;")
+            self.data_points_label.setToolTip(tooltip)
+            self.data_points_warning_icon.setToolTip(tooltip)
+            self.data_points_warning_icon.setVisible(True)
+            self.fit_button.setEnabled(False)
+            self.fit_button.setToolTip(tooltip)
+
     def _on_fit_type_changed(self):
         """Handle fit type selection change."""
         fit_type = self.fit_type_combo.currentText()
         self.custom_group.setVisible("Custom" in fit_type)
-    
 
-    
     def display_results(self):
         """Display the fitting results."""
-        if not self.fit_command.fit_results:
+        if self.fit_results is None:
             return
-        
-        results = self.fit_command.fit_results
+
+        results = self.fit_results
         fit_type = results.fit_type
-        popt = results.parameters
         perr = results.errors
         param_names = results.param_names
         r_squared = results.r_squared
         params = results.params
 
-        # Format equation
-        equation = self.fit_command.format_equation(fit_type, params)
-        self.equation_label.setText(equation)
+        self.equation_label.setText(
+            results.equation or "No equation"
+        )
 
-        # Format results text
         results_text = f"Fit Type: {fit_type}\n\n"
         results_text += "Parameters:\n"
-        results_text += self.fit_command.format_parameters(param_names, params, perr)
+        results_text += self.fit_service.format_parameters(
+            param_names,
+            params,
+            perr,
+            fixed_parameters=self.fit_fixed_parameters,
+        )
 
         if r_squared is not None:
             results_text += f"\nR² = {r_squared:.6f}\n"
 
         results_text += f"\nData points: {len(results.x_data)}\n"
         results_text += f"Fit points: {len(results.x_fit)}"
-        
+
+        self.results_text.setStyleSheet("")
         self.results_text.setPlainText(results_text)
 
     def _apply_fit(self):
-        """Apply the fit to the current chart."""
-        if self.fit_command.fit_results:
-            series = self.series_combo.currentData()
+        """Apply the current fit result to the current chart."""
+        if self.fit_results is None:
+            self.logger.warning("No fit results available to apply")
+            return
 
-            if series is None:
-                self.logger.warning("No selected series for applying fit")
-                return
+        series = self.series_combo.currentData()
 
-            dataset_id = series.dataset_id
-            x_column = series.x_column
-            y_column = series.y_column
+        if series is None:
+            self.logger.warning("No selected series for applying fit")
+            return
 
-            dataset_name = str(series.label)
-            
-            # Add source dataset info to fit results
-            enhanced_fit_results = replace(
-                self.fit_command.fit_results,
-                source_dataset_id=dataset_id,
-                source_x_column=x_column,
-                source_y_column=y_column,
-            )
-            
-            # Publish fit applied event
-            self.publish_event(FitEvents.FIT_APPLIED, {
-                "fit_results": enhanced_fit_results,
-                "chart_id": self.current_chart.id if self.current_chart else None,
-                "chart": self.current_chart,
-                "fit_type": self.fit_command.fit_results.fit_type,
-                "dataset_name": dataset_name
-            })
-    
+        if self.current_chart is None:
+            self.logger.warning("No current chart available")
+            return
+
+        dataset = self.current_project.find_item(series.dataset_id)
+
+        if not isinstance(dataset, Dataset):
+            self.logger.warning("Dataset not found: %s", series.dataset_id)
+            return
+
+        command = ApplyFitCommand(
+            app_context=self.app_context,
+            chart_id=self.current_chart.id,
+            fit_results=self.fit_results,
+            source_dataset_id=series.dataset_id,
+            source_x_column_id=series.x_column_id,
+            source_y_column_id=series.y_column_id,
+            source_x_column=resolve_series_column(
+                dataset,
+                series.x_column_id,
+                series.x_column) or "",
+            source_y_column=resolve_series_column(
+                dataset,
+                series.y_column_id,
+                series.y_column) or "",
+        )
+
+        executor = self.app_context.get_command_executor()
+
+        if not executor.execute_command(command):
+            self.logger.error("ApplyFitCommand failed")
+            return
+
+        self.logger.info("Fit applied to chart %s", self.current_chart.id)
+
     def _clear_results(self):
         """Clear the fit results."""
-        self.fit_command.fit_results = None
+        self.fit_results = None
+        self.fit_fixed_parameters = None
         self.results_text.clear()
+        self.results_text.setStyleSheet("")
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
 
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
+        self._clear_results()
         self.current_chart = chart
         self.series_combo.clear()
 
         if chart is None:
+            self.update_data_points_display()
             return
 
         self.current_project = self.app_context.app_state.current_project
 
         for series in chart.data_series:
-            label = series.label or f"{series.y_column} vs {series.x_column}"
+            if series.label:
+                label = series.label
+            else:
+                dataset = (
+                    self.current_project.find_item(series.dataset_id)
+                    if self.current_project else None
+                )
+                x_name = resolve_series_column(dataset, series.x_column_id, series.x_column) or "?"
+                y_name = resolve_series_column(dataset, series.y_column_id, series.y_column) or "?"
+                label = f"{y_name} vs {x_name}"
             self.series_combo.addItem(label, series)
 
         if self.series_combo.count() > 0:
@@ -599,9 +584,7 @@ class FitPanel(PWidget):
             self._on_series_changed()
 
     def _on_series_changed(self):
-        series = self.series_combo.currentData()
-        if series is None:
-            return
+        self._clear_results()
         self.update_data_points_display()
 
     def _on_chart_updated(self, event_data):
@@ -616,3 +599,63 @@ class FitPanel(PWidget):
         self.current_project = self.app_context.app_state.current_project
 
         self.load_chart_object(chart)
+
+    def _insert_function(self, function_str):
+        cursor_pos = self.custom_function_edit.cursorPosition()
+        current_text = self.custom_function_edit.text()
+
+        new_text = (
+                current_text[:cursor_pos]
+                + function_str
+                + current_text[cursor_pos:]
+        )
+
+        self.custom_function_edit.setText(new_text)
+        self.custom_function_edit.setCursorPosition(cursor_pos + len(function_str))
+
+    def _perform_fit(self):
+        """Create and execute a curve fitting command."""
+        current_data = self.get_current_data()
+
+        if current_data is None:
+            self.logger.warning("No data available for fitting")
+            return
+
+        df, mask, x_data, y_data, series = current_data
+
+        fit_type = self.fit_type_combo.currentText()
+        is_custom = fit_type.split(" (")[0] == "Custom Function"
+
+        command = PerformFitCommand(
+            fit_service=self.fit_service,
+            fit_type=fit_type,
+            x_data=x_data,
+            y_data=y_data,
+            fit_points=self.fit_points_spin.value(),
+            calculate_r_squared=self.r_squared_check.isChecked(),
+            confidence_bands=self.confidence_check.isChecked(),
+            sigma_y=self.fit_service._extract_sigma_y(
+                df,
+                mask,
+                series,
+                dataset=self.current_project.find_item(series.dataset_id),
+            ),
+            custom_function=self.custom_function_edit.text() if is_custom else None,
+            custom_parameters=self.custom_params_edit.text() if is_custom else None,
+            fixed_parameters=self.initial_guess_edit.text() if is_custom else None,
+        )
+
+        executor = self.app_context.get_command_executor()
+
+        if not executor.execute_command(command):
+            self.logger.error("PerformFitCommand failed: %s", command.error_message)
+            self._clear_results()
+            self.results_text.setPlainText(command.error_message or "Fit failed.")
+            self.results_text.setStyleSheet("color: red;")
+            return
+
+        self.fit_results = command.result
+        self.fit_fixed_parameters = command.fixed_parameters
+        self.display_results()
+        self.apply_button.setEnabled(self.fit_results is not None)
+

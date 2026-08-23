@@ -1,10 +1,10 @@
 """Tests for extracting sigma_y with symmetric error bars."""
 
-from unittest.mock import Mock
-
 import numpy as np
 import pandas as pd
 
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries
@@ -27,14 +27,14 @@ def test_extract_sigma_y_symmetric():
 
     series = DataSeries(
         dataset_id=dataset.id,
-        y_error_column_id=dataset.column_id("std"),
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(
+            y_error_column_id=dataset.column_id("std"),
+        )),
     )
 
-    fit_panel = Mock()
-    fit_panel.current_project = project
-    service = FitService(fit_panel)
+    service = FitService()
 
-    sigma = service._extract_sigma_y(dataset.data, mask, series)
+    sigma = service._extract_sigma_y(dataset.data, mask, series, dataset=dataset)
 
     np.testing.assert_allclose(
         sigma,

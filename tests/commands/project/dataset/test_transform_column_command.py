@@ -1,5 +1,8 @@
-"""Tests for TransformColumnCommand: existing target, refresh events, undo."""
+"""Tests for TransformColumnCommand: existing target, refresh events, undo,
+and the undo() failure-path logging added for issue-184-audit-command-logging.
+"""
 
+import logging
 from unittest.mock import Mock
 
 import pandas as pd
@@ -82,3 +85,36 @@ class TestTransformColumnCommand:
         assert command.undo() is True
         assert "a_x2" not in dataset.data.columns
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_REMOVED)
+
+
+def _make_command(app_context=None):
+    app_context = app_context or Mock(spec=AppContext)
+    return TransformColumnCommand(
+        app_context, "ds-1",
+        {
+            "new_column_name": "result",
+            "transform_type": "column",
+            "source_columns": ["a"],
+            "expression": "value * 2",
+        },
+    )
+
+
+def test_undo_logs_a_warning_when_dataset_not_set(caplog):
+    command = _make_command()
+    # undo() called without a prior successful execute(): self.dataset is None.
+
+    with caplog.at_level(logging.WARNING):
+        assert command.undo() is False
+    assert "ds-1" in caplog.text
+
+
+def test_undo_logs_a_warning_when_dataset_has_no_data(caplog):
+    command = _make_command()
+    dataset = Mock(spec=Dataset)
+    dataset.data = None
+    command.dataset = dataset
+
+    with caplog.at_level(logging.WARNING):
+        assert command.undo() is False
+    assert "ds-1" in caplog.text

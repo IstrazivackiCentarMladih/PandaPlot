@@ -2,8 +2,6 @@
 the (min, max) of all series data plotted against a given axis -- used to
 populate the Axes tab's Range card in both Auto (disabled, for reference)
 and the moment of switching into Manual (recompute-fresh)."""
-import numpy as np
-import pytest
 
 from pandaplot.gui.components.tabs.chart.chart_editor import compute_axis_data_range
 from pandaplot.models.project.items.chart import DataSeries, YAxis
