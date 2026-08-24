@@ -81,6 +81,13 @@ class ChartPropertiesPanel(SidebarPanel):
         # `self.axes_tab.refresh_axis_chips` to sync the Y2 chip.
         self.axes_tab = AxesTab(self.app_context, self)
         self.axes_tab.configChanged.connect(self._on_any_tab_config_changed)
+        # A chart-type change can add or remove the Z axis chip (3-D types
+        # only) and the 3-D camera card, so the Axes tab has to re-sync on
+        # it -- the same reason StyleTab/DataTab listen above. Connected
+        # here rather than beside those two because `self.axes_tab` doesn't
+        # exist yet at that point.
+        self.chart_tab.chartTypeChanged.connect(
+            lambda _value: self.axes_tab.refresh_axis_chips(self.current_chart))
 
         # Data tab: series list + per-series dataset/X/Y/label configuration
         self.data_tab = DataTab(self.app_context, self)

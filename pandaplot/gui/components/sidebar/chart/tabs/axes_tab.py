@@ -1,4 +1,4 @@
-"""Axes tab: X/Y1/Y2 chip switcher over per-axis scale/limits/ticks/grid forms."""
+"""Axes tab: X/Y1/Y2/Z chip switcher over per-axis scale/limits/ticks/grid forms."""
 import math
 
 from PySide6.QtCore import Signal
@@ -20,17 +20,25 @@ from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.models.chart.chart_configuration import ScaleType
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.project.items.chart import YAxis
+
+# Every axis this tab can edit. Y2 and Z are mutually exclusive in
+# practice (a secondary Y axis is 2-D only, a Z axis 3-D only -- see
+# refresh_axis_chips), but a form is built for all four regardless and the
+# chip row decides which are reachable, so switching a chart's type never
+# has to build or tear down widgets.
+_AXIS_PREFIXES = ("x", "y", "y2", "z")
 
 # Neutral palette for axis/tick colors (distinct from style_tab's saturated series palette).
 AXES_SWATCH_PALETTE = ["#000000", "#404040", "#808080", "#bfbfbf", "#ffffff"]
 
 
 class AxesTab(QWidget):
-    """X/Y1/Y2 chip switcher above a single form area that shows only the
-    selected axis's controls.
+    """X/Y1/Y2/Z chip switcher above a single form area that shows only the
+    selected axis's controls, plus a 3-D-only camera-angle card.
 
-    Each axis (x, y, y2) gets its own independent set of widgets (built by
+    Each axis (x, y, y2, z) gets its own independent set of widgets (built by
     `_build_axis_form_widgets`) rather than one shared form, because (unlike
     the Data/Style tabs' "currently edited series") the three axes are
     genuinely independent, simultaneously-existing config state - nothing
@@ -53,6 +61,10 @@ class AxesTab(QWidget):
         self.axis_chips.currentValueChanged.connect(self._on_axis_chip_selected)
         layout.addWidget(self.axis_chips)
 
+        self.view_card = self._build_view_card()
+        layout.addWidget(self.view_card)
+        self.view_card.setVisible(False)
+
         self._axis_form_container = QWidget()
         self._axis_form_container_layout = QVBoxLayout(self._axis_form_container)
         self._axis_form_container_layout.setContentsMargins(0, 0, 0, 0)
@@ -60,9 +72,44 @@ class AxesTab(QWidget):
         layout.addStretch()
 
         self.axes_forms = {}
-        for prefix in ("x", "y", "y2"):
+        for prefix in _AXIS_PREFIXES:
             self._build_axis_form_widgets(prefix)
         self._show_axis_form("x")
+
+    def _build_view_card(self) -> Card:
+        """The 3-D camera angle card (shown only for a 3-D chart type).
+
+        Lives on this tab rather than the Chart tab because it's axis
+        geometry -- which way the three axes face -- not chart identity.
+        It sits outside the per-axis forms since it belongs to no single
+        axis, so it stays visible whichever axis chip is selected.
+
+        These set the view every render *starts* from; matplotlib's own
+        drag-to-rotate still moves the camera freely from there, it just
+        isn't written back here (a re-render returns to these values).
+        """
+        card = Card()
+        layout = QGridLayout(card)
+        layout.addWidget(SectionHeader("3D View"), 0, 0, 1, 2)
+        layout.addWidget(QLabel("Elevation:"), 1, 0)
+        self.view_elev_spin = QDoubleSpinBox()
+        self.view_elev_spin.setRange(-90.0, 90.0)
+        self.view_elev_spin.setDecimals(1)
+        self.view_elev_spin.setValue(30.0)
+        self.view_elev_spin.setSuffix("°")
+        self.view_elev_spin.setToolTip("Camera height above the X/Y plane, in degrees")
+        layout.addWidget(self.view_elev_spin, 1, 1)
+        layout.addWidget(QLabel("Azimuth:"), 2, 0)
+        self.view_azim_spin = QDoubleSpinBox()
+        self.view_azim_spin.setRange(-180.0, 180.0)
+        self.view_azim_spin.setDecimals(1)
+        self.view_azim_spin.setValue(-60.0)
+        self.view_azim_spin.setSuffix("°")
+        self.view_azim_spin.setToolTip("Camera rotation around the Z axis, in degrees")
+        layout.addWidget(self.view_azim_spin, 2, 1)
+        self.view_elev_spin.valueChanged.connect(self._on_field_changed)
+        self.view_azim_spin.valueChanged.connect(self._on_field_changed)
+        return card
 
     def _build_axis_form_widgets(self, prefix: str):
         """Build one axis's full control set and register it in `self.axes_forms[prefix]`."""
@@ -397,23 +444,45 @@ class AxesTab(QWidget):
         self._on_field_changed()
 
     def refresh_axis_chips(self, chart):
-        """Sync the Axes tab's chip row with whether any series currently
-        uses the secondary Y axis, adding/removing the Y2 chip accordingly.
-        Safe to call whenever the chart or its series may have changed
-        (chart load, series rebuild) - mirrors `_refresh_style_chips`.
+        """Sync the Axes tab's chip row with the chart: a Y2 chip when any
+        series currently uses the secondary Y axis, a Z chip when the chart
+        type is 3-D. Safe to call whenever the chart or its series may have
+        changed (chart load, series rebuild) - mirrors `_refresh_style_chips`.
+
+        Y2 and Z are mutually exclusive, and that's a property of the chart
+        types themselves rather than a rule enforced here: a 3-D chart can
+        have no secondary Y axis at all (chart_editor.py never builds one --
+        twinx() has no mplot3d equivalent), so `has_secondary` is False for
+        every 3-D chart regardless of any stale `y_axis` a series carries
+        over from a previous 2-D type.
+
+        The 3-D camera card follows the same is_3d test -- it applies to the
+        whole chart, not to one axis, so it lives outside the per-axis forms
+        and stays visible whichever axis chip is selected.
 
         Public (and takes `chart` explicitly) because the not-yet-migrated
         Data tab (still on `ChartPropertiesPanel`) calls this whenever a
         series' `y_axis` changes.
         """
         self._chart = chart
-        has_secondary = bool(chart) and any(
+        is_3d = bool(chart) and CHART_TYPE_SPECS[chart.chart_type].is_3d
+        has_secondary = bool(chart) and not is_3d and any(
             series.y_axis == YAxis.SECONDARY for series in chart.data_series
         )
         items = [("X", "x"), ("Y₁", "y")]
         if has_secondary:
             items.append(("Y₂", "y2"))
+        if is_3d:
+            items.append(("Z", "z"))
         self.axis_chips.setItems(items)
+        self.view_card.setVisible(is_3d)
+        # A chip the chart type just removed can't stay selected -- e.g.
+        # switching a 3-D chart back to a 2-D type while its Z form is
+        # showing would otherwise leave the (now unreachable) Z form on
+        # screen with no chip highlighted.
+        if self.axis_chips.currentValue() not in [value for _, value in items]:
+            self.axis_chips.setCurrentValue("x")
+            self._show_axis_form("x")
 
     def _write_axis_config(self, prefix: str, config: dict):
         """Write one axis form's widget values into `config` (the mutable chart.config dict)."""
@@ -513,8 +582,10 @@ class AxesTab(QWidget):
         if self._chart is None or self._updating_controls:
             return
         config = self._chart.config
-        for prefix in ("x", "y", "y2"):
+        for prefix in _AXIS_PREFIXES:
             self._write_axis_config(prefix, config)
+        config["view_elev"] = self.view_elev_spin.value()
+        config["view_azim"] = self.view_azim_spin.value()
         self.configChanged.emit()
 
     def load(self, chart):
@@ -522,7 +593,9 @@ class AxesTab(QWidget):
         self._updating_controls = True
         self._chart = chart
         try:
-            for prefix in ("x", "y", "y2"):
+            self.view_elev_spin.setValue(chart.config.get("view_elev", 30.0))
+            self.view_azim_spin.setValue(chart.config.get("view_azim", -60.0))
+            for prefix in _AXIS_PREFIXES:
                 self._read_axis_config(prefix, chart.config)
                 # Only Auto axes get their range recomputed from live data on
                 # load -- `_read_axis_config` just restored a Manual axis's
@@ -539,22 +612,27 @@ class AxesTab(QWidget):
             self._updating_controls = previous_guard
 
     def apply_to(self, chart):
-        for prefix in ("x", "y", "y2"):
+        for prefix in _AXIS_PREFIXES:
             self._write_axis_config(prefix, chart.config)
+        chart.config["view_elev"] = self.view_elev_spin.value()
+        chart.config["view_azim"] = self.view_azim_spin.value()
 
     def clear(self):
         self._chart = None
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            for prefix in ("x", "y", "y2"):
+            for prefix in _AXIS_PREFIXES:
                 self._read_axis_config(prefix, {})
+            self.view_elev_spin.setValue(30.0)
+            self.view_azim_spin.setValue(-60.0)
             self.refresh_axis_chips(None)
         finally:
             self._updating_controls = previous_guard
 
     def apply_theme(self, tokens: dict):
         self.axis_chips.set_tokens(tokens)
+        self.view_card.set_tokens(tokens)
         for form in self.axes_forms.values():
             form["scale_control"].set_tokens(tokens)
             if form["side_control"] is not None:

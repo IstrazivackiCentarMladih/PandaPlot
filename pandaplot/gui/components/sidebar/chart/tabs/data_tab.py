@@ -29,6 +29,7 @@ from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style_builder import build_series_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
@@ -152,7 +153,9 @@ class DataTab(QWidget):
         self.z_column_label = QLabel("Z Column:")
         series_config_layout.addWidget(self.z_column_label, 3, 0)
         self.z_column_combo = QComboBox()
-        self.z_column_combo.setToolTip("Column mapped to color (Colormap/Heatmap series)")
+        self.z_column_combo.setToolTip(
+            "Z column: mapped to color for a Colormap/Heatmap series, "
+            "or the third axis for a 3D series")
         series_config_layout.addWidget(self.z_column_combo, 3, 1)
 
         self.u_column_label = QLabel("U Column:")
@@ -608,7 +611,6 @@ class DataTab(QWidget):
         # series (it gets the chart's default) then retype it via the
         # combo, same as retyping any other series.
         new_series_type = CHART_TYPE_SPECS[self.current_chart.chart_type].default_series_type
-        needs_secondary_columns = SERIES_TYPE_SPECS[new_series_type].needs_secondary_columns
         # No "vector_ready" gate: u_column_id/v_column_id above reflect
         # whichever EXISTING series is currently selected, not the type
         # being created here -- if that series doesn't need them (e.g. a
@@ -621,19 +623,14 @@ class DataTab(QWidget):
         # new series and filling in U/V via its own now-visible combos,
         # exactly matching apply_to's already-established bootstrap path.
         if dataset_id and x_column_id and y_column_id:
-            style_cls = SERIES_TYPE_SPECS[new_series_type].style_cls
-            color = self._get_next_series_color()
-            if new_series_type == SeriesType.VECTOR:
-                style = style_cls(
-                    vector_color=color,
-                    u_column_id=u_column_id if needs_secondary_columns else "",
-                    v_column_id=v_column_id if needs_secondary_columns else "",
-                    magnitude_column_id=magnitude_column_id if needs_secondary_columns else "",
-                )
-            elif new_series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
-                style = style_cls(z_column_id=z_column_id or "")
-            else:
-                style = style_cls(color=color)
+            style = build_series_style(
+                new_series_type,
+                color=self._get_next_series_color(),
+                u_column_id=u_column_id,
+                v_column_id=v_column_id,
+                magnitude_column_id=magnitude_column_id,
+                z_column_id=z_column_id or "",
+            )
 
             new_series = DataSeries(
                 dataset_id=dataset_id,
@@ -1379,23 +1376,6 @@ class DataTab(QWidget):
             # the chart's own default type, not whatever the combo happens
             # to show (which tracks the selected existing series).
             new_series_type = CHART_TYPE_SPECS[chart.chart_type].default_series_type
-            type_spec = SERIES_TYPE_SPECS[new_series_type]
-            needs_secondary_columns = type_spec.needs_secondary_columns
-            style_kwargs = {}
-            if type_spec.supports_error_bars:
-                style_kwargs["error_bars"] = ErrorBarConfig(
-                    x_error_column_id=self.x_error_column_combo.currentData() or "",
-                    y_error_column_id=self.y_error_column_combo.currentData() or "",
-                    x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
-                    y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
-                    error_symmetric=not self.error_asymmetric_check.isChecked(),
-                )
-            if needs_secondary_columns:
-                style_kwargs["u_column_id"] = self.u_column_combo.currentData() or ""
-                style_kwargs["v_column_id"] = self.v_column_combo.currentData() or ""
-                style_kwargs["magnitude_column_id"] = self.magnitude_column_combo.currentData() or ""
-            if type_spec.needs_z_column:
-                style_kwargs["z_column_id"] = self.z_column_combo.currentData() or ""
             if dataset_id and x_column_id and y_column_id:
                 chart.add_data_series(
                     dataset_id,
@@ -1404,7 +1384,20 @@ class DataTab(QWidget):
                     label=f"{dataset_name}:{y_column_name}",
                     y_axis=self.series_y_axis_control.currentValue(),
                     series_type=new_series_type,
-                    style=type_spec.style_cls(**style_kwargs),
+                    style=build_series_style(
+                        new_series_type,
+                        error_bars=ErrorBarConfig(
+                            x_error_column_id=self.x_error_column_combo.currentData() or "",
+                            y_error_column_id=self.y_error_column_combo.currentData() or "",
+                            x_error_minus_column_id=self.x_error_minus_column_combo.currentData() or "",
+                            y_error_minus_column_id=self.y_error_minus_column_combo.currentData() or "",
+                            error_symmetric=not self.error_asymmetric_check.isChecked(),
+                        ),
+                        u_column_id=self.u_column_combo.currentData() or "",
+                        v_column_id=self.v_column_combo.currentData() or "",
+                        magnitude_column_id=self.magnitude_column_combo.currentData() or "",
+                        z_column_id=self.z_column_combo.currentData() or "",
+                    ),
                 )
 
     def clear(self):
