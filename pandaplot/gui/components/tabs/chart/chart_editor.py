@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
+from pandaplot.gui.components.tabs.chart.chart_canvas import (
+    ChartCanvas,
+    cm_to_inches,
+    fit_size_cm,
+    run_with_mathtext_fallback,
+)
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
 from pandaplot.gui.components.tabs.chart.chart_heatmap import resolve_color_limits
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
@@ -304,8 +309,18 @@ def apply_layout_with_legend(fig, tight_layout_kwargs: dict, legend_placed_outsi
     or Custom, see resolve_legend_placement). The first tight_layout() pass
     runs before Matplotlib can account for an out-of-axes legend's extent,
     so without the second pass such a legend gets clipped by the figure
-    boundary."""
-    fig.tight_layout(**tight_layout_kwargs)
+    boundary.
+
+    tight_layout() measures every text artist's extent, which is where
+    Matplotlib's mathtext parser actually runs -- a title/label/tick-label
+    containing invalid mathtext (e.g. `$\\theta_$`, unbalanced `$...$`) raises
+    ValueError/RuntimeError here rather than when the text was set. Mathtext
+    parsing is re-enabled for every text artist before each attempt (so a
+    label the user has since fixed gets rendered as math again), and only
+    disabled -- falling back to literal text -- if that attempt still fails,
+    instead of leaving the layout (and the whole chart preview) stuck
+    mid-update."""
+    run_with_mathtext_fallback(fig, lambda: fig.tight_layout(**tight_layout_kwargs))
     if legend_placed_outside:
         fig.tight_layout(**tight_layout_kwargs)
 

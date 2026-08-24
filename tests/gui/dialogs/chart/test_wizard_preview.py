@@ -77,6 +77,22 @@ def test_plots_a_real_series_when_project_resolves_it():
     assert len(canvas.axes.get_lines()) == 1
 
 
+def test_renders_without_error_when_axis_label_has_invalid_mathtext():
+    """Regression test for issue #194: an incomplete mathtext label (e.g.
+    `$\\theta_$`, missing its subscript body) used to raise a ValueError out
+    of matplotlib's mathtext parser during canvas.draw(), breaking the
+    wizard preview instead of just falling back to literal text."""
+    canvas = _canvas()
+
+    render_wizard_preview(
+        canvas, project=None, chart_type="line", series_configs=[],
+        title="", subtitle="", x_label=r"$\theta_$", y_label="Y",
+        show_legend=True, show_grid=True,
+    )
+
+    assert canvas.axes.get_xlabel() == r"$\theta_$"
+
+
 def test_grid_off_disables_gridlines():
     canvas = _canvas()
 
