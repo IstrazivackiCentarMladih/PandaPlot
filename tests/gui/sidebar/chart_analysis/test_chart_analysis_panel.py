@@ -77,3 +77,10 @@ class TestChartAnalysisPanelRangeLabels:
         panel.end_index.setValue(50)
 
         assert panel.end_value_label.text() == "x=5, y=25"
+
+    def test_end_index_can_go_further_backward_than_minus_one(self, panel):
+        assert panel.end_index.minimum() == -101
+
+        panel.end_index.setValue(-2)
+
+        assert panel.end_value_label.text() == "x=9.9, y=98.01"

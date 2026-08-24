@@ -149,7 +149,12 @@ class TestAnalyzeChartSeriesCommand:
     def test_resolve_point_out_of_range_returns_none(self, ctx):
         command = _cmd(ctx, source_kind="series")
         assert command.resolve_point(101) is None
-        assert command.resolve_point(-1) is None
+        assert command.resolve_point(-102) is None
+
+    def test_resolve_point_negative_index_counts_from_the_end(self, ctx):
+        command = _cmd(ctx, source_kind="series")
+        assert command.resolve_point(-1) == pytest.approx((10.0, 100.0))
+        assert command.resolve_point(-2) == pytest.approx((9.9, 98.01))
 
     def test_resolve_point_invalid_source_returns_none(self, ctx):
         command = _cmd(ctx, source_kind="fit", source_index=9)

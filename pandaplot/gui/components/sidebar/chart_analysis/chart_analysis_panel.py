@@ -124,7 +124,9 @@ class ChartAnalysisPanel(PWidget):
         self.end_index.setMinimum(-1)
         self.end_index.setMaximum(0)
         self.end_index.setValue(-1)
-        self.end_index.setSpecialValueText("End")
+        self.end_index.setToolTip(
+            "Negative values count backward from the end (-1 = last point)."
+        )
         self.end_value_label = QLabel("–")
         end_row = QHBoxLayout()
         end_row.addWidget(self.end_index)
@@ -359,10 +361,14 @@ class ChartAnalysisPanel(PWidget):
         source = self._selected_source()
         if source is None:
             self.start_index.setMaximum(0)
+            self.end_index.setMinimum(-1)
             self.end_index.setMaximum(0)
         else:
             n = self._series_length(*source)
             self.start_index.setMaximum(max(n - 1, 0))
+            # -n lets the end index count all the way backward to the start,
+            # same as Python's negative indexing (-1 = last point).
+            self.end_index.setMinimum(-n if n > 0 else -1)
             self.end_index.setMaximum(n)
         self._auto_name()
         self._update_range_labels()
@@ -381,11 +387,8 @@ class ChartAnalysisPanel(PWidget):
             self.end_value_label.setText("–")
             return
 
-        n = command.source_length()
-        end_value = self.end_index.value()
-        end_idx = (n - 1) if end_value == -1 else end_value
         self.start_value_label.setText(self._format_point(command.resolve_point(self.start_index.value())))
-        self.end_value_label.setText(self._format_point(command.resolve_point(end_idx)))
+        self.end_value_label.setText(self._format_point(command.resolve_point(self.end_index.value())))
 
     def _auto_name(self):
         if self.source_combo.count() == 0:

@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
     QSpinBox,
     QTextEdit,
@@ -37,9 +39,12 @@ class BaseAnalysisDialog(QDialog):
         
         self.setup_ui()
         self.setup_column_choices()
-        
+        self._connect_range_signals()
+
         if default_y_column:
             self.y_column_combo.setCurrentText(default_y_column)
+
+        self._update_range_labels()
     
     def setup_ui(self):
         """Setup the user interface."""
@@ -101,21 +106,70 @@ class BaseAnalysisDialog(QDialog):
         """Create data range selection group."""
         group = QGroupBox("Data Range")
         layout = QFormLayout()
-        
+
         self.start_index = QSpinBox()
         self.start_index.setMinimum(0)
         self.start_index.setValue(0)
-        
+        self.start_value_label = QLabel("–")
+        start_row = QHBoxLayout()
+        start_row.addWidget(self.start_index)
+        start_row.addWidget(self.start_value_label)
+        layout.addRow("Start Index:", start_row)
+
         self.end_index = QSpinBox()
         self.end_index.setMinimum(-1)
         self.end_index.setValue(-1)
-        self.end_index.setSpecialValueText("End")
-        
-        layout.addRow("Start Index:", self.start_index)
-        layout.addRow("End Index:", self.end_index)
-        
+        self.end_index.setToolTip(
+            "Negative values count backward from the end (-1 = last point)."
+        )
+        self.end_value_label = QLabel("–")
+        end_row = QHBoxLayout()
+        end_row.addWidget(self.end_index)
+        end_row.addWidget(self.end_value_label)
+        layout.addRow("End Index:", end_row)
+
         group.setLayout(layout)
         return group
+
+    def _connect_range_signals(self):
+        self.start_index.valueChanged.connect(self._update_range_labels)
+        self.end_index.valueChanged.connect(self._update_range_labels)
+        self.x_column_combo.currentIndexChanged.connect(self._update_range_labels)
+        self.y_column_combo.currentIndexChanged.connect(self._update_range_labels)
+
+    def _resolve_point(self, index: int) -> Optional[tuple]:
+        """Return the resolved (x, y) at a dataset row index, or None.
+
+        ``index`` follows Python indexing: negative values count backward
+        from the end (-1 is the last row).
+        """
+        if self.dataset is None or self.dataset.data is None:
+            return None
+        x_col = self.x_column_combo.currentText()
+        y_col = self.y_column_combo.currentText()
+        if not x_col or not y_col or x_col not in self.dataset.data.columns \
+                or y_col not in self.dataset.data.columns:
+            return None
+        x_data = self.dataset.data[x_col]
+        y_data = self.dataset.data[y_col]
+        n = len(x_data)
+        resolved = index + n if index < 0 else index
+        if not (0 <= resolved < n):
+            return None
+        try:
+            return float(x_data.iloc[resolved]), float(y_data.iloc[resolved])
+        except (TypeError, ValueError):
+            return None
+
+    def _format_point(self, point: Optional[tuple]) -> str:
+        if point is None:
+            return "–"
+        x, y = point
+        return f"x={x:.4g}, y={y:.4g}"
+
+    def _update_range_labels(self):
+        self.start_value_label.setText(self._format_point(self._resolve_point(self.start_index.value())))
+        self.end_value_label.setText(self._format_point(self._resolve_point(self.end_index.value())))
     
     def create_preview_group(self) -> QGroupBox:
         """Create preview group."""
@@ -152,9 +206,12 @@ class BaseAnalysisDialog(QDialog):
                 self.x_column_combo.setCurrentIndex(0)
                 self.y_column_combo.setCurrentIndex(0)
             
-            # Update max values for range selection
+            # Update max/min values for range selection. The end index's
+            # minimum extends down to -max_rows so it can count backward
+            # from the end the same way Python negative indexing does.
             max_rows = len(self.dataset.data)
             self.start_index.setMaximum(max_rows - 1)
+            self.end_index.setMinimum(-max_rows if max_rows > 0 else -1)
             self.end_index.setMaximum(max_rows)
     
     def preview_analysis(self):
