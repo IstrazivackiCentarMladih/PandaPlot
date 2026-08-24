@@ -9,10 +9,10 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.services.theme.theme_manager import ThemeManager
 from pandaplot.version import __app_name__, __description__, __version__
@@ -96,9 +96,8 @@ class AboutDialog(PDialog):
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        self.close_btn = QPushButton("Close")
+        self.close_btn = PButton("Close", role="secondary", on_click=self.accept)
         self.close_btn.setDefault(True)
-        self.close_btn.clicked.connect(self.accept)
         button_layout.addWidget(self.close_btn)
         button_layout.addStretch()
         layout.addLayout(button_layout)
@@ -112,7 +111,6 @@ class AboutDialog(PDialog):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#000000")
         secondary_fg = palette.get("secondary_fg", "#555555")
-        accent = palette.get("accent", "#4A90E2")
 
         self.setStyleSheet(f"""
             QDialog {{
@@ -124,14 +122,6 @@ class AboutDialog(PDialog):
             }}
             QLabel[secondary="true"] {{
                 color: {secondary_fg};
-            }}
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 20px;
-                font-weight: bold;
             }}
         """)
         self.info_frame.setStyleSheet(f"""

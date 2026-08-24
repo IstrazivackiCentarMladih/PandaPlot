@@ -9,6 +9,7 @@ from pandaplot.gui.components.main_menu.main_menu import MainMenu
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
 from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSetupManager
 from pandaplot.gui.core.widget_extension import PMainWindow
+from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
@@ -23,6 +24,7 @@ class PandaMainWindow(PMainWindow):
     @override
     def _init_ui(self):
         self.setWindowTitle("PandaPlot")
+        self.setWindowIcon(create_app_icon())
 
         # Set window geometry before showing, but defer showing the window
         # until all widgets are built -- otherwise the OS displays a blank
@@ -69,7 +71,7 @@ class PandaMainWindow(PMainWindow):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(self.main_splitter)
 
-        # TODO: move panel setup somewhere else
+        # TODO(#220): move panel setup somewhere else
         self.panel_setup_manager = PanelSetupManager(self.app_context)
         self.panel_setup_manager.register_default_panels()
 
@@ -97,7 +99,7 @@ class PandaMainWindow(PMainWindow):
             self.main_splitter.setSizes([250, 1000])
 
         # Initialize conditional panel manager for dynamic sidebar panels
-        # TODO: move this outside of main window
+        # TODO(#220): move this outside of main window
         self.conditional_panel_manager = ConditionalPanelManager(
             self.sidebar, self.tab_container)
         self.panel_setup_manager.add_panels(self.sidebar, self.conditional_panel_manager)
@@ -150,7 +152,7 @@ class PandaMainWindow(PMainWindow):
             # Close all documents and clean up
             self.logger.debug("Starting application cleanup process")
 
-            # TODO: Implement cleanup logic here
+            # TODO(#221): Implement cleanup logic here
             # we need to ask for saving open modified files/projects
             # this can happen by executing close all tabs command
             # consider moving the logic inside close command

@@ -18,21 +18,22 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QPushButton,
-    QScrollArea,
+    QMenu,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.transform.transform_controller import TransformController
-from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class TransformPanel(PWidget):
+class TransformPanel(SidebarPanel):
     """
     Transform panel for data transformations, adapted from transform_tab.py.
     Designed for sidebar integration with conditional visibility.
@@ -42,7 +43,8 @@ class TransformPanel(PWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.current_dataset_tab = None
         self.current_dataset = None
-        
+        self._last_transform_error: Optional[str] = None
+
         # Initialize transform controller
         self.transform_controller = TransformController(app_context)
         
@@ -63,51 +65,40 @@ class TransformPanel(PWidget):
     def _init_ui(self):
         """Create the UI layout optimized for sidebar width constraints."""
         # Main layout with scroll area for long content
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
+        self._init_panel_layout()
+
         # Panel title
-        self.title_label = QLabel("🔧 Transform Operations")
-        # Remove hardcoded styling - will be applied in _apply_theme
-        main_layout.addWidget(self.title_label)
-        
-        # Create scroll area for panel content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        self._set_title("🔧 Transform Operations")
+
         # Content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(4, 4, 4, 4)
         content_layout.setSpacing(6)
-        
+
         # Header section (dataset info)
         self.create_header_section(content_layout)
-        
+
         # Transform type selection
         self.create_transform_type_section(content_layout)
-        
+
         # Column selection section
         self.create_column_selection_section(content_layout)
-        
+
         # Function definition area
         self.create_function_section(content_layout)
-        
+
         # Preview section
         self.create_preview_section(content_layout)
-        
+
         # Action buttons
         self.create_action_buttons(content_layout)
-        
+
         # Add stretch to push content to top
         content_layout.addStretch()
-        
+
         # Set content widget in scroll area
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
     
     @override
     def _apply_theme(self):
@@ -120,9 +111,7 @@ class TransformPanel(PWidget):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        
+
         # Apply theme to main widget (like project view panel)
         self.setStyleSheet(f"""
             TransformPanel {{
@@ -148,16 +137,7 @@ class TransformPanel(PWidget):
         """)
         
         # Style panel title
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
         
         # Style dataset labels in header
         self.dataset_label.setStyleSheet(f"""
@@ -188,39 +168,6 @@ class TransformPanel(PWidget):
             }}
         """)
         
-        # Style action buttons
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-        
-        self.clear_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-        """)
-
     def create_header_section(self, layout):
         """Create header section showing current dataset info."""
         header_group = QGroupBox("Active Dataset")
@@ -281,36 +228,81 @@ class TransformPanel(PWidget):
         """Create function definition section."""
         function_group = QGroupBox("Transform Function")
         function_layout = QVBoxLayout(function_group)
-        
+
+        # Toolbar: insert a ready-made function, or browse available functions.
+        toolbar_layout = QHBoxLayout()
+
+        self.insert_function_btn = QToolButton()
+        self.insert_function_btn.setText("ƒ  Insert function ▾")
+        self.insert_function_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.insert_function_btn.setMenu(self._build_function_menu())
+
+        self.reference_btn = QToolButton()
+        self.reference_btn.setText("?")
+        self.reference_btn.setToolTip("Show the variables and functions you can use")
+        self.reference_btn.clicked.connect(self.toggle_function_reference)
+
+        toolbar_layout.addWidget(self.insert_function_btn)
+        toolbar_layout.addStretch()
+        toolbar_layout.addWidget(self.reference_btn)
+        function_layout.addLayout(toolbar_layout)
+
         # Function input area (compact for sidebar)
         self.function_text = QTextEdit()
         self.function_text.setMaximumHeight(100)  # Keep compact
         self.function_text.setPlaceholderText(
-            "Enter transformation function:\n"
-            "e.g., x * 2, x.upper(), pd.to_datetime(x)"
+            "Use 'x' for the selected column, e.g.\n"
+            "  x * 2            (double the values)\n"
+            "  (x - x.mean()) / x.std()   (z-score)\n"
+            "  np.sqrt(x)       (square root)\n"
+            "Or pick one from 'Insert function ▾' above."
         )
-        
-        # Quick function buttons for common operations
-        quick_buttons_layout = QHBoxLayout()
-        
-        self.multiply_btn = QPushButton("×2")
-        self.multiply_btn.setMaximumWidth(30)
-        self.square_btn = QPushButton("x²")
-        self.square_btn.setMaximumWidth(30)
-        self.upper_btn = QPushButton("ABC")
-        self.upper_btn.setMaximumWidth(30)
-        
-        quick_buttons_layout.addWidget(QLabel("Quick:"))
-        quick_buttons_layout.addWidget(self.multiply_btn)
-        quick_buttons_layout.addWidget(self.square_btn)
-        quick_buttons_layout.addWidget(self.upper_btn)
-        quick_buttons_layout.addStretch()
-        
         function_layout.addWidget(self.function_text)
-        function_layout.addLayout(quick_buttons_layout)
-        
+
+        # Collapsible reference of usable variables and functions (hidden by default).
+        self.function_reference = QLabel(self._function_reference_text())
+        self.function_reference.setWordWrap(True)
+        self.function_reference.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.function_reference.setVisible(False)
+        function_layout.addWidget(self.function_reference)
+
         layout.addWidget(function_group)
-    
+
+    def _build_function_menu(self) -> "QMenu":
+        """Build a categorized menu of ready-made transformation functions."""
+        menu = QMenu(self)
+        templates = self.transform_controller.get_transformation_templates()
+        for category, entries in templates.items():
+            submenu = menu.addMenu(category)
+            for entry in entries:
+                action = submenu.addAction(entry["name"])
+                action.setToolTip(f"{entry['description']}  →  {entry['code']}")
+                # Bind the code for this entry via a default argument.
+                action.triggered.connect(
+                    lambda _checked=False, code=entry["code"]: self.insert_function_code(code)
+                )
+        # Surface tooltips inside the menu.
+        menu.setToolTipsVisible(True)
+        return menu
+
+    def _function_reference_text(self) -> str:
+        """Human-readable list of the variables and functions available."""
+        return (
+            "<b>Variables</b>: <code>x</code> (also <code>value</code>, "
+            "<code>column</code>, <code>data</code>) = the selected column.<br>"
+            "<b>Math</b>: <code>np.sqrt</code>, <code>np.log</code>, "
+            "<code>np.log10</code>, <code>np.exp</code>, <code>np.abs</code>, "
+            "<code>np.sin/cos/tan</code>, <code>np.sign</code>.<br>"
+            "<b>Stats</b>: <code>x.mean()</code>, <code>x.std()</code>, "
+            "<code>x.median()</code>, <code>x.min()</code>, <code>x.max()</code>, "
+            "<code>x.rank()</code>, <code>x.cumsum()</code>, "
+            "<code>x.rolling(n).mean()</code>, <code>x.shift(1)</code>.<br>"
+            "<b>Text</b>: <code>x.str.upper()</code>, <code>x.str.lower()</code>, "
+            "<code>x.str.strip()</code>, <code>x.str.len()</code>.<br>"
+            "<b>Date/Time</b>: <code>pd.to_datetime(x)</code>, "
+            "<code>pd.to_datetime(x).dt.year</code>."
+        )
+
     def create_preview_section(self, layout):
         """Create compact preview section."""
         preview_group = QGroupBox("Preview")
@@ -324,7 +316,7 @@ class TransformPanel(PWidget):
         
         # Preview controls
         preview_controls = QHBoxLayout()
-        self.preview_btn = QPushButton("Preview")
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.update_preview)
         self.preview_btn.setMaximumWidth(70)
         
         self.preview_rows_combo = QComboBox()
@@ -346,10 +338,10 @@ class TransformPanel(PWidget):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = QPushButton("Apply")
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_transform)
         # Remove hardcoded styling - will be applied in _apply_theme
-        
-        self.clear_btn = QPushButton("Clear")
+
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_panel)
         # Remove hardcoded styling - will be applied in _apply_theme
         
         button_layout.addWidget(self.apply_btn)
@@ -361,15 +353,6 @@ class TransformPanel(PWidget):
         """Set up signal connections."""
         self.transform_type_combo.currentTextChanged.connect(self.on_transform_type_changed)
         self.source_column_list.itemSelectionChanged.connect(self.on_source_column_changed)
-        self.preview_btn.clicked.connect(self.update_preview)
-        self.apply_btn.clicked.connect(self.apply_transform)
-        self.clear_btn.clicked.connect(self.clear_panel)
-        
-        # Quick function buttons
-        self.multiply_btn.clicked.connect(lambda: self.insert_quick_function("x * 2"))
-        self.square_btn.clicked.connect(lambda: self.insert_quick_function("x ** 2"))
-        self.upper_btn.clicked.connect(lambda: self.insert_quick_function("x.upper()"))
-        
         # Connect transform controller signals
         self.transform_controller.transform_completed.connect(self.on_controller_transform_completed)
         self.transform_controller.transform_failed.connect(self.on_controller_transform_failed)
@@ -387,6 +370,8 @@ class TransformPanel(PWidget):
         self.logger.error(
             "TransformPanel controller error for dataset %s: %s", dataset_id, error_message
         )
+        self._last_transform_error = error_message
+        self.preview_text.setPlainText(f"Transform failed: {error_message}")
     
     def on_controller_preview_ready(self, dataset_id: str, preview_data):
         """Handle preview data from controller."""
@@ -454,11 +439,10 @@ class TransformPanel(PWidget):
         self.function_text.setEnabled(enabled)
         self.preview_btn.setEnabled(enabled)
         self.apply_btn.setEnabled(enabled)
-        
-        # Enable quick buttons
-        self.multiply_btn.setEnabled(enabled)
-        self.square_btn.setEnabled(enabled)
-        self.upper_btn.setEnabled(enabled)
+
+        # Enable function toolbar
+        self.insert_function_btn.setEnabled(enabled)
+        self.reference_btn.setEnabled(enabled)
     
     def on_transform_type_changed(self, transform_type: str):
         """Handle transform type selection change."""
@@ -484,10 +468,19 @@ class TransformPanel(PWidget):
             else:
                 self.new_column_name.setText("combined_transformed")
     
-    def insert_quick_function(self, function_text: str):
-        """Insert quick function into the function text area."""
-        self.function_text.clear()
-        self.function_text.insertPlainText(function_text)
+    def insert_function_code(self, function_text: str):
+        """Insert a ready-made function at the cursor, replacing any selection."""
+        # If the box is empty, just set it; otherwise insert at the cursor so the
+        # user can compose expressions from several inserted pieces.
+        if not self.function_text.toPlainText().strip():
+            self.function_text.setPlainText(function_text)
+        else:
+            self.function_text.insertPlainText(function_text)
+        self.function_text.setFocus()
+
+    def toggle_function_reference(self):
+        """Show or hide the variables/functions reference."""
+        self.function_reference.setVisible(not self.function_reference.isVisible())
     
     def update_preview(self):
         """Update the preview with sample transformation results."""
@@ -579,8 +572,9 @@ class TransformPanel(PWidget):
             if not dataset_id:
                 self.logger.warning("TransformPanel: dataset id not available; aborting transform")
                 return
-            
+
             # Apply transformation through controller
+            self._last_transform_error = None
             success = self.transform_controller.apply_transformation(
                 dataset_id=dataset_id,
                 source_column=source_column,
@@ -588,24 +582,24 @@ class TransformPanel(PWidget):
                 function_code=function_code,
                 replace_existing=replace_existing
             )
-            
+
             if success:
-                # Publish transform completion event
-                self.publish_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, {
-                    "dataset_id": dataset_id,
-                    "column_name": new_column_name,
-                    "transform_type": "custom_function",
-                    "source_column": source_column,
-                    "function_code": function_code
-                })
+                # The command emits the structured column-added / data-changed
+                # events that refresh the data tab and column-source selectors.
                 self.logger.info("TransformPanel: transform applied %s -> %s using %s", source_column, new_column_name, function_code)
                 # Clear the panel after successful transform
                 self.clear_panel()
             else:
                 self.logger.error("TransformPanel: transform failed - see logs for details")
-            
+                # transform_controller.transform_failed is emitted synchronously and
+                # already wrote the specific message to preview_text; fall back to a
+                # generic one only if that signal wasn't the source of the failure.
+                if not self._last_transform_error:
+                    self.preview_text.setPlainText("Transform failed - see logs for details")
+
         except Exception as e:
             self.logger.error("TransformPanel: transform failed: %s", e, exc_info=True)
+            self.preview_text.setPlainText(f"Transform failed: {e}")
     
     def clear_panel(self):
         """Reset panel to initial state."""

@@ -1,5 +1,7 @@
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+
+from pandaplot.gui.components.common.p_button import PButton
 
 
 def format_status_text(is_modified: bool, change_count: int) -> str:
@@ -19,14 +21,12 @@ class DirtyFooter(QWidget):
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._status_label = QLabel("No changes", self)
-        self._revert_button = QPushButton("Revert", self)
-        self._apply_button = QPushButton("Apply", self)
-        self._apply_button.setProperty("primary", True)
-
-        self._revert_button.setEnabled(False)
-        self._apply_button.setEnabled(False)
-        self._revert_button.clicked.connect(self.revertClicked)
-        self._apply_button.clicked.connect(self.applyClicked)
+        self._revert_button = PButton(
+            "Revert", role="secondary", on_click=self.revertClicked, enabled=False, parent=self
+        )
+        self._apply_button = PButton(
+            "Apply", role="primary", on_click=self.applyClicked, enabled=False, parent=self
+        )
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)

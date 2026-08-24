@@ -110,7 +110,7 @@ class CollapsibleSidebar(PWidget):
 
     def show_settings_dialog(self):
         """Show the settings dialog."""
-        # TODO: not sure if we should handle this with a command
+        # TODO(#216): not sure if we should handle this with a command
         dialog = SettingsDialog(self.app_context, self)
         dialog.exec()
 

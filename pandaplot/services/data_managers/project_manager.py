@@ -79,11 +79,11 @@ class ProjectManager:
         except json.JSONDecodeError as e:
             error_msg = f"Invalid JSON in project file: {str(e)}"
             self.logger.error("JSON decode error in %s: %s", file_path, error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
         except Exception as e:
             error_msg = f"Error loading project: {str(e)}"
             self.logger.error("Unexpected error loading project from %s: %s", file_path, error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
     def save_project(self, project: Project, file_path: str) -> bool:
         """
@@ -128,11 +128,11 @@ class ProjectManager:
         except Exception as e:
             error_msg = f"Error saving project: {str(e)}"
             self.logger.error("Failed to save project '%s' to %s: %s", project.name, file_path, error_msg)
-            raise IOError(error_msg)
+            raise IOError(error_msg) from e
     
     def get_recent_projects(self) -> list:
         """Get list of recently opened projects."""
-        # TODO: Implement recent projects tracking
+        # TODO(#210): Implement recent projects tracking
         return []
     
     def validate_project_file(self, file_path: str) -> bool:
@@ -154,7 +154,5 @@ class ProjectManager:
                 return False
             
             return True
-
-            #TODO: Implement project file validation
         except Exception:
             return False

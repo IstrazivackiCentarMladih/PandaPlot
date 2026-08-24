@@ -67,11 +67,13 @@ class ImportDataCommand(Command):
 
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("ImportDataCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message("Import Data", "Please open or create a project first.")
                 return False
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning("ImportDataCommand.execute: has_project is True but current_project is None")
                 return False
 
             # Collect the file, parse options, and dataset name via the wizard.
@@ -278,7 +280,7 @@ class ImportDataCommand(Command):
                         self.dataset_ids.append(dataset.id)
 
                         # Emit event
-                        # TODO: migrate to item created and create data class
+                        # TODO(#219): migrate to item created and create data class
                         self.app_state.event_bus.emit(
                             DatasetEvents.DATASET_CREATED,
                             {
@@ -370,6 +372,12 @@ class ImportDataCommand(Command):
                         )
 
                     self.logger.info("Undone import of %d dataset(s)", len(self.dataset_ids))
+                    return
+
+            self.logger.warning(
+                "ImportDataCommand.undo: cannot undo (dataset_ids set=%s, has_project=%s)",
+                bool(self.dataset_ids), self.app_state.has_project,
+            )
 
         except Exception as e:
             error_msg = f"Failed to undo data import: {str(e)}"

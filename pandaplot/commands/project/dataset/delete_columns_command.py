@@ -1,9 +1,10 @@
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import List, Tuple, Union, override
+from typing import List, Union, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project.items import Chart
@@ -18,6 +19,26 @@ class ChartReferenceMatch:
     series_indices: List[int]
     fit_indices: List[int]
     error_only_indices: List[int]
+
+
+def _error_field_targets(series):
+    """Return (container, id_field, name_field) triples for a series'
+    optional error/magnitude column references -- these now live on
+    ``series.style.error_bars`` (x/y error + minus pairs) and, for a
+    VECTOR series, ``series.style.magnitude_column*`` directly, rather
+    than flatly on ``series`` itself."""
+    targets = []
+    error_bars = getattr(series.style, "error_bars", None)
+    if error_bars is not None:
+        targets.extend([
+            (error_bars, "x_error_column_id", "x_error_column"),
+            (error_bars, "y_error_column_id", "y_error_column"),
+            (error_bars, "x_error_minus_column_id", "x_error_minus_column"),
+            (error_bars, "y_error_minus_column_id", "y_error_minus_column"),
+        ])
+    if isinstance(series.style, VectorSeriesStyle):
+        targets.append((series.style, "magnitude_column_id", "magnitude_column"))
+    return targets
 
 
 class DeleteColumnsCommand(Command):
@@ -65,84 +86,120 @@ class DeleteColumnsCommand(Command):
             
             # Validate input
             if not self.column_specs:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no column specs provided"
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "No columns specified for deletion."
                 )
                 return False
-            
+
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no project open; cannot delete columns"
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: has_project is True but current_project is None"
+                )
                 return False
-            
+
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: dataset '%s' not found", self.dataset_id
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Selected item is not a dataset."
                 )
                 return False
-                
+
             self.dataset = found_item
-            
+
             # Get current data
             if self.dataset.data is None or self.dataset.data.empty:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: dataset '%s' has no data to delete columns from",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Cannot delete columns from empty dataset."
                 )
                 return False
-            
+
             # Resolve column names and positions based on input type
             self._resolve_columns()
-            
+
             # Validate resolved columns
             if not self.column_names:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: no valid columns resolved from specs %s for dataset '%s'",
+                    self.column_specs, self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "No valid columns found for deletion."
                 )
                 return False
-            
+
             # Check if all resolved columns exist
             existing_columns = set(self.dataset.data.columns)
             missing_columns = [col for col in self.column_names if col not in existing_columns]
             if missing_columns:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: columns %s not found in dataset '%s'",
+                    missing_columns, self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     f"The following columns do not exist: {', '.join(missing_columns)}"
                 )
                 return False
-            
+
             # Check for duplicate column names
             if len(set(self.column_names)) != len(self.column_names):
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: duplicate column names in deletion list %s for dataset '%s'",
+                    self.column_names, self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Duplicate column names found in the deletion list."
                 )
                 return False
-            
+
             # Check if we're trying to delete all columns
             remaining_columns = len(self.dataset.data.columns) - len(self.column_names)
             if remaining_columns <= 0:
+                self.logger.warning(
+                    "DeleteColumnsCommand.execute: refusing to delete all %d columns from dataset '%s'",
+                    len(self.dataset.data.columns), self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Delete Columns", 
+                    "Delete Columns",
                     "Cannot delete all columns from dataset. Dataset must have at least one column."
                 )
                 return False
@@ -201,8 +258,9 @@ class DeleteColumnsCommand(Command):
         Returns a list of (chart, data_series indices, fit_data indices,
         error-only data_series indices) for every chart with at least one
         matching reference. A series lands in error-only indices (instead of
-        data_series indices) when the only matching reference is its
-        optional x_error_column/y_error_column, since that series still
+        data_series indices) when the only matching reference is one of its
+        optional columns (x_error_column/y_error_column/magnitude_column),
+        since that series still
         renders fine without error bars and shouldn't be removed.
         """
         if not self.project:
@@ -227,15 +285,16 @@ class DeleteColumnsCommand(Command):
                 i for i, series in enumerate(item.data_series)
                 if series.dataset_id == self.dataset_id
                 and (refs(series.x_column_id, series.x_column)
-                     or refs(series.y_column_id, series.y_column))
+                     or refs(series.y_column_id, series.y_column)
+                     or (isinstance(series.style, VectorSeriesStyle)
+                         and (refs(series.style.u_column_id, series.style.u_column)
+                              or refs(series.style.v_column_id, series.style.v_column))))
             ]
             error_only_idx = [
                 i for i, series in enumerate(item.data_series)
                 if i not in series_idx and series.dataset_id == self.dataset_id
-                and (refs(series.x_error_column_id, series.x_error_column)
-                     or refs(series.y_error_column_id, series.y_error_column)
-                     or refs(series.x_error_minus_column_id, series.x_error_minus_column)
-                     or refs(series.y_error_minus_column_id, series.y_error_minus_column))
+                and any(refs(getattr(container, id_field), getattr(container, name_field))
+                        for container, id_field, name_field in _error_field_targets(series))
             ]
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
@@ -285,25 +344,21 @@ class DeleteColumnsCommand(Command):
             # deletion shifts the list, so `i` still points at the right series.
             # Match by stable id (deleted_ids) with a name fallback for legacy
             # references; clear both the id and the name field together.
-            error_field_pairs = (
-                ("x_error_column_id", "x_error_column"),
-                ("y_error_column_id", "y_error_column"),
-                ("x_error_minus_column_id", "x_error_minus_column"),
-                ("y_error_minus_column_id", "y_error_minus_column"),
-            )
             cleared_series = []
             for i in error_only_idx:
                 series = chart.data_series[i]
-                old_values = {
-                    field: getattr(series, field)
-                    for pair in error_field_pairs for field in pair
-                }
-                for id_field, name_field in error_field_pairs:
-                    cid = getattr(series, id_field)
-                    name = getattr(series, name_field)
+                targets = _error_field_targets(series)
+                old_values = [
+                    (container, field, getattr(container, field))
+                    for container, id_field, name_field in targets
+                    for field in (id_field, name_field)
+                ]
+                for container, id_field, name_field in targets:
+                    cid = getattr(container, id_field)
+                    name = getattr(container, name_field)
                     if (cid and cid in deleted_ids) or name in column_set:
-                        setattr(series, id_field, "")
-                        setattr(series, name_field, "")
+                        setattr(container, id_field, "")
+                        setattr(container, name_field, "")
                 cleared_series.append((i, old_values))
 
             for i in sorted(series_idx, reverse=True):
@@ -342,8 +397,8 @@ class DeleteColumnsCommand(Command):
 
             for i, old_values in self.cleared_error_refs.get(chart_id, []):
                 if 0 <= i < len(chart.data_series):
-                    for field, value in old_values.items():
-                        setattr(chart.data_series[i], field, value)
+                    for container, field, value in old_values:
+                        setattr(container, field, value)
 
             if removed["series"] or removed["fits"] or chart_id in self.cleared_error_refs:
                 chart.update_modified_time()

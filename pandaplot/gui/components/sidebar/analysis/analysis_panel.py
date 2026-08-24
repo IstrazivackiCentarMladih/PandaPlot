@@ -4,7 +4,6 @@ Analysis panel for mathematical operations on dataset columns.
 
 from typing import Any, Dict, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -13,8 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
-    QScrollArea,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -23,14 +20,15 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import AnalysisEngine
 from pandaplot.commands.project.dataset.analysis_command import AnalysisCommand
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import AnalysisEvents, DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class AnalysisPanel(PWidget):
+class AnalysisPanel(SidebarPanel):
     """
     Side panel for mathematical analysis operations on dataset columns.
     """
@@ -47,52 +45,42 @@ class AnalysisPanel(PWidget):
     def _init_ui(self):
         """Setup the user interface."""
         # Main layout with scroll area
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
-        
+        self._init_panel_layout()
+
         # Panel title
-        self.title_label = QLabel("📊 Analysis Operations")
-        main_layout.addWidget(self.title_label)
-        
-        # Scroll area for content
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
+        self._set_title("📊 Analysis Operations")
+
         # Content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(4, 4, 4, 4)
         content_layout.setSpacing(6)
-        
+
         # Analysis type selection
         self.create_analysis_type_section(content_layout)
-        
+
         # Column selection
         self.create_column_selection_section(content_layout)
-        
+
         # Parameters section
         self.create_parameters_section(content_layout)
-        
+
         # Data range section
         self.create_range_section(content_layout)
-        
+
         # Result configuration
         self.create_result_section(content_layout)
-        
+
         # Preview section
         self.create_preview_section(content_layout)
-        
+
         # Action buttons
         self.create_action_buttons(content_layout)
-        
+
         # Add stretch to push everything to top
         content_layout.addStretch()
-        
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+
+        self._set_content(content_widget, scrollable=True)
     
     @override
     def _apply_theme(self):
@@ -104,10 +92,7 @@ class AnalysisPanel(PWidget):
         card_bg = palette.get("card_bg", "#ffffff")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
-        secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
-        
+
         # Apply theme to main widget
         self.setStyleSheet(f"""
             AnalysisPanel {{
@@ -133,67 +118,8 @@ class AnalysisPanel(PWidget):
         """)
         
         # Style title label
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
-        
-        # Style preview button
-        self.preview_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        
-        # Style apply button
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-        
-        # Style clear button
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: #7f8c8d;
-            }}
-        """)
-    
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+
     def apply_info_label_theme(self, label):
         """Apply theme styling to info labels."""
         theme_manager = self.app_context.get_manager(ThemeManager)
@@ -292,8 +218,7 @@ class AnalysisPanel(PWidget):
         group = QGroupBox("Preview")
         group_layout = QVBoxLayout()
         
-        self.preview_btn = QPushButton("🔍 Preview Analysis")
-        self.preview_btn.clicked.connect(self.preview_analysis)
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.preview_analysis)
         
         self.preview_text = QTextEdit()
         self.preview_text.setMaximumHeight(120)
@@ -310,11 +235,9 @@ class AnalysisPanel(PWidget):
         """Create action buttons section."""
         button_layout = QHBoxLayout()
         
-        self.apply_btn = QPushButton("✅ Apply Analysis")
-        self.apply_btn.clicked.connect(self.apply_analysis)
-        
-        self.clear_btn = QPushButton("🔄 Clear")
-        self.clear_btn.clicked.connect(self.clear_inputs)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_analysis)
+
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_inputs)
         
         button_layout.addWidget(self.apply_btn)
         button_layout.addWidget(self.clear_btn)
@@ -552,22 +475,16 @@ class AnalysisPanel(PWidget):
                 execution_result = self.app_context.get_command_executor().execute_command(command)
                 
                 if execution_result:
-                    # Publish analysis completion event
+                    # Publish analysis completion event. The command itself emits
+                    # the structured column-added / data-changed events that refresh
+                    # the data tab and column-source selectors.
                     self.publish_event(AnalysisEvents.ANALYSIS_COMPLETED, {
                         "dataset_id": self.current_dataset_id,
                         "new_column_name": config["new_column_name"],
                         "analysis_type": config["analysis_type"],
                         "analysis_config": config
                     })
-                    
-                    # Also publish dataset column added event for UI updates
-                    self.publish_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, {
-                        "dataset_id": self.current_dataset_id,
-                        "column_name": config["new_column_name"],
-                        "operation": "analysis",
-                        "source": "analysis_panel"
-                    })
-                    
+
                     self.preview_text.setText(f"✅ Analysis applied successfully!\nColumn '{config['new_column_name']}' added to dataset.")
                 else:
                     self.logger.error("Command execution failed for dataset %s", self.current_dataset_id)

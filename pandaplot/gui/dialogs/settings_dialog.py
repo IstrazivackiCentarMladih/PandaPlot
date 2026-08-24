@@ -62,7 +62,7 @@ class SettingsDialog(PDialog):
     @override
     def _init_ui(self):
         """Set up the user interface."""
-        self.setWindowTitle("⚙️ Application Settings")
+        self.setWindowTitle("Application Settings")
         self.setModal(True)
         self.resize(700, 500)
         self.setMinimumSize(650, 450)
@@ -146,22 +146,6 @@ class SettingsDialog(PDialog):
                 background-color: {card_bg};
                 color: {secondary_fg};
             }}
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {accent};
-                opacity: 0.8;
-            }}
-            QPushButton:pressed {{
-                background-color: {accent};
-                opacity: 0.6;
-            }}
             QLabel {{
                 color: {base_fg};
             }}
@@ -178,26 +162,12 @@ class SettingsDialog(PDialog):
             QCheckBox {{
                 color: {base_fg};
             }}
-        """)
-        
-        # Apply specific button styling
-        self.reset_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
+            QScrollArea {{
+                border: none;
+                background-color: {card_bg};
             }}
-            QPushButton:hover {{
-                background-color: #545b62;
-            }}
-        """)
-        
-        self.cancel_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-            }}
-            QPushButton:hover {{
-                background-color: #545b62;
+            QScrollArea > QWidget > QWidget {{
+                background-color: {card_bg};
             }}
         """)
         
@@ -231,7 +201,7 @@ class SettingsDialog(PDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
-        autosave_group = QGroupBox("💾 Auto Save")
+        autosave_group = QGroupBox("Auto Save")
         ag_layout = QVBoxLayout(autosave_group)
         self.auto_save_check = QCheckBox("Enable automatic project saving")
         ag_layout.addWidget(self.auto_save_check)
@@ -247,7 +217,7 @@ class SettingsDialog(PDialog):
         layout.addWidget(autosave_group)
 
         # Chart display group (preview settings like DPI)
-        chart_group = QGroupBox("📈 Chart Display Settings")
+        chart_group = QGroupBox("Chart Display Settings")
         cd_layout = QVBoxLayout(chart_group)
         
         # DPI setting
@@ -293,7 +263,7 @@ class SettingsDialog(PDialog):
         layout.addWidget(chart_group)
 
         layout.addStretch()
-        self.tab_widget.addTab(tab, "⚙️ General")
+        self.tab_widget.addTab(tab, "General")
 
     def create_appearance_tab(self):
         """Create the appearance settings tab with scroll area to avoid clipping."""
@@ -309,10 +279,10 @@ class SettingsDialog(PDialog):
         container = QWidget()
         cont_layout = QVBoxLayout(container)
         cont_layout.setContentsMargins(20, 20, 20, 20)
-        cont_layout.setSpacing(18)
+        cont_layout.setSpacing(15)
 
         # Theme group
-        theme_group = QGroupBox("🎨 Theme and Colors")
+        theme_group = QGroupBox("Theme and Colors")
         theme_layout = QVBoxLayout(theme_group)
         theme_selection_layout = QHBoxLayout()
         theme_selection_layout.addWidget(QLabel("Application theme:"))
@@ -329,7 +299,14 @@ class SettingsDialog(PDialog):
         accent_layout.addWidget(QLabel("Accent color:"))
         self.accent_color_btn = QPushButton()
         self.accent_color_btn.setFixedSize(70, 30)
-        self.accent_color_btn.setStyleSheet("background-color: #007bff; border-radius: 4px;")
+        initial_accent_color = (
+            self._config_manager.config.appearance.accent_color
+            if self._config_manager is not None
+            else ApplicationConfig.default().appearance.accent_color
+        )
+        self.accent_color_btn.setStyleSheet(
+            f"background-color: {initial_accent_color}; border-radius: 4px;"
+        )
         self.accent_color_btn.clicked.connect(self.choose_accent_color)
         accent_layout.addWidget(self.accent_color_btn)
         accent_layout.addStretch()
@@ -337,7 +314,7 @@ class SettingsDialog(PDialog):
         cont_layout.addWidget(theme_group)
 
         # Font group
-        font_group = QGroupBox("🔤 Fonts")
+        font_group = QGroupBox("Fonts")
         font_layout = QVBoxLayout(font_group)
         interface_font_layout = QHBoxLayout()
         interface_font_layout.addWidget(QLabel("Interface font size:"))
@@ -361,7 +338,7 @@ class SettingsDialog(PDialog):
         cont_layout.addStretch()
 
         scroll.setWidget(container)
-        self.tab_widget.addTab(tab, "🎨 Appearance")
+        self.tab_widget.addTab(tab, "Appearance")
     
     def create_editor_tab(self):
         """Create the editor settings tab."""
@@ -371,7 +348,7 @@ class SettingsDialog(PDialog):
         layout.setSpacing(15)
         
         # Text editing group
-        editing_group = QGroupBox("📝 Text Editing")
+        editing_group = QGroupBox("Text Editing")
         editing_layout = QVBoxLayout(editing_group)
         
         # Word wrap
@@ -397,35 +374,38 @@ class SettingsDialog(PDialog):
         
         layout.addWidget(editing_group)
         layout.addStretch()
-        self.tab_widget.addTab(tab, "📝 Editor")
+        self.tab_widget.addTab(tab, "Editor")
     
     def create_buttons(self, layout):
         """Create the button frame."""
+        # Imported lazily to avoid a circular import: this module is imported
+        # by pandaplot.gui.dialogs.__init__, and pandaplot.gui.components.common.p_button
+        # sits under the pandaplot.gui.components package, whose __init__ imports
+        # CollapsibleSidebar, which in turn imports SettingsDialog from this module.
+        from pandaplot.gui.components.common.p_button import PButton
+
         self.button_frame = QFrame()
         button_layout = QHBoxLayout(self.button_frame)
         button_layout.setContentsMargins(16, 12, 16, 12)
         
         # Reset button
-        self.reset_btn = QPushButton("🔄 Reset to Defaults")
-        self.reset_btn.clicked.connect(self.reset_to_defaults)
+        self.reset_btn = PButton(
+            "Reset to Defaults", role="secondary", on_click=self.reset_to_defaults
+        )
         button_layout.addWidget(self.reset_btn)
-        
+
         button_layout.addStretch()
-        
+
         # Cancel button
-        self.cancel_btn = QPushButton("❌ Cancel")
-        # Remove hardcoded styling - will be applied in _apply_theme
-        self.cancel_btn.clicked.connect(self.reject)
+        self.cancel_btn = PButton("Cancel", role="secondary", on_click=self.reject)
         button_layout.addWidget(self.cancel_btn)
-        
+
         # Apply button
-        self.apply_btn = QPushButton("✅ Apply")
-        self.apply_btn.clicked.connect(self.apply_settings)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply_settings)
         button_layout.addWidget(self.apply_btn)
-        
+
         # OK button
-        self.ok_btn = QPushButton("💾 OK")
-        self.ok_btn.clicked.connect(self.accept_settings)
+        self.ok_btn = PButton("OK", role="primary", on_click=self.accept_settings)
         self.ok_btn.setDefault(True)
         button_layout.addWidget(self.ok_btn)
         
@@ -455,7 +435,7 @@ class SettingsDialog(PDialog):
         }
         self.current_settings = self.original_settings.copy()
 
-        # TODO: call apply only if the settings changed
+        # TODO(#214): call apply only if the settings changed
         self.apply_settings_to_ui()
 
     def setup_event_subscriptions(self):

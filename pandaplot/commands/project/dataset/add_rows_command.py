@@ -80,59 +80,83 @@ class AddRowsCommand(Command):
             
             # Validate input
             if not self.reference_positions:
+                self.logger.warning(
+                    "AddRowsCommand.execute: no reference positions provided"
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Rows", 
+                    "Add Rows",
                     "No reference positions provided."
                 )
                 return False
-            
+
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "AddRowsCommand.execute: no project open; cannot add rows"
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Rows", 
+                    "Add Rows",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "AddRowsCommand.execute: has_project is True but current_project is None"
+                )
                 return False
-            
+
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "AddRowsCommand.execute: dataset '%s' not found", self.dataset_id
+                )
                 self.ui_controller.show_error_message(
-                    "Add Rows", 
+                    "Add Rows",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "AddRowsCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Add Rows", 
+                    "Add Rows",
                     "Selected item is not a dataset."
                 )
                 return False
-                
+
             self.dataset = found_item
-            
+
             # Get current data
             if self.dataset.data is None:
+                self.logger.warning(
+                    "AddRowsCommand.execute: dataset '%s' has no structure to add rows to",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Add Rows", 
+                    "Add Rows",
                     "Cannot add rows to dataset without structure."
                 )
                 return False
-            
+
             # Store original data for undo
             self.original_data = self.dataset.data.copy()
-            
+
             # Validate reference positions
             num_rows = len(self.dataset.data)
-            for i, pos in enumerate(self.reference_positions):
+            for pos in self.reference_positions:
                 if pos < 0 or pos >= num_rows:
+                    self.logger.warning(
+                        "AddRowsCommand.execute: reference position %s out of bounds (0-%d) for dataset '%s'",
+                        pos, num_rows - 1, self.dataset_id,
+                    )
                     self.ui_controller.show_error_message(
-                        "Add Rows", 
+                        "Add Rows",
                         f"Reference position {pos} is out of bounds (0-{num_rows-1})."
                     )
                     return False

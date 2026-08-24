@@ -31,6 +31,10 @@ class EditNoteCommand(Command):
         try:
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "EditNoteCommand.execute: cannot edit note '%s', no project is loaded",
+                    self.note_id,
+                )
                 self.ui_controller.show_warning_message(
                     "Edit Note",
                     "No project is currently loaded."
@@ -39,10 +43,17 @@ class EditNoteCommand(Command):
 
             project = self.app_state.current_project
             if not project:
+                self.logger.warning(
+                    "EditNoteCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             item = project.find_item(self.note_id)
             if item is None or not isinstance(item, Note):
+                self.logger.warning(
+                    "EditNoteCommand.execute: note '%s' not found or not a Note (got %s)",
+                    self.note_id, type(item).__name__ if item is not None else None,
+                )
                 self.ui_controller.show_warning_message(
                     "Edit Note",
                     f"Note '{self.note_id}' not found in the project."
@@ -82,6 +93,10 @@ class EditNoteCommand(Command):
                 project = self.app_state.current_project
 
                 if not project:
+                    self.logger.warning(
+                        "EditNoteCommand.undo: has_project is True but current_project is None for note '%s'",
+                        self.note_id,
+                    )
                     self.ui_controller.show_warning_message(
                         "Undo Edit Note",
                         "No project is currently loaded."
@@ -90,6 +105,10 @@ class EditNoteCommand(Command):
 
                 item = project.find_item(self.note_id)
                 if item is None or not isinstance(item, Note):
+                    self.logger.warning(
+                        "EditNoteCommand.undo: note '%s' not found or not a Note (got %s)",
+                        self.note_id, type(item).__name__ if item is not None else None,
+                    )
                     self.ui_controller.show_warning_message(
                         "Undo Edit Note",
                         f"Note with ID '{self.note_id}' not found in the project."
@@ -126,10 +145,18 @@ class EditNoteCommand(Command):
             if self.old_content is not None and self.app_state.has_project:
                 project = self.app_state.current_project
                 if not project:
+                    self.logger.warning(
+                        "EditNoteCommand.redo: has_project is True but current_project is None for note '%s'",
+                        self.note_id,
+                    )
                     return False
 
                 item = project.find_item(self.note_id)
                 if item is None or not isinstance(item, Note):
+                    self.logger.warning(
+                        "EditNoteCommand.redo: note '%s' not found or not a Note (got %s)",
+                        self.note_id, type(item).__name__ if item is not None else None,
+                    )
                     return False
 
                 note: Note = item

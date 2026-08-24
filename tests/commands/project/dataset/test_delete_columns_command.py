@@ -1,5 +1,6 @@
 """Tests for DeleteColumnsCommand (column drop + chart-reference cascade)."""
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -7,6 +8,9 @@ import pandas as pd
 import pytest
 
 from pandaplot.commands.project.dataset.delete_columns_command import DeleteColumnsCommand
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style.line import LineSeriesStyle
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
@@ -146,3 +150,206 @@ def test_events_emitted_only_for_affected_charts(env):
     updated = _chart_updated_calls(app_context)
     assert len(updated) == 1  # 'untouched_chart' has no reference to column 'a'
     assert updated[0].args[1]["chart_id"] == chart.id
+
+
+def test_delete_u_column_removes_vector_series(env):
+    """A vector series' U/V columns are required (like x/y), so deleting
+    either removes the whole series rather than just clearing a reference."""
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="v1",
+        style=VectorSeriesStyle(u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b")),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert vector_chart.data_series == []
+
+
+def test_delete_magnitude_column_clears_reference_but_keeps_series(env):
+    """magnitude is optional -- a vector series still renders without it, so
+    deleting its column only clears the reference (mirrors error columns)."""
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert len(vector_chart.data_series) == 1
+    series = vector_chart.data_series[0]
+    assert series.style.magnitude_column_id == ""
+    assert series.style.magnitude_column == ""
+
+
+def test_undo_restores_a_cleared_magnitude_reference(env):
+    app_context, dataset, _, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("c"), v_column_id=dataset.column_id("c"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    assert command.undo() is True
+    series = vector_chart.data_series[0]
+    assert resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column) == "a"
+
+
+def test_delete_error_bar_column_clears_reference_but_keeps_series(env):
+    """error bars are optional -- a Line series still renders without them, so
+    deleting the referenced column only clears the error-bar reference."""
+    app_context, dataset, _, _, _ = env
+    line_chart = Chart(name="lc")
+    line_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="l1",
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("a"))),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(line_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is True
+    assert len(line_chart.data_series) == 1
+    series = line_chart.data_series[0]
+    assert series.style.error_bars.y_error_column_id == ""
+    assert series.style.error_bars.y_error_column == ""
+
+
+def test_execute_logs_a_warning_when_no_column_specs(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, [])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "no column specs" in caplog.text.lower()
+
+
+def test_execute_logs_a_warning_when_no_project_open(env, caplog):
+    app_context, dataset, _, _, _ = env
+    app_context.get_app_state.return_value.has_project = False
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "no project" in caplog.text.lower()
+
+
+def test_execute_logs_a_warning_when_dataset_not_found(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, "missing-ds", ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing-ds" in caplog.text
+
+
+def test_execute_logs_a_warning_when_item_is_not_a_dataset(env, caplog):
+    app_context, dataset, _, chart, _ = env
+    # 'chart' is already registered in the project (see env fixture) but is a
+    # Chart, not a Dataset.
+    command = DeleteColumnsCommand(app_context, chart.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert chart.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_dataset_is_empty(env, caplog):
+    import pandas as pd
+
+    from pandaplot.models.project.items import Dataset
+
+    app_context, _, _, _, _ = env
+    empty_ds = Dataset(name="empty", data=pd.DataFrame())
+    app_context.get_app_state.return_value.current_project.add_item(empty_ds)
+    command = DeleteColumnsCommand(app_context, empty_ds.id, ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert empty_ds.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_no_valid_columns_resolved(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, [999])  # out-of-range position
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_columns_missing(env, caplog, monkeypatch):
+    # _resolve_columns() already filters out names that don't exist at
+    # resolution time, so the "missing columns" check in execute() only
+    # guards against the column disappearing between resolution and this
+    # check (e.g. a race). Force that by stubbing _resolve_columns() to
+    # report a column that isn't actually in the dataset.
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    def _fake_resolve():
+        command.column_names = ["ghost"]
+        command.column_positions = [0]
+
+    monkeypatch.setattr(command, "_resolve_columns", _fake_resolve)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "ghost" in caplog.text
+
+
+def test_execute_logs_a_warning_when_duplicate_column_names(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a", "a"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_deleting_all_columns(env, caplog):
+    app_context, dataset, _, _, _ = env
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a", "b", "c", "d"])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_undo_restores_a_cleared_error_bar_reference(env):
+    app_context, dataset, _, _, _ = env
+    line_chart = Chart(name="lc")
+    line_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("c"), y_column_id=dataset.column_id("c"),
+        label="l1",
+        style=LineSeriesStyle(error_bars=ErrorBarConfig(y_error_column_id=dataset.column_id("a"))),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(line_chart)
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    assert command.undo() is True
+    series = line_chart.data_series[0]
+    assert resolve_series_column(
+        dataset, series.style.error_bars.y_error_column_id, series.style.error_bars.y_error_column
+    ) == "a"

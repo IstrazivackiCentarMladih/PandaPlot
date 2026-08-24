@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from typing import Any, Optional, override
+from typing import Optional, override
 
 import numpy as np
 from matplotlib.ticker import (
@@ -25,9 +24,23 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from pandaplot.gui.components.tabs.chart.chart_canvas import ChartCanvas, cm_to_inches, fit_size_cm
+from pandaplot.gui.components.tabs.chart.chart_canvas import (
+    ChartCanvas,
+    cm_to_inches,
+    fit_size_cm,
+    run_with_mathtext_fallback,
+)
 from pandaplot.gui.components.tabs.chart.chart_error_bars import build_error_array
+from pandaplot.gui.components.tabs.chart.chart_heatmap import resolve_color_limits
+from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers import SERIES_RENDERERS
+from pandaplot.gui.components.tabs.chart.series_renderers.line import render_line_series
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.marker_style import MarkerStyle
+from pandaplot.models.chart.series_style import LineSeriesStyle
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
@@ -176,12 +189,12 @@ def apply_axis_ticks(
     )
 
 
-def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False):
-    """Set font size/family/weight/style on every major and minor tick-value
-    label of a matplotlib Axis. `Axis.set_tick_params` (used by
+def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False, rotation=0):
+    """Set font size/family/weight/style/rotation on every major and minor
+    tick-value label of a matplotlib Axis. `Axis.set_tick_params` (used by
     `apply_axis_ticks` for color/direction) has no font-family/weight/style
-    knobs of its own, so those three must be set directly on each tick
-    label's Text artist instead."""
+    knobs of its own, so those three (plus rotation) must be set directly on
+    each tick label's Text artist instead."""
     fontweight = "bold" if bold else "normal"
     fontstyle = "italic" if italic else "normal"
     for label in axis.get_ticklabels() + axis.get_ticklabels(minor=True):
@@ -189,6 +202,7 @@ def apply_tick_label_font(axis, font_size, font_family, bold=False, italic=False
         label.set_fontfamily(font_family)
         label.set_fontweight(fontweight)
         label.set_fontstyle(fontstyle)
+        label.set_rotation(rotation)
 
 
 def resolve_axis_color(prefix, own_color, match_enabled, x_color):
@@ -295,8 +309,18 @@ def apply_layout_with_legend(fig, tight_layout_kwargs: dict, legend_placed_outsi
     or Custom, see resolve_legend_placement). The first tight_layout() pass
     runs before Matplotlib can account for an out-of-axes legend's extent,
     so without the second pass such a legend gets clipped by the figure
-    boundary."""
-    fig.tight_layout(**tight_layout_kwargs)
+    boundary.
+
+    tight_layout() measures every text artist's extent, which is where
+    Matplotlib's mathtext parser actually runs -- a title/label/tick-label
+    containing invalid mathtext (e.g. `$\\theta_$`, unbalanced `$...$`) raises
+    ValueError/RuntimeError here rather than when the text was set. Mathtext
+    parsing is re-enabled for every text artist before each attempt (so a
+    label the user has since fixed gets rendered as math again), and only
+    disabled -- falling back to literal text -- if that attempt still fails,
+    instead of leaving the layout (and the whole chart preview) stuck
+    mid-update."""
+    run_with_mathtext_fallback(fig, lambda: fig.tight_layout(**tight_layout_kwargs))
     if legend_placed_outside:
         fig.tight_layout(**tight_layout_kwargs)
 
@@ -313,28 +337,29 @@ def _resolve_error_column(df, column_name):
     return df[column_name].to_numpy()
 
 
-@dataclass
-class SeriesData:
-    x_data: Any
-    y_data: Any
-    x_err: Optional[Any]
-    y_err: Optional[Any]
-    x_err_minus: Optional[Any]
-    y_err_minus: Optional[Any]
-    error: Optional[str]
-
-
 def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     """Resolve a DataSeries against the project's datasets.
 
     Returns (x_data, y_data, x_err, y_err, x_err_minus, y_err_minus, None) on
     success, or all-None with a message when the dataset or a required
     column can't be found. An empty x_column means "plot against the
-    DataFrame index". Histograms only ever plot y_column, so a stale/unused
-    x_column is ignored when chart_type == "hist". The error columns are
-    resolved leniently (see _resolve_error_column) since they're optional;
-    x_err_minus/y_err_minus are only meaningful when series.error_symmetric
+    DataFrame index" for series types that need one -- per
+    SERIES_TYPE_SPECS[...].needs_x_column, keyed by `chart_type` when
+    explicitly passed (used by wizard_preview.py, whose throwaway
+    DataSeries objects don't yet carry a reliable series_type of their
+    own), otherwise by the series' own `series_type` -- the correct
+    source once every real caller has one. Histograms only ever plot
+    y_column, so a stale/unused x_column is ignored (never resolved,
+    never missing-column-checked) and x_data comes back None for a hist
+    series. The error columns are resolved leniently (see
+    _resolve_error_column) since they're optional; x_err_minus/
+    y_err_minus are only meaningful when style.error_bars.error_symmetric
     is False.
+    Secondary columns (u_data/v_data, required; magnitude_data, optional)
+    are resolved the same way, keyed off needs_secondary_columns. The Z
+    (color) column for Colormap/Heatmap series is resolved the same way
+    too, keyed off needs_z_column: required, so a missing/unresolvable
+    Z column errors out just like a missing U/V column does.
     """
     from pandaplot.models.project.items.chart import resolve_series_column
     from pandaplot.models.project.items.dataset import Dataset
@@ -353,7 +378,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
     if not y_column:
         return SeriesData(None, None, None, None, None, None, "no Y column configured")
 
-    needs_x_column = chart_type != "hist"
+    needs_x_column = SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_x_column
     x_column = resolve_series_column(dataset, series.x_column_id, series.x_column) if needs_x_column else None
 
     missing = [c for c in (x_column, y_column)
@@ -362,12 +387,40 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         cols = ", ".join(f"'{c}'" for c in missing)
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
-    x_data = df[x_column] if x_column else df.index
-    x_err = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_column_id, series.x_error_column))
-    y_err = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_column_id, series.y_error_column))
-    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.x_error_minus_column_id, series.x_error_minus_column))
-    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, series.y_error_minus_column_id, series.y_error_minus_column))
-    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None)
+    x_data = (df[x_column] if x_column else df.index) if needs_x_column else None
+    error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
+    x_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_column_id, error_bars.x_error_column))
+    y_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_column_id, error_bars.y_error_column))
+    x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_minus_column_id, error_bars.x_error_minus_column))
+    y_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_minus_column_id, error_bars.y_error_minus_column))
+
+    u_data = v_data = magnitude_data = None
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_secondary_columns:
+        u_column = resolve_series_column(dataset, series.style.u_column_id, series.style.u_column)
+        v_column = resolve_series_column(dataset, series.style.v_column_id, series.style.v_column)
+        if not u_column or not v_column:
+            return SeriesData(None, None, None, None, None, None, "no U/V column configured")
+        missing_uv = [c for c in (u_column, v_column) if c not in df.columns]
+        if missing_uv:
+            cols = ", ".join(f"'{c}'" for c in missing_uv)
+            return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
+        u_data = df[u_column]
+        v_data = df[v_column]
+        magnitude_column = resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column)
+        if magnitude_column and magnitude_column in df.columns:
+            magnitude_data = df[magnitude_column]
+
+    z_data = None
+    if SERIES_TYPE_SPECS[SeriesType(chart_type) if chart_type else series.series_type].needs_z_column:
+        z_column = resolve_series_column(dataset, series.style.z_column_id, series.style.z_column)
+        if not z_column:
+            return SeriesData(None, None, None, None, None, None, "no Z column configured")
+        if z_column not in df.columns:
+            return SeriesData(None, None, None, None, None, None, f"Z column '{z_column}' not found")
+        z_data = df[z_column]
+
+    return SeriesData(x_data, df[y_column], x_err, y_err, x_err_minus, y_err_minus, None,
+                      u_data=u_data, v_data=v_data, magnitude_data=magnitude_data, z_data=z_data)
 
 
 def compute_axis_data_range(project, data_series, prefix: str, positive_only: bool = False) -> Optional[tuple[float, float]]:
@@ -377,6 +430,12 @@ def compute_axis_data_range(project, data_series, prefix: str, positive_only: bo
     `series.y_axis`. Returns None if no series have resolvable data for
     this axis (no series yet, or every reference is broken) -- callers
     fall back to a fixed default range in that case.
+
+    Each series' own `series_type` (not one chart-wide type) governs
+    whether it needs an x-column when contributing to the "x" range --
+    a chart containing series of different types (once Phase 4c allows
+    that) must not have one type's column requirements silently applied
+    to another series that doesn't share it.
 
     `positive_only` should be True when the axis is Log-scaled: matplotlib's
     own autoscale ignores non-positive data points when computing log-scale
@@ -417,6 +476,12 @@ class ChartEditorWidget(PWidget):
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
+
+        # Colorbar drawn for the current colormap/heatmap render, if any. It
+        # lives on its own figure axes (not the main axes cleared each
+        # render), so update_chart must explicitly remove the previous one
+        # before drawing again, or stale colorbars would accumulate.
+        self._colorbar = None
 
         self._initialize()
         self.load_chart_config()
@@ -694,13 +759,14 @@ class ChartEditorWidget(PWidget):
         # No configuration UI to load since it's now in the side panel
         pass
 
-    def _resolve_fill_baseline(self, project, series, series_index, query, horizontal=False):
+    def _resolve_fill_baseline(self, project, series_index, fill_base, fill_to_index, query, horizontal=False):
         """Resolve the second bound for a series' area fill.
 
-        Returns either the constant ``series.fill_base`` (fill down/across to a
-        straight baseline) or, when ``series.fill_to_index`` points at another
-        series in the chart, that series' curve interpolated onto this series'
-        sampling grid so the region *between* the two curves is filled.
+        Returns either the constant ``fill_base`` (fill down/across to a
+        straight baseline) or, when ``fill_to_index`` points at another
+        series in the chart, that series' curve interpolated onto this
+        series' sampling grid so the region *between* the two curves is
+        filled.
 
         ``query`` is this series' independent-axis samples: its x-values for a
         vertical fill (interpolating the other series' y over x), or its
@@ -710,13 +776,12 @@ class ChartEditorWidget(PWidget):
         the constant baseline if the referenced series is missing or fails to
         resolve.
         """
-        idx = series.fill_to_index
-        if idx is None or idx < 0 or idx == series_index or idx >= len(self.chart.data_series):
-            return series.fill_base
-        other = self.chart.data_series[idx]
-        other_data = resolve_series_data(project, other, self.chart.chart_type)
+        if fill_to_index is None or fill_to_index < 0 or fill_to_index == series_index or fill_to_index >= len(self.chart.data_series):
+            return fill_base
+        other = self.chart.data_series[fill_to_index]
+        other_data = resolve_series_data(project, other)
         if other_data.error or other_data.x_data is None or len(other_data.x_data) == 0:
-            return series.fill_base
+            return fill_base
         # Interpolate the other curve over its own independent axis (x when
         # vertical, y when horizontal). np.interp needs that axis increasing.
         if horizontal:
@@ -728,6 +793,15 @@ class ChartEditorWidget(PWidget):
         order = np.argsort(xp)
         return np.interp(np.asarray(query, dtype=float), xp[order], fp[order])
 
+    def _resolve_z_label(self, project, series) -> str:
+        """Current display name of a series' Z (color) column, for the
+        default colorbar label. Empty when it can't be resolved (missing
+        dataset/column) so the colorbar just goes unlabeled rather than
+        erroring."""
+        from pandaplot.models.project.items.chart import resolve_series_column
+        dataset = project.find_item(series.dataset_id) if project else None
+        return resolve_series_column(dataset, series.style.z_column_id, series.style.z_column) or ""
+
     def update_chart(self):
         """Update the chart preview."""
         # Guard: Check if widget still exists
@@ -735,18 +809,46 @@ class ChartEditorWidget(PWidget):
             self.logger.debug("Chart canvas already deleted, skipping update")
             return
 
-        # Mapping from model string values to matplotlib parameters
-        _marker_map = {
-            "circle": "o", "square": "s", "triangle": "^", "diamond": "D",
-            "star": "*", "plus": "+", "cross": "x", "none": "",
-        }
-        _linestyle_map = {
-            "solid": "-", "dashed": "--", "dotted": ":", "dashdot": "-.", "none": "none",
-        }
-
         try:
+            # Remove the previous colorbar (a colormap/heatmap render adds
+            # one on its own figure axes, which axes.clear() below doesn't
+            # touch). This must happen BEFORE axes.clear(): clearing the
+            # main axes detaches the mappable the colorbar refers to, which
+            # makes Colorbar.remove() raise (its mappable's axes becomes
+            # None) instead of cleanly removing the colorbar axes.
+            if self._colorbar is not None:
+                try:
+                    self._colorbar.remove()
+                except Exception:
+                    self.logger.debug("Failed to remove stale colorbar", exc_info=True)
+                self._colorbar = None
+
             # Clear the current plot
             self.chart_canvas.axes.clear()
+
+            # Reset the main axes to a fresh full-figure 1x1 gridspec. A
+            # colorbar created with the default use_gridspec=True
+            # *subdivides* the axes' gridspec to make room, and that
+            # subdivision survives colorbar.remove() -- so without this
+            # reset, every re-render of a colormap/heatmap chart would steal
+            # space from the already-shrunk axes, making the plot
+            # progressively smaller (PR #156 review comment).
+            #
+            # An existing secondary axis (axes2, a twinx() sharing the same
+            # gridspec cell) must be reset to the SAME fresh spec here too,
+            # unconditionally -- not only when a new colorbar ends up being
+            # drawn below. Otherwise a render that removes/skips the
+            # colorbar (colorbar_show=False, or the chart no longer has a
+            # z-driven series) leaves axes2 on its old, possibly-subdivided
+            # spec while axes just got the fresh one, and tight_layout()
+            # misaligns the two axes (PR #190 review).
+            from matplotlib.gridspec import GridSpec
+            subplotspec = self.chart_canvas.axes.get_subplotspec()
+            if subplotspec is not None:
+                fresh_subplotspec = GridSpec(1, 1, figure=self.chart_canvas.fig)[0]
+                self.chart_canvas.axes.set_subplotspec(fresh_subplotspec)
+                if self.chart_canvas.axes2 is not None:
+                    self.chart_canvas.axes2.set_subplotspec(fresh_subplotspec)
 
             fig_bg = self.chart.style.get("figure_background_color", "#ffffff")
             axes_bg = self.chart.style.get("axes_background_color", "#ffffff")
@@ -767,17 +869,52 @@ class ChartEditorWidget(PWidget):
                 self.chart_canvas.original_ylim2 = None
 
             series_errors = []
+            colorbar_mappable = None
+            colorbar_label = ""
             if not self.chart.data_series:
                 self.dataset_label.setText("No Data Loaded")
             else:
                 project = self.app_context.get_app_state().current_project
-                for i, series in enumerate(self.chart.data_series):
+
+                # Resolve every series' data once, up front: a shared color
+                # scale for Colormap/Heatmap series must be computed from
+                # ALL of their z-data before any of them render, not just
+                # whichever one happens to render first (see
+                # docs/superpowers/specs/2026-08-21-shared-chart-level-color-map-design.md).
+                resolved_data = [resolve_series_data(project, series) for series in self.chart.data_series]
+                color_scale_auto = self.chart.config.get("color_scale_auto", True)
+                # Only gather z-data when the scale is auto-computed: a
+                # manual scale never reads it (see resolve_color_limits),
+                # so skip the work entirely in that case. Each array is
+                # built individually inside its own try/except so a single
+                # series with non-numeric (e.g. text) Z data can't blow up
+                # this up-front pre-pass and blank the whole chart -- that
+                # series is simply left out of the combined scale here and
+                # still gets its own per-series error below, when its
+                # renderer runs in the main loop.
+                z_arrays: list[np.ndarray] = []
+                if color_scale_auto:
+                    for series, data in zip(self.chart.data_series, resolved_data):
+                        if not SERIES_TYPE_SPECS[series.series_type].needs_z_column or data.error is not None:
+                            continue
+                        try:
+                            z_arrays.append(np.asarray(data.z_data, dtype=float))
+                        except (ValueError, TypeError):
+                            continue
+                combined_z = np.concatenate(z_arrays) if z_arrays else np.array([])
+                color_limits = resolve_color_limits(
+                    combined_z,
+                    color_scale_auto,
+                    self.chart.config.get("color_vmin", 0.0),
+                    self.chart.config.get("color_vmax", 1.0),
+                )
+
+                for i, (series, series_data) in enumerate(zip(self.chart.data_series, resolved_data)):
                     # Route this series to its configured Y axis
                     target_axes = (self.chart_canvas.axes2
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
                                    else self.chart_canvas.axes)
 
-                    series_data = resolve_series_data(project, series, self.chart.chart_type)
                     x_data = series_data.x_data
                     y_data = series_data.y_data
                     x_err = series_data.x_err
@@ -791,77 +928,72 @@ class ChartEditorWidget(PWidget):
                         continue
 
                     alpha = series.alpha if series.visible else 0.3
-                    if self.chart.chart_type == "line":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.plot(x_data, y_data,
-                                         color=series.color,
-                                         linewidth=series.line_width,
-                                         linestyle=_linestyle_map.get(series.line_style, "-"),
-                                         marker=_marker_map.get(series.marker_style, "o"),
-                                         markersize=series.marker_size,
-                                         markerfacecolor=mfc,
-                                         markeredgecolor=mec,
-                                         markeredgewidth=series.marker_edge_width,
-                                         label=series.label,
-                                         alpha=alpha)
-                        # Fill the area under this curve (or between it and
-                        # another series) when enabled.
-                        if series.fill_enabled:
-                            fill_color = series.fill_color or series.color
-                            fill_alpha = series.fill_alpha if series.visible else 0.3 * series.fill_alpha
-                            if series.fill_orientation == "horizontal":
-                                # fill_betweenx: shade between the curve and an
-                                # x baseline, indexed by this series' y-values.
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, y_data, horizontal=True)
-                                target_axes.fill_betweenx(
-                                    y_data, x_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                            else:
-                                baseline = self._resolve_fill_baseline(
-                                    project, series, i, x_data)
-                                target_axes.fill_between(
-                                    x_data, y_data, baseline,
-                                    color=fill_color,
-                                    alpha=fill_alpha)
-                    elif self.chart.chart_type == "scatter":
-                        mfc = series.marker_color or series.color
-                        mec = series.marker_edge_color or series.color
-                        target_axes.scatter(x_data, y_data,
-                                            c=mfc,
-                                            edgecolors=mec,
-                                            linewidths=series.marker_edge_width,
-                                            marker=_marker_map.get(series.marker_style, "o"),
-                                            s=series.marker_size ** 2,
-                                            label=series.label,
-                                            alpha=alpha)
-                    elif self.chart.chart_type == "bar":
-                        target_axes.bar(x_data, y_data,
-                                        color=series.color,
-                                        label=series.label,
-                                        alpha=alpha)
-                    elif self.chart.chart_type == "hist":
-                        target_axes.hist(y_data, bins=self.chart.config.get("hist_bins", 20),
-                                         color=series.color,
-                                         label=series.label,
-                                         alpha=alpha)
+                    series_type = series.series_type
+                    style = series.style
 
-                    if self.chart.chart_type in ("line", "scatter", "bar"):
-                        xerr = build_error_array(x_err, x_err_minus, series.error_direction, series.error_symmetric)
-                        yerr = build_error_array(y_err, y_err_minus, series.error_direction, series.error_symmetric)
+                    # Draw error bars BEFORE the series/marker renderer:
+                    # matplotlib draws artists in the order they're added
+                    # to the axes when zorder is tied (neither call here
+                    # sets one), so error bars drawn first land underneath
+                    # the markers/line/bars instead of obscuring them.
+                    error_bars = getattr(style, "error_bars", None)
+                    if error_bars is not None:
+                        xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                        yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
                         if xerr is not None or yerr is not None:
-                            err_color = series.error_color or series.color
+                            err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
                             target_axes.errorbar(
                                 x_data, y_data,
                                 xerr=xerr,
                                 yerr=yerr,
                                 fmt="none",
                                 ecolor=err_color,
-                                elinewidth=series.line_width,
-                                capsize=series.error_cap_size,
+                                elinewidth=getattr(style, "line_width", 2.0),
+                                capsize=error_bars.error_cap_size,
                                 alpha=alpha)
+
+                    renderer = SERIES_RENDERERS[series_type]
+                    mappable = renderer(target_axes, series_data, style, series.label, alpha, series.visible, {
+                        "bins": self.chart.config.get("hist_bins", 20),
+                        "resolve_fill_baseline": (
+                            lambda query, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
+                                project, _i, _style.fill_base, _style.fill_to_index, query, horizontal=horizontal)
+                        ),
+                        "colormap": self.chart.config.get("colormap", "viridis"),
+                        "color_limits": color_limits,
+                    })
+                    if mappable is None and series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
+                        series_errors.append(f"{series.label or f'Series {i + 1}'}: no data to grid")
+                        continue
+                    if (mappable is not None and colorbar_mappable is None
+                            and SERIES_TYPE_SPECS[series_type].needs_z_column
+                            and self.chart.config.get("colorbar_show", True)):
+                        colorbar_mappable = mappable
+                        colorbar_label = (
+                            self.chart.config.get("colorbar_label", "")
+                            or self._resolve_z_label(project, series)
+                        )
+
+                if colorbar_mappable is not None:
+                    self._colorbar = self.chart_canvas.fig.colorbar(
+                        colorbar_mappable, ax=self.chart_canvas.axes)
+                    if self.chart_canvas.axes2 is not None:
+                        # fig.colorbar(..., ax=axes) subdivides *only* the
+                        # primary axes' gridspec cell to make room -- axes2
+                        # (a twinx() sharing that same cell) keeps its old,
+                        # full-width subplotspec. Passing both axes to
+                        # colorbar() doesn't help either: with two axes
+                        # sharing a cell, tight_layout() flags the figure as
+                        # "not compatible" and re-expands both back to full
+                        # width, drawing the colorbar on top of the data.
+                        # Explicitly handing axes2 the *same*, now-subdivided
+                        # subplotspec keeps both axes shrunk together and
+                        # keeps tight_layout happy across repeated
+                        # resizes/re-renders.
+                        self.chart_canvas.axes2.set_subplotspec(
+                            self.chart_canvas.axes.get_subplotspec())
+                    if colorbar_label:
+                        self._colorbar.set_label(colorbar_label)
 
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
@@ -889,21 +1021,31 @@ class ChartEditorWidget(PWidget):
                                     break
 
                         # Plot the fit line
-                        fit_axes.plot(fit.x_data, fit.y_data,
-                                     color=fit.color,
-                                     linewidth=fit.line_width,
-                                     linestyle=_linestyle_map.get(fit.line_style, "--"),
-                                     label=fit.label,
-                                     alpha=fit.alpha)
-                        # Plot confidence band if available
-                        if fit.confidence_lower is not None and fit.confidence_upper is not None:
-                            # Plot confidence band on the same axis as the fitted curve.
+                        style = fit.style
+                        line_style_adapter = LineSeriesStyle(
+                            color=style.color,
+                            line_style=style.line_style,
+                            line_width=style.line_width,
+                            marker=MarkerStyle(marker_style="none"),
+                            fill_enabled=False,
+                        )
+                        fit_series_data = SeriesData(
+                            x_data=fit.x_data, y_data=fit.y_data,
+                            x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
+                        )
+                        render_line_series(fit_axes, fit_series_data, line_style_adapter,
+                                            fit.label, style.alpha, fit.visible, {})
+
+                        if (style.band_fill_enabled
+                                and fit.confidence_lower is not None
+                                and fit.confidence_upper is not None):
+                            band_color = style.band_color or style.color
                             fit_axes.fill_between(
                                 fit.x_data,
                                 fit.confidence_lower,
                                 fit.confidence_upper,
-                                color=fit.color,
-                                alpha=0.2)
+                                color=band_color,
+                                alpha=style.band_fill_alpha)
 
             # Apply chart configuration
             config = self.chart.config
@@ -966,12 +1108,14 @@ class ChartEditorWidget(PWidget):
                 fontfamily=config.get("x_font_family", "DejaVu Sans"),
                 fontweight="bold" if config.get("x_title_bold", False) else "normal",
                 fontstyle="italic" if config.get("x_title_italic", False) else "normal",
+                rotation=config.get("x_label_rotation", 0),
             )
             self.chart_canvas.axes.set_ylabel(
                 config.get("y_label", ""), color=y_label_color,
                 fontfamily=config.get("y_font_family", "DejaVu Sans"),
                 fontweight="bold" if config.get("y_title_bold", False) else "normal",
                 fontstyle="italic" if config.get("y_title_italic", False) else "normal",
+                rotation=config.get("y_label_rotation", 90),
             )
             x_scale = config.get("x_scale", "linear")
             y_scale = config.get("y_scale", "linear")
@@ -995,6 +1139,7 @@ class ChartEditorWidget(PWidget):
                     fontfamily=config.get("y2_font_family", "DejaVu Sans"),
                     fontweight="bold" if config.get("y2_title_bold", False) else "normal",
                     fontstyle="italic" if config.get("y2_title_italic", False) else "normal",
+                    rotation=config.get("y2_label_rotation", 90),
                 )
                 y2_scale = config.get("y2_scale", "linear")
                 self.chart_canvas.axes2.set_yscale(
@@ -1038,6 +1183,7 @@ class ChartEditorWidget(PWidget):
                     config.get("y2_tick_label_font_family", "DejaVu Sans"),
                     bold=config.get("y2_tick_label_bold", False),
                     italic=config.get("y2_tick_label_italic", False),
+                    rotation=config.get("y2_tick_label_rotation", 0),
                 )
 
                 if config.get("show_grid_y2", True):
@@ -1072,6 +1218,7 @@ class ChartEditorWidget(PWidget):
                 config.get("x_tick_label_font_family", "DejaVu Sans"),
                 bold=config.get("x_tick_label_bold", False),
                 italic=config.get("x_tick_label_italic", False),
+                rotation=config.get("x_tick_label_rotation", 0),
             )
             apply_axis_ticks(
                 self.chart_canvas.axes.yaxis,
@@ -1099,6 +1246,7 @@ class ChartEditorWidget(PWidget):
                 config.get("y_tick_label_font_family", "DejaVu Sans"),
                 bold=config.get("y_tick_label_bold", False),
                 italic=config.get("y_tick_label_italic", False),
+                rotation=config.get("y_tick_label_rotation", 0),
             )
 
             apply_spine_colors(
@@ -1132,6 +1280,8 @@ class ChartEditorWidget(PWidget):
             else:
                 self.chart_canvas.axes.grid(False, axis="y", which="minor")
 
+            legend = None
+            placement_kwargs = {}
             if config.get("show_legend", True) and (self.chart.data_series or self.chart.fit_data):
                 # Combine handles/labels from both axes since twinx() legends
                 # are independent by default.
@@ -1140,25 +1290,28 @@ class ChartEditorWidget(PWidget):
                     handles2, labels2 = self.chart_canvas.axes2.get_legend_handles_labels()
                     handles += handles2
                     labels += labels2
-                placement_kwargs = resolve_legend_placement(
-                    config.get("legend_position", "upper right"),
-                    config.get("legend_custom_x", 1.02),
-                    config.get("legend_custom_y", 0.5),
-                    config.get("legend_custom_anchor", "center left"),
-                )
-                legend = build_legend(
-                    self.chart_canvas.axes, handles, labels,
-                    config.get("legend_font_family", "DejaVu Sans"),
-                    config.get("legend_font_size", 10),
-                    config.get("legend_bg_color", "#ffffff"),
-                    config.get("legend_show_frame", True),
-                    config.get("legend_columns", 1),
-                    config.get("legend_bg_alpha", 1.0),
-                    placement_kwargs,
-                )
-            else:
-                legend = None
-                placement_kwargs = {}
+                # Skip drawing the legend when there are no handles to show
+                # (e.g. a chart with only an unlabeled Heatmap series before
+                # PR-review fix, or any chart where nothing has a label) --
+                # matplotlib would otherwise draw an empty framed legend box
+                # over the plot.
+                if handles:
+                    placement_kwargs = resolve_legend_placement(
+                        config.get("legend_position", "upper right"),
+                        config.get("legend_custom_x", 1.02),
+                        config.get("legend_custom_y", 0.5),
+                        config.get("legend_custom_anchor", "center left"),
+                    )
+                    legend = build_legend(
+                        self.chart_canvas.axes, handles, labels,
+                        config.get("legend_font_family", "DejaVu Sans"),
+                        config.get("legend_font_size", 10),
+                        config.get("legend_bg_color", "#ffffff"),
+                        config.get("legend_show_frame", True),
+                        config.get("legend_columns", 1),
+                        config.get("legend_bg_alpha", 1.0),
+                        placement_kwargs,
+                    )
 
             tight_layout_kwargs = dict(
                 pad=config.get("chart_padding", 2.0),

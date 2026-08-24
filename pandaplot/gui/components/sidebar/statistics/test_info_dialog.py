@@ -14,7 +14,7 @@ from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class TestInfoDialog(QDialog):
+class InfoDialogHelper(QDialog):
     """A small dialog that explains a statistical test to the user."""
 
     def __init__(self, app_context: AppContext, info: StatTestInfo, parent=None):

@@ -77,9 +77,12 @@ class ExamplesDialog(PDialog):
         scroll_area.setWidget(list_widget)
         layout.addWidget(scroll_area)
 
-        self.close_btn = QPushButton("Cancel")
-        self.close_btn.setObjectName("CancelButton")
-        self.close_btn.clicked.connect(self.reject)
+        # Imported locally to avoid a circular import: pandaplot.gui.components.__init__
+        # imports TabContainer -> WelcomeTab -> ExamplesDialog (this module), so a
+        # top-level import of PButton (under gui.components.common) would fail.
+        from pandaplot.gui.components.common.p_button import PButton
+
+        self.close_btn = PButton("Cancel", role="secondary", on_click=self.reject)
         layout.addWidget(self.close_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
     def _create_example_item(self, example: dict) -> QPushButton:
@@ -157,14 +160,6 @@ class ExamplesDialog(PDialog):
             QPushButton#ExampleItemButton QLabel {{
                 background: transparent;
                 border: 0px;
-            }}
-            QPushButton#CancelButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 6px 16px;
-                font-weight: bold;
             }}
         """)
         self.subtitle_label.setStyleSheet(f"color: {secondary_fg};")

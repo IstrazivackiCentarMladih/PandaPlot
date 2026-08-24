@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
-from pandaplot.models.chart.chart_configuration import ChartType
+from pandaplot.models.chart.chart_type import ChartType
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS, compatible_chart_types_for_series
 
 
 class ChartTab(QWidget):
@@ -34,12 +35,6 @@ class ChartTab(QWidget):
         super().__init__(parent)
         self._chart = None
         self._updating_controls = False
-        # Tracks whether the loaded chart's type is one the combo can
-        # represent, so an unsupported/hidden type (e.g. a saved "box" or
-        # "violin" chart) isn't silently overwritten with "line" just
-        # because that's what the combo defaults to for display.
-        self._loaded_chart_type_supported: bool = True
-        self._chart_type_touched_by_user: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -60,12 +55,7 @@ class ChartTab(QWidget):
 
         info_layout.addWidget(QLabel("Type:"), 2, 0)
         self.chart_type_control = ValueComboBox(
-            [
-                ("Scatter", ChartType.SCATTER),
-                ("Line", ChartType.LINE),
-                ("Bar", ChartType.BAR),
-                ("Histogram", ChartType.HISTOGRAM),
-            ]
+            [(spec.display_name, chart_type) for chart_type, spec in CHART_TYPE_SPECS.items()]
         )
         info_layout.addWidget(self.chart_type_control, 2, 1, 1, 2)
 
@@ -87,20 +77,73 @@ class ChartTab(QWidget):
         self.hist_bins_spin.valueChanged.connect(self._on_field_changed)
 
     def _on_chart_type_index_changed(self):
-        """Handle chart type combo changes, tracking explicit user intent.
+        """Handle chart type combo changes.
 
-        Distinguishes a user picking a chart type from the combo being set
-        programmatically while loading a chart (see _loaded_chart_type_supported).
+        Retypes the chart's model (`set_chart_type`) BEFORE emitting
+        `chartTypeChanged` -- listeners (style_tab's card visibility,
+        data_tab's per-series fields) must see the already-retyped
+        series when they react to this signal, or they read stale
+        series_type/style state until an unrelated full reload happens
+        to run later. `_on_field_changed()` still runs afterward for its
+        other responsibilities (title/subtitle/hist_bins); its own
+        `set_chart_type` call is a no-op by then since the type already
+        matches.
         """
-        if not self._updating_controls:
-            self._chart_type_touched_by_user = True
+        chart_type = self.chart_type_control.currentValue()
+        if self._chart is not None and chart_type:
+            self._chart.set_chart_type(chart_type)
+        self._update_chart_type_compatibility()
         self._update_hist_bins_visibility()
-        self.chartTypeChanged.emit(self.chart_type_control.currentValue())
+        self.chartTypeChanged.emit(chart_type)
         self._on_field_changed()
+
+    def _update_chart_type_compatibility(self):
+        """Disable chart-type options that would force-retype (and therefore
+        visually alter) this chart's ACTUAL series -- not just its nominal
+        type's default series type, per `compatible_chart_types_for_series`.
+        Using the chart's real series types (rather than
+        `compatible_chart_types`, which only considers the chart type's
+        static default) is required for mixed-type charts: a Scatter chart
+        holding a VECTOR series must NOT show Bar as enabled just because a
+        plain Scatter series would survive the switch -- the VECTOR series
+        wouldn't. Reported live: "if we don't want to support some
+        transitions in chart type we could disable it. like I don't think we
+        should support going from vector to barchart"; refined via PR #180
+        review to account for mixed-series charts, not just single-type ones.
+        Recomputed on every type change (not just on `load()`), since the
+        compatible set depends on the CURRENT chart's actual series.
+
+        A chart with no series yet (a still-empty new chart, or the tab in
+        its cleared state) has no actual series to protect, so this falls
+        back to the current type's own default_series_type -- matching the
+        reviewer's "falling back to the chart default only when empty" --
+        rather than treating "no series" as "every chart type is safe",
+        which would defeat the whole point of the check for e.g. a
+        freshly-created Vector chart with no series added yet."""
+        current_type = self.chart_type_control.currentValue()
+        if current_type is None:
+            return
+        series_types = {s.series_type for s in self._chart.data_series} if self._chart else set()
+        if not series_types:
+            series_types = {CHART_TYPE_SPECS[current_type].default_series_type}
+        compatible = compatible_chart_types_for_series(series_types)
+        model = self.chart_type_control.model()
+        for index in range(self.chart_type_control.count()):
+            target_type = self.chart_type_control.itemData(index)
+            item = model.item(index)
+            enabled = target_type in compatible
+            item.setEnabled(enabled)
+            if enabled:
+                item.setToolTip("")
+            else:
+                item.setToolTip(
+                    f"Switching to {CHART_TYPE_SPECS[target_type].display_name} isn't "
+                    f"supported from a {CHART_TYPE_SPECS[current_type].display_name} chart"
+                )
 
     def _update_hist_bins_visibility(self):
         """Show the Histogram Bins control only when the chart type is Histogram."""
-        is_histogram = self.chart_type_control.currentValue() == ChartType.HISTOGRAM
+        is_histogram = self.chart_type_control.currentValue() == ChartType.HIST
         self.hist_bins_label.setVisible(is_histogram)
         self.hist_bins_spin.setVisible(is_histogram)
 
@@ -111,25 +154,15 @@ class ChartTab(QWidget):
         config["title"] = self.title_edit.text()
         config["subtitle"] = self.subtitle_edit.text()
         config["hist_bins"] = self.hist_bins_spin.value()
-        if self.chart_type_control.currentValue():
-            chart_type_map = {
-                ChartType.LINE: "line",
-                ChartType.SCATTER: "scatter",
-                ChartType.BAR: "bar",
-                ChartType.HISTOGRAM: "hist",
-            }
-            chart_type = self.chart_type_control.currentValue()
-            if chart_type in chart_type_map and (
-                self._loaded_chart_type_supported or self._chart_type_touched_by_user
-            ):
-                self._chart.chart_type = chart_type_map[chart_type]
+        chart_type = self.chart_type_control.currentValue()
+        if chart_type:
+            self._chart.set_chart_type(chart_type)
         self.configChanged.emit()
 
     def load(self, chart):
         previous_guard = self._updating_controls
         self._updating_controls = True
         self._chart = chart
-        self._chart_type_touched_by_user = False
         try:
             # Note: the Title field only affects config["title"] (what
             # renders on the chart) -- it must NOT rename the chart item in
@@ -138,15 +171,13 @@ class ChartTab(QWidget):
             self.title_edit.setText(chart.config.get("title", chart.name))
             self.subtitle_edit.setText(chart.config.get("subtitle", ""))
 
-            chart_type_map = {
-                "line": ChartType.LINE,
-                "scatter": ChartType.SCATTER,
-                "bar": ChartType.BAR,
-                "hist": ChartType.HISTOGRAM,
-            }
-            self._loaded_chart_type_supported = chart.chart_type in chart_type_map
-            chart_type = chart_type_map.get(chart.chart_type, ChartType.LINE)
-            self.chart_type_control.setCurrentValue(chart_type)
+            # chart.chart_type is already a ChartType instance -- Chart's
+            # constructor coerces via ChartType(...) and raises ValueError
+            # for anything the combo can't represent, so a Chart reaching
+            # this method is guaranteed to carry a value setCurrentValue can
+            # display (no defensive except-ValueError fallback needed here).
+            self.chart_type_control.setCurrentValue(chart.chart_type)
+            self._update_chart_type_compatibility()
             self._update_hist_bins_visibility()
 
             self.hist_bins_spin.setValue(chart.config.get("hist_bins", 20))
@@ -158,15 +189,9 @@ class ChartTab(QWidget):
         chart.config["subtitle"] = self.subtitle_edit.text()
         chart.config["hist_bins"] = self.hist_bins_spin.value()
 
-        chart_type_map = {
-            ChartType.LINE: "line",
-            ChartType.SCATTER: "scatter",
-            ChartType.BAR: "bar",
-            ChartType.HISTOGRAM: "hist",
-        }
         chart_type = self.chart_type_control.currentValue()
-        if chart_type in chart_type_map:
-            chart.chart_type = chart_type_map[chart_type]
+        if chart_type:
+            chart.set_chart_type(chart_type)
 
     def clear(self):
         self._chart = None
@@ -176,6 +201,7 @@ class ChartTab(QWidget):
             self.title_edit.clear()
             self.subtitle_edit.clear()
             self.chart_type_control.setCurrentValue(ChartType.SCATTER)
+            self._update_chart_type_compatibility()
             self.hist_bins_spin.setValue(20)
             self._update_hist_bins_visibility()
         finally:

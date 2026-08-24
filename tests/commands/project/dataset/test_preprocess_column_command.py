@@ -1,5 +1,6 @@
 """Tests for PreprocessColumnCommand."""
 
+import logging
 from unittest.mock import Mock
 
 import pandas as pd
@@ -27,6 +28,7 @@ def app_context_with_project():
     app_state = Mock(spec=AppState)
     app_state.has_project = True
     app_state.current_project = project
+    app_state.event_bus = Mock()
     app_context.get_app_state.return_value = app_state
     return app_context, project, dataset
 
@@ -133,3 +135,15 @@ class TestPreprocessColumnCommand:
             {"method": "center", "source_columns": ["A"]},
         )
         assert command.execute() is False
+
+    def test_undo_logs_a_warning_when_nothing_to_undo(self, app_context_with_project, caplog):
+        app_context, _, _ = app_context_with_project
+        command = PreprocessColumnCommand(
+            app_context, "ds-1",
+            {"method": "center", "source_columns": ["A"]},
+        )
+        # undo() called without a prior successful execute(): self.dataset is None.
+
+        with caplog.at_level(logging.WARNING):
+            assert command.undo() is False
+        assert "ds-1" in caplog.text

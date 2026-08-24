@@ -53,6 +53,8 @@ Tests live in `tests/` and mirror the main package structure.
   - `utils/` - Logging, pandas helpers
 - `tests/` - Test suite
 - `examples/` - Example projects and datasets
+- `docs/` - Architecture, user guide, and design specs
+- `pandaplot_storybook/` - PySide6 component storybook (separate package, own tests)
 
 ## Architecture
 - Event-driven via EventBus for inter-component communication

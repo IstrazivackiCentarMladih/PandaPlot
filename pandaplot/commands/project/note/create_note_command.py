@@ -35,6 +35,10 @@ class CreateNoteCommand(Command):
         try:
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning(
+                    "CreateNoteCommand.execute: cannot create note '%s', no project is loaded",
+                    self.note_name,
+                )
                 self.ui_controller.show_warning_message(
                     "New Note",
                     "Please open or create a project first."
@@ -43,6 +47,9 @@ class CreateNoteCommand(Command):
 
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning(
+                    "CreateNoteCommand.execute: has_project is True but current_project is None"
+                )
                 return False
 
             # Get note name if not provided
@@ -119,6 +126,10 @@ class CreateNoteCommand(Command):
             if self.created_note_id and self.created_note is not None and self.app_state.has_project:
                 project = self.app_state.current_project
                 if not project:
+                    self.logger.warning(
+                        "CreateNoteCommand.redo: has_project is True but current_project is None for note id=%s",
+                        self.created_note_id,
+                    )
                     return False
 
                 # Re-add the same note object to the project

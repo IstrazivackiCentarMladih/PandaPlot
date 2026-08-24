@@ -1,7 +1,7 @@
 """Command for removing a data series from a chart."""
 
-from dataclasses import asdict
-from typing import Any, Dict, Optional, override
+import copy
+from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events import ChartEvents
@@ -17,7 +17,7 @@ class RemoveSeriesCommand(Command):
         self.app_context = app_context
         self.chart_id = chart_id
         self.series_index = series_index
-        self.removed_series_data: Optional[Dict[str, Any]] = None
+        self.removed_series_data: Optional[DataSeries] = None
 
     def _find_chart(self) -> Optional[Chart]:
         app_state = self.app_context.get_app_state()
@@ -29,14 +29,22 @@ class RemoveSeriesCommand(Command):
     def execute(self) -> bool:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
+            self.logger.warning(
+                "RemoveSeriesCommand.execute: chart '%s' not found or not a Chart (got %s)",
+                self.chart_id, type(chart).__name__ if chart else None,
+            )
             return False
 
         if self.series_index < 0 or self.series_index >= len(chart.data_series):
+            self.logger.warning(
+                "RemoveSeriesCommand.execute: series_index %s out of range for chart '%s' (%d series)",
+                self.series_index, self.chart_id, len(chart.data_series),
+            )
             return False
 
         # Snapshot the series before removing
         series = chart.data_series[self.series_index]
-        self.removed_series_data = asdict(series)
+        self.removed_series_data = copy.deepcopy(series)
 
         chart.remove_data_series(self.series_index)
 
@@ -51,10 +59,14 @@ class RemoveSeriesCommand(Command):
     def undo(self):
         chart = self._find_chart()
         if not chart or self.removed_series_data is None:
+            self.logger.warning(
+                "RemoveSeriesCommand.undo: cannot undo for chart '%s' (chart found=%s, removed_series_data set=%s)",
+                self.chart_id, chart is not None, self.removed_series_data is not None,
+            )
             return
 
         # Re-create and insert at original position
-        series = DataSeries(**self.removed_series_data)
+        series = copy.deepcopy(self.removed_series_data)
         chart.data_series.insert(self.series_index, series)
         chart.update_modified_time()
 

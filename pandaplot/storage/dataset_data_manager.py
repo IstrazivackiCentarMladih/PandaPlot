@@ -56,7 +56,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
         self.logger.info("Successfully saved dataset '%s' (ID: %s)", item.name, item.id)
 
     @override
-    def load(self, item_class: type[Dataset], zip_file: ZipFile, path_in_zip: str) -> Dataset:
+    def load(self, item_class: type[Dataset], zip_file: ZipFile, path_in_zip: str, schema_version: int) -> Dataset:
         """
         Load dataset from CSV data + metadata JSON.
         path_in_zip is without extension.

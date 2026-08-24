@@ -84,28 +84,37 @@ class ExportDatasetCommand(Command):
             self.logger.info(f"Executing ExportDatasetCommand for dataset {self.dataset_id}")
             
             if not self.app_state.has_project:
+                self.logger.warning("ExportDatasetCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
-                    "Export Dataset", 
+                    "Export Dataset",
                     "Please open or create a project first."
                 )
                 return False
-                
+
             self.project = self.app_state.current_project
             if not self.project:
+                self.logger.warning("ExportDatasetCommand.execute: has_project is True but current_project is None")
                 return False
 
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
             if not found_item:
+                self.logger.warning(
+                    "ExportDatasetCommand.execute: dataset '%s' not found", self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
-                    "Export Dataset", 
+                    "Export Dataset",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
                 return False
-            
+
             if not isinstance(found_item, Dataset):
+                self.logger.warning(
+                    "ExportDatasetCommand.execute: item '%s' is not a Dataset (got %s)",
+                    self.dataset_id, type(found_item).__name__,
+                )
                 self.ui_controller.show_error_message(
-                    "Export Dataset", 
+                    "Export Dataset",
                     "Selected item is not a dataset."
                 )
                 return False
@@ -114,8 +123,11 @@ class ExportDatasetCommand(Command):
 
             # Validate dataset has data
             if self.dataset.data is None or self.dataset.data.empty:
+                self.logger.warning(
+                    "ExportDatasetCommand.execute: dataset '%s' has no data (empty dataset)", self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
-                    "Export Dataset", 
+                    "Export Dataset",
                     "Cannot export empty dataset."
                 )
                 return False
@@ -325,4 +337,8 @@ class ExportDatasetCommand(Command):
                 on_progress=self._on_export_progress
             )
             return True
+        self.logger.warning(
+            "ExportDatasetCommand.redo: cannot redo (export_path set=%s, export_format set=%s, is_exporting=%s)",
+            bool(self.export_path), bool(self.export_format), self.is_exporting,
+        )
         return False

@@ -11,7 +11,7 @@ class MoveItemCommand(Command):
     Command to move an item between folders in the project structure.
     """
 
-    # TODO: avoid optional types
+    # TODO(#198): avoid optional types
     def __init__(self, app_context: AppContext, item_id: Optional[str] = None, item_type: Optional[str] = None,
                  source_folder_id: Optional[str] = None, target_folder_id: Optional[str] = None):
         super().__init__()
@@ -40,6 +40,7 @@ class MoveItemCommand(Command):
 
             # Check if we have a project loaded
             if not self.app_state.has_project:
+                self.logger.warning("MoveItemCommand.execute: no project is currently loaded")
                 self.ui_controller.show_warning_message(
                     "Move Item",
                     "No project is currently loaded."
@@ -48,10 +49,14 @@ class MoveItemCommand(Command):
 
             project = self.app_state.current_project
             if project is None:
+                self.logger.warning(
+                    "MoveItemCommand.execute: has_project is True but current_project is None"
+                )
                 return
 
             # Find the item in the hierarchical structure
             if not self.item_id:
+                self.logger.warning("MoveItemCommand.execute: no item_id specified")
                 self.ui_controller.show_error_message(
                     "Move Item Error",
                     "No item ID specified."
@@ -60,6 +65,7 @@ class MoveItemCommand(Command):
 
             item = project.find_item(self.item_id)
             if item is None:
+                self.logger.warning("MoveItemCommand.execute: item '%s' not found", self.item_id)
                 self.ui_controller.show_error_message(
                     "Move Item Error",
                     f"Item '{self.item_id}' not found."

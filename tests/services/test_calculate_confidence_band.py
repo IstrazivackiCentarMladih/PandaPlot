@@ -1,7 +1,5 @@
 """Tests for calculating confidence interval around fitted curve."""
 
-from unittest.mock import Mock
-
 import numpy as np
 
 from pandaplot.services.fit.fit_service import FitService
@@ -10,7 +8,7 @@ from pandaplot.services.fit.fit_service import FitService
 def test_calculate_confidence_band_returns_bounds():
     """Calculate confidence interval around fitted curve."""
 
-    service = FitService(Mock())
+    service = FitService()
 
     def linear_func(x, a, b):
         return a * x + b

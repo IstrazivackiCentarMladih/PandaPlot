@@ -7,6 +7,7 @@ id (see resolve_series_column). The name fields are only a fallback and are
 intentionally left untouched.
 """
 
+import logging
 from unittest.mock import Mock
 
 import numpy as np
@@ -14,6 +15,7 @@ import pandas as pd
 import pytest
 
 from pandaplot.commands.project.dataset.rename_column_command import RenameColumnCommand
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart, Dataset
@@ -106,6 +108,52 @@ def test_duplicate_name_rejected(env):
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
+def test_duplicate_name_rejected_logs_a_warning(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 0, "b")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "b" in caplog.text
+
+
+def test_execute_logs_a_warning_when_no_project_open(env, caplog):
+    app_context, dataset, _, _ = env
+    app_context.get_app_state.return_value.has_project = False
+    command = RenameColumnCommand(app_context, dataset.id, 0, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
+def test_execute_logs_a_warning_when_dataset_not_found(env, caplog):
+    app_context, _, _, _ = env
+    command = RenameColumnCommand(app_context, "missing-ds", 0, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "missing-ds" in caplog.text
+
+
+def test_execute_logs_a_warning_when_column_index_out_of_range(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 5, "time")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert "5" in caplog.text
+
+
+def test_execute_logs_a_warning_when_new_name_is_empty(env, caplog):
+    app_context, dataset, _, _ = env
+    command = RenameColumnCommand(app_context, dataset.id, 0, "   ")
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is False
+    assert dataset.id in caplog.text
+
+
 def test_empty_name_rejected(env):
     app_context, dataset, _, _ = env
     command = RenameColumnCommand(app_context, dataset.id, 0, "   ")
@@ -150,3 +198,26 @@ def test_events_emitted_only_for_affected_charts(env):
     assert len(updated) == 1  # 'untouched_chart' gets no event
     assert updated[0].args[1]["chart_id"] == chart.id
     assert "chart" in updated[0].args[1]
+
+
+def test_events_emitted_for_a_vector_series_referencing_the_column_by_u_v_or_magnitude(env):
+    """u/v/magnitude are vector-plot fields, added after this test file's
+    original series/fit coverage above -- a chart whose only reference to
+    the renamed column is via one of these fields must still be notified."""
+    app_context, dataset, _, _ = env
+    vector_chart = Chart(name="vc", chart_type="vector")
+    vector_chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("b"), y_column_id=dataset.column_id("b"),
+        label="v1",
+        style=VectorSeriesStyle(
+            u_column_id=dataset.column_id("a"), v_column_id=dataset.column_id("b"),
+            magnitude_column_id=dataset.column_id("a"),
+        ),
+    )
+    app_context.get_app_state.return_value.current_project.add_item(vector_chart)
+
+    command = RenameColumnCommand(app_context, dataset.id, 0, "time")
+    command.execute()
+
+    updated = _chart_updated_calls(app_context)
+    assert vector_chart.id in {call.args[1]["chart_id"] for call in updated}

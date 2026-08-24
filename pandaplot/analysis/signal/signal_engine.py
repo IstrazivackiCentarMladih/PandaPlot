@@ -18,7 +18,6 @@ from .signal_types import (
     SignalAnalysisType,
 )
 
-
 logger = logging.getLogger(__name__)
 
 

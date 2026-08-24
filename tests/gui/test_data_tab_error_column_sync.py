@@ -55,4 +55,4 @@ def test_selecting_an_error_column_reemits_series_selected():
     kind, obj = seen[-1]
     assert kind == "series"
     assert obj is chart.data_series[0]
-    assert obj.y_error_column_id == dataset.column_id("yerr")
+    assert obj.style.error_bars.y_error_column_id == dataset.column_id("yerr")

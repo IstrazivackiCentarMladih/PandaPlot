@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
+    QLineEdit,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -19,17 +19,27 @@ from pandaplot.gui.components.common.card import Card
 from pandaplot.gui.components.common.color_swatch_row import ColorSwatchRow
 from pandaplot.gui.components.common.font_family_options import list_available_font_families
 from pandaplot.gui.components.common.line_style_icons import build_line_style_icon
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.section_header import SectionHeader
 from pandaplot.gui.components.common.slider_with_spinbox import SliderWithSpinbox
 from pandaplot.gui.components.common.toggle_switch import ToggleSwitch
 from pandaplot.gui.components.common.value_combo_box import ValueComboBox
 from pandaplot.gui.components.sidebar.chart.tabs.axes_tab import AXES_SWATCH_PALETTE
 from pandaplot.models.chart.chart_configuration import (
-    ChartType,
     LineStyleType,
     MarkerType,
 )
-from pandaplot.models.project.items.chart import DataSeries, ErrorDirection
+from pandaplot.models.chart.error_direction import ErrorDirection
+from pandaplot.models.chart.series_style import (
+    ColormapSeriesStyle,
+    HeatmapSeriesStyle,
+    LineSeriesStyle,
+    ScatterSeriesStyle,
+    VectorSeriesStyle,
+)
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
+from pandaplot.models.project.items.chart import DataSeries, FitData
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
@@ -40,6 +50,40 @@ from pandaplot.services.config.config_manager import ConfigManager
 
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+
+# Common matplotlib colormaps offered for vector-plot magnitude coloring.
+# "" (Solid color) means: ignore magnitude, use vector_color for every arrow.
+VECTOR_COLORMAPS = [
+    ("Solid color", ""),
+    ("Viridis", "viridis"),
+    ("Plasma", "plasma"),
+    ("Cool", "cool"),
+    ("Autumn", "autumn"),
+    ("Jet", "jet"),
+]
+
+# Colormaps offered for Colormap/Heatmap chart types' Z-driven point/cell
+# coloring (mirrors VECTOR_COLORMAPS, minus the "Solid color" option --
+# these two types always color by Z, there is no fallback fixed color).
+COLORMAP_OPTIONS = [
+    ("Viridis", "viridis"),
+    ("Plasma", "plasma"),
+    ("Cool", "cool"),
+    ("Autumn", "autumn"),
+    ("Jet", "jet"),
+    ("Hot", "hot"),
+    ("Coolwarm", "coolwarm"),
+]
+
+# Heatmap-only: how scattered (x, y, z) points become a regular grid for
+# pcolormesh (see chart_heatmap.build_heatmap_grid). Colormap (a color-mapped
+# scatter) has no gridding concept -- these controls are hidden for it
+# entirely (see SeriesTypeSpec.supports_gridding).
+HEATMAP_GRIDDING_OPTIONS = [
+    ("Exact grid", "grid"),
+    ("Binned (mean)", "binned"),
+    ("Interpolated", "interpolated"),
+]
 
 
 def _make_bold_italic_checks_standalone() -> tuple[QCheckBox, QCheckBox]:
@@ -371,6 +415,42 @@ class StyleTab(QWidget):
 
         layout.addWidget(line_card)
 
+        # CONFIDENCE BAND group -- shades the region between
+        # FitData.confidence_lower/confidence_upper around a fit line.
+        # Fit-only (a data series has no confidence interval concept).
+        self.band_card = Card()
+        band_card = self.band_card
+        band_layout = QGridLayout(band_card)
+
+        band_header_row = QHBoxLayout()
+        self.band_header = SectionHeader("Confidence Band")
+        band_header_row.addWidget(self.band_header)
+        band_header_row.addStretch(1)
+        self.band_enabled_toggle = ToggleSwitch()
+        band_header_row.addWidget(self.band_enabled_toggle)
+        band_layout.addLayout(band_header_row, 0, 0, 1, 2)
+
+        self.band_color_label = QLabel("Color:")
+        band_layout.addWidget(self.band_color_label, 1, 0)
+        self.band_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        band_layout.addWidget(self.band_color_row, 1, 1)
+
+        # "Match line" reuses the "" == inherit-style.color convention
+        # (same pattern as fill_match_line_toggle below): a fresh FitStyle
+        # has band_color="", meaning the band should track the fit line's
+        # own color rather than freezing a stale/prefilled swatch value.
+        self.band_match_line_label = QLabel("Match line:")
+        band_layout.addWidget(self.band_match_line_label, 2, 0)
+        self.band_match_line_toggle = ToggleSwitch(checked=True)
+        band_layout.addWidget(self.band_match_line_toggle, 2, 1)
+
+        self.band_opacity_label = QLabel("Opacity:")
+        band_layout.addWidget(self.band_opacity_label, 3, 0)
+        self.band_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        band_layout.addWidget(self.band_opacity_slider, 3, 1)
+
+        layout.addWidget(band_card)
+
         # FILL group -- shade the area under the curve (down to a baseline) or
         # between this series and another series in the same chart.
         self.fill_card = Card()
@@ -378,7 +458,8 @@ class StyleTab(QWidget):
         fill_layout = QGridLayout(fill_card)
 
         fill_header_row = QHBoxLayout()
-        fill_header_row.addWidget(SectionHeader("Fill"))
+        self.fill_header = SectionHeader("Fill")
+        fill_header_row.addWidget(self.fill_header)
         fill_header_row.addStretch(1)
         self.fill_enabled_toggle = ToggleSwitch()
         fill_header_row.addWidget(self.fill_enabled_toggle)
@@ -388,7 +469,8 @@ class StyleTab(QWidget):
         # (fill_between); on => horizontal fill to an X baseline
         # (fill_betweenx). It also flips how the baseline field and "Fill to"
         # interpolation are interpreted (see _update_fill_controls_visibility).
-        fill_layout.addWidget(QLabel("Horizontal:"), 1, 0)
+        self.fill_horizontal_label = QLabel("Horizontal:")
+        fill_layout.addWidget(self.fill_horizontal_label, 1, 0)
         self.fill_horizontal_toggle = ToggleSwitch()
         fill_layout.addWidget(self.fill_horizontal_toggle, 1, 1)
 
@@ -396,7 +478,8 @@ class StyleTab(QWidget):
         # a "Baseline" entry (value -1) plus every *other* series in the chart
         # (value = its index in data_series). Seeded with just Baseline so the
         # ValueComboBox has a non-empty initial item list.
-        fill_layout.addWidget(QLabel("Fill to:"), 2, 0)
+        self.fill_to_label = QLabel("Fill to:")
+        fill_layout.addWidget(self.fill_to_label, 2, 0)
         self.fill_to_control = ValueComboBox([("Baseline", -1)])
         fill_layout.addWidget(self.fill_to_control, 2, 1)
 
@@ -417,7 +500,8 @@ class StyleTab(QWidget):
         self.fill_match_line_toggle = ToggleSwitch(checked=True)
         fill_layout.addWidget(self.fill_match_line_toggle, 5, 1)
 
-        fill_layout.addWidget(QLabel("Opacity:"), 6, 0)
+        self.fill_opacity_label = QLabel("Opacity:")
+        fill_layout.addWidget(self.fill_opacity_label, 6, 0)
         self.fill_opacity_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
         fill_layout.addWidget(self.fill_opacity_slider, 6, 1)
 
@@ -429,13 +513,15 @@ class StyleTab(QWidget):
         marker_layout = QGridLayout(marker_card)
 
         marker_header_row = QHBoxLayout()
-        marker_header_row.addWidget(SectionHeader("Markers"))
+        self.marker_header = SectionHeader("Markers")
+        marker_header_row.addWidget(self.marker_header)
         marker_header_row.addStretch(1)
         self.markers_enabled_toggle = ToggleSwitch()
         marker_header_row.addWidget(self.markers_enabled_toggle)
         marker_layout.addLayout(marker_header_row, 0, 0, 1, 2)
 
-        marker_layout.addWidget(QLabel("Shape:"), 1, 0)
+        self.marker_shape_label = QLabel("Shape:")
+        marker_layout.addWidget(self.marker_shape_label, 1, 0)
         self.marker_shape_control = ValueComboBox(
             [
                 ("● Circle", MarkerType.CIRCLE),
@@ -449,7 +535,8 @@ class StyleTab(QWidget):
         )
         marker_layout.addWidget(self.marker_shape_control, 1, 1)
 
-        marker_layout.addWidget(QLabel("Size:"), 2, 0)
+        self.marker_size_label = QLabel("Size:")
+        marker_layout.addWidget(self.marker_size_label, 2, 0)
         self.marker_size_slider = SliderWithSpinbox(minimum=1.0, maximum=20.0, decimals=1)
         marker_layout.addWidget(self.marker_size_slider, 2, 1)
 
@@ -512,6 +599,118 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
+        # VECTOR group -- shown instead of Line/Fill/Marker/Error Bars for a
+        # series on a Vector (quiver) chart, which has no line/marker/fill/
+        # error-bar concept of its own.
+        self.vector_card = Card()
+        vector_card = self.vector_card
+        vector_layout = QGridLayout(vector_card)
+        vector_layout.addWidget(SectionHeader("Vector"), 0, 0, 1, 2)
+
+        vector_layout.addWidget(QLabel("Color:"), 1, 0)
+        self.vector_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        vector_layout.addWidget(self.vector_color_row, 1, 1)
+
+        vector_layout.addWidget(QLabel("Color by magnitude:"), 2, 0)
+        self.vector_colormap_control = ValueComboBox(VECTOR_COLORMAPS)
+        vector_layout.addWidget(self.vector_colormap_control, 2, 1)
+
+        vector_layout.addWidget(QLabel("Scale:"), 3, 0)
+        self.vector_scale_slider = SliderWithSpinbox(minimum=0.0, maximum=50.0, decimals=2)
+        vector_layout.addWidget(self.vector_scale_slider, 3, 1)
+
+        vector_layout.addWidget(QLabel("Width:"), 4, 0)
+        self.vector_width_slider = SliderWithSpinbox(minimum=0.0005, maximum=0.05, decimals=4)
+        vector_layout.addWidget(self.vector_width_slider, 4, 1)
+
+        vector_layout.addWidget(QLabel("Head width:"), 5, 0)
+        self.vector_head_width_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_width_slider, 5, 1)
+
+        vector_layout.addWidget(QLabel("Head length:"), 6, 0)
+        self.vector_head_length_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_length_slider, 6, 1)
+
+        vector_layout.addWidget(QLabel("Head axis length:"), 7, 0)
+        self.vector_head_axis_length_slider = SliderWithSpinbox(minimum=0.0, maximum=20.0, decimals=1)
+        vector_layout.addWidget(self.vector_head_axis_length_slider, 7, 1)
+
+        layout.addWidget(vector_card)
+
+        # HEATMAP GRIDDING group -- per-series (SeriesTypeSpec.supports_
+        # gridding -- Heatmap only; Colormap, a plain color-mapped scatter,
+        # needs no gridding at all). The colormap/colorbar/scale that used
+        # to live in this same card moved to a chart-level "Color Map" chip
+        # (see colormap_config_card below) -- there's only ever one
+        # physical colorbar for the whole chart, not one per series.
+        self.heatmap_gridding_card = Card()
+        heatmap_gridding_card = self.heatmap_gridding_card
+        heatmap_gridding_layout = QGridLayout(heatmap_gridding_card)
+        heatmap_gridding_layout.addWidget(SectionHeader("Gridding"), 0, 0, 1, 2)
+
+        # "Exact grid" mode has no resolution to configure (it uses the
+        # data's own lattice, see chart_heatmap.build_heatmap_grid), so the
+        # resolution row is additionally hidden while that mode is selected
+        # (see _on_heatmap_gridding_changed).
+        self.heatmap_gridding_label = QLabel("Gridding:")
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 1, 0)
+        self.heatmap_gridding_control = ValueComboBox(HEATMAP_GRIDDING_OPTIONS)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 1, 1)
+
+        self.heatmap_resolution_label = QLabel("Resolution:")
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 2, 0)
+        self.heatmap_resolution_spin = QSpinBox()
+        self.heatmap_resolution_spin.setRange(2, 500)
+        self.heatmap_resolution_spin.setValue(50)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 2, 1)
+
+        layout.addWidget(heatmap_gridding_card)
+
+        # COLOR MAP group -- chart-level (not per-series): colormap,
+        # colorbar, and color-scale limits are shared across every
+        # Colormap/Heatmap series on the chart, since there's only ever one
+        # physical colorbar drawn. Shown only when the "Color Map" chip in
+        # style_series_chips is selected (see _update_target_cards_
+        # visibility), which itself only appears when the chart has >=1
+        # series with SeriesTypeSpec.needs_z_column (see set_series_list).
+        self.colormap_config_card = Card()
+        colormap_config_card = self.colormap_config_card
+        colormap_config_layout = QGridLayout(colormap_config_card)
+        colormap_config_layout.addWidget(SectionHeader("Color Map"), 0, 0, 1, 2)
+
+        colormap_config_layout.addWidget(QLabel("Colormap:"), 1, 0)
+        self.colormap_control = ValueComboBox(COLORMAP_OPTIONS)
+        colormap_config_layout.addWidget(self.colormap_control, 1, 1)
+
+        colormap_config_layout.addWidget(QLabel("Show colorbar:"), 2, 0)
+        self.colorbar_show_toggle = ToggleSwitch(checked=True)
+        colormap_config_layout.addWidget(self.colorbar_show_toggle, 2, 1)
+
+        colormap_config_layout.addWidget(QLabel("Colorbar label:"), 3, 0)
+        self.colorbar_label_edit = QLineEdit()
+        colormap_config_layout.addWidget(self.colorbar_label_edit, 3, 1)
+
+        colormap_config_layout.addWidget(QLabel("Auto scale:"), 4, 0)
+        self.color_scale_auto_toggle = ToggleSwitch(checked=True)
+        colormap_config_layout.addWidget(self.color_scale_auto_toggle, 4, 1)
+
+        self.color_vmin_label = QLabel("Min:")
+        colormap_config_layout.addWidget(self.color_vmin_label, 5, 0)
+        self.color_vmin_spin = QDoubleSpinBox()
+        self.color_vmin_spin.setRange(-1e9, 1e9)
+        self.color_vmin_spin.setDecimals(3)
+        colormap_config_layout.addWidget(self.color_vmin_spin, 5, 1)
+
+        self.color_vmax_label = QLabel("Max:")
+        colormap_config_layout.addWidget(self.color_vmax_label, 6, 0)
+        self.color_vmax_spin = QDoubleSpinBox()
+        self.color_vmax_spin.setRange(-1e9, 1e9)
+        self.color_vmax_spin.setDecimals(3)
+        self.color_vmax_spin.setValue(1.0)
+        colormap_config_layout.addWidget(self.color_vmax_spin, 6, 1)
+
+        layout.addWidget(colormap_config_card)
+
         # -- Axes (appearance) section: its own top-level selection in
         # style_series_chips (sibling to "Chart"/series/fit), not nested
         # under "Chart" -- axis appearance is a chart-wide concern like the
@@ -544,6 +743,11 @@ class StyleTab(QWidget):
         self.line_style_control.currentValueChanged.connect(self._on_field_changed)
         self.line_width_slider.valueChanged.connect(self._on_field_changed)
         self.line_opacity_slider.valueChanged.connect(self._on_field_changed)
+        self.band_enabled_toggle.toggled.connect(self._on_band_enabled_toggled)
+        self.band_enabled_toggle.toggled.connect(self._on_field_changed)
+        self.band_color_row.colorChanged.connect(self._on_field_changed)
+        self.band_match_line_toggle.toggled.connect(self._on_band_match_line_toggled)
+        self.band_opacity_slider.valueChanged.connect(self._on_field_changed)
         self.fill_enabled_toggle.toggled.connect(self._on_fill_enabled_toggled)
         self.fill_horizontal_toggle.toggled.connect(self._on_fill_orientation_toggled)
         self.fill_to_control.currentValueChanged.connect(self._on_fill_to_changed)
@@ -562,6 +766,21 @@ class StyleTab(QWidget):
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_color_row.colorChanged.connect(self._on_field_changed)
+        self.vector_colormap_control.currentValueChanged.connect(self._on_field_changed)
+        self.vector_scale_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_width_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_width_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_length_slider.valueChanged.connect(self._on_field_changed)
+        self.vector_head_axis_length_slider.valueChanged.connect(self._on_field_changed)
+        self.colormap_control.currentValueChanged.connect(self._on_field_changed)
+        self.colorbar_show_toggle.toggled.connect(self._on_field_changed)
+        self.colorbar_label_edit.textChanged.connect(self._on_field_changed)
+        self.color_scale_auto_toggle.toggled.connect(self._on_color_scale_auto_toggled)
+        self.color_vmin_spin.valueChanged.connect(self._on_field_changed)
+        self.color_vmax_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_gridding_control.currentValueChanged.connect(self._on_heatmap_gridding_changed)
+        self.heatmap_resolution_spin.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -600,6 +819,9 @@ class StyleTab(QWidget):
         elif value == "axes":
             self._current_target = ("axes", None)
             self._update_target_cards_visibility()
+        elif value == "colormap_config":
+            self._current_target = ("colormap_config", None)
+            self._update_target_cards_visibility()
         elif value is not None:
             # The panel (until Task 5) or DataTab (after Task 5) is the
             # source of truth for series/fit selection -- this tab does not
@@ -610,20 +832,23 @@ class StyleTab(QWidget):
 
     def _update_target_cards_visibility(self):
         """Show the Chart card XOR the Line/Marker cards, matching whichever
-        Style-tab chip is currently selected.
+        Style-tab chip is currently selected. Line/Fill/Marker/ErrorBars
+        visibility for a selected series is driven by SERIES_TYPE_SPECS for
+        the selected series' own type (falling back to the chart's type for
+        the Chart/Axes chips, which have no specific series) -- the single
+        source of truth this design introduces, replacing the is_scatter/
+        is_vector booleans this method used to compute locally (which had
+        already drifted out of sync with chart_editor.py's own per-type
+        rendering, e.g. showing error-bar controls for a histogram series
+        the renderer never draws).
 
-        The Line card is hidden for a selected *series* on Scatter charts: a
-        scatter plot draws independent markers with no connecting line
-        (unlike Line's ordered, connected points), so line color/style/
-        width/opacity have nothing to apply to there. A selected *fit* entry
-        is unaffected by that -- a fit is always rendered as a line
-        (chart_editor.py plots it unconditionally), regardless of the
-        chart's own type -- so the Line card stays visible for fit even on
-        Scatter charts.
+        A selected *fit* entry is unaffected by the series' spec -- a fit is
+        always rendered as a line (chart_editor.py plots it unconditionally),
+        regardless of the chart's own type -- so the Line card stays visible
+        for fit even on Scatter charts.
 
         The Marker card only applies to a series: fit data has no marker
-        concept at all (see load_fit_style/apply_fit_style_to), so it's
-        hidden whenever a fit entry is selected, not just for "chart".
+        concept at all (see load_fit_style/apply_fit_style_to).
         """
         kind, obj = self._current_target
         is_chart = kind == "chart"
@@ -632,23 +857,45 @@ class StyleTab(QWidget):
         is_axes = kind == "axes"
         for widget in self.axes_style_widgets:
             widget.setVisible(is_axes)
-        is_scatter = self._chart_type == ChartType.SCATTER
-        self.line_card.setVisible(kind == "fit" or (kind == "series" and not is_scatter))
-        # Area fill is only drawn for line charts (see chart_editor.py's "line"
-        # branch), so the Fill card is a series-on-line-chart concern.
-        self.fill_card.setVisible(kind == "series" and self._chart_type == ChartType.LINE)
-        self.marker_card.setVisible(kind == "series")
+        is_colormap_config = kind == "colormap_config"
+        self.colormap_config_card.setVisible(is_colormap_config)
+        if kind == "series" and isinstance(obj, DataSeries):
+            spec = SERIES_TYPE_SPECS[obj.series_type]
+        elif self._chart_type:
+            spec = SERIES_TYPE_SPECS[SeriesType(self._chart_type)]
+        else:
+            spec = None
+        marker_supported = spec is not None and spec.marker_mode != "unsupported"
+        color_supported = spec is not None and spec.supports_color
+        fill_supported = spec is not None and spec.supports_fill
+        error_bars_supported = spec is not None and spec.supports_error_bars
+        # The Line card holds both color/opacity controls (style.color/
+        # style.alpha, rendered for line/bar/hist) and line_style/line_width
+        # controls (rendered only for "line" -- see SeriesTypeSpec.supports_
+        # line_style's docstring). Gating the whole card on supports_color
+        # keeps color/opacity available for bar/hist even though their
+        # line_style/line_width controls have no effect for those types,
+        # matching pre-Phase-2 behavior exactly.
+        self.line_card.setVisible(kind == "fit" or (kind == "series" and color_supported))
+        self.band_card.setVisible(
+            kind == "fit" and isinstance(obj, FitData) and obj.confidence_lower is not None
+        )
+        self.fill_card.setVisible(kind == "series" and fill_supported)
+        self.marker_card.setVisible(kind == "series" and marker_supported)
         # Fit data has no error-bar fields at all (DataSeries-only), and even
         # for a series there's nothing to style unless an error column is
         # actually configured (on the Data tab) -- otherwise the card's
         # controls (direction/color/cap size) have no error bars to apply to.
         self.error_bars_card.setVisible(
-            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data
+            kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and error_bars_supported
         )
+        self.vector_card.setVisible(kind == "series" and spec is not None and spec.needs_secondary_columns)
+        self.heatmap_gridding_card.setVisible(kind == "series" and spec is not None and spec.supports_gridding)
         # Re-evaluate "Match line" visibility: it depends on both kind and
         # chart type (see _is_scatter_series_target), either of which may
         # have just changed.
         self._update_marker_controls_enabled()
+        self._update_colormap_gridding_visibility()
 
     def _build_axis_style_form(self, prefix: str):
         """Build one axis's appearance form (title font/color, tick-value
@@ -694,6 +941,13 @@ class StyleTab(QWidget):
             color_label.setVisible(False)
             color_row.setVisible(False)
 
+        title_layout.addWidget(QLabel("Rotation:"), 5, 0)
+        rotation_spin = QSpinBox()
+        rotation_spin.setRange(-90, 90)
+        rotation_spin.setSuffix("°")
+        rotation_spin.setValue(90 if prefix in ("y", "y2") else 0)
+        title_layout.addWidget(rotation_spin, 5, 1)
+
         form_layout.addWidget(title_card)
 
         ticks_card = Card()
@@ -724,6 +978,12 @@ class StyleTab(QWidget):
         tick_color_row = ColorSwatchRow(AXES_SWATCH_PALETTE)
         ticks_layout.addWidget(tick_color_row, 4, 1)
 
+        ticks_layout.addWidget(QLabel("Rotation:"), 5, 0)
+        tick_rotation_spin = QSpinBox()
+        tick_rotation_spin.setRange(-90, 90)
+        tick_rotation_spin.setSuffix("°")
+        ticks_layout.addWidget(tick_rotation_spin, 5, 1)
+
         form_layout.addWidget(ticks_card)
 
         colors_card = Card()
@@ -753,9 +1013,10 @@ class StyleTab(QWidget):
 
         copy_button = None
         if prefix in ("y", "y2"):
-            copy_button = QPushButton("Copy style to Y axis")
-            copy_button.setFlat(True)
-            copy_button.clicked.connect(lambda _checked=False, p=prefix: self._on_copy_axis_style(p))
+            copy_button = PButton(
+                "Copy style to Y axis", role="secondary",
+                on_click=lambda _checked=False, p=prefix: self._on_copy_axis_style(p)
+            )
             form_layout.addWidget(copy_button)
 
         self.axes_style_forms[prefix] = {
@@ -764,11 +1025,13 @@ class StyleTab(QWidget):
             "bold_check": bold_check, "italic_check": italic_check,
             "color_row": color_row, "color_label": color_label,
             "match_x_toggle": match_x_toggle,
+            "rotation_spin": rotation_spin,
             "ticks_card": ticks_card,
             "tick_font_size_spin": tick_font_size_spin,
             "tick_font_family_combo": tick_font_family_combo,
             "tick_bold_check": tick_bold_check, "tick_italic_check": tick_italic_check,
             "tick_color_row": tick_color_row,
+            "tick_rotation_spin": tick_rotation_spin,
             "colors_card": colors_card,
             "spine_color_row": spine_color_row,
             "major_tick_color_row": major_tick_color_row,
@@ -783,6 +1046,7 @@ class StyleTab(QWidget):
         bold_check.toggled.connect(self._on_chart_style_field_changed)
         italic_check.toggled.connect(self._on_chart_style_field_changed)
         color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        rotation_spin.valueChanged.connect(self._on_chart_style_field_changed)
         if match_x_toggle is not None:
             match_x_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked))
 
@@ -791,6 +1055,7 @@ class StyleTab(QWidget):
         tick_bold_check.toggled.connect(self._on_chart_style_field_changed)
         tick_italic_check.toggled.connect(self._on_chart_style_field_changed)
         tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
+        tick_rotation_spin.valueChanged.connect(self._on_chart_style_field_changed)
         spine_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         major_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         minor_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
@@ -852,10 +1117,12 @@ class StyleTab(QWidget):
         target["font_family_combo"].setCurrentValue(source["font_family_combo"].currentValue())
         target["bold_check"].setChecked(source["bold_check"].isChecked())
         target["italic_check"].setChecked(source["italic_check"].isChecked())
+        target["rotation_spin"].setValue(source["rotation_spin"].value())
         target["tick_font_size_spin"].setValue(source["tick_font_size_spin"].value())
         target["tick_font_family_combo"].setCurrentValue(source["tick_font_family_combo"].currentValue())
         target["tick_bold_check"].setChecked(source["tick_bold_check"].isChecked())
         target["tick_italic_check"].setChecked(source["tick_italic_check"].isChecked())
+        target["tick_rotation_spin"].setValue(source["tick_rotation_spin"].value())
 
         # Match-X toggles MUST be set before the color swatches they gate
         # (see AxesTab._on_copy_axis_settings for why: setChecked fires
@@ -909,12 +1176,53 @@ class StyleTab(QWidget):
         self._show_axis_style_form(self.axes_style_selector.currentValue() or "x")
 
     def _is_scatter_series_target(self) -> bool:
-        """Whether the current target is a data series on a Scatter chart --
-        i.e. there is no drawn line at all (Line card is hidden; see
-        _update_target_cards_visibility), so "match line" has nothing to
-        refer to and marker colors must always be set explicitly."""
-        kind, _obj = self._current_target
-        return kind == "series" and self._chart_type == ChartType.SCATTER
+        """Whether the current target is a data series with no drawn line at
+        all (Line card is hidden; see _update_target_cards_visibility), so
+        "match line" has nothing to refer to and marker colors must always
+        be set explicitly. Spec-driven off SERIES_TYPE_SPECS.supports_color
+        (the same flag the Line card's own visibility is gated on) rather
+        than hardcoding SeriesType.SCATTER, so this stays correct for any
+        other no-line series type -- e.g. Colormap, which also has
+        supports_color=False and a required marker (see marker_mode) but
+        was previously missed by the SCATTER-only check, leaving "Match
+        line" visible and able to silently blank marker_edge_color/
+        swatch_color for Colormap series.
+
+        In practice this only affects LINE/SCATTER/COLORMAP: BAR/HIST/
+        VECTOR/HEATMAP all have marker_mode="unsupported", so their Marker
+        card (and this toggle) is never shown regardless of this value (see
+        marker_supported in _update_target_cards_visibility)."""
+        kind, obj = self._current_target
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return not SERIES_TYPE_SPECS[obj.series_type].supports_color
+
+    def _is_z_driven_series_target(self) -> bool:
+        """Whether the current target is a data series whose fill color is
+        driven by its Z column through a colormap (Colormap/Heatmap --
+        SeriesTypeSpec.needs_z_column), rather than by a fixed marker color.
+        For such a series, style.marker.marker_color is read by no renderer
+        (see render_colormap_series/render_heatmap_series), so the Marker
+        card's "Color:" swatch is hidden outright -- showing it would be a
+        silently-ignored control, the exact bug class this feature is meant
+        to eliminate. Edge color/width, marker shape and size still apply
+        and stay visible."""
+        kind, obj = self._current_target
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return SERIES_TYPE_SPECS[obj.series_type].needs_z_column
+
+    def _is_required_marker_target(self) -> bool:
+        """Whether the current target's marker can never be turned off --
+        SeriesTypeSpec.marker_mode == "required" (Scatter, Colormap): a
+        marker is the ONLY thing either type draws, so the Markers
+        section's on/off toggle (meaningful for Line, marker_mode ==
+        "optional", which already has a line to fall back on) is hidden
+        rather than offered and then ignored."""
+        kind, obj = self._current_target
+        if kind != "series" or not isinstance(obj, DataSeries):
+            return False
+        return SERIES_TYPE_SPECS[obj.series_type].marker_mode == "required"
 
     def set_chart_type(self, chart_type):
         self._chart_type = chart_type
@@ -963,6 +1271,8 @@ class StyleTab(QWidget):
         self._data_series = list(data_series)
         previous_value = self.style_series_chips.currentValue()
         chip_items = [("Chart", "chart"), ("Axes", "axes")]
+        if any(SERIES_TYPE_SPECS[series.series_type].needs_z_column for series in data_series):
+            chip_items.append(("Color Map", "colormap_config"))
         for index, series in enumerate(data_series):
             label = series.label or f"{series.dataset_id}:{self._series_y_name(series)}"
             chip_items.append((label, index))
@@ -987,7 +1297,10 @@ class StyleTab(QWidget):
         # from, so it must not count as "initialized" either, or it would
         # make the *next* call's placeholder "chart" look like a genuine
         # prior selection).
-        if self._series_list_initialized and previous_value in ("chart", "axes"):
+        chip_values = {value for _, value in chip_items}
+        if (self._series_list_initialized
+                and previous_value in ("chart", "axes", "colormap_config")
+                and previous_value in chip_values):
             self.style_series_chips.setCurrentValue(previous_value)
         else:
             self.style_series_chips.setCurrentValue(selected_index)
@@ -1000,6 +1313,9 @@ class StyleTab(QWidget):
             self._update_target_cards_visibility()
         elif final_value == "axes":
             self._current_target = ("axes", None)
+            self._update_target_cards_visibility()
+        elif final_value == "colormap_config":
+            self._current_target = ("colormap_config", None)
             self._update_target_cards_visibility()
         elif final_value < len(data_series):
             self.set_selected("series", data_series[final_value])
@@ -1043,40 +1359,109 @@ class StyleTab(QWidget):
         self._on_field_changed()
 
     def _update_marker_controls_enabled(self):
-        """Enable/disable marker sub-controls based on the enable toggle, and
-        show/hide the fill/edge color pickers based on the match-line toggle
-        (pure UI convenience; see apply_series_style_to for how this maps
-        onto the persisted `marker_style`/`marker_color`/`marker_edge_color`).
-
-        "Match line" hides only the color pickers (not just disables them):
-        once matching, there's nothing for the user to set -- both colors
-        track `series.color` until unchecked. Edge width is a separate
-        concern (line thickness, not color) and stays visible/enabled
-        whenever markers are on, regardless of the match-line state.
+        """Show the marker sub-controls only while markers are enabled;
+        hide them (not just grey them out) when disabled, leaving only
+        the greyed section title -- reported live: "if I disable entire
+        section, such as marker, we should hide options and just leave
+        the section title with a disabled state, instead of showing all
+        options in a disabled state." Same "match line hides colors"
+        sub-behavior as before once markers are on.
 
         For a scatter-chart series there is no drawn line at all (the Line
         card is hidden -- see _update_target_cards_visibility), so "Match
-        line" is meaningless: the row is hidden outright and the color
-        pickers always show, regardless of the toggle's stored (but now
-        irrelevant) checked state.
+        line" is meaningless: that row alone is hidden outright whenever
+        markers are on, regardless of the toggle's stored state -- UNLESS
+        the target is Z-driven (Colormap), whose fill genuinely varies per
+        point through the colormap and so has its own, different thing to
+        match (each point's own color, via edgecolors="face") -- see the
+        relabeling below.
+
+        A required-marker series (Scatter, Colormap) can never turn its
+        markers off -- they're the only thing it draws -- so the on/off
+        toggle itself is hidden rather than offered and ignored.
         """
         is_scatter_series = self._is_scatter_series_target()
-        markers_enabled = self.markers_enabled_toggle.isChecked()
-        self.marker_shape_control.setEnabled(markers_enabled)
-        self.marker_size_slider.setEnabled(markers_enabled)
-        self.marker_match_line_toggle.setEnabled(markers_enabled and not is_scatter_series)
-        self.marker_match_line_label.setVisible(not is_scatter_series)
-        self.marker_match_line_toggle.setVisible(not is_scatter_series)
-        self.marker_edge_width_label.setVisible(markers_enabled)
-        self.marker_edge_width_slider.setVisible(markers_enabled)
+        is_z_driven = self._is_z_driven_series_target()
+        required_marker = self._is_required_marker_target()
+        markers_enabled = self.markers_enabled_toggle.isChecked() or required_marker
+        self.marker_header.setEnabled(markers_enabled)
+        self.markers_enabled_toggle.setVisible(not required_marker)
 
-        matching_line = self.marker_match_line_toggle.isChecked() and not is_scatter_series
-        show_colors = markers_enabled and not matching_line
         for widget in (
-            self.marker_color_label, self.marker_color_row,
-            self.marker_edge_color_label, self.marker_edge_color_row,
+            self.marker_shape_label, self.marker_shape_control,
+            self.marker_size_label, self.marker_size_slider,
+            self.marker_edge_width_label, self.marker_edge_width_slider,
         ):
-            widget.setVisible(show_colors)
+            widget.setVisible(markers_enabled)
+
+        # "Match line" (matching a drawn line's style.color) and "Match
+        # point color" (Colormap: matching each point's own data-driven
+        # fill) share this one toggle row, relabeled per target. A plain
+        # Scatter has neither a line nor a per-point-varying fill to
+        # match, so the row stays hidden for it -- its edge color is a
+        # simple, always-visible, independently-set swatch.
+        show_match_row = markers_enabled and (not is_scatter_series or is_z_driven)
+        self.marker_match_line_label.setText("Match point color:" if is_z_driven else "Match line:")
+        self.marker_match_line_label.setVisible(show_match_row)
+        self.marker_match_line_toggle.setVisible(show_match_row)
+
+        matching = show_match_row and self.marker_match_line_toggle.isChecked()
+        show_edge_color = markers_enabled and not matching
+        for widget in (self.marker_edge_color_label, self.marker_edge_color_row):
+            widget.setVisible(show_edge_color)
+
+        # A Colormap/Heatmap series' marker fill color is always driven by
+        # its Z data through the colormap (see render_colormap_series) --
+        # style.marker.marker_color is never read for such a series, so its
+        # "Color:" row is hidden outright (regardless of the match toggle,
+        # which for this target controls edge color instead) rather than
+        # shown as a control that silently does nothing.
+        show_fill_color = markers_enabled and not is_z_driven
+        for widget in (self.marker_color_label, self.marker_color_row):
+            widget.setVisible(show_fill_color)
+
+    # -- Color Map controls (Colormap/Heatmap) ------------------------------
+
+    def _on_color_scale_auto_toggled(self, _checked: bool):
+        """Handle the Color Map 'Auto scale' toggle."""
+        self._update_color_scale_controls()
+        self._on_field_changed()
+
+    def _update_color_scale_controls(self):
+        """Show the manual Min/Max fields only while 'Auto scale' is off --
+        while auto, the color scale is derived from the data's own min/max
+        (see chart_heatmap.resolve_color_limits) and the fields have no
+        effect (same hidden-not-disabled convention as
+        _update_marker_controls_enabled)."""
+        show_manual = not self.color_scale_auto_toggle.isChecked()
+        self.color_vmin_label.setVisible(show_manual)
+        self.color_vmin_spin.setVisible(show_manual)
+        self.color_vmax_label.setVisible(show_manual)
+        self.color_vmax_spin.setVisible(show_manual)
+
+    def _on_heatmap_gridding_changed(self, _value):
+        """Handle the Heatmap 'Gridding' mode change."""
+        self._update_colormap_gridding_visibility()
+        self._on_field_changed()
+
+    def _update_colormap_gridding_visibility(self):
+        """Show the Gridding/Resolution sub-controls only for a series whose
+        type supports gridding (SeriesTypeSpec.supports_gridding -- Heatmap
+        only; Colormap, a plain color-mapped scatter, needs no gridding at
+        all). Resolution is further hidden while gridding mode is "grid"
+        (build_heatmap_grid ignores resolution for that mode -- it pivots
+        the data's own exact lattice instead of binning/interpolating)."""
+        kind, obj = self._current_target
+        if kind == "series" and isinstance(obj, DataSeries):
+            spec = SERIES_TYPE_SPECS[obj.series_type]
+        else:
+            spec = None
+        supports_gridding = spec is not None and spec.supports_gridding
+        self.heatmap_gridding_label.setVisible(supports_gridding)
+        self.heatmap_gridding_control.setVisible(supports_gridding)
+        show_resolution = supports_gridding and self.heatmap_gridding_control.currentValue() != "grid"
+        self.heatmap_resolution_label.setVisible(show_resolution)
+        self.heatmap_resolution_spin.setVisible(show_resolution)
 
     # -- Error-bar match-line toggle ------------------------------------
 
@@ -1134,26 +1519,58 @@ class StyleTab(QWidget):
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
+    def _update_band_controls_visibility(self):
+        """Show the Confidence Band sub-controls only while the band is
+        enabled; hidden, not just greyed, when off (same convention as
+        _update_marker_controls_enabled / _update_fill_controls_visibility).
+        The color swatch is additionally hidden whenever 'Match line' is
+        checked, matching Marker's and Fill's show_color convention."""
+        enabled = self.band_enabled_toggle.isChecked()
+        self.band_header.setEnabled(enabled)
+        show_color = enabled and not self.band_match_line_toggle.isChecked()
+        self.band_color_label.setVisible(show_color)
+        self.band_color_row.setVisible(show_color)
+        self.band_opacity_label.setVisible(enabled)
+        self.band_opacity_slider.setVisible(enabled)
+        self.band_match_line_label.setVisible(enabled)
+        self.band_match_line_toggle.setVisible(enabled)
+
+    def _on_band_match_line_toggled(self, _checked: bool):
+        """Handle the Confidence Band 'Match line' toggle: hide the color
+        swatch while it's checked (same convention as Marker/Fill)."""
+        self._update_band_controls_visibility()
+        self._on_field_changed()
+
+    def _on_band_enabled_toggled(self, _checked: bool):
+        """Handle the Confidence Band section's on/off toggle."""
+        self._update_band_controls_visibility()
+
     def _on_fill_match_line_toggled(self, _checked: bool):
         """Handle the Fill 'Match line' toggle for fill color."""
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
     def _update_fill_controls_visibility(self):
-        """Enable the fill sub-controls only while fill is on, hide the color
-        picker while it matches the line color, and hide the constant-baseline
-        field when filling between two curves instead of to a baseline (same
-        hide-not-disable convention as _update_marker_controls_enabled)."""
+        """Show the fill sub-controls only while fill is on -- hidden, not
+        just greyed, when off (same convention as
+        _update_marker_controls_enabled). While on: hide the color picker
+        if it matches the line color, and hide the constant-baseline field
+        when filling between two curves instead of to a baseline."""
         enabled = self.fill_enabled_toggle.isChecked()
-        to_baseline = self.fill_to_control.currentValue() == -1
+        self.fill_header.setEnabled(enabled)
+
         for widget in (
-            self.fill_horizontal_toggle, self.fill_to_control,
-            self.fill_match_line_toggle, self.fill_opacity_slider,
+            self.fill_horizontal_label, self.fill_horizontal_toggle,
+            self.fill_to_label, self.fill_to_control,
+            self.fill_match_line_label, self.fill_match_line_toggle,
         ):
-            widget.setEnabled(enabled)
+            widget.setVisible(enabled)
+        self.fill_opacity_label.setVisible(enabled)
+        self.fill_opacity_slider.setVisible(enabled)
 
         # The baseline is a Y value for a vertical fill, an X value for a
         # horizontal one -- label it so the field's meaning is unambiguous.
+        to_baseline = self.fill_to_control.currentValue() == -1
         horizontal = self.fill_horizontal_toggle.isChecked()
         self.fill_base_label.setText("X baseline:" if horizontal else "Y baseline:")
         show_baseline = enabled and to_baseline
@@ -1163,8 +1580,6 @@ class StyleTab(QWidget):
         show_color = enabled and not self.fill_match_line_toggle.isChecked()
         self.fill_color_label.setVisible(show_color)
         self.fill_color_row.setVisible(show_color)
-        self.fill_match_line_label.setVisible(enabled)
-        self.fill_match_line_toggle.setVisible(enabled)
 
     # -- Background transparent toggles ----------------------------------
 
@@ -1186,70 +1601,155 @@ class StyleTab(QWidget):
             self.apply_series_style_to(obj)
         elif kind == "fit":
             self.apply_fit_style_to(obj)
+        elif kind == "colormap_config":
+            if self._chart is None:
+                return
+            self.apply_colormap_config_to(self._chart)
         else:
             return
         self.configChanged.emit()
 
     def apply_series_style_to(self, series):
-        series.color = self.line_color_row.currentColor()
-        series.line_style = self.line_style_control.currentValue().value
-        series.line_width = self.line_width_slider.value()
-        series.alpha = self.line_opacity_slider.value()
+        style = series.style
+        if isinstance(style, VectorSeriesStyle):
+            style.vector_color = self.vector_color_row.currentColor()
+            style.vector_colormap = self.vector_colormap_control.currentValue()
+            style.vector_scale = self.vector_scale_slider.value()
+            style.vector_width = self.vector_width_slider.value()
+            style.vector_head_width = self.vector_head_width_slider.value()
+            style.vector_head_length = self.vector_head_length_slider.value()
+            style.vector_head_axis_length = self.vector_head_axis_length_slider.value()
+            return
+
+        if isinstance(style, (ColormapSeriesStyle, HeatmapSeriesStyle)):
+            if isinstance(style, HeatmapSeriesStyle):
+                style.heatmap_gridding = self.heatmap_gridding_control.currentValue()
+                style.heatmap_resolution = self.heatmap_resolution_spin.value()
+                return
+            # ColormapSeriesStyle only: it has no color/line/fill fields of
+            # its own (fill color comes from z_data via colormap, not a
+            # fixed style.color), but its marker shape/size/edge fields
+            # still apply (marker_mode == "required") -- fall through
+            # (skipping the style.color/line_style/fill writes above, which
+            # this class doesn't declare) to the shared marker-writing block
+            # below instead of returning.
+            series.alpha = self.line_opacity_slider.value()
+        else:
+            style.color = self.line_color_row.currentColor()
+            if isinstance(style, LineSeriesStyle):
+                style.line_style = self.line_style_control.currentValue().value
+                style.line_width = self.line_width_slider.value()
+            series.alpha = self.line_opacity_slider.value()
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
-        # the existing MarkerType.NONE member. "Match line" reuses the
-        # existing "" == inherit-series.color convention for both
-        # marker_color and marker_edge_color (rendering already falls back
-        # to series.color for either field when empty -- see chart_editor.py).
-        if self.markers_enabled_toggle.isChecked():
-            series.marker_style = self.marker_shape_control.currentValue().value
-            series.marker_size = self.marker_size_slider.value()
-            match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
-            series.marker_color = "" if match_line else self.marker_color_row.currentColor()
-            series.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
-            series.marker_edge_width = self.marker_edge_width_slider.value()
-        else:
-            series.marker_style = MarkerType.NONE.value
+        # the existing MarkerType.NONE member -- except for a
+        # required-marker target (Scatter, Colormap), which can never
+        # write NONE regardless of the (hidden) toggle's stored state.
+        # "Match line"/"Match point color" reuses the existing "" ==
+        # inherit convention for marker_color/marker_edge_color (rendering
+        # falls back to style.color for either field when empty -- see
+        # series_renderers/line.py and scatter.py; render_colormap_series
+        # falls back to matplotlib's "face" sentinel for marker_edge_color
+        # instead, and never reads marker_color at all, since fill color
+        # always comes from z_data there). LineSeriesStyle/ScatterSeriesStyle/
+        # ColormapSeriesStyle declare marker fields.
+        if isinstance(style, (LineSeriesStyle, ScatterSeriesStyle, ColormapSeriesStyle)):
+            if self.markers_enabled_toggle.isChecked() or self._is_required_marker_target():
+                style.marker.marker_style = self.marker_shape_control.currentValue().value
+                style.marker.marker_size = self.marker_size_slider.value()
+                style.marker.marker_edge_width = self.marker_edge_width_slider.value()
+                if self._is_z_driven_series_target():
+                    # Colormap: the toggle controls edge color only -- fill
+                    # is never read from marker_color for this target, so
+                    # leave it untouched rather than overwrite it with the
+                    # (hidden) fill-color row's stale current value.
+                    matching = self.marker_match_line_toggle.isChecked()
+                    style.marker.marker_edge_color = "" if matching else self.marker_edge_color_row.currentColor()
+                else:
+                    match_line = self.marker_match_line_toggle.isChecked() and not self._is_scatter_series_target()
+                    style.marker.marker_color = "" if match_line else self.marker_color_row.currentColor()
+                    style.marker.marker_edge_color = "" if match_line else self.marker_edge_color_row.currentColor()
+            else:
+                style.marker.marker_style = MarkerType.NONE.value
 
-        series.error_direction = self.error_direction_control.currentValue()
-        series.error_color = (
-            "" if self.error_match_line_toggle.isChecked()
-            else self.error_color_row.currentColor()
-        )
-        series.error_cap_size = self.error_cap_size_slider.value()
+        # Error-bar fields now live on style.error_bars, which only
+        # LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle declare --
+        # HistSeriesStyle/VectorSeriesStyle have no such field, so this must
+        # be gated (the Error Bars card itself is only shown for a series
+        # whose spec supports error bars, but that visibility rule doesn't
+        # protect this direct write).
+        error_bars = getattr(style, "error_bars", None)
+        if error_bars is not None:
+            error_bars.error_direction = self.error_direction_control.currentValue()
+            error_bars.error_color = (
+                "" if self.error_match_line_toggle.isChecked()
+                else self.error_color_row.currentColor()
+            )
+            error_bars.error_cap_size = self.error_cap_size_slider.value()
 
-        # Area fill. "Match line" reuses the "" == inherit-series.color
+        # Area fill. "Match line" reuses the "" == inherit-style.color
         # convention. fill_to_index is -1 (fill down to the constant baseline)
-        # or the index of another series to fill between.
-        series.fill_enabled = self.fill_enabled_toggle.isChecked()
-        series.fill_orientation = (
-            "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
-        )
-        series.fill_to_index = self.fill_to_control.currentValue()
-        series.fill_base = self.fill_base_spin.value()
-        series.fill_color = (
-            "" if self.fill_match_line_toggle.isChecked()
-            else self.fill_color_row.currentColor()
-        )
-        series.fill_alpha = self.fill_opacity_slider.value()
+        # or the index of another series to fill between. Only
+        # LineSeriesStyle declares fill fields.
+        if isinstance(style, LineSeriesStyle):
+            style.fill_enabled = self.fill_enabled_toggle.isChecked()
+            style.fill_orientation = (
+                "horizontal" if self.fill_horizontal_toggle.isChecked() else "vertical"
+            )
+            style.fill_to_index = self.fill_to_control.currentValue()
+            style.fill_base = self.fill_base_spin.value()
+            style.fill_color = (
+                "" if self.fill_match_line_toggle.isChecked()
+                else self.fill_color_row.currentColor()
+            )
+            style.fill_alpha = self.fill_opacity_slider.value()
 
     def apply_fit_style_to(self, fit):
-        fit.color = self.line_color_row.currentColor()
-        fit.line_style = self.line_style_control.currentValue().value
-        fit.line_width = self.line_width_slider.value()
-        fit.alpha = self.line_opacity_slider.value()
+        style = fit.style
+        style.color = self.line_color_row.currentColor()
+        style.line_style = self.line_style_control.currentValue().value
+        style.line_width = self.line_width_slider.value()
+        style.alpha = self.line_opacity_slider.value()
+        style.band_fill_enabled = self.band_enabled_toggle.isChecked()
+        style.band_color = (
+            "" if self.band_match_line_toggle.isChecked()
+            else self.band_color_row.currentColor()
+        )
+        style.band_fill_alpha = self.band_opacity_slider.value()
         # Note: fit data doesn't use marker_size or marker colors.
 
     def load_series_style(self, series):
-        """Populate the Line/Marker cards from a data series' style fields."""
+        """Populate the Line/Marker/Fill/Vector cards from a data series'
+        typed style object. Reads use getattr(..., default) throughout --
+        safe regardless of which of the 5 typed style classes `series.style`
+        actually is, since a hidden card's controls still get *some* value
+        (never shown, never applied back unless that card becomes visible
+        for a different series/chart-type selection)."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.line_color_row.setCurrentColor(series.color)
-            self.line_width_slider.setValue(series.line_width)
+            style = series.style
+
+            self.vector_color_row.setCurrentColor(getattr(style, "vector_color", "#1f77b4"))
+            self.vector_colormap_control.setCurrentValue(getattr(style, "vector_colormap", ""))
+            self.vector_scale_slider.setValue(getattr(style, "vector_scale", 0.0))
+            self.vector_width_slider.setValue(getattr(style, "vector_width", 0.005))
+            self.vector_head_width_slider.setValue(getattr(style, "vector_head_width", 3.0))
+            self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
+            self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
+
+            # Heatmap-only gridding fields (colormap/colorbar/scale moved to
+            # the chart-level Color Map card -- see load_colormap_config).
+            self.heatmap_gridding_control.setCurrentValue(getattr(style, "heatmap_gridding", "grid"))
+            self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
+            self._update_colormap_gridding_visibility()
+
+            color = getattr(style, "color", "#1f77b4")
+            self.line_color_row.setCurrentColor(color)
+            self.line_width_slider.setValue(getattr(style, "line_width", 2.0))
             self.line_opacity_slider.setValue(series.alpha)
             try:
-                self.line_style_control.setCurrentValue(LineStyleType(series.line_style))
+                self.line_style_control.setCurrentValue(LineStyleType(getattr(style, "line_style", "solid")))
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 
@@ -1258,73 +1758,105 @@ class StyleTab(QWidget):
             # shape control keeps showing the last remembered shape
             # (defaulting to circle) rather than "none", since "none" isn't
             # offered as a selectable shape here.
-            markers_enabled = series.marker_style != MarkerType.NONE.value
+            marker = getattr(style, "marker", None)
+            marker_style_value = getattr(marker, "marker_style", MarkerType.NONE.value)
+            markers_enabled = marker_style_value != MarkerType.NONE.value
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(markers_enabled)
             self.markers_enabled_toggle.blockSignals(False)
 
-            shape_value = series.marker_style if markers_enabled else MarkerType.CIRCLE.value
+            shape_value = marker_style_value if markers_enabled else MarkerType.CIRCLE.value
             try:
                 self.marker_shape_control.setCurrentValue(MarkerType(shape_value))
             except ValueError:
                 self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
 
-            self.marker_size_slider.setValue(series.marker_size)
+            self.marker_size_slider.setValue(getattr(marker, "marker_size", 2.0))
 
             # marker_color == "" is the existing "match line color"
-            # convention, now shared by marker_edge_color too.
-            self.marker_color_row.setCurrentColor(series.marker_color or series.color)
+            # convention, now shared by marker_edge_color too. For a
+            # Z-driven (Colormap) target the toggle instead reflects
+            # marker_edge_color -- that's the only field it controls there
+            # (marker_color is unused, hidden outright; see
+            # _update_marker_controls_enabled) -- computed from
+            # series.series_type directly (not self._is_z_driven_series_
+            # target(), which reads self._current_target and so would be
+            # stale if this method is ever called without going through
+            # set_selected first, e.g. a direct load in a test).
+            is_z_driven = SERIES_TYPE_SPECS[series.series_type].needs_z_column
+            marker_color = getattr(marker, "marker_color", "")
+            marker_edge_color = getattr(marker, "marker_edge_color", "")
+            self.marker_color_row.setCurrentColor(marker_color or color)
+            self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
             self.marker_match_line_toggle.blockSignals(True)
-            self.marker_match_line_toggle.setChecked(series.marker_color == "")
+            self.marker_match_line_toggle.setChecked(
+                marker_edge_color == "" if is_z_driven else marker_color == ""
+            )
             self.marker_match_line_toggle.blockSignals(False)
-            self.marker_edge_color_row.setCurrentColor(series.marker_edge_color or series.color)
-            self.marker_edge_width_slider.setValue(series.marker_edge_width)
+            self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
 
+            # Error-bar fields now live on style.error_bars; not every style
+            # class declares one (Hist/Vector don't), so read defensively.
+            error_bars = getattr(style, "error_bars", None)
             try:
-                self.error_direction_control.setCurrentValue(ErrorDirection(series.error_direction))
+                self.error_direction_control.setCurrentValue(
+                    ErrorDirection(getattr(error_bars, "error_direction", ErrorDirection.BOTH))
+                )
             except ValueError:
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
-            self.error_color_row.setCurrentColor(series.error_color or series.color)
+            error_color = getattr(error_bars, "error_color", "")
+            self.error_color_row.setCurrentColor(error_color or color)
             self.error_match_line_toggle.blockSignals(True)
-            self.error_match_line_toggle.setChecked(series.error_color == "")
+            self.error_match_line_toggle.setChecked(error_color == "")
             self.error_match_line_toggle.blockSignals(False)
             self._update_error_controls_visibility()
-            self.error_cap_size_slider.setValue(series.error_cap_size)
+            self.error_cap_size_slider.setValue(getattr(error_bars, "error_cap_size", 3.0))
 
             self._populate_fill_to_options(series)
             self.fill_enabled_toggle.blockSignals(True)
-            self.fill_enabled_toggle.setChecked(series.fill_enabled)
+            self.fill_enabled_toggle.setChecked(getattr(style, "fill_enabled", False))
             self.fill_enabled_toggle.blockSignals(False)
             self.fill_horizontal_toggle.blockSignals(True)
-            self.fill_horizontal_toggle.setChecked(series.fill_orientation == "horizontal")
+            self.fill_horizontal_toggle.setChecked(getattr(style, "fill_orientation", "vertical") == "horizontal")
             self.fill_horizontal_toggle.blockSignals(False)
-            self.fill_to_control.setCurrentValue(series.fill_to_index)
-            self.fill_base_spin.setValue(series.fill_base)
-            self.fill_color_row.setCurrentColor(series.fill_color or series.color)
+            self.fill_to_control.setCurrentValue(getattr(style, "fill_to_index", -1))
+            self.fill_base_spin.setValue(getattr(style, "fill_base", 0.0))
+            fill_color = getattr(style, "fill_color", "")
+            self.fill_color_row.setCurrentColor(fill_color or color)
             self.fill_match_line_toggle.blockSignals(True)
-            self.fill_match_line_toggle.setChecked(series.fill_color == "")
+            self.fill_match_line_toggle.setChecked(fill_color == "")
             self.fill_match_line_toggle.blockSignals(False)
-            self.fill_opacity_slider.setValue(series.fill_alpha)
+            self.fill_opacity_slider.setValue(getattr(style, "fill_alpha", 0.3))
             self._update_fill_controls_visibility()
         finally:
             self._updating_controls = previous_guard
 
     def load_fit_style(self, fit):
-        """Populate the Line/Marker cards from a fit-data entry's style
-        fields. Fit data has no marker concept, so markers are forced off
-        and locked; opacity, however, does apply to the fit line itself."""
+        """Populate the Line/Band/Marker cards from a fit-data entry's
+        typed style object. Fit data has no marker concept, so markers are
+        forced off and locked; opacity applies to the fit line itself,
+        band_fill_alpha to the confidence band separately."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            self.line_color_row.setCurrentColor(fit.color)
-            self.line_width_slider.setValue(fit.line_width)
-            self.line_opacity_slider.setValue(fit.alpha)
+            style = fit.style
+            self.line_color_row.setCurrentColor(style.color)
+            self.line_width_slider.setValue(style.line_width)
+            self.line_opacity_slider.setValue(style.alpha)
             try:
-                self.line_style_control.setCurrentValue(LineStyleType(fit.line_style))
+                self.line_style_control.setCurrentValue(LineStyleType(style.line_style))
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
+
+            self.band_enabled_toggle.setChecked(style.band_fill_enabled)
+            self.band_color_row.setCurrentColor(style.band_color or style.color)
+            self.band_match_line_toggle.blockSignals(True)
+            self.band_match_line_toggle.setChecked(style.band_color == "")
+            self.band_match_line_toggle.blockSignals(False)
+            self.band_opacity_slider.setValue(style.band_fill_alpha)
+            self._update_band_controls_visibility()
 
             self.markers_enabled_toggle.blockSignals(True)
             self.markers_enabled_toggle.setChecked(False)
@@ -1341,6 +1873,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self.load_colormap_config(chart)
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
             self.title_font_family_combo.setCurrentValue(chart.config.get("title_font_family", "DejaVu Sans"))
@@ -1423,6 +1956,8 @@ class StyleTab(QWidget):
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["color_label"].setVisible(not match)
                     axis_form["color_row"].setVisible(not match)
+                default_rotation = 90 if prefix in ("y", "y2") else 0
+                axis_form["rotation_spin"].setValue(chart.config.get(f"{prefix}_label_rotation", default_rotation))
 
                 axis_form["tick_font_size_spin"].setValue(chart.config.get(f"{prefix}_tick_label_font_size", 10))
                 axis_form["tick_font_family_combo"].setCurrentValue(
@@ -1430,6 +1965,7 @@ class StyleTab(QWidget):
                 axis_form["tick_bold_check"].setChecked(chart.config.get(f"{prefix}_tick_label_bold", False))
                 axis_form["tick_italic_check"].setChecked(chart.config.get(f"{prefix}_tick_label_italic", False))
                 axis_form["tick_color_row"].setCurrentColor(chart.config.get(f"{prefix}_tick_label_color", "#000000"))
+                axis_form["tick_rotation_spin"].setValue(chart.config.get(f"{prefix}_tick_label_rotation", 0))
                 match_colors = True
                 if axis_form["match_x_colors_toggle"] is not None:
                     match_colors = chart.config.get(f"{prefix}_match_x_colors", True)
@@ -1487,11 +2023,13 @@ class StyleTab(QWidget):
             chart.config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 chart.config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            chart.config[f"{prefix}_label_rotation"] = axis_form["rotation_spin"].value()
             chart.config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
             chart.config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
             chart.config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
             chart.config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
             chart.config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            chart.config[f"{prefix}_tick_label_rotation"] = axis_form["tick_rotation_spin"].value()
             chart.config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
             chart.config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
             chart.config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
@@ -1503,6 +2041,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self.clear_colormap_config()
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
             self.title_font_family_combo.setCurrentValue("DejaVu Sans")
@@ -1544,17 +2083,68 @@ class StyleTab(QWidget):
                 axis_form["color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["match_x_toggle"].setChecked(True)
+                axis_form["rotation_spin"].setValue(90 if prefix in ("y", "y2") else 0)
                 axis_form["tick_font_size_spin"].setValue(10)
                 axis_form["tick_font_family_combo"].setCurrentValue("DejaVu Sans")
                 axis_form["tick_bold_check"].setChecked(False)
                 axis_form["tick_italic_check"].setChecked(False)
                 axis_form["tick_color_row"].setCurrentColor("#000000")
+                axis_form["tick_rotation_spin"].setValue(0)
                 axis_form["spine_color_row"].setCurrentColor("#000000")
                 axis_form["major_tick_color_row"].setCurrentColor("#000000")
                 axis_form["minor_tick_color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_colors_toggle"] is not None:
                     axis_form["match_x_colors_toggle"].setChecked(True)
             self.refresh_axis_style_selector(None)
+        finally:
+            self._updating_controls = previous_guard
+
+    # -- Color Map config (chart-level) --------------------------------------
+
+    def load_colormap_config(self, chart):
+        """Populate the chart-level Color Map card from `chart.config`.
+        Called from load_chart_style's call site (chart_properties_panel.py)
+        so it's always populated regardless of which chip is currently
+        selected, matching how Chart-card fields are loaded unconditionally
+        too."""
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.colormap_control.setCurrentValue(chart.config.get("colormap", "viridis"))
+            self.colorbar_show_toggle.blockSignals(True)
+            self.colorbar_show_toggle.setChecked(chart.config.get("colorbar_show", True))
+            self.colorbar_show_toggle.blockSignals(False)
+            self.colorbar_label_edit.blockSignals(True)
+            self.colorbar_label_edit.setText(chart.config.get("colorbar_label", ""))
+            self.colorbar_label_edit.blockSignals(False)
+            self.color_scale_auto_toggle.blockSignals(True)
+            self.color_scale_auto_toggle.setChecked(chart.config.get("color_scale_auto", True))
+            self.color_scale_auto_toggle.blockSignals(False)
+            self.color_vmin_spin.setValue(chart.config.get("color_vmin", 0.0))
+            self.color_vmax_spin.setValue(chart.config.get("color_vmax", 1.0))
+            self._update_color_scale_controls()
+        finally:
+            self._updating_controls = previous_guard
+
+    def apply_colormap_config_to(self, chart):
+        chart.config["colormap"] = self.colormap_control.currentValue()
+        chart.config["colorbar_show"] = self.colorbar_show_toggle.isChecked()
+        chart.config["colorbar_label"] = self.colorbar_label_edit.text()
+        chart.config["color_scale_auto"] = self.color_scale_auto_toggle.isChecked()
+        chart.config["color_vmin"] = self.color_vmin_spin.value()
+        chart.config["color_vmax"] = self.color_vmax_spin.value()
+
+    def clear_colormap_config(self):
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self.colormap_control.setCurrentValue("viridis")
+            self.colorbar_show_toggle.setChecked(True)
+            self.colorbar_label_edit.setText("")
+            self.color_scale_auto_toggle.setChecked(True)
+            self.color_vmin_spin.setValue(0.0)
+            self.color_vmax_spin.setValue(1.0)
+            self._update_color_scale_controls()
         finally:
             self._updating_controls = previous_guard
 
@@ -1670,11 +2260,13 @@ class StyleTab(QWidget):
             config[f"{prefix}_label_color"] = axis_form["color_row"].currentColor()
             if axis_form["match_x_toggle"] is not None:
                 config[f"{prefix}_match_x_label_color"] = axis_form["match_x_toggle"].isChecked()
+            config[f"{prefix}_label_rotation"] = axis_form["rotation_spin"].value()
             config[f"{prefix}_tick_label_font_size"] = axis_form["tick_font_size_spin"].value()
             config[f"{prefix}_tick_label_font_family"] = axis_form["tick_font_family_combo"].currentValue()
             config[f"{prefix}_tick_label_bold"] = axis_form["tick_bold_check"].isChecked()
             config[f"{prefix}_tick_label_italic"] = axis_form["tick_italic_check"].isChecked()
             config[f"{prefix}_tick_label_color"] = axis_form["tick_color_row"].currentColor()
+            config[f"{prefix}_tick_label_rotation"] = axis_form["tick_rotation_spin"].value()
             config[f"{prefix}_spine_color"] = axis_form["spine_color_row"].currentColor()
             config[f"{prefix}_major_tick_color"] = axis_form["major_tick_color_row"].currentColor()
             config[f"{prefix}_minor_tick_color"] = axis_form["minor_tick_color_row"].currentColor()
@@ -1707,6 +2299,20 @@ class StyleTab(QWidget):
         self.error_color_row.set_tokens(tokens)
         self.error_match_line_toggle.set_tokens(tokens)
         self.error_cap_size_slider.set_tokens(tokens)
+        self.vector_card.set_tokens(tokens)
+        self.vector_color_row.set_tokens(tokens)
+        self.vector_colormap_control.set_tokens(tokens)
+        self.vector_scale_slider.set_tokens(tokens)
+        self.vector_width_slider.set_tokens(tokens)
+        self.vector_head_width_slider.set_tokens(tokens)
+        self.vector_head_length_slider.set_tokens(tokens)
+        self.vector_head_axis_length_slider.set_tokens(tokens)
+        self.heatmap_gridding_card.set_tokens(tokens)
+        self.colormap_config_card.set_tokens(tokens)
+        self.colormap_control.set_tokens(tokens)
+        self.colorbar_show_toggle.set_tokens(tokens)
+        self.color_scale_auto_toggle.set_tokens(tokens)
+        self.heatmap_gridding_control.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)

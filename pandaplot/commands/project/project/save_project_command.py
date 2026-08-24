@@ -35,16 +35,19 @@ class SaveProjectCommand(Command):
 
             # Prevent concurrent saves
             if self.is_saving:
+                self.logger.warning("SaveProjectCommand.execute: a save operation is already in progress")
                 self.ui_controller.show_warning_message("Save Project", "A save operation is already in progress. Please wait for it to complete.")
                 return False
 
             # Check if we have a project to save
             if not self.app_state.has_project:
+                self.logger.warning("SaveProjectCommand.execute: no project is currently loaded to save")
                 self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
                 return False
 
             project = self.app_state.current_project
             if not project:  # Additional safety check
+                self.logger.warning("SaveProjectCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
                 return False
 
@@ -254,7 +257,7 @@ class SaveProjectCommand(Command):
                     project = self.app_state.current_project
                     if project:  # Additional safety check
                         self.app_state.load_project(project)
-                        # TODO: this doesn't do anything currently
+                        # TODO(#221): this doesn't do anything currently
                         self.logger.info("Reverted file path to '%s'", self.previous_file_path)
 
         except Exception as e:
@@ -286,11 +289,13 @@ class SaveProjectAsCommand(SaveProjectCommand):
         try:
             # Check if we have a project to save
             if not self.app_state.has_project:
+                self.logger.warning("SaveProjectAsCommand.execute: no project is currently loaded to save")
                 self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
                 return False
 
             project = self.app_state.current_project
             if not project:  # Additional safety check
+                self.logger.warning("SaveProjectAsCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
                 return False
 

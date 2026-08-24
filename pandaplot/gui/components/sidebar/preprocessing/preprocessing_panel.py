@@ -5,7 +5,6 @@ scaling) applied to dataset columns before plotting or analysis.
 
 from typing import Any, Dict, Optional, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -16,8 +15,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
-    QPushButton,
-    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -28,14 +25,15 @@ from pandaplot.analysis.preprocessing_types import PREPROCESSING_METHODS, list_m
 from pandaplot.commands.project.dataset.preprocess_column_command import (
     PreprocessColumnCommand,
 )
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
-class PreprocessingPanel(PWidget):
+class PreprocessingPanel(SidebarPanel):
     """
     Side panel for applying preprocessing transformations to dataset columns.
     """
@@ -52,17 +50,9 @@ class PreprocessingPanel(PWidget):
     @override
     def _init_ui(self):
         """Build the panel layout."""
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-        main_layout.setSpacing(8)
+        self._init_panel_layout()
 
-        self.title_label = QLabel("⚖️ Preprocessing")
-        main_layout.addWidget(self.title_label)
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._set_title("⚖️ Preprocessing")
 
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
@@ -78,8 +68,7 @@ class PreprocessingPanel(PWidget):
 
         content_layout.addStretch()
 
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area)
+        self._set_content(content_widget, scrollable=True)
 
     def create_method_section(self, layout):
         """Create the transformation selector and its description."""
@@ -163,8 +152,7 @@ class PreprocessingPanel(PWidget):
         group = QGroupBox("Preview")
         group_layout = QVBoxLayout()
 
-        self.preview_btn = QPushButton("🔍 Preview")
-        self.preview_btn.clicked.connect(self.preview)
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.preview)
 
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
@@ -180,11 +168,9 @@ class PreprocessingPanel(PWidget):
         """Create the apply/clear buttons."""
         button_layout = QHBoxLayout()
 
-        self.apply_btn = QPushButton("✅ Apply")
-        self.apply_btn.clicked.connect(self.apply)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply)
 
-        self.clear_btn = QPushButton("🔄 Clear")
-        self.clear_btn.clicked.connect(self.clear_inputs)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_inputs)
 
         button_layout.addWidget(self.apply_btn)
         button_layout.addWidget(self.clear_btn)
@@ -330,11 +316,8 @@ class PreprocessingPanel(PWidget):
             success = self.app_context.get_command_executor().execute_command(command)
 
             if success:
-                self.publish_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, {
-                    "dataset_id": self.current_dataset_id,
-                    "operation": "preprocessing",
-                    "source": "preprocessing_panel",
-                })
+                # The command emits the structured column-added / data-changed
+                # events that refresh the data tab and column-source selectors.
                 count = len(config["source_columns"])
                 self.preview_text.setText(
                     f"✅ Preprocessing applied to {count} column(s)."
@@ -407,8 +390,6 @@ class PreprocessingPanel(PWidget):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             PreprocessingPanel {{
@@ -433,49 +414,10 @@ class PreprocessingPanel(PWidget):
             }}
         """)
 
-        self.title_label.setStyleSheet(f"""
-            QLabel {{
-                font-size: 14px;
-                font-weight: bold;
-                color: {base_fg};
-                padding: 5px;
-                background-color: {card_border};
-                border-radius: 3px;
-            }}
-        """)
+        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
 
         for label in (self.description_label, self.naming_hint):
             label.setStyleSheet(f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}")
         self.formula_label.setStyleSheet(
             f"QLabel {{ color: {base_fg}; font-family: monospace; background-color: transparent; }}"
         )
-
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {card_hover};
-                color: {base_fg};
-            }}
-            QPushButton:disabled {{
-                background-color: {secondary_fg};
-                color: #999999;
-            }}
-        """)
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #7f8c8d; }}
-        """)

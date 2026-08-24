@@ -29,6 +29,39 @@ def inches_to_cm(inches):
     return inches * CM_PER_INCH
 
 
+def set_figure_mathtext_parsing(fig, enabled: bool) -> None:
+    """Enable or disable mathtext parsing on every text artist in `fig`.
+
+    Matplotlib only parses a Text artist's mathtext (`$...$`) when it is
+    actually measured or rendered -- i.e. during layout/draw, not when
+    set_text()/set_xlabel()/etc. is called -- so invalid mathtext (e.g. an
+    unbalanced `$...$` or `$\\theta_$` with no subscript body) surfaces as a
+    ValueError/RuntimeError from tight_layout() or draw() rather than from
+    whichever call actually set the text. Disabling parsing makes the text
+    render literally instead, so a bad label degrades to raw text rather
+    than breaking the whole figure."""
+    for artist in fig.findobj(match=lambda o: hasattr(o, "set_parse_math")):
+        artist.set_parse_math(enabled)
+
+
+def run_with_mathtext_fallback(fig, action):
+    """Run `action()` (a zero-arg callable that renders/lays out `fig`),
+    falling back to literal (non-mathtext) text if it fails on invalid
+    mathtext.
+
+    Mathtext parsing is re-enabled for every text artist before the first
+    attempt, so a label the user has since fixed is rendered as math again
+    rather than staying disabled forever from an earlier failure. Only if
+    that attempt still raises is parsing disabled and `action()` retried."""
+    set_figure_mathtext_parsing(fig, True)
+    try:
+        action()
+    except (ValueError, RuntimeError):
+        logger.debug("invalid mathtext; retrying with mathtext parsing disabled", exc_info=True)
+        set_figure_mathtext_parsing(fig, False)
+        action()
+
+
 def fit_size_cm(viewport_width_px, viewport_height_px, dpi,
                  min_width_cm=2, max_width_cm=50,
                  min_height_cm=2, max_height_cm=40):
@@ -63,6 +96,16 @@ class ChartCanvas(FigureCanvas):
         self.original_xlim = None
         self.original_ylim = None
         self.original_ylim2 = None
+
+    def draw(self):
+        """Render the canvas, falling back to literal (non-mathtext) labels
+        if a label/title contains invalid mathtext (e.g. `$\\theta_$`).
+
+        Matplotlib only parses mathtext when a Text artist is actually
+        measured or drawn, so a bad label raises here rather than when it
+        was set -- without this, the exception propagates out of draw() and
+        the preview is left showing a stale or partially-updated chart."""
+        run_with_mathtext_fallback(self.fig, super().draw)
 
     def setup_navigation(self):
         """Set up zoom and pan functionality."""
@@ -223,7 +266,10 @@ class ChartCanvas(FigureCanvas):
         """Change the figure size."""
         self.fig.set_size_inches(width, height)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
+            run_with_mathtext_fallback(
+                self.fig,
+                lambda: self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin)),
+            )
         except Exception:
             logger.debug("tight_layout failed while resizing chart canvas", exc_info=True)
         self.resize(*self.get_width_height())
@@ -237,7 +283,10 @@ class ChartCanvas(FigureCanvas):
             return
         self.fig.set_dpi(dpi)
         try:
-            self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin))
+            run_with_mathtext_fallback(
+                self.fig,
+                lambda: self.fig.tight_layout(pad=pad, w_pad=w_pad, h_pad=h_pad, rect=(0, 0, 1, top_margin)),
+            )
         except Exception:
             logger.debug("tight_layout failed while changing chart canvas DPI", exc_info=True)
         self.resize(*self.get_width_height())

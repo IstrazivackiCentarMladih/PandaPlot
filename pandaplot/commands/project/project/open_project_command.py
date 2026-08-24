@@ -41,6 +41,10 @@ class OpenProjectCommand(Command):
 
             # Validate the file before attempting to load
             if not self.project_manager.validate_project_file(file_path):
+                self.logger.warning(
+                    "OpenProjectCommand.execute: '%s' is not a valid project file",
+                    file_path,
+                )
                 self.app_context.ui_controller.show_error_message(
                     "Invalid Project File", f"The selected file is not a valid project file:\n{file_path}"
                 )

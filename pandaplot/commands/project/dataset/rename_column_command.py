@@ -4,6 +4,7 @@ from typing import List, Optional, override
 
 from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_data import DatasetColumnRenamedData
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project.items import Chart, Dataset
@@ -36,6 +37,10 @@ class RenameColumnCommand(Command):
     def execute(self) -> bool:
         try:
             if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: no project open; cannot rename column in dataset '%s'",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_warning_message(
                     "Rename Column", "Please open or create a project first.")
                 return False
@@ -43,6 +48,10 @@ class RenameColumnCommand(Command):
 
             found_item = project.find_item(self.dataset_id)
             if not isinstance(found_item, Dataset) or found_item.data is None:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: dataset '%s' not found or has no data",
+                    self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", f"Dataset with ID '{self.dataset_id}' not found.")
                 return False
@@ -50,18 +59,30 @@ class RenameColumnCommand(Command):
 
             columns = list(self.dataset.data.columns)
             if not (0 <= self.column_index < len(columns)):
+                self.logger.warning(
+                    "RenameColumnCommand.execute: column_index %s out of range for dataset '%s' (%d columns)",
+                    self.column_index, self.dataset_id, len(columns),
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", f"Column index {self.column_index} is out of range.")
                 return False
 
             self.old_name = columns[self.column_index]
             if not self.new_name:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: new column name is empty for dataset '%s' index %s",
+                    self.dataset_id, self.column_index,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column", "Column name cannot be empty.")
                 return False
             if self.new_name == self.old_name:
                 return False
             if self.new_name in columns:
+                self.logger.warning(
+                    "RenameColumnCommand.execute: column name '%s' already exists in dataset '%s'",
+                    self.new_name, self.dataset_id,
+                )
                 self.ui_controller.show_error_message(
                     "Rename Column",
                     f"A column named '{self.new_name}' already exists in this dataset.")
@@ -124,14 +145,32 @@ class RenameColumnCommand(Command):
         column_id = self.dataset.column_id(current_name)
 
         def series_refs(series) -> bool:
-            id_fields = (series.x_column_id, series.y_column_id,
-                         series.x_error_column_id, series.y_error_column_id,
-                         series.x_error_minus_column_id, series.y_error_minus_column_id)
+            id_fields = [series.x_column_id, series.y_column_id]
+            name_fields = [series.x_column, series.y_column]
+
+            error_bars = getattr(series.style, "error_bars", None)
+            if error_bars is not None:
+                id_fields.extend([
+                    error_bars.x_error_column_id, error_bars.y_error_column_id,
+                    error_bars.x_error_minus_column_id, error_bars.y_error_minus_column_id,
+                ])
+                name_fields.extend([
+                    error_bars.x_error_column, error_bars.y_error_column,
+                    error_bars.x_error_minus_column, error_bars.y_error_minus_column,
+                ])
+
+            if isinstance(series.style, VectorSeriesStyle):
+                id_fields.extend([
+                    series.style.u_column_id, series.style.v_column_id,
+                    series.style.magnitude_column_id,
+                ])
+                name_fields.extend([
+                    series.style.u_column, series.style.v_column,
+                    series.style.magnitude_column,
+                ])
+
             if column_id and column_id in id_fields:
                 return True
-            name_fields = (series.x_column, series.y_column,
-                           series.x_error_column, series.y_error_column,
-                           series.x_error_minus_column, series.y_error_minus_column)
             return current_name in name_fields or self.old_name in name_fields
 
         def fit_refs(fit) -> bool:

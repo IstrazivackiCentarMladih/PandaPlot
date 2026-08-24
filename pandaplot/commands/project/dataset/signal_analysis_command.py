@@ -4,14 +4,13 @@ as a new dataset, with undo/redo support.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional, override
+from typing import Any, Dict, Optional, override
 
 from pandaplot.analysis import (
     SignalAnalysisResult,
     SignalAnalysisType,
     SignalEngine,
 )
-
 from pandaplot.commands.base_command import Command
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
@@ -157,6 +156,10 @@ class SignalAnalysisCommand(Command):
                 not self.result_dataset_id
                 or not self.app_state.current_project
             ):
+                self.logger.warning(
+                    "SignalAnalysisCommand.undo: cannot undo (result_dataset_id=%s, project loaded=%s)",
+                    self.result_dataset_id, bool(self.app_state.current_project),
+                )
                 return False
 
             project = self.app_state.current_project
