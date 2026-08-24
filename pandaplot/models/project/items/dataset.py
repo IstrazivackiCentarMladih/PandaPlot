@@ -97,7 +97,7 @@ class Dataset(Item):
             "column_ids": dict(self.column_ids),
         })
 
-        # TODO: serialization of dataframe
+        # TODO(#219): serialization of dataframe
         # Note: We don't serialize the actual DataFrame data here
         # Data should be stored separately or reconstructed from source
         return data

@@ -30,7 +30,7 @@ from pandaplot.utils.log import setup_logging
 def create_project_data_manager() -> ProjectDataManager:
     """Register item data managers and build the project data manager."""
     factory = ItemDataManagerFactory()
-    # TODO: verify extension usage
+    # TODO(#220): verify extension usage
     factory.register("note", Note, NoteDataManager(), "note")
     factory.register("folder", Folder, FolderDataManager(), "folder")
     factory.register("chart", Chart, ChartDataManager(), "chart")
@@ -180,33 +180,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    # TODO: fix add (load damped pendulum project, try to add series to energy graph)
-    # TODO: fix remove series
-    # TODO: log error messages to the user
-    # TODO: fix how we treat transformed columns, they aren't saved correctly
-    # TODO: consider creating project creation dialog
-    # TODO: improve view of project name
-    # TODO: when opening a project which is already open, we should just switch to it instead of reloading it
-    # TODO: create process for multi-threaded operations
-    # TODO: use mm instead of cm or make it configurable
-    # TODO: improve initial loading of the app
-    # TODO: clean state on opening new project or add support for multiple projects
-    # TODO: list and implement copy paste capabilities we want to support
-    # TODO: improve how we handle styles and themes
-    # TODO: ask whether open project needs to be saved before closing - either a new project or open documents that have been modified. We can track modifications somewhere if needed.
-    # TODO: save on an existing project is acting as save as, we need to fix this behavior.
-    # TODO: enable chart creation without opening a dataset
-    # TODO: remove dialog on project open success
-    # TODO: improve project info display in sidebar
-    # TODO: fix saved state tracking - when opening a project it should say it's saved until modified
-    # TODO: disable chart properties and curve fitting sidepanels on dataset view
-    # TODO: close open tabs related to a project when closing project
-    # TODO: in chart properties panel, fix tab display, ensure buttons are visible
-    # TODO: fix how we use font size across the app.
-    # TODO: fix dark theme colors
-    # TODO: make chart area scrollable
-    # TODO: in dataset tab we show all of the data lazily, but we should load it lazily also from the disk if it's too big
-    # TODO: add support for sorting and filtering of the data
-    # TODO: add export options for dataset tab
-    # TODO: add support for formulas in dataset tab
-    # TODO: encapsulate project data manager inside project manager
+    # TODO(#206): fix add (load damped pendulum project, try to add series to energy graph)
+    # TODO(#206): fix remove series
+    # TODO(#207): log error messages to the user
+    # TODO(#208): fix how we treat transformed columns, they aren't saved correctly
+    # TODO(#209): consider creating project creation dialog
+    # TODO(#209): improve view of project name
+    # TODO(#209): when opening a project which is already open, we should just switch to it instead of reloading it
+    # TODO(#211): create process for multi-threaded operations
+    # TODO(#212): use mm instead of cm or make it configurable
+    # TODO(#211): improve initial loading of the app
+    # TODO(#210): clean state on opening new project or add support for multiple projects
+    # TODO(#213): list and implement copy paste capabilities we want to support
+    # TODO(#214): improve how we handle styles and themes
+    # TODO(#209): ask whether open project needs to be saved before closing - either a new project or open documents that have been modified. We can track modifications somewhere if needed.
+    # TODO(#209): save on an existing project is acting as save as, we need to fix this behavior.
+    # TODO(#215): enable chart creation without opening a dataset
+    # TODO(#209): remove dialog on project open success
+    # TODO(#216): improve project info display in sidebar
+    # TODO(#209): fix saved state tracking - when opening a project it should say it's saved until modified
+    # TODO(#215): disable chart properties and curve fitting sidepanels on dataset view
+    # TODO(#209): close open tabs related to a project when closing project
+    # TODO(#215): in chart properties panel, fix tab display, ensure buttons are visible
+    # TODO(#214): fix how we use font size across the app.
+    # TODO(#214): fix dark theme colors
+    # TODO(#215): make chart area scrollable
+    # TODO(#217): in dataset tab we show all of the data lazily, but we should load it lazily also from the disk if it's too big
+    # TODO(#217): add support for sorting and filtering of the data
+    # TODO(#217): add export options for dataset tab
+    # TODO(#154): add support for formulas in dataset tab
+    # TODO(#218): encapsulate project data manager inside project manager

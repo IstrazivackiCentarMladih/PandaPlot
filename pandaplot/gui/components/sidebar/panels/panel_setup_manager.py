@@ -35,7 +35,7 @@ class PanelSetupManager:
         self.panels: list[dict] = []
 
     def register_default_panels(self):
-        # TODO: this should happen differently as it ideally should be driven 
+        # TODO(#216): this should happen differently as it ideally should be driven 
         # by app registration and support plugin architecture with 
         # distributed panel registration
         self.register_panel(ProjectViewPanel(app_context=self.app_context), "explorer", "📁", lambda _: True)

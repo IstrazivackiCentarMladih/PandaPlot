@@ -51,7 +51,7 @@ class AppState:
         })
         
         if old_project is None:
-            # TODO: this should be removed
+            # TODO(#210): this should be removed
             self.event_bus.emit(ProjectEvents.FIRST_PROJECT_LOADED, {
                 "project": project
             })
@@ -60,7 +60,7 @@ class AppState:
         """Close the currently loaded project."""
         self.logger.info("Closing project")
         if self._current_project is not None:
-            # TODO: add support for multiple projects
+            # TODO(#210): add support for multiple projects
             old_project = self._current_project
             
             self._current_project = None

@@ -395,7 +395,6 @@ class FitService:
             sigma_minus = df.loc[mask, minus_column].to_numpy(dtype=float)
 
             # Approximate asymmetric uncertainties by their average
-            # TODO: see in future
             sigma = 0.5 * (sigma_plus + sigma_minus)
 
         # Symmetric error bars

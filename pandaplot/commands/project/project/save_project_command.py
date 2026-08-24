@@ -257,7 +257,7 @@ class SaveProjectCommand(Command):
                     project = self.app_state.current_project
                     if project:  # Additional safety check
                         self.app_state.load_project(project)
-                        # TODO: this doesn't do anything currently
+                        # TODO(#221): this doesn't do anything currently
                         self.logger.info("Reverted file path to '%s'", self.previous_file_path)
 
         except Exception as e:

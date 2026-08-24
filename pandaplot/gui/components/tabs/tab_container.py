@@ -34,7 +34,7 @@ class TabContainer(PWidget):
 
     def __init__(self, app_context: AppContext, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
-        # TODO: we shouldn't know about these tab types here
+        # TODO(#220): we shouldn't know about these tab types here
         self.tabs = {}
         self.panes: list[CustomTabWidget] = []
         self._pane_registry: dict[int, CustomTabWidget] = {}
@@ -527,7 +527,7 @@ class TabContainer(PWidget):
             self.logger.warning("Failed to persist tab session: %s", e)
 
     def _create_tab(self, item):
-        #TODO: move to a separate factory class
+        # TODO(#220): move to a separate factory class
         if item is None:
             raise ValueError("Item cannot be None")
 
@@ -766,4 +766,4 @@ class TabContainer(PWidget):
                     tab_widget.load_dataset_data()  # Refresh to show new analysis column
 
 
-# TODO: ensure tab name is updated on item name change
+# TODO(#220): ensure tab name is updated on item name change

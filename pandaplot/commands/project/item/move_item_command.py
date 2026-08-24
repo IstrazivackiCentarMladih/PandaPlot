@@ -11,7 +11,7 @@ class MoveItemCommand(Command):
     Command to move an item between folders in the project structure.
     """
 
-    # TODO: avoid optional types
+    # TODO(#198): avoid optional types
     def __init__(self, app_context: AppContext, item_id: Optional[str] = None, item_type: Optional[str] = None,
                  source_folder_id: Optional[str] = None, target_folder_id: Optional[str] = None):
         super().__init__()

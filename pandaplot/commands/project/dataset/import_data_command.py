@@ -280,7 +280,7 @@ class ImportDataCommand(Command):
                         self.dataset_ids.append(dataset.id)
 
                         # Emit event
-                        # TODO: migrate to item created and create data class
+                        # TODO(#219): migrate to item created and create data class
                         self.app_state.event_bus.emit(
                             DatasetEvents.DATASET_CREATED,
                             {

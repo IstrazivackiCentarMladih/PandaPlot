@@ -132,7 +132,7 @@ class ProjectManager:
     
     def get_recent_projects(self) -> list:
         """Get list of recently opened projects."""
-        # TODO: Implement recent projects tracking
+        # TODO(#210): Implement recent projects tracking
         return []
     
     def validate_project_file(self, file_path: str) -> bool:
@@ -154,7 +154,5 @@ class ProjectManager:
                 return False
             
             return True
-
-            #TODO: Implement project file validation
         except Exception:
             return False

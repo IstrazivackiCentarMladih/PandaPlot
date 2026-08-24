@@ -40,7 +40,7 @@ class CommandExecutor:
 
             self.undo_stack.append(command)
             if len(self.undo_stack) > self.max_undo_levels:
-                #TODO: ensure we clean command references properly
+                # TODO(#220): ensure we clean command references properly
                 removed_command = self.undo_stack.pop(0)
                 self.logger.debug("Removed old command from undo stack: %s", removed_command.__class__.__name__)
                 
