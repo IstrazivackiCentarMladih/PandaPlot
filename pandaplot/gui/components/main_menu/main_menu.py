@@ -15,6 +15,7 @@ from pandaplot.commands.project.dataset.create_empty_dataset_command import (
 from pandaplot.commands.project.note import CreateNoteCommand
 from pandaplot.commands.project.project import (
     CloseProjectCommand,
+    LoadProjectCommand,
     NewProjectCommand,
     OpenProjectCommand,
     SaveProjectAsCommand,
@@ -128,6 +129,12 @@ class MainMenu(PMenuBar):
         # Help menu
         help_menu = QMenu("Help", self)
         self.addMenu(help_menu)
+
+        open_example_project_action = QAction("Open Example Project...", self)
+        open_example_project_action.triggered.connect(self.show_examples_dialog)
+        help_menu.addAction(open_example_project_action)
+
+        help_menu.addSeparator()
 
         about_action = QAction("About", self)
         about_action.triggered.connect(self.show_about_dialog)
@@ -288,6 +295,16 @@ class MainMenu(PMenuBar):
         from pandaplot.gui.dialogs.settings_dialog import SettingsDialog
         dialog = SettingsDialog(self.app_context, self.parent())
         dialog.exec()
+
+    def show_examples_dialog(self):
+        """Open the examples dialog and load the chosen example project, if any."""
+        from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
+
+        dialog = ExamplesDialog(self.app_context, self.parent())
+        if dialog.exec() and dialog.selected_path:
+            self.app_context.get_command_executor().execute_command(
+                LoadProjectCommand(self.app_context, dialog.selected_path)
+            )
 
     def show_about_dialog(self):
         """Show the about dialog."""
