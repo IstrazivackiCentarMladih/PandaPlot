@@ -43,7 +43,8 @@ class TransformPanel(SidebarPanel):
         super().__init__(app_context=app_context, parent=parent)
         self.current_dataset_tab = None
         self.current_dataset = None
-        
+        self._last_transform_error: Optional[str] = None
+
         # Initialize transform controller
         self.transform_controller = TransformController(app_context)
         
@@ -369,6 +370,8 @@ class TransformPanel(SidebarPanel):
         self.logger.error(
             "TransformPanel controller error for dataset %s: %s", dataset_id, error_message
         )
+        self._last_transform_error = error_message
+        self.preview_text.setPlainText(f"Transform failed: {error_message}")
     
     def on_controller_preview_ready(self, dataset_id: str, preview_data):
         """Handle preview data from controller."""
@@ -569,8 +572,9 @@ class TransformPanel(SidebarPanel):
             if not dataset_id:
                 self.logger.warning("TransformPanel: dataset id not available; aborting transform")
                 return
-            
+
             # Apply transformation through controller
+            self._last_transform_error = None
             success = self.transform_controller.apply_transformation(
                 dataset_id=dataset_id,
                 source_column=source_column,
@@ -578,7 +582,7 @@ class TransformPanel(SidebarPanel):
                 function_code=function_code,
                 replace_existing=replace_existing
             )
-            
+
             if success:
                 # The command emits the structured column-added / data-changed
                 # events that refresh the data tab and column-source selectors.
@@ -587,9 +591,15 @@ class TransformPanel(SidebarPanel):
                 self.clear_panel()
             else:
                 self.logger.error("TransformPanel: transform failed - see logs for details")
-            
+                # transform_controller.transform_failed is emitted synchronously and
+                # already wrote the specific message to preview_text; fall back to a
+                # generic one only if that signal wasn't the source of the failure.
+                if not self._last_transform_error:
+                    self.preview_text.setPlainText("Transform failed - see logs for details")
+
         except Exception as e:
             self.logger.error("TransformPanel: transform failed: %s", e, exc_info=True)
+            self.preview_text.setPlainText(f"Transform failed: {e}")
     
     def clear_panel(self):
         """Reset panel to initial state."""

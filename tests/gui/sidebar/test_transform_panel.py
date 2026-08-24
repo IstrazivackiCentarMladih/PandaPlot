@@ -45,3 +45,26 @@ def test_preview_button_click_invokes_update_preview(transform_panel):
     transform_panel.preview_btn.click()
 
     assert transform_panel.preview_text.toPlainText() == "No data available for preview"
+
+
+def test_controller_transform_failed_surfaces_message_in_preview(transform_panel):
+    transform_panel.on_controller_transform_failed(
+        "dataset-1", "Column 'a_x2' already exists. Choose a different name or enable replace option."
+    )
+
+    assert transform_panel.preview_text.toPlainText() == (
+        "Transform failed: Column 'a_x2' already exists. Choose a different name or enable replace option."
+    )
+
+
+def test_apply_transform_generic_failure_surfaces_message_when_no_signal_fired(transform_panel, app_context):
+    transform_panel.current_dataset = Mock(id="dataset-1", data=Mock(columns=["a"]))
+    transform_panel.source_column_list.addItem("a")
+    transform_panel.source_column_list.item(0).setSelected(True)
+    transform_panel.new_column_name.setText("b")
+    transform_panel.function_text.setPlainText("x * 2")
+    transform_panel.transform_controller.apply_transformation = Mock(return_value=False)
+
+    transform_panel.apply_transform()
+
+    assert transform_panel.preview_text.toPlainText() == "Transform failed - see logs for details"
