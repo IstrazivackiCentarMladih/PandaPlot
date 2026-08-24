@@ -121,12 +121,8 @@ class ChartAnalysisPanel(PWidget):
         form.addRow("Start index:", start_row)
 
         self.end_index = QSpinBox()
-        self.end_index.setMinimum(-1)
+        self.end_index.setMinimum(0)
         self.end_index.setMaximum(0)
-        self.end_index.setValue(-1)
-        self.end_index.setToolTip(
-            "Negative values count backward from the end (-1 = last point)."
-        )
         self.end_value_label = QLabel("–")
         end_row = QHBoxLayout()
         end_row.addWidget(self.end_index)
@@ -256,7 +252,9 @@ class ChartAnalysisPanel(PWidget):
     def _build_parameters(self) -> dict:
         params: dict = {
             "start_index": self.start_index.value(),
-            "end_index": self.end_index.value(),
+            # end_index shown in the UI is the last included point; the
+            # engine takes an exclusive slice boundary.
+            "end_index": self.end_index.value() + 1,
         }
         op = self.operation_combo.currentData()
         if op == AnalysisType.DERIVATIVE and hasattr(self, "method_combo"):
@@ -328,7 +326,7 @@ class ChartAnalysisPanel(PWidget):
     def clear_inputs(self):
         self.result_name.clear()
         self.start_index.setValue(0)
-        self.end_index.setValue(-1)
+        self.end_index.setValue(self.end_index.maximum())
         self.operation_combo.setCurrentIndex(0)
         self.preview_text.clear()
         self._update_range_labels()
@@ -360,16 +358,15 @@ class ChartAnalysisPanel(PWidget):
     def _on_source_changed(self):
         source = self._selected_source()
         if source is None:
-            self.start_index.setMaximum(0)
-            self.end_index.setMinimum(-1)
-            self.end_index.setMaximum(0)
+            last = 0
         else:
-            n = self._series_length(*source)
-            self.start_index.setMaximum(max(n - 1, 0))
-            # -n lets the end index count all the way backward to the start,
-            # same as Python's negative indexing (-1 = last point).
-            self.end_index.setMinimum(-n if n > 0 else -1)
-            self.end_index.setMaximum(n)
+            last = max(self._series_length(*source) - 1, 0)
+        self.start_index.setMaximum(last)
+        self.end_index.setMaximum(last)
+        # Default to the whole series — the last included point — whenever
+        # the source changes, since a previous value may no longer make
+        # sense against the new series' length.
+        self.end_index.setValue(last)
         self._auto_name()
         self._update_range_labels()
 

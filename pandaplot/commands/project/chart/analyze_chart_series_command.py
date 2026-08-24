@@ -130,10 +130,6 @@ class AnalyzeChartSeriesCommand(Command):
     def resolve_point(self, index: int) -> Optional[tuple[float, float]]:
         """Return the resolved (x, y) at a source-series index, or None.
 
-        ``index`` follows Python indexing: negative values count backward
-        from the end (-1 is the last point), matching the slicing the
-        analysis engine itself applies to ``start_index``/``end_index``.
-
         Used by the UI to show the actual data point a segment start/end
         index refers to, on the same resolved series ``source_length`` uses.
         """
@@ -142,10 +138,9 @@ class AnalyzeChartSeriesCommand(Command):
             if chart is None:
                 return None
             x, y, _x_label, _y_label = self._resolve_xy(chart)
-            resolved = index + len(x) if index < 0 else index
-            if not (0 <= resolved < len(x)):
+            if not (0 <= index < len(x)):
                 return None
-            return float(x.iloc[resolved]), float(y.iloc[resolved])
+            return float(x.iloc[index]), float(y.iloc[index])
         except (ValueError, AttributeError):
             return None
 

@@ -58,7 +58,7 @@ class IntegralDialog(BaseAnalysisDialog):
             y_data = self.dataset.data[y_col]
             
             start_idx = self.start_index.value()
-            end_idx = self.end_index.value() if self.end_index.value() != -1 else len(x_data)
+            end_idx = self.end_index.value() + 1
             
             result = AnalysisEngine.calculate_integral(
                 x_data, y_data, start_idx, end_idx

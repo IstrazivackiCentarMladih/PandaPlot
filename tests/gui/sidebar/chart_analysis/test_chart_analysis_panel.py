@@ -69,8 +69,9 @@ class TestChartAnalysisPanelRangeLabels:
 
         assert panel.start_value_label.text() == "x=1, y=1"
 
-    def test_end_label_shows_last_point_for_special_end_value(self, panel):
-        assert panel.end_index.value() == -1
+    def test_end_index_defaults_to_the_last_point(self, panel):
+        assert panel.end_index.minimum() == 0
+        assert panel.end_index.value() == 100
         assert panel.end_value_label.text() == "x=10, y=100"
 
     def test_end_label_updates_on_explicit_index(self, panel):
@@ -78,9 +79,13 @@ class TestChartAnalysisPanelRangeLabels:
 
         assert panel.end_value_label.text() == "x=5, y=25"
 
-    def test_end_index_can_go_further_backward_than_minus_one(self, panel):
-        assert panel.end_index.minimum() == -101
-
-        panel.end_index.setValue(-2)
+    def test_end_index_shrinks_the_segment_when_decreased(self, panel):
+        panel.end_index.setValue(panel.end_index.value() - 1)
 
         assert panel.end_value_label.text() == "x=9.9, y=98.01"
+
+    def test_build_parameters_sends_inclusive_end_as_exclusive_boundary(self, panel):
+        panel.start_index.setValue(0)
+        panel.end_index.setValue(50)
+
+        assert panel._build_parameters()["end_index"] == 51

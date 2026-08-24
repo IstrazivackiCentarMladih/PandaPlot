@@ -117,11 +117,8 @@ class BaseAnalysisDialog(QDialog):
         layout.addRow("Start Index:", start_row)
 
         self.end_index = QSpinBox()
-        self.end_index.setMinimum(-1)
-        self.end_index.setValue(-1)
-        self.end_index.setToolTip(
-            "Negative values count backward from the end (-1 = last point)."
-        )
+        self.end_index.setMinimum(0)
+        self.end_index.setValue(0)
         self.end_value_label = QLabel("–")
         end_row = QHBoxLayout()
         end_row.addWidget(self.end_index)
@@ -138,11 +135,7 @@ class BaseAnalysisDialog(QDialog):
         self.y_column_combo.currentIndexChanged.connect(self._update_range_labels)
 
     def _resolve_point(self, index: int) -> Optional[tuple]:
-        """Return the resolved (x, y) at a dataset row index, or None.
-
-        ``index`` follows Python indexing: negative values count backward
-        from the end (-1 is the last row).
-        """
+        """Return the resolved (x, y) at a dataset row index, or None."""
         if self.dataset is None or self.dataset.data is None:
             return None
         x_col = self.x_column_combo.currentText()
@@ -152,12 +145,10 @@ class BaseAnalysisDialog(QDialog):
             return None
         x_data = self.dataset.data[x_col]
         y_data = self.dataset.data[y_col]
-        n = len(x_data)
-        resolved = index + n if index < 0 else index
-        if not (0 <= resolved < n):
+        if not (0 <= index < len(x_data)):
             return None
         try:
-            return float(x_data.iloc[resolved]), float(y_data.iloc[resolved])
+            return float(x_data.iloc[index]), float(y_data.iloc[index])
         except (TypeError, ValueError):
             return None
 
@@ -206,13 +197,13 @@ class BaseAnalysisDialog(QDialog):
                 self.x_column_combo.setCurrentIndex(0)
                 self.y_column_combo.setCurrentIndex(0)
             
-            # Update max/min values for range selection. The end index's
-            # minimum extends down to -max_rows so it can count backward
-            # from the end the same way Python negative indexing does.
-            max_rows = len(self.dataset.data)
-            self.start_index.setMaximum(max_rows - 1)
-            self.end_index.setMinimum(-max_rows if max_rows > 0 else -1)
-            self.end_index.setMaximum(max_rows)
+            # Update range bounds. end_index is the last included row,
+            # inclusive — same convention as start_index — and defaults to
+            # the actual last row so decreasing it shrinks the segment.
+            last = max(len(self.dataset.data) - 1, 0)
+            self.start_index.setMaximum(last)
+            self.end_index.setMaximum(last)
+            self.end_index.setValue(last)
     
     def preview_analysis(self):
         """Preview the analysis - to be implemented by subclasses."""
@@ -227,7 +218,9 @@ class BaseAnalysisDialog(QDialog):
             "replace_existing": self.replace_existing.isChecked(),
             "parameters": {
                 "start_index": self.start_index.value(),
-                "end_index": self.end_index.value() if self.end_index.value() != -1 else -1
+                # end_index shown in the UI is the last included row; the
+                # engine takes an exclusive slice boundary.
+                "end_index": self.end_index.value() + 1,
             }
         }
         return base_config

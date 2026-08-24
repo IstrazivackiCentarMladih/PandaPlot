@@ -31,16 +31,22 @@ class TestBaseAnalysisDialogRangeLabels:
 
         assert dialog.start_value_label.text() == "x=1, y=1"
 
-    def test_end_label_shows_last_point_by_default(self, dialog):
-        assert dialog.end_index.value() == -1
+    def test_end_index_defaults_to_the_last_point(self, dialog):
+        assert dialog.end_index.minimum() == 0
+        assert dialog.end_index.value() == 100
         assert dialog.end_value_label.text() == "x=10, y=100"
 
-    def test_end_index_can_go_further_backward_than_minus_one(self, dialog):
-        assert dialog.end_index.minimum() == -101
-
-        dialog.end_index.setValue(-2)
+    def test_end_index_shrinks_the_segment_when_decreased(self, dialog):
+        dialog.end_index.setValue(dialog.end_index.value() - 1)
 
         assert dialog.end_value_label.text() == "x=9.9, y=98.01"
+
+    def test_get_analysis_config_sends_inclusive_end_as_exclusive_boundary(self, dialog):
+        dialog.start_index.setValue(0)
+        dialog.end_index.setValue(50)
+        dialog.result_column_name.setText("result")
+
+        assert dialog.get_analysis_config()["parameters"]["end_index"] == 51
 
     def test_labels_update_on_column_change(self, dialog):
         dialog.start_index.setValue(20)
