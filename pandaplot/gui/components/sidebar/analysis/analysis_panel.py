@@ -459,7 +459,7 @@ class AnalysisPanel(SidebarPanel):
                 preview_text = f"Analysis Preview: {config['analysis_type'].title()}\n"
                 preview_text += f"Columns: {config['x_column']} → {config['y_column']}\n"
                 preview_text += f"Data Range: {config['parameters']['start_index']} to "
-                preview_text += f"{config['parameters']['end_index']}\n"
+                preview_text += f"{self.end_index.value()}\n"
                 preview_text += f"Result Points: {len(result.result_data)}\n\n"
                 preview_text += "Statistics:\n"
                 for key, value in result.statistics.items():

@@ -59,6 +59,11 @@ class AnalyzeChartSeriesCommand(Command):
         # State for undo/redo.
         self.result_dataset_id: Optional[str] = None
 
+        # Cache for _resolve_xy_cached: the resolved series don't change over
+        # the command's lifetime, and the UI calls it repeatedly (once per
+        # segment bound, on every spinbox tick) to resolve/bound indices.
+        self._resolved_xy_cache: Optional[tuple[pd.Series, pd.Series, str, str]] = None
+
     # -- source resolution ------------------------------------------------
 
     def _get_chart(self) -> Optional[Chart]:
@@ -111,6 +116,18 @@ class AnalyzeChartSeriesCommand(Command):
         label = series.label or y_name
         return x, y, x_label, label
 
+    def _resolve_xy_cached(self, chart: Chart) -> tuple[pd.Series, pd.Series, str, str]:
+        """``_resolve_xy``, memoized for the lifetime of this command.
+
+        ``source_length``/``resolve_point`` are called repeatedly by the UI
+        (once per segment bound, on every spinbox tick); re-running the
+        NaN-dropping/``to_numeric`` work on every call is wasted since the
+        resolved series can't change within a single command instance.
+        """
+        if self._resolved_xy_cache is None:
+            self._resolved_xy_cache = self._resolve_xy(chart)
+        return self._resolved_xy_cache
+
     def source_length(self) -> int:
         """Best-effort length of the resolved series, after NaN-dropping.
 
@@ -122,7 +139,7 @@ class AnalyzeChartSeriesCommand(Command):
             chart = self._get_chart()
             if chart is None:
                 return 0
-            x, _y, _x_label, _y_label = self._resolve_xy(chart)
+            x, _y, _x_label, _y_label = self._resolve_xy_cached(chart)
             return len(x)
         except (ValueError, AttributeError):
             return 0
@@ -137,7 +154,7 @@ class AnalyzeChartSeriesCommand(Command):
             chart = self._get_chart()
             if chart is None:
                 return None
-            x, y, _x_label, _y_label = self._resolve_xy(chart)
+            x, y, _x_label, _y_label = self._resolve_xy_cached(chart)
             if not (0 <= index < len(x)):
                 return None
             return float(x.iloc[index]), float(y.iloc[index])

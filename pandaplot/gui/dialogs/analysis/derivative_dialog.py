@@ -81,7 +81,7 @@ class DerivativeDialog(BaseAnalysisDialog):
             # Display preview
             preview_text = "Derivative Analysis Preview\n"
             preview_text += f"Method: {method.title()}\n"
-            preview_text += f"Data Range: {start_idx} to {end_idx}\n"
+            preview_text += f"Data Range: {start_idx} to {self.end_index.value()}\n"
             preview_text += f"Points: {len(result.result_data)}\n\n"
             preview_text += "Statistics:\n"
             for key, value in result.statistics.items():
