@@ -10,6 +10,7 @@ import pandas as pd
 from pandaplot.analysis import PreprocessingEngine, PreprocessingMethod
 from pandaplot.analysis.preprocessing_types import PREPROCESSING_METHODS
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.dataset.column_change_events import emit_columns_changed
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 
@@ -77,6 +78,8 @@ class PreprocessColumnCommand(Command):
 
             df = self.dataset.data.copy()
             self._undo_state = []
+            added_columns: List[str] = []
+            replaced_columns: List[str] = []
 
             for source_column in self.source_columns:
                 result = PreprocessingEngine.transform(
@@ -87,10 +90,15 @@ class PreprocessColumnCommand(Command):
                 existed_before = target in df.columns
                 original = df[target].copy() if existed_before else None
                 self._undo_state.append((target, existed_before, original))
+                (replaced_columns if existed_before else added_columns).append(target)
 
                 df[target] = result.data
 
             self.dataset.set_data(df)
+            emit_columns_changed(
+                self.app_context, self.dataset_id, self.dataset.data,
+                added_columns, replaced_columns,
+            )
             self.logger.info(
                 "Preprocessing applied: %s columns transformed with '%s'",
                 len(self.source_columns), self.method.value,
@@ -113,20 +121,59 @@ class PreprocessColumnCommand(Command):
                 return False
 
             df = self.dataset.data.copy()
+            removed_positions: List[int] = []
+            restored_columns: List[str] = []
             # Reverse order so re-created columns are handled before their sources.
             for target, existed_before, original in reversed(self._undo_state):
                 if existed_before and original is not None:
                     df[target] = original
+                    restored_columns.append(target)
                 elif target in df.columns:
+                    removed_positions.append(int(df.columns.get_loc(target)))
                     df = df.drop(columns=[target])
 
             self.dataset.set_data(df)
+            self._emit_undo_events(removed_positions, restored_columns)
             self.logger.info("Preprocessing undone (%s)", self.method.value)
             return True
 
         except Exception as e:
             self.logger.error("Preprocessing undo failed: %s", e)
             return False
+
+    def _emit_undo_events(self, removed_positions, restored_columns) -> None:
+        """Refresh the table after an undo (columns dropped / values restored)."""
+        from pandaplot.models.events.event_data import (
+            DatasetColumnsRemovedData,
+            DatasetDataChangedData,
+        )
+        from pandaplot.models.events.event_types import (
+            DatasetEvents,
+            DatasetOperationEvents,
+        )
+
+        assert self.dataset is not None and self.dataset.data is not None
+        event_bus = self.app_context.get_app_state().event_bus
+        if removed_positions:
+            event_bus.emit(
+                DatasetOperationEvents.DATASET_COLUMN_REMOVED,
+                DatasetColumnsRemovedData(
+                    dataset_id=self.dataset_id,
+                    column_positions=sorted(removed_positions),
+                ).to_dict(),
+            )
+        if restored_columns:
+            last_row = max(len(self.dataset.data) - 1, 0)
+            for name in restored_columns:
+                col = int(self.dataset.data.columns.get_loc(name))
+                event_bus.emit(
+                    DatasetEvents.DATASET_DATA_CHANGED,
+                    DatasetDataChangedData(
+                        dataset_id=self.dataset_id,
+                        start_index=(0, col),
+                        end_index=(last_row, col),
+                    ).to_dict(),
+                )
 
     @override
     def redo(self) -> bool:

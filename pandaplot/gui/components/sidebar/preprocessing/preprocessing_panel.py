@@ -316,11 +316,8 @@ class PreprocessingPanel(SidebarPanel):
             success = self.app_context.get_command_executor().execute_command(command)
 
             if success:
-                self.publish_event(DatasetOperationEvents.DATASET_COLUMN_ADDED, {
-                    "dataset_id": self.current_dataset_id,
-                    "operation": "preprocessing",
-                    "source": "preprocessing_panel",
-                })
+                # The command emits the structured column-added / data-changed
+                # events that refresh the data tab and column-source selectors.
                 count = len(config["source_columns"])
                 self.preview_text.setText(
                     f"✅ Preprocessing applied to {count} column(s)."

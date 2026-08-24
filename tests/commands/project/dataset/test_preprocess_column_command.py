@@ -28,6 +28,7 @@ def app_context_with_project():
     app_state = Mock(spec=AppState)
     app_state.has_project = True
     app_state.current_project = project
+    app_state.event_bus = Mock()
     app_context.get_app_state.return_value = app_state
     return app_context, project, dataset
 
