@@ -87,3 +87,43 @@ class TestMainMenuHelpMenu:
             menu.show_examples_dialog()
 
         command_executor.execute_command.assert_not_called()
+
+    def test_open_example_project_confirms_before_replacing_open_project(self, app_context):
+        app_context.get_app_state().has_project = True
+        menu = MainMenu(parent=None, app_context=app_context)
+        command_executor = Mock()
+        app_context.get_command_executor.return_value = command_executor
+        ui_controller = Mock()
+        ui_controller.show_question.return_value = True
+        app_context.get_ui_controller.return_value = ui_controller
+
+        with patch("pandaplot.gui.dialogs.examples_dialog.ExamplesDialog") as dialog_cls:
+            dialog = dialog_cls.return_value
+            dialog.exec.return_value = True
+            dialog.selected_path = "/examples/sample.pplot"
+
+            menu.show_examples_dialog()
+
+        ui_controller.show_question.assert_called_once()
+        command_executor.execute_command.assert_called_once()
+        executed_command = command_executor.execute_command.call_args[0][0]
+        assert executed_command.file_path == "/examples/sample.pplot"
+
+    def test_open_example_project_does_not_load_when_replacement_declined(self, app_context):
+        app_context.get_app_state().has_project = True
+        menu = MainMenu(parent=None, app_context=app_context)
+        command_executor = Mock()
+        app_context.get_command_executor.return_value = command_executor
+        ui_controller = Mock()
+        ui_controller.show_question.return_value = False
+        app_context.get_ui_controller.return_value = ui_controller
+
+        with patch("pandaplot.gui.dialogs.examples_dialog.ExamplesDialog") as dialog_cls:
+            dialog = dialog_cls.return_value
+            dialog.exec.return_value = True
+            dialog.selected_path = "/examples/sample.pplot"
+
+            menu.show_examples_dialog()
+
+        ui_controller.show_question.assert_called_once()
+        command_executor.execute_command.assert_not_called()
