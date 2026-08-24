@@ -127,6 +127,23 @@ class AnalyzeChartSeriesCommand(Command):
         except (ValueError, AttributeError):
             return 0
 
+    def resolve_point(self, index: int) -> Optional[tuple[float, float]]:
+        """Return the resolved (x, y) at a source-series index, or None.
+
+        Used by the UI to show the actual data point a segment start/end
+        index refers to, on the same resolved series ``source_length`` uses.
+        """
+        try:
+            chart = self._get_chart()
+            if chart is None:
+                return None
+            x, y, _x_label, _y_label = self._resolve_xy(chart)
+            if not (0 <= index < len(x)):
+                return None
+            return float(x.iloc[index]), float(y.iloc[index])
+        except (ValueError, AttributeError):
+            return None
+
     # -- analysis ---------------------------------------------------------
 
     def _run_engine(self, x: pd.Series, y: pd.Series):

@@ -140,3 +140,17 @@ class TestAnalyzeChartSeriesCommand:
         chart.fit_data[0].source_dataset_id = "chart-1"
         command = _cmd(ctx, source_kind="fit", analysis_type=AnalysisType.INTEGRAL)
         assert command.execute() is True
+
+    def test_resolve_point_returns_xy_at_index(self, ctx):
+        command = _cmd(ctx, source_kind="series")
+        point = command.resolve_point(10)
+        assert point == pytest.approx((1.0, 1.0))
+
+    def test_resolve_point_out_of_range_returns_none(self, ctx):
+        command = _cmd(ctx, source_kind="series")
+        assert command.resolve_point(101) is None
+        assert command.resolve_point(-1) is None
+
+    def test_resolve_point_invalid_source_returns_none(self, ctx):
+        command = _cmd(ctx, source_kind="fit", source_index=9)
+        assert command.resolve_point(0) is None

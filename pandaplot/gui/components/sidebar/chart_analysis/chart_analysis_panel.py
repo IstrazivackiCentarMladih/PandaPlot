@@ -110,16 +110,27 @@ class ChartAnalysisPanel(PWidget):
     def _create_range_section(self, layout):
         group = QGroupBox("Segment (index range)")
         form = QFormLayout(group)
+
         self.start_index = QSpinBox()
         self.start_index.setMinimum(0)
         self.start_index.setMaximum(0)
+        self.start_value_label = QLabel("–")
+        start_row = QHBoxLayout()
+        start_row.addWidget(self.start_index)
+        start_row.addWidget(self.start_value_label)
+        form.addRow("Start index:", start_row)
+
         self.end_index = QSpinBox()
         self.end_index.setMinimum(-1)
         self.end_index.setMaximum(0)
         self.end_index.setValue(-1)
         self.end_index.setSpecialValueText("End")
-        form.addRow("Start index:", self.start_index)
-        form.addRow("End index:", self.end_index)
+        self.end_value_label = QLabel("–")
+        end_row = QHBoxLayout()
+        end_row.addWidget(self.end_index)
+        end_row.addWidget(self.end_value_label)
+        form.addRow("End index:", end_row)
+
         layout.addWidget(group)
 
     def _create_result_section(self, layout):
@@ -157,6 +168,8 @@ class ChartAnalysisPanel(PWidget):
         self.operation_combo.currentIndexChanged.connect(self._update_parameters_ui)
         self.operation_combo.currentIndexChanged.connect(self._auto_name)
         self.source_combo.currentIndexChanged.connect(self._on_source_changed)
+        self.start_index.valueChanged.connect(self._update_range_labels)
+        self.end_index.valueChanged.connect(self._update_range_labels)
 
     # -- dynamic parameters ----------------------------------------------
 
@@ -316,26 +329,31 @@ class ChartAnalysisPanel(PWidget):
         self.end_index.setValue(-1)
         self.operation_combo.setCurrentIndex(0)
         self.preview_text.clear()
+        self._update_range_labels()
 
     # -- chart context ----------------------------------------------------
 
-    def _series_length(self, kind: str, index: int) -> int:
-        """Best-effort length of a source series, for the segment bounds.
+    def _range_command(self, kind: str, index: int) -> Optional[AnalyzeChartSeriesCommand]:
+        """Build a throwaway command to resolve the selected series.
 
-        Delegates to the command's own resolution so the bounds match what
-        will actually be analyzed — a data series' raw row count can be
-        larger once rows with missing x/y are dropped.
+        Used for the segment bounds and index → (x, y) previews, so both
+        stay in sync with what will actually be analyzed — a data series'
+        raw row count can be larger once rows with missing x/y are dropped.
         """
         if self.current_chart is None or self.current_chart_id is None:
-            return 0
-        command = AnalyzeChartSeriesCommand(
+            return None
+        return AnalyzeChartSeriesCommand(
             self.app_context,
             chart_id=self.current_chart_id,
             source_kind=kind,
             source_index=index,
             analysis_type=AnalysisType.DERIVATIVE,
         )
-        return command.source_length()
+
+    def _series_length(self, kind: str, index: int) -> int:
+        """Best-effort length of a source series, for the segment bounds."""
+        command = self._range_command(kind, index)
+        return command.source_length() if command else 0
 
     def _on_source_changed(self):
         source = self._selected_source()
@@ -347,6 +365,27 @@ class ChartAnalysisPanel(PWidget):
             self.start_index.setMaximum(max(n - 1, 0))
             self.end_index.setMaximum(n)
         self._auto_name()
+        self._update_range_labels()
+
+    def _format_point(self, point: Optional[tuple[float, float]]) -> str:
+        if point is None:
+            return "–"
+        x, y = point
+        return f"x={x:.4g}, y={y:.4g}"
+
+    def _update_range_labels(self):
+        source = self._selected_source()
+        command = self._range_command(*source) if source else None
+        if command is None:
+            self.start_value_label.setText("–")
+            self.end_value_label.setText("–")
+            return
+
+        n = command.source_length()
+        end_value = self.end_index.value()
+        end_idx = (n - 1) if end_value == -1 else end_value
+        self.start_value_label.setText(self._format_point(command.resolve_point(self.start_index.value())))
+        self.end_value_label.setText(self._format_point(command.resolve_point(end_idx)))
 
     def _auto_name(self):
         if self.source_combo.count() == 0:
@@ -450,6 +489,9 @@ class ChartAnalysisPanel(PWidget):
         self.source_hint.setStyleSheet(
             f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
         )
+        value_label_style = f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
+        self.start_value_label.setStyleSheet(value_label_style)
+        self.end_value_label.setStyleSheet(value_label_style)
         self.apply_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {accent};
