@@ -185,6 +185,8 @@ class AnalysisPanel(SidebarPanel):
         group = QGroupBox("Data Range")
         group_layout = QFormLayout()
 
+        # Both spinboxes show 1-based row numbers, matching the row numbers
+        # in the dataset table (pandas_table_model.py shows "row + 1").
         self.start_index = QSpinBox()
         self.start_index.setMinimum(0)
         self.start_index.setValue(0)
@@ -192,7 +194,7 @@ class AnalysisPanel(SidebarPanel):
         start_row = QHBoxLayout()
         start_row.addWidget(self.start_index)
         start_row.addWidget(self.start_value_label)
-        group_layout.addRow("Start Index:", start_row)
+        group_layout.addRow("Start Row:", start_row)
 
         self.end_index = QSpinBox()
         self.end_index.setMinimum(0)
@@ -201,7 +203,7 @@ class AnalysisPanel(SidebarPanel):
         end_row = QHBoxLayout()
         end_row.addWidget(self.end_index)
         end_row.addWidget(self.end_value_label)
-        group_layout.addRow("End Index:", end_row)
+        group_layout.addRow("End Row:", end_row)
 
         self.start_index.valueChanged.connect(self._update_range_labels)
         self.end_index.valueChanged.connect(self._update_range_labels)
@@ -211,8 +213,8 @@ class AnalysisPanel(SidebarPanel):
         group.setLayout(group_layout)
         layout.addWidget(group)
 
-    def _resolve_point(self, index: int) -> Optional[tuple]:
-        """Return the resolved (x, y) at a dataset row index, or None."""
+    def _resolve_point(self, row_number: int) -> Optional[tuple]:
+        """Return the resolved (x, y) at a 1-based row number, or None."""
         if self.current_dataset is None or not hasattr(self.current_dataset, "data") \
                 or self.current_dataset.data is None:
             return None
@@ -221,6 +223,7 @@ class AnalysisPanel(SidebarPanel):
         df = self.current_dataset.data
         if not x_col or not y_col or x_col not in df.columns or y_col not in df.columns:
             return None
+        index = row_number - 1
         if not (0 <= index < len(df)):
             return None
         try:
@@ -336,13 +339,16 @@ class AnalysisPanel(SidebarPanel):
             self.x_column_combo.setCurrentIndex(0)
             self.y_column_combo.setCurrentIndex(0)
         
-        # Update range bounds. end_index is the last included row,
-        # inclusive — same convention as start_index — and defaults to
-        # the actual last row so decreasing it shrinks the segment.
-        last = max(len(df) - 1, 0)
-        self.start_index.setMaximum(last)
-        self.end_index.setMaximum(last)
-        self.end_index.setValue(last)
+        # Both spinboxes show 1-based row numbers (row 1..row_count),
+        # matching the dataset table. end_index defaults to the last row so
+        # decreasing it shrinks the segment.
+        row_count = len(df)
+        lo = 1 if row_count > 0 else 0
+        self.start_index.setMinimum(lo)
+        self.start_index.setMaximum(row_count)
+        self.end_index.setMinimum(lo)
+        self.end_index.setMaximum(row_count)
+        self.end_index.setValue(row_count)
         self._update_range_labels()
     
     def on_analysis_type_changed(self):
@@ -458,7 +464,7 @@ class AnalysisPanel(SidebarPanel):
                 # Display preview
                 preview_text = f"Analysis Preview: {config['analysis_type'].title()}\n"
                 preview_text += f"Columns: {config['x_column']} → {config['y_column']}\n"
-                preview_text += f"Data Range: {config['parameters']['start_index']} to "
+                preview_text += f"Data Range: {self.start_index.value()} to "
                 preview_text += f"{self.end_index.value()}\n"
                 preview_text += f"Result Points: {len(result.result_data)}\n\n"
                 preview_text += "Statistics:\n"
@@ -577,10 +583,12 @@ class AnalysisPanel(SidebarPanel):
             "new_column_name": self.result_column_name.text().strip(),
             "replace_existing": self.replace_existing.isChecked(),
             "parameters": {
-                "start_index": self.start_index.value(),
-                # end_index shown in the UI is the last included row; the
-                # engine takes an exclusive slice boundary.
-                "end_index": self.end_index.value() + 1,
+                # The spinboxes show 1-based row numbers; the engine wants a
+                # 0-based start and an exclusive end boundary, which is the
+                # displayed end row number unchanged (row N inclusive == an
+                # exclusive boundary of N in 0-based terms).
+                "start_index": self.start_index.value() - 1,
+                "end_index": self.end_index.value(),
             }
         }
         
@@ -627,7 +635,7 @@ class AnalysisPanel(SidebarPanel):
         """Clear all input fields."""
         self.result_column_name.clear()
         self.replace_existing.setChecked(False)
-        self.start_index.setValue(0)
+        self.start_index.setValue(self.start_index.minimum())
         self.end_index.setValue(self.end_index.maximum())
         self.preview_text.clear()
         

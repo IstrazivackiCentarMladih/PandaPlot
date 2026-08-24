@@ -107,6 +107,8 @@ class BaseAnalysisDialog(QDialog):
         group = QGroupBox("Data Range")
         layout = QFormLayout()
 
+        # Both spinboxes show 1-based row numbers, matching the row numbers
+        # in the dataset table (pandas_table_model.py shows "row + 1").
         self.start_index = QSpinBox()
         self.start_index.setMinimum(0)
         self.start_index.setValue(0)
@@ -114,7 +116,7 @@ class BaseAnalysisDialog(QDialog):
         start_row = QHBoxLayout()
         start_row.addWidget(self.start_index)
         start_row.addWidget(self.start_value_label)
-        layout.addRow("Start Index:", start_row)
+        layout.addRow("Start Row:", start_row)
 
         self.end_index = QSpinBox()
         self.end_index.setMinimum(0)
@@ -123,7 +125,7 @@ class BaseAnalysisDialog(QDialog):
         end_row = QHBoxLayout()
         end_row.addWidget(self.end_index)
         end_row.addWidget(self.end_value_label)
-        layout.addRow("End Index:", end_row)
+        layout.addRow("End Row:", end_row)
 
         group.setLayout(layout)
         return group
@@ -134,8 +136,8 @@ class BaseAnalysisDialog(QDialog):
         self.x_column_combo.currentIndexChanged.connect(self._update_range_labels)
         self.y_column_combo.currentIndexChanged.connect(self._update_range_labels)
 
-    def _resolve_point(self, index: int) -> Optional[tuple]:
-        """Return the resolved (x, y) at a dataset row index, or None."""
+    def _resolve_point(self, row_number: int) -> Optional[tuple]:
+        """Return the resolved (x, y) at a 1-based row number, or None."""
         if self.dataset is None or self.dataset.data is None:
             return None
         x_col = self.x_column_combo.currentText()
@@ -145,6 +147,7 @@ class BaseAnalysisDialog(QDialog):
             return None
         x_data = self.dataset.data[x_col]
         y_data = self.dataset.data[y_col]
+        index = row_number - 1
         if not (0 <= index < len(x_data)):
             return None
         try:
@@ -197,13 +200,16 @@ class BaseAnalysisDialog(QDialog):
                 self.x_column_combo.setCurrentIndex(0)
                 self.y_column_combo.setCurrentIndex(0)
             
-            # Update range bounds. end_index is the last included row,
-            # inclusive — same convention as start_index — and defaults to
-            # the actual last row so decreasing it shrinks the segment.
-            last = max(len(self.dataset.data) - 1, 0)
-            self.start_index.setMaximum(last)
-            self.end_index.setMaximum(last)
-            self.end_index.setValue(last)
+            # Both spinboxes show 1-based row numbers (row 1..row_count),
+            # matching the dataset table. end_index defaults to the last row
+            # so decreasing it shrinks the segment.
+            row_count = len(self.dataset.data)
+            lo = 1 if row_count > 0 else 0
+            self.start_index.setMinimum(lo)
+            self.start_index.setMaximum(row_count)
+            self.end_index.setMinimum(lo)
+            self.end_index.setMaximum(row_count)
+            self.end_index.setValue(row_count)
     
     def preview_analysis(self):
         """Preview the analysis - to be implemented by subclasses."""
@@ -217,10 +223,12 @@ class BaseAnalysisDialog(QDialog):
             "new_column_name": self.result_column_name.text().strip(),
             "replace_existing": self.replace_existing.isChecked(),
             "parameters": {
-                "start_index": self.start_index.value(),
-                # end_index shown in the UI is the last included row; the
-                # engine takes an exclusive slice boundary.
-                "end_index": self.end_index.value() + 1,
+                # The spinboxes show 1-based row numbers; the engine wants a
+                # 0-based start and an exclusive end boundary, which is the
+                # displayed end row number unchanged (row N inclusive == an
+                # exclusive boundary of N in 0-based terms).
+                "start_index": self.start_index.value() - 1,
+                "end_index": self.end_index.value(),
             }
         }
         return base_config

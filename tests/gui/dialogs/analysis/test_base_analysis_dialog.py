@@ -26,30 +26,35 @@ def dialog(dataset):
 
 
 class TestBaseAnalysisDialogRangeLabels:
-    def test_start_label_updates_on_index_change(self, dialog):
-        dialog.start_index.setValue(10)
+    def test_start_label_updates_on_row_number_change(self, dialog):
+        # Row 11 (1-based) is the 0-based index 10.
+        dialog.start_index.setValue(11)
 
         assert dialog.start_value_label.text() == "x=1, y=1"
 
-    def test_end_index_defaults_to_the_last_point(self, dialog):
-        assert dialog.end_index.minimum() == 0
-        assert dialog.end_index.value() == 100
+    def test_end_row_defaults_to_the_last_row(self, dialog):
+        assert dialog.start_index.minimum() == 1
+        assert dialog.end_index.minimum() == 1
+        assert dialog.end_index.value() == 101
         assert dialog.end_value_label.text() == "x=10, y=100"
 
-    def test_end_index_shrinks_the_segment_when_decreased(self, dialog):
+    def test_end_row_shrinks_the_segment_when_decreased(self, dialog):
         dialog.end_index.setValue(dialog.end_index.value() - 1)
 
         assert dialog.end_value_label.text() == "x=9.9, y=98.01"
 
-    def test_get_analysis_config_sends_inclusive_end_as_exclusive_boundary(self, dialog):
-        dialog.start_index.setValue(0)
+    def test_get_analysis_config_converts_row_numbers_to_engine_indices(self, dialog):
+        dialog.start_index.setValue(1)
         dialog.end_index.setValue(50)
         dialog.result_column_name.setText("result")
 
-        assert dialog.get_analysis_config()["parameters"]["end_index"] == 51
+        params = dialog.get_analysis_config()["parameters"]
+        assert params["start_index"] == 0
+        assert params["end_index"] == 50
 
     def test_labels_update_on_column_change(self, dialog):
-        dialog.start_index.setValue(20)
+        # Row 21 (1-based) is the 0-based index 20.
+        dialog.start_index.setValue(21)
         assert dialog.start_value_label.text() == "x=2, y=4"
 
         dialog.x_column_combo.setCurrentText("sq")

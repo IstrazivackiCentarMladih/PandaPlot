@@ -46,24 +46,28 @@ class TestAnalysisPanelRangeLabels:
         assert panel.start_value_label.text() == "–"
         assert panel.end_value_label.text() == "–"
 
-    def test_end_index_defaults_to_the_last_point(self, panel):
-        assert panel.end_index.minimum() == 0
-        assert panel.end_index.value() == 100
+    def test_end_row_defaults_to_the_last_row(self, panel):
+        assert panel.start_index.minimum() == 1
+        assert panel.end_index.minimum() == 1
+        assert panel.end_index.value() == 101
         assert panel.end_value_label.text() == "x=10, y=100"
 
-    def test_start_label_updates_on_index_change(self, panel):
-        panel.start_index.setValue(10)
+    def test_start_label_updates_on_row_number_change(self, panel):
+        # Row 11 (1-based) is the 0-based index 10.
+        panel.start_index.setValue(11)
 
         assert panel.start_value_label.text() == "x=1, y=1"
 
-    def test_end_index_shrinks_the_segment_when_decreased(self, panel):
+    def test_end_row_shrinks_the_segment_when_decreased(self, panel):
         panel.end_index.setValue(panel.end_index.value() - 1)
 
         assert panel.end_value_label.text() == "x=9.9, y=98.01"
 
-    def test_get_analysis_config_sends_inclusive_end_as_exclusive_boundary(self, panel):
-        panel.start_index.setValue(0)
+    def test_get_analysis_config_converts_row_numbers_to_engine_indices(self, panel):
+        panel.start_index.setValue(1)
         panel.end_index.setValue(50)
         panel.result_column_name.setText("result")
 
-        assert panel.get_analysis_config()["parameters"]["end_index"] == 51
+        params = panel.get_analysis_config()["parameters"]
+        assert params["start_index"] == 0
+        assert params["end_index"] == 50
