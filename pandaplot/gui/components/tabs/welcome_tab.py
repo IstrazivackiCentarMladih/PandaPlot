@@ -401,7 +401,7 @@ class WelcomeTab(PWidget):
         button_layout.addWidget(desc_label)
         # No inline stylesheet; themed globally
         # Connect to a placeholder action (logging only)
-        button.clicked.connect(lambda: self.logger.info("Getting started step clicked: %s", title)) #TODO(#221): not implemented
+        button.clicked.connect(lambda: self.logger.info("Getting started step clicked: %s", title))  # TODO(#221): not implemented
         return button
     
     def create_recent_project_item(self, project_name, project_path, last_opened):

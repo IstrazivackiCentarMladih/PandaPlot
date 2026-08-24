@@ -527,7 +527,7 @@ class TabContainer(PWidget):
             self.logger.warning("Failed to persist tab session: %s", e)
 
     def _create_tab(self, item):
-        #TODO(#220): move to a separate factory class
+        # TODO(#220): move to a separate factory class
         if item is None:
             raise ValueError("Item cannot be None")
 
