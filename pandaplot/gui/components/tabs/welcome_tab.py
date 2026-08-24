@@ -401,7 +401,7 @@ class WelcomeTab(PWidget):
         button_layout.addWidget(desc_label)
         # No inline stylesheet; themed globally
         # Connect to a placeholder action (logging only)
-        button.clicked.connect(lambda: self.logger.info("Getting started step clicked: %s", title)) #TODO: not implemented
+        button.clicked.connect(lambda: self.logger.info("Getting started step clicked: %s", title)) #TODO(#221): not implemented
         return button
     
     def create_recent_project_item(self, project_name, project_path, last_opened):
@@ -479,7 +479,7 @@ class WelcomeTab(PWidget):
     
     def update_recent_projects(self):
         """Update the recent projects list."""
-        # TODO: this probably shouldn't be here, but somewhere else as we can update it in multiple places
+        # TODO(#221): this probably shouldn't be here, but somewhere else as we can update it in multiple places
         if not hasattr(self, "recent_projects_layout"):
             return
 
@@ -542,7 +542,7 @@ class WelcomeTab(PWidget):
         Falls back to empty list if unavailable.
         Each returned entry is dict: { name, path, last_opened }
         """
-        # TODO: this shouldn't be here as we might need recent projects in multiple places
+        # TODO(#221): this shouldn't be here as we might need recent projects in multiple places
         try:
             if not self.app_context:
                 return []

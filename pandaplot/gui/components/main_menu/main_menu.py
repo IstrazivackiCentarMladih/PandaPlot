@@ -121,7 +121,7 @@ class MainMenu(PMenuBar):
         self.addMenu(settings_menu)
 
         preferences_action = QAction("Preferences...", self)
-        # TODO: consider showing settings dialog by triggering event which invokes a command
+        # TODO(#216): consider showing settings dialog by triggering event which invokes a command
         preferences_action.triggered.connect(self.show_settings_dialog)
         settings_menu.addAction(preferences_action)
 
@@ -175,7 +175,7 @@ class MainMenu(PMenuBar):
     def _create_edit_menu(self) -> QMenu:
         edit_menu = QMenu("Edit", self)
 
-        # TODO: disable undo/redo when there are no actions to undo/redo
+        # TODO(#206): disable undo/redo when there are no actions to undo/redo
         # self.undo_button.setEnabled(False)  # start disabled
         # we need to listen to app event based on command executor
         undo_action = QAction("Undo", self)

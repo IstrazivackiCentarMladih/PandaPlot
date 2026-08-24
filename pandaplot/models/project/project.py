@@ -44,7 +44,7 @@ class Project:
             else:
                 self.logger.warning(f"Parent {parent_id} not found or not a collection, item: {item.id} {item.name} ")
                 # If parent not found or not a collection, add to root
-                # TODO: see if we need to handle this case differently, e.g. recursively search for a collection
+                # TODO(#219): see if we need to handle this case differently, e.g. recursively search for a collection
                 self.root.add_item(item)
         
         # Update index
@@ -140,7 +140,7 @@ class Project:
         project.schema_version = data.get("schema_version", 0)
         project.project_file_path = data.get("path", None)
 
-        # TODO: Parse root hierarchy when item types are fully implemented
+        # TODO(#219): Parse root hierarchy when item types are fully implemented
         return project
         
     def __str__(self):

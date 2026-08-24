@@ -28,7 +28,7 @@ class NewProjectCommand(Command):
         """Execute the new project command."""
         try:
             # Check if there's a current project - for now we'll just create new project
-            # TODO: Add unsaved changes tracking and confirmation later
+            # TODO(#209): Add unsaved changes tracking and confirmation later
             if self.app_state.has_project:
                 response = self.ui_controller.show_question(
                     "Create New Project",

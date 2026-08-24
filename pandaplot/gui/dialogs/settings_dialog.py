@@ -435,7 +435,7 @@ class SettingsDialog(PDialog):
         }
         self.current_settings = self.original_settings.copy()
 
-        # TODO: call apply only if the settings changed
+        # TODO(#214): call apply only if the settings changed
         self.apply_settings_to_ui()
 
     def setup_event_subscriptions(self):

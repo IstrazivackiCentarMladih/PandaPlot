@@ -2,7 +2,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
-# TODO: ui controller should be a facade for all UI-related interactions
+# TODO(#220): ui controller should be a facade for all UI-related interactions
 # This allows us to keep UI logic separate from business logic in the MVC pattern.
 # It can handle dialogs, notifications, and other user interactions.
 

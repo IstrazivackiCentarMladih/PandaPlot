@@ -160,8 +160,8 @@ class IconBar(PWidget):
         # Add stretch to push main panel buttons to top and settings to bottom
         self.button_layout.addStretch()
         
-        # TODO: use command instead of signal
-        # TODO: make settings button addition more generic so that icon bar doesn't know about settings
+        # TODO(#216): use command instead of signal
+        # TODO(#216): make settings button addition more generic so that icon bar doesn't know about settings
         self.settings_button = PButton(
             "⚙️", role="secondary", icon=True, on_click=self.settings_requested.emit
         )
