@@ -166,6 +166,17 @@ def test_chart_display_measurement_unit_json_roundtrip():
     assert loaded.chart_display.measurement_unit == LengthUnit.IN
 
 
+def test_chart_display_validate_coerces_raw_name_string_not_just_value():
+    """validate() must accept an enum *name* string (e.g. "IN"), not just a
+    value string (e.g. "in"), for consistency with update_from_mapping's
+    name-or-value parsing -- assigning a raw name directly and re-validating
+    must not silently reset to the CM fallback."""
+    cfg = ApplicationConfig.default()
+    cfg.chart_display.measurement_unit = "IN"  # type: ignore[assignment]
+    cfg.chart_display.validate()
+    assert cfg.chart_display.measurement_unit == LengthUnit.IN
+
+
 def test_reset_defaults_restores_chart_display():
     cfg = ApplicationConfig.default()
     default_chart_display = ApplicationConfig.default().chart_display

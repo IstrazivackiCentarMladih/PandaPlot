@@ -74,6 +74,13 @@ class SettingsDialog(PDialog):
         self._config_manager = self.app_context.get_manager(ConfigManager)
         self._applying = False  # guard to prevent feedback loops
         self._chart_size_unit = LengthUnit.CM
+        # Exact centimeter defaults as last loaded/saved -- kept separately
+        # from current_settings["chart_width"/"chart_height"], which is
+        # quantized to the display unit's precision (see load_current_settings)
+        # and would otherwise silently degrade these on every Apply, even
+        # when the user never touched the size fields.
+        self._chart_width_raw_cm = 20.0
+        self._chart_height_raw_cm = 15.0
 
         self._initialize()
         self.load_current_settings()
@@ -486,6 +493,8 @@ class SettingsDialog(PDialog):
             unit = LengthUnit.CM
         raw_width = getattr(display_cfg, "default_width_cm", 20)
         raw_height = getattr(display_cfg, "default_height_cm", 15)
+        self._chart_width_raw_cm = raw_width
+        self._chart_height_raw_cm = raw_height
 
         self.original_settings = {
             "auto_save": cfg.auto_save.enabled,
@@ -597,6 +606,23 @@ class SettingsDialog(PDialog):
         self._applying = True
         try:
             if self._config_manager:
+                # get_current_settings_from_ui() derives chart_width/height by
+                # converting the spin boxes' displayed (unit-rounded) value
+                # back to cm -- lossy for units like inches. When the user
+                # never actually touched the size fields, that round trip
+                # would otherwise silently degrade the stored centimeter
+                # defaults on every Apply. Detect "unchanged" by comparing at
+                # the display unit's own precision, and persist the exact
+                # last-known cm value in that case.
+                width_cm = self.current_settings.get("chart_width", 20)
+                height_cm = self.current_settings.get("chart_height", 15)
+                if quantize_cm(width_cm, self._chart_size_unit) == quantize_cm(
+                        self._chart_width_raw_cm, self._chart_size_unit):
+                    width_cm = self._chart_width_raw_cm
+                if quantize_cm(height_cm, self._chart_size_unit) == quantize_cm(
+                        self._chart_height_raw_cm, self._chart_size_unit):
+                    height_cm = self._chart_height_raw_cm
+
                 # Build mapping for config update
                 mapping = {
                     "auto_save": {
@@ -616,12 +642,14 @@ class SettingsDialog(PDialog):
                     },
                     "chart_display": {
                         "dpi": self.current_settings.get("chart_dpi", 100),
-                        "default_width_cm": self.current_settings.get("chart_width", 20),
-                        "default_height_cm": self.current_settings.get("chart_height", 15),
+                        "default_width_cm": width_cm,
+                        "default_height_cm": height_cm,
                         "measurement_unit": self.current_settings.get("measurement_unit", "cm"),
                     }
                 }
                 self._config_manager.update(mapping, save=True)
+                self._chart_width_raw_cm = width_cm
+                self._chart_height_raw_cm = height_cm
             self.settings_changed.emit(self.current_settings)
         finally:
             self._applying = False

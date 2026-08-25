@@ -125,9 +125,12 @@ class ChartDisplayConfig:
 	def validate(self) -> None:
 		if not isinstance(self.measurement_unit, LengthUnit):
 			try:
-				self.measurement_unit = LengthUnit(self.measurement_unit)
+				self.measurement_unit = LengthUnit(self.measurement_unit)  # by value
 			except ValueError:
-				self.measurement_unit = LengthUnit.CM
+				try:
+					self.measurement_unit = LengthUnit[str(self.measurement_unit).upper()]  # by name
+				except (KeyError, AttributeError):
+					self.measurement_unit = LengthUnit.CM
 		if self.dpi < 50:
 			self.dpi = 50
 		if self.dpi > 600:
