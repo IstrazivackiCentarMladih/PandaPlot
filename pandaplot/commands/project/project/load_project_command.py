@@ -19,6 +19,11 @@ class LoadProjectCommand(Command):
     - Updating app state which emits events to update UI
     """
 
+    # Loading a project sets AppState's modified flag explicitly (via
+    # load_project, called from _on_load_result) -- not a project edit
+    # itself.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext, file_path: str,
                  on_loaded: Optional[Callable[[Project], None]] = None):
         super().__init__()
@@ -155,9 +160,6 @@ class LoadProjectCommand(Command):
                         self.logger.warning("Failed to persist last_project_path: %s", e)
 
                     self.logger.info(f"Project '{project.name}' loaded successfully from '{file_path}'")
-
-                    # Show success message
-                    self.ui_controller.show_info_message("Project Loaded", f"Project '{project.name}' loaded successfully from:\n{file_path}")
 
                     if self.on_loaded:
                         try:

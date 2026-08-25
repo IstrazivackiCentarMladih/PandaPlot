@@ -51,6 +51,10 @@ def build_app_context() -> AppContext:
     session_manager = SessionPersistenceManager(config_manager)
     ui_controller = UIController()
     command_executor = CommandExecutor()
+    # Every command passes through CommandExecutor, so it's the single choke
+    # point to flag the project as having unsaved changes -- see
+    # Command.marks_project_modified.
+    command_executor.on_project_modified = app_state.mark_modified
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext

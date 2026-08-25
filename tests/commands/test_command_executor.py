@@ -451,6 +451,63 @@ class TestMaxUndoLevels:
         assert executor.undo_stack[-1] is another_cmd
 
 
+class NonModifyingMockCommand(MockCommand):
+    """A command that opts out of the dirty-tracking hook, mirroring the
+    project-lifecycle commands (new/open/load/save/close), which manage
+    AppState's modified flag themselves instead."""
+    marks_project_modified = False
+
+
+class TestProjectModifiedHook:
+    """Tests for CommandExecutor.on_project_modified, the hook AppState.
+    mark_modified is wired to (see app.py's build_app_context)."""
+
+    def test_successful_execute_calls_the_hook_by_default(self):
+        executor = CommandExecutor()
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.execute_command(MockCommand())
+
+        assert calls == ["modified"]
+
+    def test_opted_out_command_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.execute_command(NonModifyingMockCommand())
+
+        assert calls == []
+
+    def test_failed_execute_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.execute_command(MockCommand(should_fail=True, fail_on="execute"))
+
+        assert calls == []
+
+    def test_undo_and_redo_call_the_hook_for_a_default_command(self):
+        executor = CommandExecutor()
+        calls = []
+        executor.execute_command(MockCommand())
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.undo()
+        executor.redo()
+
+        assert calls == ["modified", "modified"]
+
+    def test_no_hook_configured_is_a_no_op(self):
+        """With on_project_modified left at its default None, execution must
+        not raise (CommandExecutor is usable standalone, e.g. in tests that
+        construct it without wiring AppState)."""
+        executor = CommandExecutor()
+        assert executor.execute_command(MockCommand()) is True
+
+
 class TestClearHistory:
     """Test cases for clear_history functionality."""
     

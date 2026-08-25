@@ -13,6 +13,10 @@ class NewProjectCommand(Command):
     This will clear the current project (with user confirmation if needed) and create a fresh project.
     """
 
+    # Creates a fresh project via load_project, which resets AppState's
+    # modified flag itself -- not a project edit.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -27,12 +31,13 @@ class NewProjectCommand(Command):
     def execute(self) -> bool:
         """Execute the new project command."""
         try:
-            # Check if there's a current project - for now we'll just create new project
-            # TODO(#209): Add unsaved changes tracking and confirmation later
-            if self.app_state.has_project:
+            # Only prompt if closing the current project would actually
+            # discard something -- an unmodified project has nothing to lose.
+            if self.app_state.has_project and self.app_state.is_modified:
                 response = self.ui_controller.show_question(
                     "Create New Project",
-                    "This will replace the current project.\nDo you want to continue?"
+                    "The current project has unsaved changes.\n"
+                    "Creating a new project will discard them.\n\nDo you want to continue?"
                 )
                 if not response:
                     return False  # User cancelled
@@ -42,9 +47,13 @@ class NewProjectCommand(Command):
                 self.previous_project = self.app_state.current_project
                 self.previous_file_path = self.app_state.project_file_path
 
+            name = self.ui_controller.show_new_project_dialog()
+            if not name:
+                return False  # User cancelled the naming dialog
+
             # Create new project
             new_project = Project(
-                name="New Project", description="A new project created with PandaPlot")
+                name=name, description="A new project created with PandaPlot")
 
             # Update app state - use load_project method
             self.app_state.load_project(new_project)

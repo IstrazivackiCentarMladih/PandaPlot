@@ -16,6 +16,9 @@ class OpenProjectCommand(Command):
     3. Handling user cancellation gracefully
     """
 
+    # Delegates all state changes to LoadProjectCommand / AppState.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -51,8 +54,20 @@ class OpenProjectCommand(Command):
                 self.was_executed = False
                 return
 
-            # Check if we need to save current project
-            if self.app_context.app_state.has_project:
+            # The selected file is already the open project -- switch to it
+            # (a no-op, since it's already current) instead of reloading it
+            # from disk, which would needlessly discard undo history and any
+            # in-memory edits not yet saved.
+            app_state = self.app_context.app_state
+            if app_state.has_project and app_state.project_file_path == file_path:
+                self.logger.info("'%s' is already open; skipping reload", file_path)
+                self.was_executed = False
+                return
+
+            # Check if we need to save current project. Only ask when there
+            # are actually unsaved changes to lose -- otherwise this fires on
+            # every open regardless of whether anything would be discarded.
+            if app_state.has_project and app_state.is_modified:
                 should_continue = self.app_context.ui_controller.show_question(
                     "Open Project",
                     "Opening a new project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
@@ -69,11 +84,6 @@ class OpenProjectCommand(Command):
 
             self.was_executed = True
             self.logger.info(f"Project opened successfully: {file_path}")
-
-            # Show success message
-            project = self.app_context.app_state.current_project
-            if project:
-                self.app_context.ui_controller.show_info_message("Project Opened", f"Successfully opened project: {project.name}")
 
             # Update recent projects list in config
             try:

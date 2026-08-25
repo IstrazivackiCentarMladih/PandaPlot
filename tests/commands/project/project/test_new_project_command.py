@@ -1,0 +1,86 @@
+"""Tests for NewProjectCommand (#209): dedicated naming dialog and
+dirty-aware replace confirmation."""
+from unittest.mock import Mock
+
+from pandaplot.commands.project.project.new_project_command import NewProjectCommand
+
+
+def _make_app_context(has_project=False, is_modified=False):
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = has_project
+    app_context.get_app_state.return_value.is_modified = is_modified
+    return app_context
+
+
+def test_no_current_project_creates_without_confirmation():
+    app_context = _make_app_context(has_project=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is True
+
+    app_context.get_ui_controller.return_value.show_question.assert_not_called()
+    loaded = app_context.get_app_state.return_value.load_project.call_args.args[0]
+    assert loaded.name == "My Project"
+
+
+def test_unmodified_current_project_creates_without_confirmation():
+    """Regression (#209): the old blanket confirmation fired even when the
+    current project had nothing unsaved to lose."""
+    app_context = _make_app_context(has_project=True, is_modified=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is True
+
+    app_context.get_ui_controller.return_value.show_question.assert_not_called()
+
+
+def test_modified_current_project_asks_for_confirmation():
+    app_context = _make_app_context(has_project=True, is_modified=True)
+    app_context.get_ui_controller.return_value.show_question.return_value = True
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is True
+
+    app_context.get_ui_controller.return_value.show_question.assert_called_once()
+    app_context.get_app_state.return_value.load_project.assert_called_once()
+
+
+def test_declining_confirmation_aborts_without_creating():
+    app_context = _make_app_context(has_project=True, is_modified=True)
+    app_context.get_ui_controller.return_value.show_question.return_value = False
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is False
+
+    app_context.get_app_state.return_value.load_project.assert_not_called()
+
+
+def test_cancelling_the_naming_dialog_aborts_without_creating():
+    app_context = _make_app_context(has_project=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = None
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is False
+
+    app_context.get_app_state.return_value.load_project.assert_not_called()
+
+
+def test_new_project_uses_the_entered_name():
+    app_context = _make_app_context(has_project=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "Custom Name"
+
+    command = NewProjectCommand(app_context)
+    command.execute()
+
+    loaded = app_context.get_app_state.return_value.load_project.call_args.args[0]
+    assert loaded.name == "Custom Name"
+
+
+def test_marks_project_modified_is_false():
+    """NewProjectCommand sets AppState's dirty flag itself (via
+    load_project) and must not be double-counted by CommandExecutor's
+    generic on_project_modified hook."""
+    assert NewProjectCommand.marks_project_modified is False

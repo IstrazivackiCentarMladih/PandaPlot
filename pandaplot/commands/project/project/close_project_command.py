@@ -10,6 +10,10 @@ from pandaplot.services.session import SessionPersistenceManager
 class CloseProjectCommand(Command):
     """Command to close the currently loaded project."""
 
+    # Closing sets AppState's modified flag explicitly (close_project always
+    # resets it) -- not a project edit itself.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -20,14 +24,27 @@ class CloseProjectCommand(Command):
         """Close the current project if one is loaded."""
         try:
             app_state = self.app_context.get_app_state()
-            
+
             if not app_state.has_project:
                 self.logger.info("No project is currently loaded")
                 return True
-            
+
             project_name = app_state.current_project.name if app_state.current_project else "Unknown"
+
+            # Give the user a chance to save/cancel if there are unsaved
+            # changes -- previously this closed silently and discarded them.
+            if app_state.is_modified:
+                should_continue = self.ui_controller.show_question(
+                    "Close Project",
+                    f"Project '{project_name}' has unsaved changes.\n"
+                    "Closing now will discard them.\n\nDo you want to continue?",
+                )
+                if not should_continue:
+                    self.logger.info("Close project cancelled by user (unsaved changes)")
+                    return False
+
             self.logger.info(f"Closing project: {project_name}")
-            
+
             # Close the project - this will emit PROJECT_CLOSED event
             app_state.close_project()
 

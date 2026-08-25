@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from pandaplot.commands.base_command import Command
 
@@ -9,7 +9,7 @@ class CommandExecutor:
     Command executor that manages command execution, undo/redo functionality.
     This is the central point for executing commands.
     """
-    
+
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -17,7 +17,18 @@ class CommandExecutor:
         self.undo_stack: List[Command] = []
         self.redo_stack: List[Command] = []
         self.max_undo_levels = 10
-    
+
+        # Optional hook invoked after a successful execute()/undo()/redo()
+        # of any command whose `marks_project_modified` is True -- wired by
+        # app.py to AppState.mark_modified, the single choke point every
+        # command passes through, so individual commands don't each need to
+        # touch AppState's dirty flag themselves.
+        self.on_project_modified: Optional[Callable[[], None]] = None
+
+    def _notify_project_modified(self, command: Command) -> None:
+        if self.on_project_modified and getattr(command, "marks_project_modified", True):
+            self.on_project_modified()
+
     def execute_command(self, command: Command) -> bool:
         """
         Execute a command instance directly.
@@ -49,6 +60,7 @@ class CommandExecutor:
                 self.logger.debug("Clearing redo stack (%d commands) due to new command execution", len(self.redo_stack))
                 self.redo_stack.clear()
             
+            self._notify_project_modified(command)
             self.logger.info("Successfully executed command: %s", command_name)
             return True
             
@@ -77,6 +89,7 @@ class CommandExecutor:
             command = self.undo_stack.pop()
             command.undo()
             self.redo_stack.append(command)
+            self._notify_project_modified(command)
             self.logger.info("Successfully undid command: %s", command_name)
             return True
             
@@ -105,6 +118,7 @@ class CommandExecutor:
             command = self.redo_stack.pop()
             command.redo()
             self.undo_stack.append(command)
+            self._notify_project_modified(command)
             self.logger.info("Successfully redid command: %s", command_name)
             return True
             

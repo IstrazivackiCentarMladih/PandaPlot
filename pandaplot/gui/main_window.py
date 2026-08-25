@@ -11,6 +11,7 @@ from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSet
 from pandaplot.gui.core.widget_extension import PMainWindow
 from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import AppEvents
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -133,6 +134,25 @@ class PandaMainWindow(PMainWindow):
         """Set up event subscriptions for the main window."""
         self.subscribe_to_event(AppEvents.APP_CLOSING,
                                 self.on_app_closing_event)
+
+        # Keep the title bar showing the current project's name and
+        # saved/unsaved state (previously it was always the static
+        # "PandaPlot", never reflecting which project -- if any -- was open).
+        self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_window_title())
+        self.subscribe_to_event(ProjectEvents.PROJECT_SAVED, lambda _data: self._update_window_title())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_window_title())
+        self.subscribe_to_event(ProjectEvents.PROJECT_MODIFIED_CHANGED, lambda _data: self._update_window_title())
+
+    def _update_window_title(self):
+        """Set the title bar to "<project name>[*] - PandaPlot", or plain
+        "PandaPlot" when no project is loaded. The trailing "*" mirrors the
+        common desktop-app convention for unsaved changes."""
+        app_state = self.app_context.get_app_state()
+        if not app_state.has_project or not app_state.current_project:
+            self.setWindowTitle("PandaPlot")
+            return
+        marker = "*" if app_state.is_modified else ""
+        self.setWindowTitle(f"{app_state.current_project.name}{marker} - PandaPlot")
 
     def on_app_closing_event(self, event_data: dict):
         """Handle app closing event from the internal event bus.

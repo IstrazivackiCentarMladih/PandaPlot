@@ -136,6 +136,10 @@ class ProjectEvents:
     PROJECT_CLOSED = "project.closed"
     PROJECT_SAVING = "project.saving"
     FIRST_PROJECT_LOADED = "first_project_loaded"
+    # Fires whenever AppState.is_modified flips (mark_modified/mark_saved) --
+    # consumed by anything showing a saved/unsaved indicator (e.g. the main
+    # window title).
+    PROJECT_MODIFIED_CHANGED = "project.modified_changed"
     
     # Generic project structure events (item-type agnostic)
     PROJECT_CHANGED = "project.changed"  # Generic change event - use for broad awareness

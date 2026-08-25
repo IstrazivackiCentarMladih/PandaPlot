@@ -15,6 +15,10 @@ class SaveProjectCommand(Command):
     This will save the project to its current file path, or prompt for a new path if needed.
     """
 
+    # A save clears AppState's modified flag (via mark_saved in
+    # _on_save_result) rather than setting it.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -184,6 +188,12 @@ class SaveProjectCommand(Command):
                     # Update app state with new file path (if it changed)
                     if save_path != self.previous_file_path:
                         self.app_state.load_project(project)
+
+                    # A successful save has nothing left unsaved. load_project
+                    # (above) already does this when the path changed; call it
+                    # unconditionally too so a repeat save to the same path
+                    # (which skips that branch) also clears the flag.
+                    self.app_state.mark_saved()
 
                     # Emit save event
                     self.app_state.event_bus.emit(
