@@ -181,7 +181,6 @@ def main() -> None:
 if __name__ == "__main__":
     main()
     # TODO(#206): fix add/remove series on energy graph
-    # TODO(#207): log error messages to the user
     # TODO(#208): fix transformed columns not saving correctly
     # TODO(#209): misc project open/save/close UX issues (dialogs, saved-state tracking, tab cleanup)
     # TODO(#210): clean state on new project / support multiple projects
