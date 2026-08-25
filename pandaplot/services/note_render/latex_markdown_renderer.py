@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # high-DPI screens; the <img> is then scaled back down by the same factor.
 # 4x covers up to 400% OS display scaling before the PNG itself becomes the
 # resolution bottleneck; equations are tiny so the extra pixels cost little.
-_RENDER_SCALE = 4
+_RENDER_SCALE = 16
 _BASE_DPI = 100
 
 # Placeholders swapped in for math while Markdown runs, so Markdown never sees
