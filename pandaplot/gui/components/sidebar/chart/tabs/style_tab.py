@@ -39,6 +39,7 @@ from pandaplot.models.chart.series_style import (
 )
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
+from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import DataSeries, FitData
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
@@ -815,6 +816,37 @@ class StyleTab(QWidget):
         self.figure_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
         self.axes_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         self.axes_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
+
+        # `StyleTab` is an app-lifetime singleton (built once by
+        # ChartPropertiesPanel), so without this the Size card's displayed
+        # measurement unit only refreshes on the next load_chart_style/
+        # clear_chart_style call (e.g. switching charts) -- it would
+        # otherwise stay stale if the user changes the unit in Settings
+        # while this panel is already visible. Subscribed manually (rather
+        # than via the PWidget/WidgetExtension mixin, which StyleTab does
+        # not inherit) with the same defensive guard `_measurement_unit`
+        # uses, since some existing tests construct StyleTab with
+        # app_context=None or a stand-in lacking `event_bus`.
+        self._config_event_subscribed = False
+        try:
+            event_bus = self.app_context.event_bus if self.app_context else None
+        except AttributeError:
+            event_bus = None
+        if event_bus is not None:
+            event_bus.subscribe(ConfigEvents.CONFIG_UPDATED, self._on_config_updated)
+            self._config_event_subscribed = True
+            self.destroyed.connect(self._unsubscribe_config_event)
+
+    def _on_config_updated(self, _event_data: dict) -> None:
+        self._refresh_size_unit_display()
+
+    def _unsubscribe_config_event(self) -> None:
+        if self._config_event_subscribed:
+            try:
+                self.app_context.event_bus.unsubscribe(ConfigEvents.CONFIG_UPDATED, self._on_config_updated)
+            except Exception:  # noqa: BLE001 -- best-effort cleanup on teardown
+                pass
+            self._config_event_subscribed = False
 
     # -- Chip selection / target routing -----------------------------------
 

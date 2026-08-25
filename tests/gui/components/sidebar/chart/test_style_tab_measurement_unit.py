@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.app import build_app_context
 from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
+from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.config import LengthUnit
 from pandaplot.services.config.config_manager import ConfigManager
@@ -116,3 +117,24 @@ def test_clear_chart_style_picks_up_unit_changed_after_construction():
     assert style_tab.chart_width_spin.suffix() == " mm"
     assert style_tab.chart_width_spin.value() == 200
     assert style_tab.chart_height_spin.value() == 150
+
+
+def test_size_card_refreshes_live_on_config_updated_event_without_reloading_chart():
+    """The Settings dialog broadcasts ConfigEvents.CONFIG_UPDATED via the
+    shared event bus when the user applies a change. StyleTab must react to
+    that directly -- unlike test_load_chart_style_picks_up_unit_changed_after_
+    construction above, this does not call load_chart_style/clear_chart_style
+    at all, reproducing a chart already being displayed when the unit changes
+    in Settings."""
+    style_tab = _style_tab_with_unit(LengthUnit.CM)
+    assert style_tab._chart_size_unit == LengthUnit.CM
+
+    config_manager = style_tab.app_context.get_manager(ConfigManager)
+    config_manager.config.chart_display.measurement_unit = LengthUnit.MM
+    style_tab.app_context.event_bus.emit(ConfigEvents.CONFIG_UPDATED, {"config": config_manager.config})
+
+    assert style_tab._chart_size_unit == LengthUnit.MM
+    assert style_tab.chart_size_combo.itemText(0) == "150 × 80 mm"
+    assert style_tab.chart_size_combo.itemText(1) == "200 × 150 mm"
+    assert style_tab.chart_width_spin.suffix() == " mm"
+    assert style_tab.chart_width_spin.decimals() == 0
