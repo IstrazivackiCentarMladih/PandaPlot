@@ -76,13 +76,27 @@ COLORMAP_OPTIONS = [
 ]
 
 # Heatmap-only: how scattered (x, y, z) points become a regular grid for
-# pcolormesh (see chart_heatmap.build_heatmap_grid). Colormap (a color-mapped
-# scatter) has no gridding concept -- these controls are hidden for it
-# entirely (see SeriesTypeSpec.supports_gridding).
+# pcolormesh/contour (see chart_heatmap.build_heatmap_grid). "Triangulated"
+# instead skips gridding and renders straight from the scattered points via
+# matplotlib's own Delaunay triangulation (tripcolor/tricontour/tricontourf)
+# -- see series_renderers/heatmap.py. Colormap (a color-mapped scatter) has
+# no gridding concept -- these controls are hidden for it entirely (see
+# SeriesTypeSpec.supports_gridding).
 HEATMAP_GRIDDING_OPTIONS = [
     ("Exact grid", "grid"),
     ("Binned (mean)", "binned"),
     ("Interpolated", "interpolated"),
+    ("Triangulated (scattered)", "triangulated"),
+]
+
+# Heatmap-only: how the Z surface is drawn -- the original flat-shaded
+# pcolormesh/tripcolor "mesh", or a contour surface (lines, a filled band
+# per level, or both together). See series_renderers/heatmap.py.
+HEATMAP_RENDER_MODE_OPTIONS = [
+    ("Mesh", "mesh"),
+    ("Contour lines", "contour_lines"),
+    ("Filled contour", "contour_filled"),
+    ("Filled contour + lines", "contour_filled_lines"),
 ]
 
 
@@ -643,23 +657,44 @@ class StyleTab(QWidget):
         self.heatmap_gridding_card = Card()
         heatmap_gridding_card = self.heatmap_gridding_card
         heatmap_gridding_layout = QGridLayout(heatmap_gridding_card)
-        heatmap_gridding_layout.addWidget(SectionHeader("Gridding"), 0, 0, 1, 2)
+        heatmap_gridding_layout.addWidget(SectionHeader("Heatmap Rendering"), 0, 0, 1, 2)
+
+        self.heatmap_render_mode_label = QLabel("Render as:")
+        heatmap_gridding_layout.addWidget(self.heatmap_render_mode_label, 1, 0)
+        self.heatmap_render_mode_control = ValueComboBox(HEATMAP_RENDER_MODE_OPTIONS)
+        heatmap_gridding_layout.addWidget(self.heatmap_render_mode_control, 1, 1)
 
         # "Exact grid" mode has no resolution to configure (it uses the
         # data's own lattice, see chart_heatmap.build_heatmap_grid), so the
         # resolution row is additionally hidden while that mode is selected
-        # (see _on_heatmap_gridding_changed).
+        # (see _on_heatmap_gridding_changed). "Triangulated" likewise has no
+        # resolution -- matplotlib's own Delaunay triangulation uses the
+        # points as-is.
         self.heatmap_gridding_label = QLabel("Gridding:")
-        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 1, 0)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 2, 0)
         self.heatmap_gridding_control = ValueComboBox(HEATMAP_GRIDDING_OPTIONS)
-        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 1, 1)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 2, 1)
 
         self.heatmap_resolution_label = QLabel("Resolution:")
-        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 2, 0)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 3, 0)
         self.heatmap_resolution_spin = QSpinBox()
         self.heatmap_resolution_spin.setRange(2, 500)
         self.heatmap_resolution_spin.setValue(50)
-        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 2, 1)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 3, 1)
+
+        # Contour-only (render_mode != "mesh"): level count and, only while
+        # lines are actually drawn, inline value labels on them.
+        self.heatmap_contour_levels_label = QLabel("Contour levels:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_levels_label, 4, 0)
+        self.heatmap_contour_levels_spin = QSpinBox()
+        self.heatmap_contour_levels_spin.setRange(2, 100)
+        self.heatmap_contour_levels_spin.setValue(10)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_levels_spin, 4, 1)
+
+        self.heatmap_contour_line_labels_label = QLabel("Line labels:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_labels_label, 5, 0)
+        self.heatmap_contour_line_labels_toggle = ToggleSwitch(checked=False)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_labels_toggle, 5, 1)
 
         layout.addWidget(heatmap_gridding_card)
 
@@ -778,6 +813,9 @@ class StyleTab(QWidget):
         self.color_vmax_spin.valueChanged.connect(self._on_field_changed)
         self.heatmap_gridding_control.currentValueChanged.connect(self._on_heatmap_gridding_changed)
         self.heatmap_resolution_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_render_mode_control.currentValueChanged.connect(self._on_heatmap_render_mode_changed)
+        self.heatmap_contour_levels_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_contour_line_labels_toggle.toggled.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -1416,24 +1454,47 @@ class StyleTab(QWidget):
         self._update_colormap_gridding_visibility()
         self._on_field_changed()
 
+    def _on_heatmap_render_mode_changed(self, _value):
+        """Handle the Heatmap 'Render as' mode change."""
+        self._update_colormap_gridding_visibility()
+        self._on_field_changed()
+
     def _update_colormap_gridding_visibility(self):
-        """Show the Gridding/Resolution sub-controls only for a series whose
-        type supports gridding (SeriesTypeSpec.supports_gridding -- Heatmap
-        only; Colormap, a plain color-mapped scatter, needs no gridding at
-        all). Resolution is further hidden while gridding mode is "grid"
-        (build_heatmap_grid ignores resolution for that mode -- it pivots
-        the data's own exact lattice instead of binning/interpolating)."""
+        """Show the Render-as/Gridding/Resolution/Contour sub-controls only
+        for a series whose type supports gridding (SeriesTypeSpec.
+        supports_gridding -- Heatmap only; Colormap, a plain color-mapped
+        scatter, needs no gridding at all). Resolution is further hidden
+        while gridding mode is "grid" or "triangulated" (build_heatmap_grid
+        ignores resolution for "grid" -- it pivots the data's own exact
+        lattice instead of binning/interpolating -- and "triangulated"
+        bypasses gridding entirely). Contour levels/line-labels only apply
+        once render_mode actually draws a contour; line-labels further only
+        while lines are actually drawn (not for a lines-less "Filled
+        contour")."""
         kind, obj = self._current_target
         if kind == "series" and isinstance(obj, DataSeries):
             spec = SERIES_TYPE_SPECS[obj.series_type]
         else:
             spec = None
         supports_gridding = spec is not None and spec.supports_gridding
+        self.heatmap_render_mode_label.setVisible(supports_gridding)
+        self.heatmap_render_mode_control.setVisible(supports_gridding)
         self.heatmap_gridding_label.setVisible(supports_gridding)
         self.heatmap_gridding_control.setVisible(supports_gridding)
-        show_resolution = supports_gridding and self.heatmap_gridding_control.currentValue() != "grid"
+        show_resolution = (
+            supports_gridding
+            and self.heatmap_gridding_control.currentValue() not in ("grid", "triangulated")
+        )
         self.heatmap_resolution_label.setVisible(show_resolution)
         self.heatmap_resolution_spin.setVisible(show_resolution)
+
+        render_mode = self.heatmap_render_mode_control.currentValue()
+        show_contour = supports_gridding and render_mode != "mesh"
+        show_line_labels = show_contour and render_mode in ("contour_lines", "contour_filled_lines")
+        self.heatmap_contour_levels_label.setVisible(show_contour)
+        self.heatmap_contour_levels_spin.setVisible(show_contour)
+        self.heatmap_contour_line_labels_label.setVisible(show_line_labels)
+        self.heatmap_contour_line_labels_toggle.setVisible(show_line_labels)
 
     # -- Error-bar match-line toggle ------------------------------------
 
@@ -1597,6 +1658,9 @@ class StyleTab(QWidget):
             if isinstance(style, HeatmapSeriesStyle):
                 style.heatmap_gridding = self.heatmap_gridding_control.currentValue()
                 style.heatmap_resolution = self.heatmap_resolution_spin.value()
+                style.render_mode = self.heatmap_render_mode_control.currentValue()
+                style.contour_levels = self.heatmap_contour_levels_spin.value()
+                style.contour_line_labels = self.heatmap_contour_line_labels_toggle.isChecked()
                 return
             # ColormapSeriesStyle only: it has no color/line/fill fields of
             # its own (fill color comes from z_data via colormap, not a
@@ -1708,10 +1772,14 @@ class StyleTab(QWidget):
             self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
             self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
 
-            # Heatmap-only gridding fields (colormap/colorbar/scale moved to
-            # the chart-level Color Map card -- see load_colormap_config).
+            # Heatmap-only gridding/render fields (colormap/colorbar/scale
+            # moved to the chart-level Color Map card -- see
+            # load_colormap_config).
             self.heatmap_gridding_control.setCurrentValue(getattr(style, "heatmap_gridding", "grid"))
             self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
+            self.heatmap_render_mode_control.setCurrentValue(getattr(style, "render_mode", "mesh"))
+            self.heatmap_contour_levels_spin.setValue(getattr(style, "contour_levels", 10))
+            self.heatmap_contour_line_labels_toggle.setChecked(getattr(style, "contour_line_labels", False))
             self._update_colormap_gridding_visibility()
 
             color = getattr(style, "color", "#1f77b4")
@@ -2283,6 +2351,8 @@ class StyleTab(QWidget):
         self.colorbar_show_toggle.set_tokens(tokens)
         self.color_scale_auto_toggle.set_tokens(tokens)
         self.heatmap_gridding_control.set_tokens(tokens)
+        self.heatmap_render_mode_control.set_tokens(tokens)
+        self.heatmap_contour_line_labels_toggle.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)
