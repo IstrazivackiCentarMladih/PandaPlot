@@ -33,6 +33,7 @@ from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries, YAxis
+from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
@@ -1066,10 +1067,11 @@ class DataTab(QWidget):
             self.datasets = []
 
             if self.current_project:
+                display_names = dict(dataset_display_options(self.current_project))
                 # Iterate through all items in the project to find datasets
                 for item in self.current_project.get_all_items():
                     if isinstance(item, Dataset):
-                        self.dataset_combo.addItem(item.name, item.id)
+                        self.dataset_combo.addItem(display_names[item.id], item.id)
                         self.datasets.append(item)
         finally:
             self.dataset_combo.blockSignals(False)
