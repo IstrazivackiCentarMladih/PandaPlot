@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import override
+from typing import Dict, override
 from zipfile import ZipFile
 
 import pandas as pd
@@ -20,14 +20,22 @@ class DatasetDataManager(ItemDataManager[Dataset]):
         path_in_zip should be without extension, e.g. 'items/<id>'
         """
         self.logger.debug("Saving dataset '%s' (ID: %s) to path: %s", item.name, item.id, path_in_zip)
-        
+
         try:
             # Save DataFrame as CSV if data exists
+            column_dtypes: Dict[str, str] = {}
             if item.data is not None:
                 csv_path = f"{path_in_zip}.csv"
                 self.logger.debug("Saving dataset data to CSV: %s (shape: %s)", csv_path, item.data.shape)
                 csv_data = item.data.to_csv(index=False)
                 zip_file.writestr(csv_path, csv_data)
+                # CSV has no type system, so plain re-import (pd.read_csv)
+                # loses any dtype pandas can't round-trip through text --
+                # notably datetime64 and category, both routinely produced
+                # by transform expressions (to_datetime/cut/qcut are
+                # whitelisted transform functions). Persist the dtype each
+                # column had so load() can restore it. See #208.
+                column_dtypes = {col: str(dtype) for col, dtype in item.data.dtypes.items()}
             else:
                 self.logger.debug("Dataset '%s' has no data to save", item.name)
 
@@ -42,6 +50,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 "source_file": item.source_file,
                 "has_data": item.data is not None,
                 "column_ids": dict(item.column_ids),
+                "column_dtypes": column_dtypes,
             }
             
             self.logger.debug("Saving dataset metadata for '%s'", item.name)
@@ -82,6 +91,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                     # Use StringIO to read CSV from string
                     from io import StringIO
                     data = pd.read_csv(StringIO(csv_content))
+                    self._restore_column_dtypes(data, metadata.get("column_dtypes") or {})
                     self.logger.debug("Loaded dataset data with shape: %s", data.shape)
                 except KeyError:
                     # CSV file doesn't exist, data will be None
@@ -122,7 +132,36 @@ class DatasetDataManager(ItemDataManager[Dataset]):
 
             self.logger.info("Successfully loaded dataset '%s' (ID: %s)", dataset_name, dataset_id)
             return dataset
-            
+
         except Exception as e:
             self.logger.error("Failed to load dataset from %s: %s", path_in_zip, str(e), exc_info=True)
             raise
+
+    def _restore_column_dtypes(self, data: pd.DataFrame, column_dtypes: Dict[str, str]) -> None:
+        """Best-effort cast each column back to the dtype it had at save time.
+
+        `pd.read_csv` re-infers every column from plain text, which loses
+        any dtype it can't recover on its own -- notably datetime64 (reads
+        back as an object/string column) and category (reads back as its
+        underlying value type). Both are routinely produced by transform
+        expressions (`to_datetime`/`cut`/`qcut` are whitelisted transform
+        functions), so a save/reload cycle silently downgraded a
+        transformed column's type. Each column is restored independently;
+        a column whose saved dtype no longer fits its re-read values
+        (e.g. a hand-edited CSV) is left as read_csv inferred it rather
+        than failing the whole load.
+        """
+        for column, dtype_str in column_dtypes.items():
+            if column not in data.columns or dtype_str == str(data[column].dtype):
+                continue
+            try:
+                if dtype_str.startswith("datetime64"):
+                    data[column] = pd.to_datetime(data[column])
+                elif dtype_str == "category":
+                    data[column] = data[column].astype("category")
+                else:
+                    data[column] = data[column].astype(dtype_str)
+            except (ValueError, TypeError) as e:
+                self.logger.warning(
+                    "Could not restore dtype '%s' for column '%s': %s", dtype_str, column, e,
+                )
