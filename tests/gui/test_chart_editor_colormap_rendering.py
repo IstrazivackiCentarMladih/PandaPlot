@@ -485,20 +485,12 @@ def test_colormap_series_with_non_numeric_z_column_fails_only_that_series():
 
 
 def test_secondary_axis_subplotspec_stays_synced_after_colorbar_is_removed():
-    """A render that draws a colorbar subdivides the primary axes' gridspec
-    and explicitly re-syncs axes2's *subplotspec* to match (not just its
-    visual position -- Axes.set_subplotspec()'s internal _set_position()
-    already propagates the resulting bbox to every twinned sibling
-    automatically, per matplotlib's own _twinned_axes.get_siblings() loop,
-    which is why axes2 stays visually aligned even without an explicit
-    sync; get_subplotspec() itself, unlike position, is NOT propagated
-    this way, so it silently goes stale on axes2). A LATER render that no
-    longer draws a colorbar (colorbar_show turned off, here) must still
-    reset BOTH axes' subplotspec to the same fresh one -- not just the
-    primary axes' -- so the two stay logically consistent for any future
-    code (in this file or a later matplotlib version) that reads
-    axes2.get_subplotspec() directly, rather than relying on today's
-    incidental position-propagation side effect."""
+    """A colorbar render subdivides the primary axes' gridspec and re-syncs
+    axes2's subplotspec to match; matplotlib auto-propagates *position* to
+    twinned axes, but not get_subplotspec(), so it can silently go stale.
+    A later render without a colorbar must reset BOTH axes' subplotspec to
+    the same fresh one, not just the primary's, so code that reads
+    axes2.get_subplotspec() directly still sees a consistent value."""
     _qapp()
     project, dataset = _project_and_dataset()
     chart = _heatmap_chart(dataset)
