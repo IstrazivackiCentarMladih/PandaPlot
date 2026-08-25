@@ -1000,7 +1000,7 @@ class ChartEditorWidget(PWidget):
                         "color_limits": color_limits,
                     })
                     if mappable is None and series_type in SERIES_RENDERERS_REPORTING_NO_DATA:
-                        series_errors.append(f"{series.label or f'Series {i + 1}'}: no data to grid")
+                        series_errors.append(f"{series.label or f'Series {i + 1}'}: no plottable data")
                         continue
                     if (mappable is not None and colorbar_mappable is None
                             and SERIES_TYPE_SPECS[series_type].uses_color_scale
