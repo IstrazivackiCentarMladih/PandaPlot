@@ -45,8 +45,18 @@ from pandaplot.models.state.config import (
     MAX_CHART_WIDTH_CM,
     MIN_CHART_HEIGHT_CM,
     MIN_CHART_WIDTH_CM,
+    LengthUnit,
 )
 from pandaplot.services.config.config_manager import ConfigManager
+from pandaplot.utils.length_units import (
+    format_size,
+    from_cm,
+    to_cm,
+    unit_bounds,
+    unit_decimals,
+    unit_step,
+    unit_suffix,
+)
 
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
@@ -147,6 +157,7 @@ class StyleTab(QWidget):
         # user toggles back and forth between Custom and a preset.
         self._custom_size_prefilled: bool = False
         self._custom_dpi_prefilled: bool = False
+        self._chart_size_unit: LengthUnit = self._measurement_unit()
 
         layout = QVBoxLayout(self)
 
@@ -304,8 +315,8 @@ class StyleTab(QWidget):
         size_layout.addWidget(SectionHeader("Size"), 0, 0, 1, 2)
 
         self.chart_size_combo = QComboBox()
-        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
-        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
+        self.chart_size_combo.addItem(format_size(15.0, 8.0, self._chart_size_unit), (15.0, 8.0))
+        self.chart_size_combo.addItem(format_size(20.0, 15.0, self._chart_size_unit), (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
         _field_row(size_layout, 1, "Size", self.chart_size_combo)
@@ -314,12 +325,10 @@ class StyleTab(QWidget):
         custom_size_layout = QGridLayout(self.custom_size_row)
         custom_size_layout.setContentsMargins(0, 0, 0, 0)
         self.chart_width_spin = QDoubleSpinBox()
-        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.chart_width_spin.setSuffix(" cm")
+        self._configure_size_spin(self.chart_width_spin, MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         _field_row(custom_size_layout, 0, "Width", self.chart_width_spin)
         self.chart_height_spin = QDoubleSpinBox()
-        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.chart_height_spin.setSuffix(" cm")
+        self._configure_size_spin(self.chart_height_spin, MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         _field_row(custom_size_layout, 1, "Height", self.chart_height_spin)
         size_layout.addWidget(self.custom_size_row, 2, 0, 1, 2)
         self.custom_size_row.setVisible(False)
@@ -1894,8 +1903,8 @@ class StyleTab(QWidget):
                 self.chart_size_combo.setCurrentIndex(size_index)
             elif target_size[0] is not None and target_size[1] is not None:
                 self.chart_size_combo.setCurrentIndex(self.chart_size_combo.findData("custom"))
-                self.chart_width_spin.setValue(target_size[0])
-                self.chart_height_spin.setValue(target_size[1])
+                self.chart_width_spin.setValue(from_cm(target_size[0], self._chart_size_unit))
+                self.chart_height_spin.setValue(from_cm(target_size[1], self._chart_size_unit))
                 self._custom_size_prefilled = True
             else:
                 self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
@@ -2037,8 +2046,8 @@ class StyleTab(QWidget):
             self.axes_bg_color_row.setCurrentColor("#ffffff")
             self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
-            self.chart_width_spin.setValue(20.0)
-            self.chart_height_spin.setValue(15.0)
+            self.chart_width_spin.setValue(from_cm(20.0, self._chart_size_unit))
+            self.chart_height_spin.setValue(from_cm(15.0, self._chart_size_unit))
             self._custom_size_prefilled = False
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.chart_dpi_spin.setValue(100)
@@ -2120,6 +2129,23 @@ class StyleTab(QWidget):
 
     # -- Chart size/dpi combo helpers -----------------------------------------
 
+    def _measurement_unit(self) -> LengthUnit:
+        """Read the app-wide chart-size display unit from Settings."""
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager) if self.app_context else None
+        except AttributeError:
+            cfg_manager = None
+        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+        unit = getattr(display_cfg, "measurement_unit", LengthUnit.CM) if display_cfg else LengthUnit.CM
+        return unit if isinstance(unit, LengthUnit) else LengthUnit.CM
+
+    def _configure_size_spin(self, spin, min_cm: float, max_cm: float) -> None:
+        lo, hi = unit_bounds(min_cm, max_cm, self._chart_size_unit)
+        spin.setDecimals(unit_decimals(self._chart_size_unit))
+        spin.setRange(lo, hi)
+        spin.setSingleStep(unit_step(self._chart_size_unit))
+        spin.setSuffix(unit_suffix(self._chart_size_unit))
+
     def _app_chart_display_defaults(self):
         """Read the app-wide default chart width/height/dpi from Settings."""
         cfg_manager = self.app_context.get_manager(ConfigManager)
@@ -2150,10 +2176,14 @@ class StyleTab(QWidget):
 
     def _size_from_controls(self):
         """Resolve (width_cm, height_cm) from chart_size_combo, reading the
-        dedicated Custom spin boxes when that sentinel is selected."""
+        dedicated Custom spin boxes (in the configured display unit) when
+        that sentinel is selected."""
         data = self.chart_size_combo.currentData()
         if data == "custom":
-            return self.chart_width_spin.value(), self.chart_height_spin.value()
+            return (
+                to_cm(self.chart_width_spin.value(), self._chart_size_unit),
+                to_cm(self.chart_height_spin.value(), self._chart_size_unit),
+            )
         if data is None:
             return None, None
         return data
@@ -2173,8 +2203,8 @@ class StyleTab(QWidget):
         self.custom_size_row.setVisible(is_custom)
         if is_custom and not self._updating_controls and not self._custom_size_prefilled:
             width, height, _ = self._effective_chart_size_dpi()
-            self.chart_width_spin.setValue(width)
-            self.chart_height_spin.setValue(height)
+            self.chart_width_spin.setValue(from_cm(width, self._chart_size_unit))
+            self.chart_height_spin.setValue(from_cm(height, self._chart_size_unit))
             self._custom_size_prefilled = True
         self._on_chart_style_field_changed()
 
