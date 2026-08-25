@@ -128,6 +128,8 @@ def test_size_card_refreshes_live_on_config_updated_event_without_reloading_char
     in Settings."""
     style_tab = _style_tab_with_unit(LengthUnit.CM)
     assert style_tab._chart_size_unit == LengthUnit.CM
+    style_tab.chart_width_spin.setValue(10.0)
+    style_tab.chart_height_spin.setValue(5.0)
 
     config_manager = style_tab.app_context.get_manager(ConfigManager)
     config_manager.config.chart_display.measurement_unit = LengthUnit.MM
@@ -138,3 +140,7 @@ def test_size_card_refreshes_live_on_config_updated_event_without_reloading_char
     assert style_tab.chart_size_combo.itemText(1) == "200 × 150 mm"
     assert style_tab.chart_width_spin.suffix() == " mm"
     assert style_tab.chart_width_spin.decimals() == 0
+    # The displayed number itself must convert (10cm -> 100mm), not just the
+    # suffix/decimals/range -- this is the bug being regression-tested.
+    assert style_tab.chart_width_spin.value() == 100
+    assert style_tab.chart_height_spin.value() == 50

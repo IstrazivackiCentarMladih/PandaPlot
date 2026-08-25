@@ -838,7 +838,17 @@ class StyleTab(QWidget):
             self.destroyed.connect(self._unsubscribe_config_event)
 
     def _on_config_updated(self, _event_data: dict) -> None:
-        self._refresh_size_unit_display()
+        # Guarded like load_chart_style/clear_chart_style: _refresh_size_unit_
+        # display() now sets the custom width/height spin values (converted
+        # to the new unit), which would otherwise fire _on_chart_style_field_
+        # changed and rewrite every chart-style field from the currently
+        # displayed widgets -- redundant at best while nothing else changed.
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self._refresh_size_unit_display()
+        finally:
+            self._updating_controls = previous_guard
 
     def _unsubscribe_config_event(self) -> None:
         if self._config_event_subscribed:
@@ -2185,10 +2195,23 @@ class StyleTab(QWidget):
         Size card widgets. `StyleTab` is an app-lifetime singleton, so the
         unit resolved in `__init__` can go stale if the user changes it in
         Settings later -- this must be called whenever a chart is loaded or
-        cleared so the Size card always reflects the current setting."""
+        cleared so the Size card always reflects the current setting.
+
+        Converts the custom width/height spin boxes' currently displayed
+        value from the outgoing unit to the new one, so a live unit change
+        (via `_on_config_updated`, with no chart (re)load in between)
+        updates the shown number, not just the suffix/decimals/range --
+        `load_chart_style`/`clear_chart_style` immediately overwrite these
+        values from the chart/default afterward regardless, so this is a
+        no-op in those call sites."""
+        old_unit = self._chart_size_unit
         self._chart_size_unit = self._measurement_unit()
+        width_cm = to_cm(self.chart_width_spin.value(), old_unit)
+        height_cm = to_cm(self.chart_height_spin.value(), old_unit)
         self._configure_size_spin(self.chart_width_spin, MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         self._configure_size_spin(self.chart_height_spin, MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.chart_width_spin.setValue(from_cm(width_cm, self._chart_size_unit))
+        self.chart_height_spin.setValue(from_cm(height_cm, self._chart_size_unit))
         for i in range(self.chart_size_combo.count()):
             data = self.chart_size_combo.itemData(i)
             if isinstance(data, tuple) and len(data) == 2:
