@@ -104,10 +104,10 @@ class StyleTab(QWidget):
 
     There is deliberately no independent series selector here: the chip row
     at the top mirrors the same "currently selected entry" state the Data
-    tab's expand/collapse cards drive -- until Data tab migrates (Task 5),
-    the panel is the source of truth for that selection and calls
-    `set_selected` directly; a non-"chart" chip click is relayed back to the
-    panel (which still owns `_expand_series`) via `seriesChipSelected`.
+    tab's expand/collapse cards drive -- the panel is the source of truth
+    for that selection and calls `set_selected` directly; a non-"chart"
+    chip click is relayed back to the panel (which still owns
+    `_expand_series`) via `seriesChipSelected`.
 
     A literal rendered line/marker preview (as sketched in the original
     design brief) is intentionally omitted here: this panel has no chart
@@ -823,11 +823,11 @@ class StyleTab(QWidget):
             self._current_target = ("colormap_config", None)
             self._update_target_cards_visibility()
         elif value is not None:
-            # The panel (until Task 5) or DataTab (after Task 5) is the
-            # source of truth for series/fit selection -- this tab does not
-            # self-select a series; it only reacts to set_selected(). `None`
-            # is the transient value QComboBox reports mid-`clear()` (no
-            # current item yet) and isn't a real selection to relay.
+            # The panel is the source of truth for series/fit selection --
+            # this tab does not self-select a series; it only reacts to
+            # set_selected(). `None` is the transient value QComboBox
+            # reports mid-`clear()` (no current item yet) and isn't a real
+            # selection to relay.
             self.seriesChipSelected.emit(value)
 
     def _update_target_cards_visibility(self):
@@ -1252,8 +1252,7 @@ class StyleTab(QWidget):
         fit_data)` two-arg signal (this tab has no direct reference to
         DataTab), so the panel's connection wraps it to also pass
         `self.data_tab.selected_index` as `selected_index` here -- this tab
-        does not otherwise track that index itself (unlike the pre-Task-5
-        panel's single `_expanded_series_index` shared by both concerns).
+        does not otherwise track that index itself.
 
         The "was Chart explicitly selected" check is intentionally based on
         `style_series_chips.currentValue()` (this widget's own previous
