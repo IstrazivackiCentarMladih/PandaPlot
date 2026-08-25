@@ -1,12 +1,11 @@
-"""Regression tests for Task 6: ChartEditorWidget's shared colorbar
-lifecycle for Colormap/Heatmap series.
+"""Regression tests for ChartEditorWidget's shared colorbar lifecycle for
+Colormap/Heatmap series.
 
-Pins the fix for the PR #156 review bug where Figure.colorbar(...,
-use_gridspec=True) subdivides the axes' gridspec to make room, and that
-subdivision survives colorbar.remove() -- so repeatedly re-rendering a
-colormap/heatmap series shrank the plot area on every render. Follows the
-same helper-function pattern (not a pytest fixture) as
-test_chart_editor_series_type_rendering.py.
+Pins the fix for a bug where Figure.colorbar(..., use_gridspec=True)
+subdivides the axes' gridspec to make room, and that subdivision survives
+colorbar.remove() -- so repeatedly re-rendering a colormap/heatmap series
+shrank the plot area on every render. Follows the same helper-function
+pattern (not a pytest fixture) as test_chart_editor_series_type_rendering.py.
 """
 import sys
 
@@ -170,12 +169,12 @@ def test_switching_away_from_heatmap_removes_colorbar():
     editor.update_chart()
     assert editor._colorbar is None
 
-    # The actual PR #156 review bug was the plot area shrinking, not merely
-    # a stale colorbar reference -- a regression that keeps the colorbar
-    # teardown working but drops the GridSpec reset would leave the
-    # assertion above green while reintroducing the shrinking bug. Prove
-    # the axes size is genuinely restored by comparing against a fresh,
-    # never-heatmapped Line chart editor's axes width.
+    # The actual bug was the plot area shrinking, not merely a stale
+    # colorbar reference -- a regression that keeps the colorbar teardown
+    # working but drops the GridSpec reset would leave the assertion above
+    # green while reintroducing the shrinking bug. Prove the axes size is
+    # genuinely restored by comparing against a fresh, never-heatmapped
+    # Line chart editor's axes width.
     fresh_project, fresh_dataset = _project_and_dataset()
     fresh_chart = _line_chart(fresh_dataset)
     fresh_editor = _editor_for(fresh_project, fresh_chart)
@@ -459,7 +458,7 @@ def test_colormap_series_with_non_numeric_z_column_fails_only_that_series():
     axes.scatter(c=...) -- matplotlib either raises (caught by nothing in
     the main render loop, blanking the whole chart) or, worse, silently
     treats valid color-name strings as literal marker colors instead of
-    values to map through the colormap. Flagged in PR #190 review."""
+    values to map through the colormap."""
     _qapp()
     project, dataset = _project_and_dataset()
     chart = Chart(name="Colormap Chart", chart_type="line")
@@ -499,7 +498,7 @@ def test_secondary_axis_subplotspec_stays_synced_after_colorbar_is_removed():
     primary axes' -- so the two stay logically consistent for any future
     code (in this file or a later matplotlib version) that reads
     axes2.get_subplotspec() directly, rather than relying on today's
-    incidental position-propagation side effect. Flagged in PR #190 review."""
+    incidental position-propagation side effect."""
     _qapp()
     project, dataset = _project_and_dataset()
     chart = _heatmap_chart(dataset)

@@ -832,7 +832,7 @@ class ChartEditorWidget(PWidget):
             # subdivision survives colorbar.remove() -- so without this
             # reset, every re-render of a colormap/heatmap chart would steal
             # space from the already-shrunk axes, making the plot
-            # progressively smaller (PR #156 review comment).
+            # progressively smaller.
             #
             # An existing secondary axis (axes2, a twinx() sharing the same
             # gridspec cell) must be reset to the SAME fresh spec here too,
@@ -841,7 +841,7 @@ class ChartEditorWidget(PWidget):
             # colorbar (colorbar_show=False, or the chart no longer has a
             # z-driven series) leaves axes2 on its old, possibly-subdivided
             # spec while axes just got the fresh one, and tight_layout()
-            # misaligns the two axes (PR #190 review).
+            # misaligns the two axes.
             from matplotlib.gridspec import GridSpec
             subplotspec = self.chart_canvas.axes.get_subplotspec()
             if subplotspec is not None:
@@ -1291,10 +1291,9 @@ class ChartEditorWidget(PWidget):
                     handles += handles2
                     labels += labels2
                 # Skip drawing the legend when there are no handles to show
-                # (e.g. a chart with only an unlabeled Heatmap series before
-                # PR-review fix, or any chart where nothing has a label) --
-                # matplotlib would otherwise draw an empty framed legend box
-                # over the plot.
+                # (e.g. a chart with only an unlabeled Heatmap series, or any
+                # chart where nothing has a label) -- matplotlib would
+                # otherwise draw an empty framed legend box over the plot.
                 if handles:
                     placement_kwargs = resolve_legend_placement(
                         config.get("legend_position", "upper right"),

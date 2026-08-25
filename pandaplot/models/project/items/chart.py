@@ -315,7 +315,7 @@ class Chart(Item):
         if hasattr(old_style, "z_column_id") and hasattr(new_style, "z_column_id"):
             # Colormap <-> Heatmap both require a Z column -- retyping
             # between them must not force the user to re-pick the same
-            # column (PR #190 review).
+            # column.
             new_style.z_column_id = old_style.z_column_id
             new_style.z_column = old_style.z_column
         series.style = new_style
