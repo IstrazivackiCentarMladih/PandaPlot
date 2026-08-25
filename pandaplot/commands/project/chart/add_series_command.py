@@ -14,6 +14,7 @@ class AddSeriesCommand(Command):
     def __init__(self, app_context: AppContext, chart_id: str, series: DataSeries):
         super().__init__()
         self.app_context = app_context
+        self.ui_controller = app_context.get_ui_controller()
         self.chart_id = chart_id
         self.series = series
         self.added_index: Optional[int] = None
@@ -31,6 +32,9 @@ class AddSeriesCommand(Command):
             self.logger.warning(
                 "AddSeriesCommand.execute: chart '%s' not found or not a Chart (got %s)",
                 self.chart_id, type(chart).__name__ if chart else None,
+            )
+            self.ui_controller.show_error_message(
+                "Add Series Error", f"Chart '{self.chart_id}' not found."
             )
             return False
 

@@ -117,6 +117,7 @@ class TestPreprocessColumnCommand:
             {"method": "center", "source_columns": ["Missing"]},
         )
         assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_non_numeric_column_fails(self, app_context_with_project):
         app_context, _, dataset = app_context_with_project
@@ -126,6 +127,7 @@ class TestPreprocessColumnCommand:
             {"method": "center", "source_columns": ["label"]},
         )
         assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_existing_target_without_replace_fails(self, app_context_with_project):
         app_context, _, dataset = app_context_with_project
@@ -135,6 +137,7 @@ class TestPreprocessColumnCommand:
             {"method": "center", "source_columns": ["A"]},
         )
         assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_undo_logs_a_warning_when_nothing_to_undo(self, app_context_with_project, caplog):
         app_context, _, _ = app_context_with_project

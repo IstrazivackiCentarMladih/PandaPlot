@@ -68,6 +68,9 @@ class TestStatisticalTestCommand:
         )
         assert command.execute() is False
         assert command.result_dataset_id is None
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+        _title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
+        assert "Missing" in message
 
     def test_undo_logs_warning_when_nothing_to_undo(self, app_context_with_project, caplog):
         app_context, _ = app_context_with_project

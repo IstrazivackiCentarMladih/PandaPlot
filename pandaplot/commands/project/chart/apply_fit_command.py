@@ -47,6 +47,7 @@ class ApplyFitCommand(Command):
         super().__init__()
 
         self.app_context = app_context
+        self.ui_controller = app_context.get_ui_controller()
         self.chart_id = chart_id
         self.fit_results = fit_results
 
@@ -80,6 +81,9 @@ class ApplyFitCommand(Command):
             self.logger.warning(
                 "ApplyFitCommand.execute: chart '%s' not found or not a Chart",
                 self.chart_id,
+            )
+            self.ui_controller.show_error_message(
+                "Apply Fit Error", f"Chart '{self.chart_id}' not found."
             )
             return False
 

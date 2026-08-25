@@ -12,6 +12,7 @@ class CloseProjectCommand(Command):
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
+        self.ui_controller = app_context.get_ui_controller()
 
     @override
     def execute(self) -> bool:
@@ -41,6 +42,7 @@ class CloseProjectCommand(Command):
             
         except Exception as e:
             self.logger.error(f"Failed to close project: {e}")
+            self.ui_controller.show_error_message("Close Project Error", str(e))
             return False
 
     @override

@@ -22,6 +22,7 @@ import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command
+from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart, resolve_series_column
@@ -47,6 +48,7 @@ class AnalyzeChartSeriesCommand(Command):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
+        self.ui_controller: UIController = app_context.get_ui_controller()
 
         self.chart_id = chart_id
         self.source_kind = source_kind
@@ -257,6 +259,7 @@ class AnalyzeChartSeriesCommand(Command):
 
         except Exception as e:
             self.logger.error("Analyze-chart-series failed: %s", e, exc_info=True)
+            self.ui_controller.show_error_message("Chart Analysis Error", str(e))
             return False
 
     @override

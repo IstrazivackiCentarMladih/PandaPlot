@@ -20,6 +20,7 @@ class ApplyChartPropertiesCommand(Command):
                  old_snapshot: Optional[Dict[str, Any]] = None):
         super().__init__()
         self.app_context = app_context
+        self.ui_controller = app_context.get_ui_controller()
         self.chart_id = chart_id
         self._apply_fn = apply_fn
         # Baseline for undo. The panel edits the chart live, so the state at
@@ -47,6 +48,9 @@ class ApplyChartPropertiesCommand(Command):
             self.logger.warning(
                 "ApplyChartPropertiesCommand.execute: chart '%s' not found or not a Chart (got %s)",
                 self.chart_id, type(chart).__name__ if chart else None,
+            )
+            self.ui_controller.show_error_message(
+                "Apply Chart Properties Error", f"Chart '{self.chart_id}' not found."
             )
             return False
 

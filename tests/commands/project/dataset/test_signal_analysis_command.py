@@ -125,6 +125,7 @@ class TestSignalAnalysisCommand:
         assert command.execute() is False
 
         assert command.result_dataset_id is None
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_undo_logs_a_warning_when_nothing_to_undo(
         self,

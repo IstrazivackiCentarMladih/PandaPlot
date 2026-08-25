@@ -121,8 +121,10 @@ class TestAnalyzeChartSeriesCommand:
         assert project.find_item(new_id) is None
 
     def test_invalid_source_index_fails(self, ctx):
+        app_context, _ = ctx
         command = _cmd(ctx, source_kind="fit", source_index=9)
         assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_source_length_excludes_nan_rows(self, ctx):
         _, project = ctx

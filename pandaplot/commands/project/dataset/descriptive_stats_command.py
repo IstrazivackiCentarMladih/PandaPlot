@@ -9,6 +9,7 @@ from typing import List, Optional, override
 
 from pandaplot.analysis import DescriptiveStatsEngine, DescriptiveStatsResult
 from pandaplot.commands.base_command import Command
+from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
 from pandaplot.models.project.items import Dataset, Note
 from pandaplot.models.state import AppContext, AppState
@@ -34,6 +35,7 @@ class DescriptiveStatsCommand(Command):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
+        self.ui_controller: UIController = app_context.get_ui_controller()
 
         self.source_dataset_id = source_dataset_id
         self.column_names = column_names
@@ -122,6 +124,7 @@ class DescriptiveStatsCommand(Command):
 
         except Exception as e:
             self.logger.error("Descriptive statistics failed: %s", e, exc_info=True)
+            self.ui_controller.show_error_message("Descriptive Statistics Error", str(e))
             return False
 
     @override

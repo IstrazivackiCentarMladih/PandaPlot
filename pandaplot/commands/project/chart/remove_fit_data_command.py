@@ -15,6 +15,7 @@ class RemoveFitDataCommand(Command):
     def __init__(self, app_context: AppContext, chart_id: str, fit_index: int):
         super().__init__()
         self.app_context = app_context
+        self.ui_controller = app_context.get_ui_controller()
         self.chart_id = chart_id
         self.fit_index = fit_index
         self.removed_fit_data: Optional[FitData] = None
@@ -32,6 +33,9 @@ class RemoveFitDataCommand(Command):
             self.logger.warning(
                 "RemoveFitDataCommand.execute: chart '%s' not found or not a Chart (got %s)",
                 self.chart_id, type(chart).__name__ if chart else None,
+            )
+            self.ui_controller.show_error_message(
+                "Remove Fit Error", f"Chart '{self.chart_id}' not found."
             )
             return False
 
