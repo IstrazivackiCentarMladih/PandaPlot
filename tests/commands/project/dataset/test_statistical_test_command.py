@@ -82,3 +82,14 @@ class TestStatisticalTestCommand:
         with caplog.at_level(logging.WARNING):
             assert command.undo() is False
         assert "cannot undo" in caplog.text.lower()
+
+    def test_execute_surfaces_no_project_loaded_to_the_user(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        app_state.has_project = False
+        app_state.current_project = None
+        app_context.get_app_state.return_value = app_state
+
+        command = StatisticalTestCommand(app_context, "ds-1", StatTestType.PEARSON, ["A", "B"])
+        assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()

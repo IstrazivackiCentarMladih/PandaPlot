@@ -126,6 +126,14 @@ class TestAnalyzeChartSeriesCommand:
         assert command.execute() is False
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
+    def test_execute_surfaces_no_project_loaded_to_the_user(self, ctx):
+        app_context, _ = ctx
+        app_context.get_app_state.return_value.has_project = False
+        app_context.get_app_state.return_value.current_project = None
+        command = _cmd(ctx)
+        assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
     def test_source_length_excludes_nan_rows(self, ctx):
         _, project = ctx
         dataset = project.find_item("ds-1")

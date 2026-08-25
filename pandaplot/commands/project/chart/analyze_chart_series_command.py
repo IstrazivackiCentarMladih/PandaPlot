@@ -231,7 +231,9 @@ class AnalyzeChartSeriesCommand(Command):
     def execute(self) -> bool:
         try:
             if not self.app_state.has_project or not self.app_state.current_project:
-                self.logger.warning("No project loaded; cannot analyze chart series.")
+                message = "No project loaded; cannot analyze chart series."
+                self.logger.warning(message)
+                self.ui_controller.show_error_message("Chart Analysis Error", message)
                 return False
 
             project = self.app_state.current_project

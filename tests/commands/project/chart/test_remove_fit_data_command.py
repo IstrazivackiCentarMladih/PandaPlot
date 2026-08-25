@@ -58,6 +58,7 @@ def test_execute_out_of_range_returns_false(app_context_with_chart, caplog):
         assert command.execute() is False
     assert len(chart.fit_data) == 1
     assert "5" in caplog.text
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
 def test_execute_logs_a_warning_when_chart_not_found(caplog):

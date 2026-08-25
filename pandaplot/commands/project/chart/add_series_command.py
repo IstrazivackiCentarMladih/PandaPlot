@@ -3,6 +3,7 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.project.items.chart import Chart, DataSeries
 from pandaplot.models.state import AppContext
@@ -14,7 +15,7 @@ class AddSeriesCommand(Command):
     def __init__(self, app_context: AppContext, chart_id: str, series: DataSeries):
         super().__init__()
         self.app_context = app_context
-        self.ui_controller = app_context.get_ui_controller()
+        self.ui_controller: UIController = app_context.get_ui_controller()
         self.chart_id = chart_id
         self.series = series
         self.added_index: Optional[int] = None

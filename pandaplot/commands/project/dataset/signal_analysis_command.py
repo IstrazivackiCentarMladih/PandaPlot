@@ -94,9 +94,9 @@ class SignalAnalysisCommand(Command):
                 not self.app_state.has_project
                 or not self.app_state.current_project
             ):
-                self.logger.warning(
-                    "No project loaded; cannot run signal analysis."
-                )
+                message = "No project loaded; cannot run signal analysis."
+                self.logger.warning(message)
+                self.ui_controller.show_error_message("Signal Analysis Error", message)
                 return False
 
             project = self.app_state.current_project

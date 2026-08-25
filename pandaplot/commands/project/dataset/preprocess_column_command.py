@@ -73,6 +73,9 @@ class PreprocessColumnCommand(Command):
             self.dataset = self._get_dataset()
             if not isinstance(self.dataset, Dataset):
                 self.logger.warning("Dataset %s not found", self.dataset_id)
+                self.ui_controller.show_error_message(
+                    "Preprocessing Error", f"Dataset '{self.dataset_id}' not found."
+                )
                 return False
 
             if not self._validate_inputs():

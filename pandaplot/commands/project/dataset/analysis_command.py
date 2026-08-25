@@ -61,8 +61,9 @@ class AnalysisCommand(Command):
             # Get dataset
             self.dataset = self._get_dataset()
             if not self.dataset:
-                self.logger.warning(
-                    f"Analysis execution failed: Dataset {self.dataset_id} not found")
+                message = f"Dataset {self.dataset_id} not found"
+                self.logger.warning(f"Analysis execution failed: {message}")
+                self.ui_controller.show_error_message("Analysis Error", message)
                 return False
 
             # Validate inputs
@@ -72,16 +73,18 @@ class AnalysisCommand(Command):
             # Store original state for undo
             df = self.dataset.data
             if df is None:
-                self.logger.warning(
-                    "Analysis execution failed: Dataset is empty")
+                message = "Dataset is empty"
+                self.logger.warning(f"Analysis execution failed: {message}")
+                self.ui_controller.show_error_message("Analysis Error", message)
                 return False
             self._store_original_state(df)
 
             # Execute analysis
             result = self._execute_analysis(df)
             if result is None:
-                self.logger.warning(
-                    "Analysis execution failed: Analysis returned no result")
+                message = "Analysis returned no result"
+                self.logger.warning(f"Analysis execution failed: {message}")
+                self.ui_controller.show_error_message("Analysis Error", message)
                 return False
 
             # Add result column to dataset

@@ -110,6 +110,15 @@ class TestPreprocessColumnCommand:
         assert dataset.data["A_minmax"].min() == pytest.approx(-1.0)
         assert dataset.data["A_minmax"].max() == pytest.approx(1.0)
 
+    def test_dataset_not_found_is_surfaced_to_the_user(self, app_context_with_project):
+        app_context, _, _ = app_context_with_project
+        command = PreprocessColumnCommand(
+            app_context, "missing-ds",
+            {"method": "center", "source_columns": ["A"]},
+        )
+        assert command.execute() is False
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
     def test_missing_column_fails(self, app_context_with_project):
         app_context, _, _ = app_context_with_project
         command = PreprocessColumnCommand(

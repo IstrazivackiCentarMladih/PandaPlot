@@ -80,7 +80,9 @@ class StatisticalTestCommand(Command):
         try:
             self.logger.info("Executing StatisticalTestCommand (%s)", self.test_type.value)
             if not self.app_state.has_project or not self.app_state.current_project:
-                self.logger.warning("No project loaded; cannot run statistical test.")
+                message = "No project loaded; cannot run statistical test."
+                self.logger.warning(message)
+                self.ui_controller.show_error_message("Statistical Test Error", message)
                 return False
 
             project = self.app_state.current_project

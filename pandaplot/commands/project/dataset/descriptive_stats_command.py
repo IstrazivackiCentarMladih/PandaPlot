@@ -70,7 +70,9 @@ class DescriptiveStatsCommand(Command):
         try:
             self.logger.info("Executing DescriptiveStatsCommand on %s", self.column_names)
             if not self.app_state.has_project or not self.app_state.current_project:
-                self.logger.warning("No project loaded; cannot compute descriptive statistics.")
+                message = "No project loaded; cannot compute descriptive statistics."
+                self.logger.warning(message)
+                self.ui_controller.show_error_message("Descriptive Statistics Error", message)
                 return False
 
             project = self.app_state.current_project

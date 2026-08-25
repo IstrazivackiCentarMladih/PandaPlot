@@ -29,6 +29,7 @@ def test_execute_logs_a_warning_when_no_project_loaded(caplog):
     with caplog.at_level(logging.WARNING):
         assert command.execute() is False
     assert "no project" in caplog.text.lower()
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
 def test_undo_logs_a_warning_when_no_project_loaded(caplog):
