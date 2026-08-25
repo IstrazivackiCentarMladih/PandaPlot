@@ -75,20 +75,29 @@ def render_equation(latex: str, *, color: str, fontsize: float, display: bool) -
         return cached
 
     # Import lazily: matplotlib is heavy and not every session touches notes.
-    from matplotlib import mathtext
+    from matplotlib import figure
     from matplotlib.font_manager import FontProperties
+    from matplotlib.mathtext import MathTextParser
 
     # Display equations render a touch larger, matching common note styling.
     effective_size = fontsize * (1.3 if display else 1.0)
     buf = io.BytesIO()
     try:
-        depth = mathtext.math_to_image(
-            f"${latex.strip()}$",
+        # Reimplements matplotlib.mathtext.math_to_image, but saves with a
+        # transparent background instead of the opaque white figure facecolor
+        # -- otherwise every equation shows as a white box in a dark theme.
+        prop = FontProperties(size=effective_size)
+        expr = f"${latex.strip()}$"
+        parser = MathTextParser("path")
+        width, height, depth, _, _ = parser.parse(expr, dpi=72, prop=prop)
+
+        fig = figure.Figure(figsize=(width / 72.0, height / 72.0))
+        fig.text(0, depth / height, expr, fontproperties=prop, color=color)
+        fig.savefig(
             buf,
-            prop=FontProperties(size=effective_size),
             dpi=_BASE_DPI * _RENDER_SCALE,
             format="png",
-            color=color,
+            transparent=True,
         )
     except Exception as exc:  # invalid syntax, unknown symbol, etc.
         logger.debug("mathtext failed to render %r: %s", latex, exc)
