@@ -164,3 +164,18 @@ def test_chart_display_measurement_unit_json_roundtrip():
     cfg.chart_display.measurement_unit = LengthUnit.IN
     loaded = ApplicationConfig.from_json(cfg.to_json())
     assert loaded.chart_display.measurement_unit == LengthUnit.IN
+
+
+def test_reset_defaults_restores_chart_display():
+    cfg = ApplicationConfig.default()
+    default_chart_display = ApplicationConfig.default().chart_display
+    cfg.chart_display.measurement_unit = LengthUnit.IN
+    cfg.chart_display.dpi = 300
+    assert cfg.chart_display.measurement_unit != default_chart_display.measurement_unit
+    assert cfg.chart_display.dpi != default_chart_display.dpi
+
+    cfg.reset_defaults()
+
+    assert cfg.chart_display.measurement_unit == default_chart_display.measurement_unit
+    assert cfg.chart_display.dpi == default_chart_display.dpi
+    assert cfg.chart_display == default_chart_display

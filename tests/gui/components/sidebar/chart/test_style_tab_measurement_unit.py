@@ -74,3 +74,45 @@ def test_clear_chart_style_default_fallback_shown_in_configured_unit():
     style_tab.clear_chart_style()
     assert style_tab.chart_width_spin.value() == 200
     assert style_tab.chart_height_spin.value() == 150
+
+
+def test_load_chart_style_picks_up_unit_changed_after_construction():
+    # Reproduces the bug: StyleTab is an app-lifetime singleton constructed
+    # once with the unit resolved at __init__ time. If the user later changes
+    # the measurement unit in Settings, the Size card must still pick up the
+    # new unit the next time a chart is loaded -- not require an app restart.
+    style_tab = _style_tab_with_unit(LengthUnit.CM)
+    assert style_tab._chart_size_unit == LengthUnit.CM
+
+    config_manager = style_tab.app_context.get_manager(ConfigManager)
+    config_manager.config.chart_display.measurement_unit = LengthUnit.MM
+
+    chart = Chart(name="c")
+    chart.config["width_cm"] = 12.0
+    chart.config["height_cm"] = 9.0
+    style_tab.load_chart_style(chart)
+
+    assert style_tab._chart_size_unit == LengthUnit.MM
+    assert style_tab.chart_size_combo.itemText(0) == "150 × 80 mm"
+    assert style_tab.chart_size_combo.itemText(1) == "200 × 150 mm"
+    assert style_tab.chart_width_spin.suffix() == " mm"
+    assert style_tab.chart_width_spin.decimals() == 0
+    assert style_tab.chart_width_spin.value() == 120
+    assert style_tab.chart_height_spin.value() == 90
+
+
+def test_clear_chart_style_picks_up_unit_changed_after_construction():
+    style_tab = _style_tab_with_unit(LengthUnit.CM)
+    assert style_tab._chart_size_unit == LengthUnit.CM
+
+    config_manager = style_tab.app_context.get_manager(ConfigManager)
+    config_manager.config.chart_display.measurement_unit = LengthUnit.MM
+
+    style_tab.clear_chart_style()
+
+    assert style_tab._chart_size_unit == LengthUnit.MM
+    assert style_tab.chart_size_combo.itemText(0) == "150 × 80 mm"
+    assert style_tab.chart_size_combo.itemText(1) == "200 × 150 mm"
+    assert style_tab.chart_width_spin.suffix() == " mm"
+    assert style_tab.chart_width_spin.value() == 200
+    assert style_tab.chart_height_spin.value() == 150

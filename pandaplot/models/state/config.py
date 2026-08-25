@@ -370,6 +370,7 @@ class ApplicationConfig:
 		self.appearance = fresh.appearance
 		self.editor = fresh.editor
 		self.project = fresh.project
+		self.chart_display = fresh.chart_display
 
 
 # Public export surface

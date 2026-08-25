@@ -1852,6 +1852,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self._refresh_size_unit_display()
             self.load_colormap_config(chart)
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
@@ -2020,6 +2021,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self._refresh_size_unit_display()
             self.clear_colormap_config()
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
@@ -2145,6 +2147,21 @@ class StyleTab(QWidget):
         spin.setRange(lo, hi)
         spin.setSingleStep(unit_step(self._chart_size_unit))
         spin.setSuffix(unit_suffix(self._chart_size_unit))
+
+    def _refresh_size_unit_display(self) -> None:
+        """Re-resolve the configured measurement unit and re-apply it to the
+        Size card widgets. `StyleTab` is an app-lifetime singleton, so the
+        unit resolved in `__init__` can go stale if the user changes it in
+        Settings later -- this must be called whenever a chart is loaded or
+        cleared so the Size card always reflects the current setting."""
+        self._chart_size_unit = self._measurement_unit()
+        self._configure_size_spin(self.chart_width_spin, MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self._configure_size_spin(self.chart_height_spin, MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        for i in range(self.chart_size_combo.count()):
+            data = self.chart_size_combo.itemData(i)
+            if isinstance(data, tuple) and len(data) == 2:
+                width_cm, height_cm = data
+                self.chart_size_combo.setItemText(i, format_size(width_cm, height_cm, self._chart_size_unit))
 
     def _app_chart_display_defaults(self):
         """Read the app-wide default chart width/height/dpi from Settings."""
