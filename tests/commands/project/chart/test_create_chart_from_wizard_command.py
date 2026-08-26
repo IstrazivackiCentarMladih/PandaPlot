@@ -320,6 +320,7 @@ def test_execute_succeeds_before_the_wizard_has_finished(mock_wizard_cls, app_co
 def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project, caplog):
     app_context, _ = app_context_with_project
     app_context.get_app_state.return_value.has_project = False
+    app_context.get_ui_controller.return_value.show_action_or_cancel.return_value = False
     mock_wizard_cls.return_value = _fake_wizard()
 
     command = CreateChartFromWizardCommand(app_context)
@@ -328,6 +329,28 @@ def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_wit
         assert command.execute() is False
     mock_wizard_cls.assert_not_called()
     assert "no project" in caplog.text.lower()
+    app_context.get_ui_controller.return_value.show_action_or_cancel.assert_called_once()
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_execute_continues_after_the_user_creates_a_project(mock_wizard_cls, app_context_with_project):
+    app_context, project = app_context_with_project
+    app_state = app_context.get_app_state.return_value
+    app_state.has_project = False
+    app_context.get_ui_controller.return_value.show_action_or_cancel.return_value = True
+
+    def _execute_command(command):
+        app_state.has_project = True
+        app_state.current_project = project
+
+    app_context.get_command_executor.return_value.execute_command.side_effect = _execute_command
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+    result = command.execute()
+
+    assert result is True
+    mock_wizard_cls.assert_called_once()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

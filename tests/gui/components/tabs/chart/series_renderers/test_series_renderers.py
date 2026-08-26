@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.use("Agg")  # no display needed for these pure-drawing tests
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 from matplotlib.quiver import Quiver
 
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
@@ -316,6 +317,158 @@ def test_render_heatmap_series_returns_none_when_ungriddable():
                                       {"colormap": "viridis", "color_limits": (None, None)})
 
     assert mappable is None
+    plt.close(fig)
+
+
+# --- Heatmap contour rendering (#191) ---
+
+_HEATMAP_XYZ = dict(
+    x_data=[0, 1, 2, 0, 1, 2, 0, 1, 2],
+    y_data=[0, 0, 0, 1, 1, 1, 2, 2, 2],
+    z_data=[1, 2, 3, 2, 3, 4, 3, 4, 5],
+)
+
+
+@pytest.mark.parametrize("gridding", ["grid", "binned", "interpolated", "triangulated"])
+@pytest.mark.parametrize("render_mode", ["contour_lines", "contour_filled", "contour_filled_lines"])
+def test_render_heatmap_series_contour_modes_produce_a_mappable(gridding, render_mode):
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding=gridding, heatmap_resolution=6,
+                                render_mode=render_mode, contour_levels=4)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is not None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_contour_filled_uses_the_shared_colormap_and_limits():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid", render_mode="contour_filled", contour_levels=4)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "plasma", "color_limits": (0.0, 5.0)})
+
+    assert mappable.get_cmap().name == "plasma"
+    assert mappable.get_clim() == (0.0, 5.0)
+    plt.close(fig)
+
+
+def test_render_heatmap_series_contour_lines_only_returns_the_line_contour_set():
+    """With no fill requested, the line ContourSet itself is the mappable
+    (still usable for a colorbar) -- there's no separate filled artist."""
+    from matplotlib.contour import ContourSet
+
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid", render_mode="contour_lines", contour_levels=4)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert isinstance(mappable, ContourSet)
+    plt.close(fig)
+
+
+def test_render_heatmap_series_triangulated_mesh_returns_a_trimesh():
+    from matplotlib.collections import TriMesh
+
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="triangulated", render_mode="mesh")
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert isinstance(mappable, TriMesh)
+    plt.close(fig)
+
+
+def test_render_heatmap_series_triangulated_returns_none_for_too_few_points():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(x_data=[0, 1], y_data=[0, 1], z_data=[1.0, 2.0])
+    style = HeatmapSeriesStyle(heatmap_gridding="triangulated", render_mode="mesh")
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_triangulated_returns_none_for_collinear_points():
+    """A degenerate (all-collinear) triangulation makes matplotlib's
+    qhull-backed Triangulation raise RuntimeError, not ValueError -- must
+    still be treated as "nothing to render" rather than crashing the whole
+    chart."""
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(x_data=[0, 1, 2, 3], y_data=[0, 0, 0, 0], z_data=[1.0, 2.0, 3.0, 4.0])
+    style = HeatmapSeriesStyle(heatmap_gridding="triangulated", render_mode="mesh")
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_contour_line_labels_does_not_raise():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid", render_mode="contour_filled_lines",
+                                contour_levels=4, contour_line_labels=True)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert mappable is not None
+    plt.close(fig)
+
+
+def test_render_heatmap_series_applies_contour_line_width():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid", render_mode="contour_lines",
+                                contour_levels=4, contour_line_width=4.5)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert all(lw == 4.5 for lw in mappable.get_linewidths())
+    plt.close(fig)
+
+
+def test_render_heatmap_series_applies_contour_line_width_triangulated():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="triangulated", render_mode="contour_lines",
+                                contour_levels=4, contour_line_width=2.5)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert all(lw == 2.5 for lw in mappable.get_linewidths())
     plt.close(fig)
 
 
