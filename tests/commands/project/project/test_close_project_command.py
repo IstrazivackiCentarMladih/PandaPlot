@@ -6,7 +6,7 @@ from pandaplot.commands.project.project.close_project_command import CloseProjec
 from pandaplot.models.state import AppContext, AppState
 
 
-def _make_app_context(has_project=True):
+def _make_app_context(*, has_project=True):
     app_context = Mock(spec=AppContext)
     app_state = Mock(spec=AppState)
     app_state.has_project = has_project

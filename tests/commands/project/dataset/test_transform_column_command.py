@@ -36,7 +36,7 @@ def _emitted(event_bus, name):
     return [c.args[1] for c in event_bus.emit.call_args_list if c.args and c.args[0] == name]
 
 
-def _config(new_name, expression="value * 2", replace=False):
+def _config(new_name, expression="value * 2", *, replace=False):
     return {
         "new_column_name": new_name,
         "transform_type": "column",

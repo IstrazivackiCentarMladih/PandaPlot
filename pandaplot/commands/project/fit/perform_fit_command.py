@@ -14,6 +14,7 @@ class PerformFitCommand(Command):
         x_data,
         y_data,
         fit_points: int = 500,
+        *,
         calculate_r_squared: bool = True,
         confidence_bands: bool = False,
         sigma_y=None,

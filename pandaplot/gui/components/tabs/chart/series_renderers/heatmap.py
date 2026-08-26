@@ -59,7 +59,7 @@ def _draw_contours(axes, x, y, z, style: HeatmapSeriesStyle, cmap: str,
 
 
 def render_heatmap_series(axes, series_data: SeriesData, style: HeatmapSeriesStyle,
-                           label: str, alpha: float, visible: bool, extra: dict):
+                           label: str, alpha: float, *, visible: bool, extra: dict):
     vmin, vmax = extra["color_limits"]
     cmap = extra["colormap"]
     try:

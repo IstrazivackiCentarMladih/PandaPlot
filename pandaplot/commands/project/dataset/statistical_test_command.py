@@ -29,6 +29,7 @@ class StatisticalTestCommand(Command):
         alpha: float = 0.05,
         alternative: str = "two-sided",
         popmean: float = 0.0,
+        *,
         equal_var: bool = True,
         result_name: Optional[str] = None,
         folder_id: Optional[str] = None,

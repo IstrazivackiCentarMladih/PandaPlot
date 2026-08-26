@@ -91,8 +91,8 @@ class ChartTypePage(PWizardPage):
         self.empty_button = self.footer.empty_link
         outer.addWidget(self.footer)
 
-        self.completeChanged.connect(lambda: self.footer.set_next_enabled(self.isComplete()))
-        self.footer.set_next_enabled(self.isComplete())
+        self.completeChanged.connect(lambda: self.footer.set_next_enabled(enabled=self.isComplete()))
+        self.footer.set_next_enabled(enabled=self.isComplete())
 
         self.type_list.setCurrentRow(0)
 

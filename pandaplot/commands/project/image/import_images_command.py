@@ -33,7 +33,7 @@ class ImportImagesCommand(Command):
     """
 
     def __init__(self, app_context: AppContext, gallery_id: str, sources: List[str],
-                 copy_into_project: bool = True):
+                 *, copy_into_project: bool = True):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()

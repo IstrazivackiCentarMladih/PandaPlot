@@ -68,7 +68,7 @@ def _dataset(dataset_id, name, parent_id):
     return dataset
 
 
-def _fake_wizard(chart_type="line", is_empty=False, series_configs=None,
+def _fake_wizard(chart_type="line", *, is_empty=False, series_configs=None,
                   title="", x_label="", y_label="", subtitle="", show_legend=True, show_grid=True):
     """A stand-in for `ChartWizard` with a mockable `finished` signal."""
     wizard = Mock()
@@ -105,7 +105,7 @@ def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_
     wizard.finished.connect.assert_called_once()
     # `exec()` made the wizard application-modal implicitly; `show()` does not,
     # so the command must ask for it explicitly.
-    wizard.setModal.assert_called_once_with(True)
+    wizard.setModal.assert_called_once_with(True)  # noqa: FBT003 - mirrors Qt's positional-only setModal call
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

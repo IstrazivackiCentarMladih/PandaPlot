@@ -1134,7 +1134,9 @@ class StyleTab(QWidget):
         color_row.colorChanged.connect(self._on_chart_style_field_changed)
         rotation_spin.valueChanged.connect(self._on_chart_style_field_changed)
         if match_x_toggle is not None:
-            match_x_toggle.toggled.connect(lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked))
+            match_x_toggle.toggled.connect(
+                lambda checked, p=prefix: self._on_axis_style_match_x_toggled(p, checked=checked)
+            )
 
         tick_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
         tick_font_family_combo.currentValueChanged.connect(self._on_chart_style_field_changed)
@@ -1147,7 +1149,8 @@ class StyleTab(QWidget):
         minor_tick_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         if match_x_colors_toggle is not None:
             match_x_colors_toggle.toggled.connect(
-                lambda checked, p=prefix: self._on_axis_style_match_x_colors_toggled(p, checked))
+                lambda checked, p=prefix: self._on_axis_style_match_x_colors_toggled(p, checked=checked)
+            )
 
         form_widget.setVisible(False)
         self._axes_style_form_container_layout.addWidget(form_widget)
@@ -1156,7 +1159,7 @@ class StyleTab(QWidget):
         for key, form in self.axes_style_forms.items():
             form["widget"].setVisible(key == prefix)
 
-    def _on_axis_style_match_x_toggled(self, prefix: str, checked: bool):
+    def _on_axis_style_match_x_toggled(self, prefix: str, *, checked: bool):
         """Hide the axis-title color swatch while matching X; pre-fill from
         X's current color the first time it's revealed (mirrors
         AxesTab._on_match_x_label_toggled)."""
@@ -1167,7 +1170,7 @@ class StyleTab(QWidget):
         form["color_row"].setVisible(not checked)
         self._on_chart_style_field_changed()
 
-    def _on_axis_style_match_x_colors_toggled(self, prefix: str, checked: bool):
+    def _on_axis_style_match_x_colors_toggled(self, prefix: str, *, checked: bool):
         """Mirrors AxesTab._on_match_x_colors_toggled, for the Style tab's
         Colors card (spine/major/minor tick colors).
 
@@ -1215,9 +1218,9 @@ class StyleTab(QWidget):
         # toggled unconditionally, and the handler pre-fills from X's
         # *current* color whenever set to "not matching").
         if source["match_x_toggle"] is not None and target["match_x_toggle"] is not None:
-            target["match_x_toggle"].setChecked(source["match_x_toggle"].isChecked())
+            target["match_x_toggle"].setChecked(checked=source["match_x_toggle"].isChecked())
         if source["match_x_colors_toggle"] is not None and target["match_x_colors_toggle"] is not None:
-            target["match_x_colors_toggle"].setChecked(source["match_x_colors_toggle"].isChecked())
+            target["match_x_colors_toggle"].setChecked(checked=source["match_x_colors_toggle"].isChecked())
 
         target["color_row"].setCurrentColor(source["color_row"].currentColor())
         target["tick_color_row"].setCurrentColor(source["tick_color_row"].currentColor())
@@ -1244,7 +1247,7 @@ class StyleTab(QWidget):
             series.y_axis == YAxis.SECONDARY for series in chart.data_series
         )
         current = self.axes_style_selector.currentValue()
-        self.axes_style_selector.blockSignals(True)
+        self.axes_style_selector.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         self.axes_style_selector.clear()
         self.axes_style_selector.addItem("X", "x")
         self.axes_style_selector.addItem("Y₁", "y")
@@ -1252,7 +1255,7 @@ class StyleTab(QWidget):
             self.axes_style_selector.addItem("Y₂", "y2")
         restore_index = self.axes_style_selector.findData(current) if current else -1
         self.axes_style_selector.setCurrentIndex(restore_index if restore_index >= 0 else 0)
-        self.axes_style_selector.blockSignals(False)
+        self.axes_style_selector.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
         # setCurrentIndex() above ran with signals blocked (so rebuilding the
         # combo's items doesn't spuriously emit currentValueChanged), which
         # means _show_axis_style_form never fires if the selection was just
@@ -1353,11 +1356,11 @@ class StyleTab(QWidget):
             index = total_series + fit_offset
             chip_items.append((f"\U0001f527 {fit.label}", index))
 
-        self.style_series_chips.blockSignals(True)
+        self.style_series_chips.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         self.style_series_chips.clear()
         for label, value in chip_items:
             self.style_series_chips.addItem(label, value)
-        self.style_series_chips.blockSignals(False)
+        self.style_series_chips.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
         # Before any real population has happened, `previous_value` is just
         # the ValueComboBox constructor's placeholder ("chart") -- not a
@@ -1407,7 +1410,7 @@ class StyleTab(QWidget):
             self._updating_controls = previous_guard
         self._update_target_cards_visibility()
 
-    def _on_subtitle_match_title_toggled(self, checked: bool):
+    def _on_subtitle_match_title_toggled(self, checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the 'Match title' toggle for subtitle color: hides the
         subtitle color swatch while matching (mirrors
         _update_marker_controls_enabled's hide-not-disable convention), and
@@ -1420,12 +1423,12 @@ class StyleTab(QWidget):
 
     # -- Marker enable/match-line toggles ------------------------------------
 
-    def _on_markers_enabled_toggled(self, _checked: bool):
+    def _on_markers_enabled_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Markers section's on/off toggle."""
         self._update_marker_controls_enabled()
         self._on_field_changed()
 
-    def _on_marker_match_line_toggled(self, _checked: bool):
+    def _on_marker_match_line_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the 'Match line' toggle for marker color."""
         self._update_marker_controls_enabled()
         self._on_field_changed()
@@ -1489,7 +1492,7 @@ class StyleTab(QWidget):
 
     # -- Color Map controls (Colormap/Heatmap) ------------------------------
 
-    def _on_color_scale_auto_toggled(self, _checked: bool):
+    def _on_color_scale_auto_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Color Map 'Auto scale' toggle."""
         self._update_color_scale_controls()
         self._on_field_changed()
@@ -1557,7 +1560,7 @@ class StyleTab(QWidget):
 
     # -- Error-bar match-line toggle ------------------------------------
 
-    def _on_error_match_line_toggled(self, _checked: bool):
+    def _on_error_match_line_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Error Bars 'Match line' toggle."""
         self._update_error_controls_visibility()
         self._on_field_changed()
@@ -1588,18 +1591,18 @@ class StyleTab(QWidget):
                 continue
             label = other.label or f"Series {idx + 1}"
             items.append((f"↕ {label}", idx))
-        self.fill_to_control.blockSignals(True)
+        self.fill_to_control.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         self.fill_to_control.clear()
         for label, value in items:
             self.fill_to_control.addItem(label, value)
-        self.fill_to_control.blockSignals(False)
+        self.fill_to_control.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
-    def _on_fill_enabled_toggled(self, _checked: bool):
+    def _on_fill_enabled_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Fill section's on/off toggle."""
         self._update_fill_controls_visibility()
         self._on_field_changed()
 
-    def _on_fill_orientation_toggled(self, _checked: bool):
+    def _on_fill_orientation_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the vertical/horizontal fill switch: only the baseline
         label's axis (X vs Y) changes in the UI."""
         self._update_fill_controls_visibility()
@@ -1627,17 +1630,17 @@ class StyleTab(QWidget):
         self.band_match_line_label.setVisible(enabled)
         self.band_match_line_toggle.setVisible(enabled)
 
-    def _on_band_match_line_toggled(self, _checked: bool):
+    def _on_band_match_line_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Confidence Band 'Match line' toggle: hide the color
         swatch while it's checked (same convention as Marker/Fill)."""
         self._update_band_controls_visibility()
         self._on_field_changed()
 
-    def _on_band_enabled_toggled(self, _checked: bool):
+    def _on_band_enabled_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Confidence Band section's on/off toggle."""
         self._update_band_controls_visibility()
 
-    def _on_fill_match_line_toggled(self, _checked: bool):
+    def _on_fill_match_line_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Fill 'Match line' toggle for fill color."""
         self._update_fill_controls_visibility()
         self._on_field_changed()
@@ -1675,7 +1678,7 @@ class StyleTab(QWidget):
 
     # -- Background transparent toggles ----------------------------------
 
-    def _on_bg_transparent_toggled(self, _checked: bool):
+    def _on_bg_transparent_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Grey out the paired color swatch while its 'Transparent' toggle
         is on; the swatch keeps its last color underneath so re-enabling
         restores it (mirrors _update_marker_controls_enabled's convention)."""
@@ -1839,7 +1842,7 @@ class StyleTab(QWidget):
             self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
             self.heatmap_render_mode_control.setCurrentValue(getattr(style, "render_mode", "mesh"))
             self.heatmap_contour_levels_spin.setValue(getattr(style, "contour_levels", 10))
-            self.heatmap_contour_line_labels_toggle.setChecked(getattr(style, "contour_line_labels", False))
+            self.heatmap_contour_line_labels_toggle.setChecked(checked=getattr(style, "contour_line_labels", False))
             self.heatmap_contour_line_width_slider.setValue(getattr(style, "contour_line_width", 1.5))
             self._update_colormap_gridding_visibility()
 
@@ -1860,9 +1863,9 @@ class StyleTab(QWidget):
             marker = getattr(style, "marker", None)
             marker_style_value = getattr(marker, "marker_style", MarkerType.NONE.value)
             markers_enabled = marker_style_value != MarkerType.NONE.value
-            self.markers_enabled_toggle.blockSignals(True)
-            self.markers_enabled_toggle.setChecked(markers_enabled)
-            self.markers_enabled_toggle.blockSignals(False)
+            self.markers_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.markers_enabled_toggle.setChecked(checked=markers_enabled)
+            self.markers_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
             shape_value = marker_style_value if markers_enabled else MarkerType.CIRCLE.value
             try:
@@ -1887,11 +1890,11 @@ class StyleTab(QWidget):
             marker_edge_color = getattr(marker, "marker_edge_color", "")
             self.marker_color_row.setCurrentColor(marker_color or color)
             self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
-            self.marker_match_line_toggle.blockSignals(True)
-            self.marker_match_line_toggle.setChecked(
+            self.marker_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.marker_match_line_toggle.setChecked(checked=
                 marker_edge_color == "" if is_z_driven else marker_color == ""
             )
-            self.marker_match_line_toggle.blockSignals(False)
+            self.marker_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
@@ -1907,26 +1910,26 @@ class StyleTab(QWidget):
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
             error_color = getattr(error_bars, "error_color", "")
             self.error_color_row.setCurrentColor(error_color or color)
-            self.error_match_line_toggle.blockSignals(True)
-            self.error_match_line_toggle.setChecked(error_color == "")
-            self.error_match_line_toggle.blockSignals(False)
+            self.error_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.error_match_line_toggle.setChecked(checked=error_color == "")
+            self.error_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self._update_error_controls_visibility()
             self.error_cap_size_slider.setValue(getattr(error_bars, "error_cap_size", 3.0))
 
             self._populate_fill_to_options(series)
-            self.fill_enabled_toggle.blockSignals(True)
-            self.fill_enabled_toggle.setChecked(getattr(style, "fill_enabled", False))
-            self.fill_enabled_toggle.blockSignals(False)
-            self.fill_horizontal_toggle.blockSignals(True)
-            self.fill_horizontal_toggle.setChecked(getattr(style, "fill_orientation", "vertical") == "horizontal")
-            self.fill_horizontal_toggle.blockSignals(False)
+            self.fill_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.fill_enabled_toggle.setChecked(checked=getattr(style, "fill_enabled", False))
+            self.fill_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.fill_horizontal_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.fill_horizontal_toggle.setChecked(checked=getattr(style, "fill_orientation", "vertical") == "horizontal")
+            self.fill_horizontal_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.fill_to_control.setCurrentValue(getattr(style, "fill_to_index", -1))
             self.fill_base_spin.setValue(getattr(style, "fill_base", 0.0))
             fill_color = getattr(style, "fill_color", "")
             self.fill_color_row.setCurrentColor(fill_color or color)
-            self.fill_match_line_toggle.blockSignals(True)
-            self.fill_match_line_toggle.setChecked(fill_color == "")
-            self.fill_match_line_toggle.blockSignals(False)
+            self.fill_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.fill_match_line_toggle.setChecked(checked=fill_color == "")
+            self.fill_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.fill_opacity_slider.setValue(getattr(style, "fill_alpha", 0.3))
             self._update_fill_controls_visibility()
         finally:
@@ -1949,17 +1952,17 @@ class StyleTab(QWidget):
             except ValueError:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 
-            self.band_enabled_toggle.setChecked(style.band_fill_enabled)
+            self.band_enabled_toggle.setChecked(checked=style.band_fill_enabled)
             self.band_color_row.setCurrentColor(style.band_color or style.color)
-            self.band_match_line_toggle.blockSignals(True)
-            self.band_match_line_toggle.setChecked(style.band_color == "")
-            self.band_match_line_toggle.blockSignals(False)
+            self.band_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.band_match_line_toggle.setChecked(checked=style.band_color == "")
+            self.band_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.band_opacity_slider.setValue(style.band_fill_alpha)
             self._update_band_controls_visibility()
 
-            self.markers_enabled_toggle.blockSignals(True)
-            self.markers_enabled_toggle.setChecked(False)
-            self.markers_enabled_toggle.blockSignals(False)
+            self.markers_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.markers_enabled_toggle.setChecked(checked=False)
+            self.markers_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.marker_size_slider.setValue(0.0)  # Fit lines typically don't have markers
             self._update_marker_controls_enabled()
         finally:
@@ -1992,7 +1995,7 @@ class StyleTab(QWidget):
             self.subtitle_italic_check.setChecked(chart.config.get("subtitle_italic", False))
             self.title_color_row.setCurrentColor(chart.config.get("title_color", "#000000"))
             match_title = chart.config.get("subtitle_match_title_color", True)
-            self.subtitle_match_title_toggle.setChecked(match_title)
+            self.subtitle_match_title_toggle.setChecked(checked=match_title)
             self.subtitle_color_row.setCurrentColor(
                 chart.config.get("title_color", "#000000") if match_title
                 else chart.config.get("subtitle_color", "#000000")
@@ -2000,12 +2003,12 @@ class StyleTab(QWidget):
             self.subtitle_color_row.setVisible(not match_title)
 
             fig_bg = chart.style.get("figure_background_color", "#ffffff")
-            self.figure_bg_transparent_toggle.setChecked(fig_bg is None)
+            self.figure_bg_transparent_toggle.setChecked(checked=fig_bg is None)
             self.figure_bg_color_row.setCurrentColor(fig_bg or "#ffffff")
             self.figure_bg_color_row.setEnabled(fig_bg is not None)
 
             axes_bg = chart.style.get("axes_background_color", "#ffffff")
-            self.axes_bg_transparent_toggle.setChecked(axes_bg is None)
+            self.axes_bg_transparent_toggle.setChecked(checked=axes_bg is None)
             self.axes_bg_color_row.setCurrentColor(axes_bg or "#ffffff")
             self.axes_bg_color_row.setEnabled(axes_bg is not None)
 
@@ -2051,7 +2054,7 @@ class StyleTab(QWidget):
                 match = True
                 if axis_form["match_x_toggle"] is not None:
                     match = chart.config.get(f"{prefix}_match_x_label_color", True)
-                    axis_form["match_x_toggle"].setChecked(match)
+                    axis_form["match_x_toggle"].setChecked(checked=match)
                 axis_form["color_row"].setCurrentColor(chart.config.get(f"{prefix}_label_color", "#000000"))
                 if axis_form["match_x_toggle"] is not None:
                     axis_form["color_label"].setVisible(not match)
@@ -2069,7 +2072,7 @@ class StyleTab(QWidget):
                 match_colors = True
                 if axis_form["match_x_colors_toggle"] is not None:
                     match_colors = chart.config.get(f"{prefix}_match_x_colors", True)
-                    axis_form["match_x_colors_toggle"].setChecked(match_colors)
+                    axis_form["match_x_colors_toggle"].setChecked(checked=match_colors)
                 axis_form["spine_color_row"].setCurrentColor(chart.config.get(f"{prefix}_spine_color", "#000000"))
                 axis_form["major_tick_color_row"].setCurrentColor(
                     chart.config.get(f"{prefix}_major_tick_color", "#000000"))
@@ -2158,13 +2161,13 @@ class StyleTab(QWidget):
             self.subtitle_bold_check.setChecked(False)
             self.subtitle_italic_check.setChecked(False)
             self.title_color_row.setCurrentColor("#000000")
-            self.subtitle_match_title_toggle.setChecked(True)
+            self.subtitle_match_title_toggle.setChecked(checked=True)
             self.subtitle_color_row.setCurrentColor("#000000")
             self.subtitle_color_row.setVisible(False)
-            self.figure_bg_transparent_toggle.setChecked(False)
+            self.figure_bg_transparent_toggle.setChecked(checked=False)
             self.figure_bg_color_row.setCurrentColor("#ffffff")
             self.figure_bg_color_row.setEnabled(True)
-            self.axes_bg_transparent_toggle.setChecked(False)
+            self.axes_bg_transparent_toggle.setChecked(checked=False)
             self.axes_bg_color_row.setCurrentColor("#ffffff")
             self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
@@ -2183,7 +2186,7 @@ class StyleTab(QWidget):
                 axis_form["italic_check"].setChecked(False)
                 axis_form["color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_toggle"] is not None:
-                    axis_form["match_x_toggle"].setChecked(True)
+                    axis_form["match_x_toggle"].setChecked(checked=True)
                 axis_form["rotation_spin"].setValue(90 if prefix in ("y", "y2") else 0)
                 axis_form["tick_font_size_spin"].setValue(10)
                 axis_form["tick_font_family_combo"].setCurrentValue("DejaVu Sans")
@@ -2195,7 +2198,7 @@ class StyleTab(QWidget):
                 axis_form["major_tick_color_row"].setCurrentColor("#000000")
                 axis_form["minor_tick_color_row"].setCurrentColor("#000000")
                 if axis_form["match_x_colors_toggle"] is not None:
-                    axis_form["match_x_colors_toggle"].setChecked(True)
+                    axis_form["match_x_colors_toggle"].setChecked(checked=True)
             self.refresh_axis_style_selector(None)
         finally:
             self._updating_controls = previous_guard
@@ -2212,15 +2215,15 @@ class StyleTab(QWidget):
         self._updating_controls = True
         try:
             self.colormap_control.setCurrentValue(chart.config.get("colormap", "viridis"))
-            self.colorbar_show_toggle.blockSignals(True)
-            self.colorbar_show_toggle.setChecked(chart.config.get("colorbar_show", True))
-            self.colorbar_show_toggle.blockSignals(False)
-            self.colorbar_label_edit.blockSignals(True)
+            self.colorbar_show_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.colorbar_show_toggle.setChecked(checked=chart.config.get("colorbar_show", True))
+            self.colorbar_show_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.colorbar_label_edit.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.colorbar_label_edit.setText(chart.config.get("colorbar_label", ""))
-            self.colorbar_label_edit.blockSignals(False)
-            self.color_scale_auto_toggle.blockSignals(True)
-            self.color_scale_auto_toggle.setChecked(chart.config.get("color_scale_auto", True))
-            self.color_scale_auto_toggle.blockSignals(False)
+            self.colorbar_label_edit.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.color_scale_auto_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.color_scale_auto_toggle.setChecked(checked=chart.config.get("color_scale_auto", True))
+            self.color_scale_auto_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.color_vmin_spin.setValue(chart.config.get("color_vmin", 0.0))
             self.color_vmax_spin.setValue(chart.config.get("color_vmax", 1.0))
             self._update_color_scale_controls()
@@ -2240,9 +2243,9 @@ class StyleTab(QWidget):
         self._updating_controls = True
         try:
             self.colormap_control.setCurrentValue("viridis")
-            self.colorbar_show_toggle.setChecked(True)
+            self.colorbar_show_toggle.setChecked(checked=True)
             self.colorbar_label_edit.setText("")
-            self.color_scale_auto_toggle.setChecked(True)
+            self.color_scale_auto_toggle.setChecked(checked=True)
             self.color_vmin_spin.setValue(0.0)
             self.color_vmax_spin.setValue(1.0)
             self._update_color_scale_controls()

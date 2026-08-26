@@ -123,7 +123,7 @@ def test_clone_is_deep_copy():
         ("no", False),
     ],
 )
-def test_bool_string_matrix(input_value: str, expected: bool):
+def test_bool_string_matrix(input_value: str, *, expected: bool):
     cfg = ApplicationConfig.default()
     cfg.update_from_mapping({"auto_save": {"enabled": input_value}})
     assert cfg.auto_save.enabled is expected
