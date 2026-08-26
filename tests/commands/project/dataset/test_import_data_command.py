@@ -6,7 +6,7 @@ wizard and background threading are not exercised here.
 """
 
 import logging
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
@@ -100,11 +100,40 @@ class TestImportDataCommandLogging:
     def test_execute_logs_warning_when_no_project(self, mock_app_context, caplog):
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
+        ui_controller.show_action_or_cancel.return_value = False
         command = ImportDataCommand(app_context)
 
         with caplog.at_level(logging.WARNING):
             assert command.execute() is False
         assert "no project" in caplog.text.lower()
+        ui_controller.show_action_or_cancel.assert_called_once()
+
+    @patch("pandaplot.gui.dialogs.import_wizard_dialog.ImportWizardDialog")
+    def test_execute_continues_after_the_user_creates_a_project(self, mock_dialog_cls, mock_app_context):
+        from PySide6.QtWidgets import QDialog
+
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        ui_controller.show_action_or_cancel.return_value = True
+
+        project = Mock()
+
+        def _execute_command(command):
+            app_state.has_project = True
+            app_state.current_project = project
+
+        app_context.get_command_executor.return_value.execute_command.side_effect = _execute_command
+
+        mock_dialog = mock_dialog_cls.return_value
+        mock_dialog.exec.return_value = QDialog.DialogCode.Rejected  # cancel the *import* wizard itself
+
+        command = ImportDataCommand(app_context)
+        result = command.execute()
+
+        # Proceeded past the "no project" gate (opened the import wizard)
+        # instead of returning False immediately for lack of a project.
+        mock_dialog_cls.assert_called_once()
+        assert result is False  # false because the *import* wizard was cancelled, not the project offer
 
     def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
         app_context, app_state, ui_controller = mock_app_context
