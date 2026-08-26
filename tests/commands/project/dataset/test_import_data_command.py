@@ -136,14 +136,19 @@ class TestImportDataCommandLogging:
         assert result is False  # false because the *import* wizard was cancelled, not the project offer
 
     def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
+        """has_project=True but current_project=None is the same inconsistent
+        state the "no project" branch already recovers from -- it must also
+        offer to create a project here, not silently fail."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = True
         app_state.current_project = None
+        ui_controller.show_action_or_cancel.return_value = False
         command = ImportDataCommand(app_context)
 
         with caplog.at_level(logging.WARNING):
             assert command.execute() is False
-        assert "current_project is None" in caplog.text
+        assert "no project" in caplog.text.lower()
+        ui_controller.show_action_or_cancel.assert_called_once()
 
     def test_undo_logs_warning_when_nothing_to_undo(self, mock_app_context, caplog):
         app_context, app_state, ui_controller = mock_app_context

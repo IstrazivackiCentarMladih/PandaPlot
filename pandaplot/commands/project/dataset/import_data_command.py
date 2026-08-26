@@ -67,7 +67,7 @@ class ImportDataCommand(Command):
                 return False
 
             # Check if we have a project loaded
-            if not self.app_state.has_project:
+            if not self.app_state.has_project or not self.app_state.current_project:
                 self.logger.warning("ImportDataCommand.execute: no project is currently loaded")
                 if not ensure_project_or_offer_create(
                     self.app_context, "Import Data",
