@@ -169,3 +169,10 @@ class ChartTypePage(PWizardPage):
 
     def isComplete(self) -> bool:
         return self.selected_chart_type() is not None
+
+    def nextId(self) -> int:
+        wizard = self.wizard()
+        no_dataset_page_id = getattr(wizard, "_no_dataset_page_id", None)
+        if no_dataset_page_id is not None and getattr(wizard, "_no_dataset_mode", False):
+            return no_dataset_page_id
+        return super().nextId()

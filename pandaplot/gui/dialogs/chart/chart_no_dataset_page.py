@@ -96,3 +96,7 @@ class ChartNoDatasetPage(PWizardPage):
         )
         for label in (self.import_description, self.empty_description):
             label.setStyleSheet(f"color: {text_muted};")
+
+    def nextId(self) -> int:
+        wizard = self.wizard()
+        return getattr(wizard, "_data_page_id", -1)
