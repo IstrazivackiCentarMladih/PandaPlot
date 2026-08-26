@@ -18,6 +18,7 @@ from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config.config_manager import ConfigManager
 
@@ -48,7 +49,7 @@ class CreateChartFromWizardCommand(Command):
         self._dialog: Optional[QDialog] = None
 
     def _dataset_options(self, project) -> list[tuple[str, str]]:
-        return [(item.id, item.name) for item in project.get_all_items() if isinstance(item, Dataset)]
+        return dataset_display_options(project)
 
     def _columns_provider(self, project):
         def provider(dataset_id: str) -> list[tuple[str, str]]:
