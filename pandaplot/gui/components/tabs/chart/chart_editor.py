@@ -853,7 +853,7 @@ class ChartEditorWidget(PWidget):
                 # renderer runs in the main loop.
                 z_arrays: list[np.ndarray] = []
                 if color_scale_auto:
-                    for series, data in zip(self.chart.data_series, resolved_data):
+                    for series, data in zip(self.chart.data_series, resolved_data, strict=True):
                         if not SERIES_TYPE_SPECS[series.series_type].needs_z_column or data.error is not None:
                             continue
                         try:
@@ -868,7 +868,7 @@ class ChartEditorWidget(PWidget):
                     vmax=self.chart.config.get("color_vmax", 1.0),
                 )
 
-                for i, (series, series_data) in enumerate(zip(self.chart.data_series, resolved_data)):
+                for i, (series, series_data) in enumerate(zip(self.chart.data_series, resolved_data, strict=True)):
                     # Route this series to its configured Y axis
                     target_axes = (self.chart_canvas.axes2
                                    if series.y_axis == "secondary" and self.chart_canvas.axes2 is not None
