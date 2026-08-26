@@ -11,13 +11,12 @@ from typing import Optional, override
 from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
-from pandaplot.models.events import ChartEvents, ProjectEvents
-from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
@@ -115,6 +114,15 @@ class CreateChartFromWizardCommand(Command):
             if isinstance(dataset, Dataset):
                 return f"Chart from {dataset.name}"
         return "New Chart"
+
+    @override
+    def occupies_undo_slot(self) -> bool:
+        """This command only opens the wizard; the real, undoable effect is
+        CreateChartCommand, executed separately once the wizard finishes
+        (see _on_wizard_finished). Exempting this command from the stacks
+        is what fixes #185/#186: there is no "wizard opened but nothing
+        happened yet" state sitting on undo_stack to desync."""
+        return False
 
     @override
     def execute(self) -> bool:
@@ -268,13 +276,11 @@ class CreateChartFromWizardCommand(Command):
                     )
 
             self._resolved_parent_id = self._resolve_parent_id(project, series_configs)
-            project.add_item(chart, parent_id=self._resolved_parent_id)
             self.created_chart_id = chart.id
             self.created_chart = chart
-
-            self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
-                chart_id=chart.id
-            ).to_dict())
+            self.app_context.get_command_executor().execute_command(
+                CreateChartCommand(self.app_context, chart, parent_id=self._resolved_parent_id)
+            )
             self.logger.info("CreateChartFromWizardCommand: created chart '%s'", chart.id)
         except Exception as e:
             error_msg = f"Failed to create chart: {str(e)}"
@@ -287,36 +293,14 @@ class CreateChartFromWizardCommand(Command):
 
     @override
     def undo(self):
-        if not self.created_chart_id or not self.app_state.has_project or not self.app_state.current_project:
-            return
-        try:
-            project = self.app_state.current_project
-            project.remove_item_by_id(self.created_chart_id)
-            self.app_context.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
-                "item_id": self.created_chart_id,
-                "item_type": "chart",
-            })
-            self.logger.info(
-                "CreateChartFromWizardCommand: undid creation of chart '%s'", self.created_chart_id)
-        except Exception as e:
-            self.logger.error(f"CreateChartFromWizardCommand Undo Error: {str(e)}")
+        """Unreachable via CommandExecutor: occupies_undo_slot() is False, so
+        this command is never pushed onto undo_stack/redo_stack, and the
+        executor's undo()/redo() only ever act on stack contents. Undoing
+        the chart's creation is CreateChartCommand's job. Kept as a no-op
+        only to satisfy the abstract Command interface."""
+        return
 
     @override
     def redo(self):
-        if self.created_chart is None:
-            # `created_chart is None` is the normal state for as long as the
-            # wizard is still open, so only re-open it if a wizard was never
-            # successfully opened at all (i.e. `execute()` failed outright).
-            # Otherwise redo() is a no-op: there is nothing to redo until the
-            # user finishes the pending wizard.
-            if self._dialog is None:
-                self.execute()
-            return
-        if not self.app_state.has_project or not self.app_state.current_project:
-            return
-        project = self.app_state.current_project
-        project.add_item(self.created_chart, parent_id=self._resolved_parent_id)
-        self.created_chart_id = self.created_chart.id
-        self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
-            chart_id=self.created_chart.id
-        ).to_dict())
+        """See undo() -- unreachable via CommandExecutor for the same reason."""
+        return
