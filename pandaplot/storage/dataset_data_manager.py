@@ -156,7 +156,13 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 continue
             try:
                 if dtype_str.startswith("datetime64"):
-                    data[column] = pd.to_datetime(data[column])
+                    target_dtype = pd.api.types.pandas_dtype(dtype_str)
+                    if isinstance(target_dtype, pd.DatetimeTZDtype):
+                        parsed = pd.to_datetime(data[column], utc=True)
+                        parsed = parsed.dt.tz_convert(target_dtype.tz)
+                    else:
+                        parsed = pd.to_datetime(data[column])
+                    data[column] = parsed.astype(target_dtype)
                 elif dtype_str == "category":
                     data[column] = data[column].astype("category")
                 else:
