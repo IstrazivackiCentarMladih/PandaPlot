@@ -7,7 +7,7 @@ from pandaplot.commands.command_executor import CommandExecutor
 class MockCommand(Command):
     """Mock command for testing."""
     
-    def __init__(self, name="MockCommand", should_fail=False, fail_on=None):
+    def __init__(self, name="MockCommand", *, should_fail=False, fail_on=None):
         self.name = name
         self.should_fail = should_fail
         self.fail_on = fail_on

@@ -28,6 +28,7 @@ class DescriptiveStatsCommand(Command):
         source_dataset_id: str,
         column_names: List[str],
         digits: int = 6,
+        *,
         include_report: bool = True,
         result_name: Optional[str] = None,
         folder_id: Optional[str] = None,

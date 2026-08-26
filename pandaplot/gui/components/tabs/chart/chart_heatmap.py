@@ -12,7 +12,7 @@ import numpy as np
 
 
 def resolve_color_limits(
-    z_data, auto: bool, vmin: float, vmax: float
+    z_data, *, auto: bool, vmin: float, vmax: float
 ) -> tuple[Optional[float], Optional[float]]:
     """Resolve the (vmin, vmax) passed to a colormap normalization.
 

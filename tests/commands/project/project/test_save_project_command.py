@@ -9,7 +9,7 @@ from pandaplot.commands.project.project.save_project_command import (
 )
 
 
-def _make_app_context(has_project=True, current_project=None, project_file_path=None):
+def _make_app_context(*, has_project=True, current_project=None, project_file_path=None):
     app_state = Mock()
     app_state.has_project = has_project
     app_state.current_project = current_project

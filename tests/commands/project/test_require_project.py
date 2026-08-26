@@ -5,7 +5,7 @@ from pandaplot.commands.project.project.new_project_command import NewProjectCom
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 
 
-def _app_context(has_project: bool):
+def _app_context(*, has_project: bool):
     app_state = Mock()
     app_state.has_project = has_project
     app_state.current_project = Mock() if has_project else None

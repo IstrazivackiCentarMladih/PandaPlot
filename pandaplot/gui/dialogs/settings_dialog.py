@@ -544,9 +544,9 @@ class SettingsDialog(PDialog):
             self.chart_dpi_spin.setValue(self.current_settings["chart_dpi"])
         if "measurement_unit" in self.current_settings:
             unit_value = self.current_settings["measurement_unit"]
-            self.chart_unit_combo.blockSignals(True)
+            self.chart_unit_combo.blockSignals(True)  # noqa: FBT003 - Qt method, no keyword args
             self.chart_unit_combo.setCurrentText(UNIT_DISPLAY.get(unit_value, UNIT_DISPLAY["cm"]))
-            self.chart_unit_combo.blockSignals(False)
+            self.chart_unit_combo.blockSignals(False)  # noqa: FBT003 - Qt method, no keyword args
             self._apply_chart_size_unit(unit_value)
         if "chart_width" in self.current_settings:
             self.chart_width_spin.setValue(from_cm(self.current_settings["chart_width"], self._chart_size_unit))

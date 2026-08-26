@@ -12,7 +12,7 @@ from pandaplot.commands.project.dataset.descriptive_stats_command import Descrip
 from pandaplot.models.state import AppContext, AppState
 
 
-def _make_app_context(has_project=True, current_project=None):
+def _make_app_context(*, has_project=True, current_project=None):
     app_context = Mock(spec=AppContext)
     app_state = Mock(spec=AppState)
     app_state.has_project = has_project

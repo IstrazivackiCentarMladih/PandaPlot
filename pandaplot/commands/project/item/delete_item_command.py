@@ -13,7 +13,7 @@ class DeleteItemCommand(Command):
     This command works with any item type that extends the Item base class.
     """
 
-    def __init__(self, app_context: AppContext, item_id: str, confirm: bool = True):
+    def __init__(self, app_context: AppContext, item_id: str, *, confirm: bool = True):
         super().__init__()
         self.app_context = app_context
         self.app_state: AppState = app_context.get_app_state()
