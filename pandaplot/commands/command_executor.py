@@ -87,7 +87,10 @@ class CommandExecutor:
         
         try:
             command = self.undo_stack.pop()
-            command.undo()
+            success = command.undo()
+            if success is False:
+                self.undo_stack.append(command)
+                return False
             self.redo_stack.append(command)
             self._notify_project_modified(command)
             self.logger.info("Successfully undid command: %s", command_name)
