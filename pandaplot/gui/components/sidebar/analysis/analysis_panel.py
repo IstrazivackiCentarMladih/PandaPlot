@@ -118,7 +118,7 @@ class AnalysisPanel(SidebarPanel):
         """)
         
         # Style title label
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
 
         self.apply_info_label_theme(self.start_value_label)
         self.apply_info_label_theme(self.end_value_label)

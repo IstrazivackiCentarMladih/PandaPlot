@@ -126,7 +126,7 @@ class FitPanel(SidebarPanel):
         """)
 
         # Title label with shared styling
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
 
         self.update_data_points_display()
 

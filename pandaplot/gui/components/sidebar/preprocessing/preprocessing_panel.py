@@ -414,7 +414,7 @@ class PreprocessingPanel(SidebarPanel):
             }}
         """)
 
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
 
         for label in (self.description_label, self.naming_hint):
             label.setStyleSheet(f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}")

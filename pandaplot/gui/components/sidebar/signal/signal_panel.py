@@ -501,7 +501,7 @@ class SignalPanel(SidebarPanel):
             }}
         """)
 
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
 
         self.results_text.setStyleSheet(f"""
             QTextEdit {{
