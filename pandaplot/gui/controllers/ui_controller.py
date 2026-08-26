@@ -123,25 +123,25 @@ class UIController:
     def show_confirmation(self, title: str, message: str, details: str|None = None) -> bool:
         """
         Show a confirmation dialog with optional details.
-
+        
         Args:
             title (str): Dialog title
             message (str): Main message
             details (str, optional): Detailed information
-
+            
         Returns:
             bool: True if user confirmed, False otherwise
         """
         msg_box = QMessageBox(self.parent_widget)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
-
+        
         if details:
             msg_box.setDetailedText(details)
-
+        
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
         msg_box.setDefaultButton(QMessageBox.StandardButton.Ok)
-
+        
         reply = msg_box.exec()
         return reply == QMessageBox.StandardButton.Ok
 
