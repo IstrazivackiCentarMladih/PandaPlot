@@ -47,7 +47,7 @@ def _draw_contours(axes, x, y, z, style: HeatmapSeriesStyle, cmap: str,
     if style.render_mode in ("contour_lines", "contour_filled_lines"):
         line_cmap = None if mappable is not None else cmap
         line_color = _OVERLAID_LINE_COLOR if mappable is not None else None
-        contour_set = lines_fn(levels, line_cmap, line_color, vmin, vmax)
+        contour_set = lines_fn(levels, line_cmap, line_color, vmin, vmax, style.contour_line_width)
         if style.contour_line_labels:
             try:
                 axes.clabel(contour_set, inline=True, fontsize=8)
@@ -98,8 +98,9 @@ def _render_gridded(axes, series_data: SeriesData, style: HeatmapSeriesStyle,
         axes, xs, ys, grid, style, cmap, vmin, vmax, alpha,
         filled_fn=lambda levels, c, lo, hi: axes.contourf(
             xs, ys, grid, levels=levels, cmap=c, vmin=lo, vmax=hi, alpha=alpha),
-        lines_fn=lambda levels, c, color, lo, hi: axes.contour(
-            xs, ys, grid, levels=levels, cmap=c, colors=color, vmin=lo, vmax=hi, alpha=alpha),
+        lines_fn=lambda levels, c, color, lo, hi, lw: axes.contour(
+            xs, ys, grid, levels=levels, cmap=c, colors=color, vmin=lo, vmax=hi, alpha=alpha,
+            linewidths=lw),
     )
 
 
@@ -118,6 +119,7 @@ def _render_triangulated(axes, series_data: SeriesData, style: HeatmapSeriesStyl
         axes, x, y, z, style, cmap, vmin, vmax, alpha,
         filled_fn=lambda levels, c, lo, hi: axes.tricontourf(
             x, y, z, levels=levels, cmap=c, vmin=lo, vmax=hi, alpha=alpha),
-        lines_fn=lambda levels, c, color, lo, hi: axes.tricontour(
-            x, y, z, levels=levels, cmap=c, colors=color, vmin=lo, vmax=hi, alpha=alpha),
+        lines_fn=lambda levels, c, color, lo, hi, lw: axes.tricontour(
+            x, y, z, levels=levels, cmap=c, colors=color, vmin=lo, vmax=hi, alpha=alpha,
+            linewidths=lw),
     )

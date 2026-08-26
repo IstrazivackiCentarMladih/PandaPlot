@@ -32,6 +32,11 @@ class HeatmapSeriesStyle(SeriesStyleBase):
     # when render_mode actually draws lines ("contour_lines"/
     # "contour_filled_lines").
     contour_line_labels: bool = False
+    # Width of the contour lines themselves (matplotlib's `linewidths`).
+    # 1.5 matches matplotlib's own rcParams default, so upgrading doesn't
+    # change the look of an existing chart. Same "only meaningful while
+    # lines are drawn" scope as contour_line_labels.
+    contour_line_width: float = 1.5
 
     @property
     def swatch_color(self) -> str:

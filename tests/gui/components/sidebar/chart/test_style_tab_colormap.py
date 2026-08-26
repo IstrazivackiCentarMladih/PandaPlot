@@ -251,11 +251,12 @@ def test_heatmap_contour_controls_hidden_for_mesh_mode():
 
     assert tab.heatmap_contour_levels_spin.isVisible() is False
     assert tab.heatmap_contour_line_labels_toggle.isVisible() is False
+    assert tab.heatmap_contour_line_width_slider.isVisible() is False
 
 
 def test_heatmap_contour_levels_shown_but_line_labels_hidden_for_filled_only():
     """No lines are drawn for a lines-less filled contour, so there's
-    nothing for "line labels" to label."""
+    nothing for "line labels" to label, and no line to set a width on."""
     tab = _tab()
     series = DataSeries(
         dataset_id="ds1", series_type=SeriesType.HEATMAP,
@@ -266,6 +267,7 @@ def test_heatmap_contour_levels_shown_but_line_labels_hidden_for_filled_only():
 
     assert tab.heatmap_contour_levels_spin.isVisible() is True
     assert tab.heatmap_contour_line_labels_toggle.isVisible() is False
+    assert tab.heatmap_contour_line_width_slider.isVisible() is False
 
 
 def test_heatmap_contour_line_labels_shown_when_lines_are_drawn():
@@ -278,10 +280,12 @@ def test_heatmap_contour_line_labels_shown_when_lines_are_drawn():
     tab.set_selected("series", series)
 
     assert tab.heatmap_contour_line_labels_toggle.isVisible() is True
+    assert tab.heatmap_contour_line_width_slider.isVisible() is True
 
     tab.heatmap_render_mode_control.setCurrentIndex(
         tab.heatmap_render_mode_control.findData("contour_filled_lines"))
     assert tab.heatmap_contour_line_labels_toggle.isVisible() is True
+    assert tab.heatmap_contour_line_width_slider.isVisible() is True
 
 
 def test_apply_and_load_heatmap_contour_fields_round_trip():
@@ -297,6 +301,7 @@ def test_apply_and_load_heatmap_contour_fields_round_trip():
         tab.heatmap_render_mode_control.findData("contour_filled_lines"))
     tab.heatmap_contour_levels_spin.setValue(20)
     tab.heatmap_contour_line_labels_toggle.setChecked(True)
+    tab.heatmap_contour_line_width_slider.setValue(4.5)
 
     tab.apply_series_style_to(series)
 
@@ -304,6 +309,7 @@ def test_apply_and_load_heatmap_contour_fields_round_trip():
     assert series.style.render_mode == "contour_filled_lines"
     assert series.style.contour_levels == 20
     assert series.style.contour_line_labels is True
+    assert series.style.contour_line_width == 4.5
 
     tab2 = _tab()
     tab2.set_chart_type(ChartType.HEATMAP)
@@ -313,6 +319,7 @@ def test_apply_and_load_heatmap_contour_fields_round_trip():
     assert tab2.heatmap_render_mode_control.currentValue() == "contour_filled_lines"
     assert tab2.heatmap_contour_levels_spin.value() == 20
     assert tab2.heatmap_contour_line_labels_toggle.isChecked() is True
+    assert tab2.heatmap_contour_line_width_slider.value() == 4.5
 
 
 def test_color_map_chip_shown_only_when_chart_has_a_z_driven_series():

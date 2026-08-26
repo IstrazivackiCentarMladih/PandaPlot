@@ -696,6 +696,11 @@ class StyleTab(QWidget):
         self.heatmap_contour_line_labels_toggle = ToggleSwitch(checked=False)
         heatmap_gridding_layout.addWidget(self.heatmap_contour_line_labels_toggle, 5, 1)
 
+        self.heatmap_contour_line_width_label = QLabel("Line width:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_width_label, 6, 0)
+        self.heatmap_contour_line_width_slider = SliderWithSpinbox(minimum=0.5, maximum=10.0, decimals=1)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_width_slider, 6, 1)
+
         layout.addWidget(heatmap_gridding_card)
 
         # COLOR MAP group -- chart-level (not per-series): colormap,
@@ -816,6 +821,7 @@ class StyleTab(QWidget):
         self.heatmap_render_mode_control.currentValueChanged.connect(self._on_heatmap_render_mode_changed)
         self.heatmap_contour_levels_spin.valueChanged.connect(self._on_field_changed)
         self.heatmap_contour_line_labels_toggle.toggled.connect(self._on_field_changed)
+        self.heatmap_contour_line_width_slider.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -1468,9 +1474,9 @@ class StyleTab(QWidget):
         ignores resolution for "grid" -- it pivots the data's own exact
         lattice instead of binning/interpolating -- and "triangulated"
         bypasses gridding entirely). Contour levels/line-labels only apply
-        once render_mode actually draws a contour; line-labels further only
-        while lines are actually drawn (not for a lines-less "Filled
-        contour")."""
+        once render_mode actually draws a contour; line-labels and line
+        width further only while lines are actually drawn (not for a
+        lines-less "Filled contour")."""
         kind, obj = self._current_target
         if kind == "series" and isinstance(obj, DataSeries):
             spec = SERIES_TYPE_SPECS[obj.series_type]
@@ -1495,6 +1501,8 @@ class StyleTab(QWidget):
         self.heatmap_contour_levels_spin.setVisible(show_contour)
         self.heatmap_contour_line_labels_label.setVisible(show_line_labels)
         self.heatmap_contour_line_labels_toggle.setVisible(show_line_labels)
+        self.heatmap_contour_line_width_label.setVisible(show_line_labels)
+        self.heatmap_contour_line_width_slider.setVisible(show_line_labels)
 
     # -- Error-bar match-line toggle ------------------------------------
 
@@ -1661,6 +1669,7 @@ class StyleTab(QWidget):
                 style.render_mode = self.heatmap_render_mode_control.currentValue()
                 style.contour_levels = self.heatmap_contour_levels_spin.value()
                 style.contour_line_labels = self.heatmap_contour_line_labels_toggle.isChecked()
+                style.contour_line_width = self.heatmap_contour_line_width_slider.value()
                 return
             # ColormapSeriesStyle only: it has no color/line/fill fields of
             # its own (fill color comes from z_data via colormap, not a
@@ -1780,6 +1789,7 @@ class StyleTab(QWidget):
             self.heatmap_render_mode_control.setCurrentValue(getattr(style, "render_mode", "mesh"))
             self.heatmap_contour_levels_spin.setValue(getattr(style, "contour_levels", 10))
             self.heatmap_contour_line_labels_toggle.setChecked(getattr(style, "contour_line_labels", False))
+            self.heatmap_contour_line_width_slider.setValue(getattr(style, "contour_line_width", 1.5))
             self._update_colormap_gridding_visibility()
 
             color = getattr(style, "color", "#1f77b4")
@@ -2353,6 +2363,7 @@ class StyleTab(QWidget):
         self.heatmap_gridding_control.set_tokens(tokens)
         self.heatmap_render_mode_control.set_tokens(tokens)
         self.heatmap_contour_line_labels_toggle.set_tokens(tokens)
+        self.heatmap_contour_line_width_slider.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)

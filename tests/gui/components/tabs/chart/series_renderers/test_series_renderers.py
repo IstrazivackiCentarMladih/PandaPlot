@@ -442,6 +442,36 @@ def test_render_heatmap_series_contour_line_labels_does_not_raise():
     plt.close(fig)
 
 
+def test_render_heatmap_series_applies_contour_line_width():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="grid", render_mode="contour_lines",
+                                contour_levels=4, contour_line_width=4.5)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert all(lw == 4.5 for lw in mappable.get_linewidths())
+    plt.close(fig)
+
+
+def test_render_heatmap_series_applies_contour_line_width_triangulated():
+    from pandaplot.gui.components.tabs.chart.series_renderers.heatmap import render_heatmap_series
+
+    fig, ax = plt.subplots()
+    data = _series_data(**_HEATMAP_XYZ)
+    style = HeatmapSeriesStyle(heatmap_gridding="triangulated", render_mode="contour_lines",
+                                contour_levels=4, contour_line_width=2.5)
+
+    mappable = render_heatmap_series(ax, data, style, "S", 1.0, True,
+                                      {"colormap": "viridis", "color_limits": (None, None)})
+
+    assert all(lw == 2.5 for lw in mappable.get_linewidths())
+    plt.close(fig)
+
+
 def test_series_renderers_registry_includes_new_types():
     assert SeriesType.COLORMAP in SERIES_RENDERERS
     assert SeriesType.HEATMAP in SERIES_RENDERERS

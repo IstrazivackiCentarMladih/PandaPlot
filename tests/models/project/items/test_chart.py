@@ -247,9 +247,9 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         assert restored_style.heatmap_resolution == 64
 
     def test_heatmap_contour_fields_round_trip_through_to_dict_from_dict(self):
-        """Regression (#191): render_mode/contour_levels/contour_line_labels
-        must survive a save/load cycle, same as the pre-existing gridding
-        fields."""
+        """Regression (#191): render_mode/contour_levels/contour_line_labels/
+        contour_line_width must survive a save/load cycle, same as the
+        pre-existing gridding fields."""
         chart = Chart(name="C", chart_type="heatmap")
         chart.data_series.append(DataSeries(
             dataset_id="ds1", x_column_id="x-id", y_column_id="y-id",
@@ -260,6 +260,7 @@ class TestChartSeriesTypeAndStyleRoundTrip:
                 render_mode="contour_filled_lines",
                 contour_levels=15,
                 contour_line_labels=True,
+                contour_line_width=3.0,
             ),
         ))
 
@@ -272,6 +273,7 @@ class TestChartSeriesTypeAndStyleRoundTrip:
         assert restored_style.render_mode == "contour_filled_lines"
         assert restored_style.contour_levels == 15
         assert restored_style.contour_line_labels is True
+        assert restored_style.contour_line_width == 3.0
 
     def test_colormap_series_round_trips_through_to_dict_from_dict(self):
         chart = Chart(name="C", chart_type="colormap")
