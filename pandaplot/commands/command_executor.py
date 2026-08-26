@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from pandaplot.commands.base_command import Command
 
@@ -9,7 +9,7 @@ class CommandExecutor:
     Command executor that manages command execution, undo/redo functionality.
     This is the central point for executing commands.
     """
-    
+
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -17,7 +17,18 @@ class CommandExecutor:
         self.undo_stack: List[Command] = []
         self.redo_stack: List[Command] = []
         self.max_undo_levels = 10
-    
+
+        # Optional hook invoked whenever can_undo()/can_redo() may have
+        # changed (a command executed, was undone/redone, or history was
+        # cleared) -- wired by app.py to emit AppEvents.HISTORY_CHANGED, so
+        # e.g. the Edit menu's Undo/Redo actions can keep their enabled
+        # state in sync without polling.
+        self.on_history_changed: Optional[Callable[[], None]] = None
+
+    def _notify_history_changed(self) -> None:
+        if self.on_history_changed:
+            self.on_history_changed()
+
     def execute_command(self, command: Command) -> bool:
         """
         Execute a command instance directly.
@@ -50,6 +61,7 @@ class CommandExecutor:
                 self.redo_stack.clear()
             
             self.logger.info("Successfully executed command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -78,6 +90,7 @@ class CommandExecutor:
             command.undo()
             self.redo_stack.append(command)
             self.logger.info("Successfully undid command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -106,6 +119,7 @@ class CommandExecutor:
             command.redo()
             self.undo_stack.append(command)
             self.logger.info("Successfully redid command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -138,3 +152,4 @@ class CommandExecutor:
         """Clear undo/redo history."""
         self.undo_stack.clear()
         self.redo_stack.clear()
+        self._notify_history_changed()

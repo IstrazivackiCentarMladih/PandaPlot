@@ -10,6 +10,7 @@ from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import EventBus
+from pandaplot.models.events.event_types import AppEvents
 from pandaplot.models.project.items import Chart, Dataset, Folder, Image, ImageGallery, Note
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config import ConfigManager
@@ -51,6 +52,7 @@ def build_app_context() -> AppContext:
     session_manager = SessionPersistenceManager(config_manager)
     ui_controller = UIController()
     command_executor = CommandExecutor()
+    command_executor.on_history_changed = lambda: event_bus.emit(AppEvents.HISTORY_CHANGED)
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext
