@@ -145,3 +145,16 @@ def test_redo_logs_warning_when_dataset_missing(mock_app_context, caplog):
     with caplog.at_level(logging.WARNING):
         command.redo()
     assert "ds-1" in caplog.text
+
+
+def test_cleanup_releases_the_old_data_snapshot():
+    app_context = Mock(spec=AppContext)
+    app_context.app_state = Mock()
+    app_context.get_ui_controller.return_value = Mock()
+
+    command = EditBatchCommand(app_context, "ds-1", 0, 0, [[1, 2], [3, 4]])
+    command.old_data = pd.DataFrame({"a": [1, 2, 3]})
+
+    command.cleanup()
+
+    assert command.old_data is None

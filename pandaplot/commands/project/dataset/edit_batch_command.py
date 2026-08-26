@@ -282,3 +282,9 @@ class EditBatchCommand(Command):
                 "EditBatchCommand.redo: cannot redo for dataset '%s' (dataset found=%s)",
                 self.dataset_id, getattr(self, "dataset", None) is not None,
             )
+
+    @override
+    def cleanup(self) -> None:
+        """Release the old-data snapshot held for undo once this command is
+        dropped from the stacks for good (see Command.cleanup)."""
+        self.old_data = None
