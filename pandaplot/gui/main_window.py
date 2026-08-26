@@ -141,6 +141,7 @@ class PandaMainWindow(PMainWindow):
         self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_window_title())
         self.subscribe_to_event(ProjectEvents.PROJECT_SAVED, lambda _data: self._update_window_title())
         self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_window_title())
+        self.subscribe_to_event(ProjectEvents.PROJECT_CHANGED, lambda _data: self._update_window_title())
         self.subscribe_to_event(ProjectEvents.PROJECT_MODIFIED_CHANGED, lambda _data: self._update_window_title())
 
     def _update_window_title(self):
