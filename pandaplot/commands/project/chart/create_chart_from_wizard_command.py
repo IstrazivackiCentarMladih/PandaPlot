@@ -155,11 +155,11 @@ class CreateChartFromWizardCommand(Command):
             self._dialog = dialog
             # Use a lambda closure, not the bound method `self._on_wizard_finished`:
             # PySide treats bound-method slots as weak references, so it wouldn't
-            # keep this command alive -- the command is otherwise only held by the
-            # undo stack, which can evict it past `max_undo_levels` while the wizard
-            # sits open, silently breaking Finish. The closure's strong references
-            # to `self` and `dialog` keep both alive for as long as the wizard is
-            # open. `dialog` is captured explicitly rather than read from
+            # keep this command alive. This command never occupies an undo slot
+            # (see occupies_undo_slot()), so it isn't held by any stack either --
+            # the closure's strong references to `self` and `dialog` are the only
+            # thing keeping both alive for as long as the wizard is open. `dialog`
+            # is captured explicitly rather than read from
             # `self._dialog` at emit time, so a replaced `self._dialog` can't make
             # the wrong wizard's state build the chart.
             dialog.finished.connect(lambda result: self._on_wizard_finished(result, dialog))
@@ -278,17 +278,29 @@ class CreateChartFromWizardCommand(Command):
             self._resolved_parent_id = self._resolve_parent_id(project, series_configs)
             self.created_chart_id = chart.id
             self.created_chart = chart
-            self.app_context.get_command_executor().execute_command(
+            created = self.app_context.get_command_executor().execute_command(
                 CreateChartCommand(self.app_context, chart, parent_id=self._resolved_parent_id)
             )
-            self.logger.info("CreateChartFromWizardCommand: created chart '%s'", chart.id)
+            if created:
+                self.logger.info("CreateChartFromWizardCommand: created chart '%s'", chart.id)
+            else:
+                # CreateChartCommand already logged/handled its own failure; undo
+                # the created_chart/created_chart_id bookkeeping above so the
+                # double-fire guard above doesn't block a legitimate retry, and
+                # surface the failure here since CreateChartCommand.execute()
+                # only returns False -- it doesn't itself talk to the user.
+                self.created_chart = None
+                self.created_chart_id = None
+                error_msg = f"Failed to create chart '{chart.name}'."
+                self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
+                self.ui_controller.show_error_message("Create Chart Error", error_msg)
         except Exception as e:
             error_msg = f"Failed to create chart: {str(e)}"
             self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
             self.ui_controller.show_error_message("Create Chart Error", error_msg)
         finally:
-            # Don't keep the finished wizard alive for the command's whole
-            # remaining lifetime on the undo stack.
+            # Drop the reference now that the wizard has finished; this command
+            # is never on the undo/redo stacks, so nothing else would release it.
             self._dialog = None
 
     @override

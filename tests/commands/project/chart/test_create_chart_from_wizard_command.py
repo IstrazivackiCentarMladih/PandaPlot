@@ -343,6 +343,21 @@ def test_wizard_command_does_not_occupy_an_undo_slot(mock_wizard_cls, app_contex
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_redo_does_not_reopen_the_wizard(mock_wizard_cls, app_context_with_project):
+    """redo() must be unreachable via CommandExecutor (occupies_undo_slot() is
+    False), but this asserts it directly: even called by hand, redo() must not
+    reopen a second wizard."""
+    app_context, _ = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+    command.execute()
+    command.redo()
+
+    assert mock_wizard_cls.call_count == 1
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
 def test_execute_fails_without_a_loaded_project(mock_wizard_cls, app_context_with_project, caplog):
     app_context, _ = app_context_with_project
     app_context.get_app_state.return_value.has_project = False
@@ -565,6 +580,26 @@ def test_chart_without_an_originating_dataset_falls_back_to_new_chart(mock_wizar
     created_chart = _created_chart(app_context)
     assert created_chart.name == "New Chart"
     assert created_chart.config["title"] == "New Chart"
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_create_chart_command_failure_is_reported_and_resets_created_chart(
+        mock_wizard_cls, app_context_with_project):
+    """If CreateChartCommand.execute() fails internally, it returns False
+    instead of raising -- the caller here must notice that and surface an
+    error, not silently report success (see finding: chart-creation failure
+    was previously swallowed)."""
+    app_context, project = app_context_with_project
+    app_context.get_command_executor.return_value.execute_command.return_value = False
+    mock_wizard_cls.return_value = _fake_wizard(chart_type="line", is_empty=True)
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+    command._on_wizard_finished(QDialog.DialogCode.Accepted)
+
+    assert command.created_chart is None
+    assert command.created_chart_id is None
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

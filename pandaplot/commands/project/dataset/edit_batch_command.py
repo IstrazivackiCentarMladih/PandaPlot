@@ -285,6 +285,10 @@ class EditBatchCommand(Command):
 
     @override
     def cleanup(self) -> None:
-        """Release the old-data snapshot held for undo once this command is
-        dropped from the stacks for good (see Command.cleanup)."""
+        """Release the old-data snapshot and this command's sub-commands' undo
+        state once this command is dropped from the stacks for good (see
+        Command.cleanup)."""
         self.old_data = None
+        for command in self.executed_commands:
+            command.cleanup()
+        self.executed_commands = []

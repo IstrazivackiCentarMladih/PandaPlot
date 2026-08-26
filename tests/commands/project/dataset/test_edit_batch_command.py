@@ -158,3 +158,26 @@ def test_cleanup_releases_the_old_data_snapshot():
     command.cleanup()
 
     assert command.old_data is None
+
+
+def test_cleanup_cascades_to_sub_commands():
+    """EditBatchCommand accumulates AddRowsCommand/AddColumnsCommand instances
+    in `executed_commands` -- these hold their own undo snapshots and are never
+    pushed onto CommandExecutor's stacks themselves, so nothing else would ever
+    call their cleanup(). EditBatchCommand.cleanup() must do it for them."""
+    app_context = Mock(spec=AppContext)
+    app_context.app_state = Mock()
+    app_context.get_ui_controller.return_value = Mock()
+
+    command = EditBatchCommand(app_context, "ds-1", 0, 0, [[1, 2], [3, 4]])
+    command.old_data = pd.DataFrame({"a": [1, 2, 3]})
+    sub_command_1 = Mock()
+    sub_command_2 = Mock()
+    command.executed_commands = [sub_command_1, sub_command_2]
+
+    command.cleanup()
+
+    assert command.old_data is None
+    sub_command_1.cleanup.assert_called_once_with()
+    sub_command_2.cleanup.assert_called_once_with()
+    assert command.executed_commands == []

@@ -34,7 +34,9 @@ class Command(ABC):
         when the command is merely moved between undo_stack and redo_stack
         by undo()/redo(), since it may still need its state then. Default
         no-op; override to release resources held for undo (e.g. a large
-        DataFrame snapshot)."""
+        DataFrame snapshot). (Note: a command whose own `undo()`/`redo()`
+        raises is also dropped without a `cleanup()` call -- a pre-existing
+        gap in the executor's exception handling, not addressed here.)"""
         return
 
     def __repr__(self):
