@@ -119,7 +119,10 @@ class CommandExecutor:
         
         try:
             command = self.redo_stack.pop()
-            command.redo()
+            success = command.redo()
+            if success is False:
+                self.redo_stack.append(command)
+                return False
             self.undo_stack.append(command)
             self._notify_project_modified(command)
             self.logger.info("Successfully redid command: %s", command_name)
