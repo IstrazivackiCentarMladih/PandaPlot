@@ -38,17 +38,17 @@ class CommandExecutor:
                 self.logger.warning("Command execution failed: %s", command_name)
                 return False
 
-            self.undo_stack.append(command)
-            if len(self.undo_stack) > self.max_undo_levels:
-                # TODO(#220): ensure we clean command references properly
-                removed_command = self.undo_stack.pop(0)
-                self.logger.debug("Removed old command from undo stack: %s", removed_command.__class__.__name__)
-                
-            # Clear redo stack since we executed a new command
-            if self.redo_stack:
-                self.logger.debug("Clearing redo stack (%d commands) due to new command execution", len(self.redo_stack))
-                self.redo_stack.clear()
-            
+            if command.occupies_undo_slot():
+                self.undo_stack.append(command)
+                if len(self.undo_stack) > self.max_undo_levels:
+                    removed_command = self.undo_stack.pop(0)
+                    self.logger.debug("Removed old command from undo stack: %s", removed_command.__class__.__name__)
+
+                # Clear redo stack since we executed a new command
+                if self.redo_stack:
+                    self.logger.debug("Clearing redo stack (%d commands) due to new command execution", len(self.redo_stack))
+                    self.redo_stack.clear()
+
             self.logger.info("Successfully executed command: %s", command_name)
             return True
             

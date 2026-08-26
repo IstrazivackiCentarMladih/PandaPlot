@@ -127,9 +127,59 @@ class TestCommandExecution:
         assert executor.undo_stack[0] is cmd2
 
 
+class StackExemptCommand(MockCommand):
+    """A command that never occupies an undo/redo slot, e.g. a fire-and-forget
+    dialog opener whose real effect happens later via its own execute_command()
+    call (see CreateChartFromWizardCommand)."""
+
+    def occupies_undo_slot(self):
+        return False
+
+
+class TestOccupiesUndoSlotOptOut:
+    """Test cases for commands that opt out of the undo/redo stacks."""
+
+    def test_stack_exempt_command_is_not_pushed_to_undo_stack(self):
+        executor = CommandExecutor()
+        command = StackExemptCommand("ExemptCommand")
+
+        result = executor.execute_command(command)
+
+        assert result is True
+        assert command.executed
+        assert len(executor.undo_stack) == 0
+        assert not executor.can_undo()
+
+    def test_stack_exempt_command_does_not_clear_redo_stack(self):
+        """A stack-exempt command's execution must not wipe out redo history
+        that a real, tracked command left behind."""
+        executor = CommandExecutor()
+        tracked = MockCommand("Tracked")
+        executor.execute_command(tracked)
+        executor.undo()
+        assert len(executor.redo_stack) == 1
+
+        exempt = StackExemptCommand("Exempt")
+        executor.execute_command(exempt)
+
+        assert len(executor.redo_stack) == 1
+        assert executor.redo_stack[0] is tracked
+
+    def test_stack_exempt_command_undo_redo_never_called_by_executor(self):
+        executor = CommandExecutor()
+        command = StackExemptCommand("Exempt")
+
+        executor.execute_command(command)
+        executor.undo()  # nothing on the stack to undo
+        executor.redo()  # nothing on the stack to redo
+
+        assert command.undo_count == 0
+        assert command.redo_count == 0
+
+
 class TestUndoFunctionality:
     """Test cases for undo functionality."""
-    
+
     def test_undo_success(self):
         """Test successful undo operation."""
         executor = CommandExecutor()

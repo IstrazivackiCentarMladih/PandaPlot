@@ -126,15 +126,20 @@ class TestConcreteCommand:
     def test_redo_method(self):
         """Test the redo method of concrete command."""
         cmd = ConcreteCommand()
-        
+
         assert not cmd.redone
         assert cmd.redo_count == 0
-        
+
         cmd.redo()
-        
+
         assert cmd.redone
         assert cmd.redo_count == 1
-    
+
+    def test_occupies_undo_slot_defaults_to_true(self):
+        """Test that a command participates in the undo stack by default."""
+        cmd = ConcreteCommand()
+        assert cmd.occupies_undo_slot() is True
+
     def test_multiple_executions(self):
         """Test that commands can be executed multiple times."""
         cmd = ConcreteCommand()
