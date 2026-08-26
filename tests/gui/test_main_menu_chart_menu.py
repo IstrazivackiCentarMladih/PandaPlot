@@ -57,6 +57,13 @@ def test_create_new_action_enabled_with_a_dataset():
     assert menu.create_chart_action.isEnabled() is True
 
 
+def test_create_new_action_enabled_with_a_project_but_no_datasets():
+    parent = QWidget()
+    menu = MainMenu(parent=parent, app_context=_fake_app_context(datasets=[]))
+
+    assert menu.create_chart_action.isEnabled() is True
+
+
 def test_create_new_action_stays_enabled_when_the_project_is_closed():
     """Chart creation no longer needs a project open -- CreateChartFromWizardCommand
     now offers to create one on the spot. Pins that closing a project doesn't
