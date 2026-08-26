@@ -4,6 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QScreen
 from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
+from pandaplot.commands.project.project.unsaved_changes import confirm_discard_unsaved_changes
 from pandaplot.gui.components import CollapsibleSidebar, TabContainer
 from pandaplot.gui.components.main_menu.main_menu import MainMenu
 from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
@@ -20,6 +21,11 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 class PandaMainWindow(PMainWindow):
     def __init__(self, app_context: AppContext):
         super().__init__(app_context=app_context)
+        # Guards re-entrancy between this flag's two writers: on_app_closing_
+        # event (the File > Exit path, which already confirmed via
+        # ExitCommand before emitting APP_CLOSING) and closeEvent below (the
+        # OS window-close button/Cmd+Q path, which hasn't confirmed yet).
+        self._is_closing = False
         self._initialize()
 
     @override
@@ -154,6 +160,28 @@ class PandaMainWindow(PMainWindow):
             return
         marker = "*" if app_state.is_modified else ""
         self.setWindowTitle(f"{app_state.current_project.name}{marker} - PandaPlot")
+
+    @override
+    def closeEvent(self, event):
+        """Handle the OS window-close button / Cmd+Q.
+
+        Previously this path bypassed every unsaved-changes check: with no
+        override here, Qt's default QMainWindow.closeEvent just accepts and
+        closes, and File > Exit's ExitCommand (the only other close path)
+        didn't check anything either at the time. Route through the same
+        confirm_discard_unsaved_changes guard ExitCommand now uses, and
+        ignore the event (cancelling the close) if the user declines.
+        """
+        if self._is_closing:
+            # Already mid-close via ExitCommand -> APP_CLOSING ->
+            # on_app_closing_event -> self.close() -- that path confirmed
+            # already, so don't ask a second time.
+            event.accept()
+            return
+        if not confirm_discard_unsaved_changes(self.app_context):
+            event.ignore()
+            return
+        event.accept()
 
     def on_app_closing_event(self, event_data: dict):
         """Handle app closing event from the internal event bus.

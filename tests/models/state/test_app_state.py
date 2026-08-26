@@ -71,3 +71,51 @@ def test_close_project_resets_is_modified():
     state.close_project()
 
     assert state.is_modified is False
+
+
+def test_modification_revision_starts_at_zero():
+    state = _make_state()
+    assert state.modification_revision == 0
+
+
+def test_mark_modified_bumps_revision_even_while_already_modified():
+    """The flag itself only flips once (see test_mark_modified_sets_the_
+    flag_and_emits_once), but the revision counter must still move on every
+    call -- SaveProjectCommand relies on it to detect a *newer* edit that
+    happened after a save's async completion callback was already in
+    flight, even if is_modified was already True beforehand."""
+    state = _make_state()
+    state.load_project(Project(name="P"))
+
+    state.mark_modified()
+    first = state.modification_revision
+    state.mark_modified()
+
+    assert state.modification_revision == first + 1
+
+
+def test_mark_saved_with_stale_revision_does_not_clear_flag():
+    """A save that started at revision N must not clear is_modified if a
+    later edit bumped the revision before the save's completion callback
+    ran -- that edit wasn't part of what was actually written to disk."""
+    state = _make_state()
+    state.load_project(Project(name="P"))
+    state.mark_modified()
+    started_revision = state.modification_revision
+
+    state.mark_modified()  # a newer edit landed during the "save"
+
+    state.mark_saved(at_revision=started_revision)
+
+    assert state.is_modified is True
+
+
+def test_mark_saved_with_current_revision_clears_flag():
+    state = _make_state()
+    state.load_project(Project(name="P"))
+    state.mark_modified()
+    started_revision = state.modification_revision
+
+    state.mark_saved(at_revision=started_revision)
+
+    assert state.is_modified is False

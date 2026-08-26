@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Optional, Tuple, override
 
 from pandaplot.commands.base_command import Command
@@ -8,6 +9,14 @@ from pandaplot.models.state.app_state import AppState
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.session import SessionPersistenceManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
+
+
+def _same_path(a: Optional[str], b: Optional[str]) -> bool:
+    """Compare two project file paths for "is this the same file", tolerant
+    of relative-vs-absolute and symlink differences."""
+    if not a or not b:
+        return False
+    return os.path.realpath(a) == os.path.realpath(b)
 
 
 class LoadProjectCommand(Command):
@@ -54,6 +63,27 @@ class LoadProjectCommand(Command):
                 self.logger.warning("Load operation already in progress")
                 self.ui_controller.show_info_message("Load In Progress", "A project load is already in progress.")
                 return False
+
+            # Centralized guards for every load path (the file-dialog flow
+            # via OpenProjectCommand, recent/example projects from the
+            # welcome tab, and the Examples dialog) -- previously only
+            # OpenProjectCommand checked these, so the other entry points
+            # could silently replace a modified project or reload the
+            # current file from disk, discarding undo history. Living here
+            # means every caller gets the same protection with nothing
+            # extra to remember at the call site.
+            if self.app_state.has_project and _same_path(self.app_state.project_file_path, self.file_path):
+                self.logger.info("'%s' is already open; skipping reload", self.file_path)
+                return False
+
+            if self.app_state.has_project and self.app_state.is_modified:
+                should_continue = self.ui_controller.show_question(
+                    "Open Project",
+                    "Opening a new project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
+                )
+                if not should_continue:
+                    self.logger.info("Load project cancelled by user (unsaved changes)")
+                    return False
 
             # Store current state for undo
             self.previous_project = self.app_state.current_project
@@ -146,6 +176,15 @@ class LoadProjectCommand(Command):
                 file_path = result.get("file_path")
 
                 if project and file_path:
+                    # Project.from_dict deserializes project_file_path from
+                    # project.json's own record of where IT was saved from.
+                    # If the .pplot file was since moved or copied, that
+                    # stored path no longer matches where it was just
+                    # opened from -- stamp it with the path this command
+                    # actually loaded from so later "already open"
+                    # comparisons and Save target the right file.
+                    project.project_file_path = file_path
+
                     # Store the loaded project for undo/redo
                     self.loaded_project = project
 

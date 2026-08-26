@@ -89,6 +89,7 @@ class TestImportDataCommandLogging:
     def mock_app_context(self):
         app_context = Mock(spec=AppContext)
         app_state = Mock(spec=AppState)
+        app_state.event_bus = Mock()
         ui_controller = Mock()
 
         app_context.get_app_state.return_value = app_state
@@ -124,3 +125,60 @@ class TestImportDataCommandLogging:
         with caplog.at_level(logging.WARNING):
             command.undo()
         assert "cannot undo" in caplog.text.lower()
+
+    def test_on_import_result_marks_project_modified_after_adding_datasets(self, mock_app_context):
+        """Regression (PR #235 review): execute() only *schedules* the
+        background read and returns immediately, well before any dataset is
+        actually added -- marking the project dirty there (the generic
+        CommandExecutor hook, since marks_project_modified defaults to
+        True) would mark it dirty for a mutation that hadn't happened yet,
+        and might never (parse failure, project changed mid-import). It
+        must instead self-report only once _on_import_result actually adds
+        the dataset(s)."""
+        app_context, app_state, ui_controller = mock_app_context
+        project = Mock()
+        app_state.has_project = True
+        app_state.current_project = project
+
+        command = ImportDataCommand(app_context)
+        command.project = project
+        command.folder_id = None
+
+        dataset = Mock()
+        dataset.id = "d1"
+        dataset.name = "d1"
+        dataset.data.shape = (2, 2)
+
+        command._on_import_result({"success": True, "datasets": [dataset], "file_path": "/f.csv"})
+
+        app_state.mark_modified.assert_called_once()
+
+    def test_on_import_result_does_not_mark_modified_on_failure(self, mock_app_context):
+        app_context, app_state, ui_controller = mock_app_context
+        command = ImportDataCommand(app_context)
+
+        command._on_import_result({"success": False, "error": "bad file"})
+
+        app_state.mark_modified.assert_not_called()
+
+    def test_undo_marks_project_modified_after_removing_datasets(self, mock_app_context):
+        app_context, app_state, ui_controller = mock_app_context
+        project = Mock()
+        project.find_item.return_value = Mock()
+        app_state.has_project = True
+        app_state.current_project = project
+
+        command = ImportDataCommand(app_context)
+        command.dataset_ids = ["d1"]
+
+        command.undo()
+
+        app_state.mark_modified.assert_called_once()
+
+
+def test_marks_project_modified_is_false():
+    """execute() only schedules the background read -- see
+    TestImportDataCommandLogging.test_on_import_result_marks_project_
+    modified_after_adding_datasets for where the actual mutation is
+    reported instead."""
+    assert ImportDataCommand.marks_project_modified is False

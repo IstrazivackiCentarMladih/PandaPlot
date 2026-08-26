@@ -29,6 +29,15 @@ class ImportDataCommand(Command):
     background thread using the chosen :class:`ImportOptions`.
     """
 
+    # execute() only *schedules* the background read -- the project isn't
+    # actually mutated until _on_import_result adds the parsed dataset(s),
+    # which may never happen (parse failure, project changed/closed mid-
+    # import). Notifying eagerly at schedule time would mark the project
+    # dirty for a mutation that hasn't happened yet (and might not at all),
+    # so this self-reports via app_state.mark_modified() instead -- see
+    # _on_import_result.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
         super().__init__()
         self.app_context = app_context
@@ -294,6 +303,13 @@ class ImportDataCommand(Command):
                             },
                         )
 
+                    # This is the actual mutation (marks_project_modified is
+                    # False on this command -- see class docstring), so mark
+                    # it dirty here, now that datasets were really added,
+                    # rather than back when the background read was merely
+                    # scheduled.
+                    self.app_state.mark_modified()
+
                     self.logger.info("%d dataset(s) successfully added to project", len(datasets))
 
                     # Show success message to user
@@ -370,6 +386,12 @@ class ImportDataCommand(Command):
                         self.app_state.event_bus.emit(
                             DatasetEvents.DATASET_DELETED, {"project": project, "dataset_id": dataset_id, "dataset_data": None}
                         )
+
+                    # Removing the imported dataset(s) is itself a mutation
+                    # -- marks_project_modified is False on this command
+                    # (see class docstring), so self-report it here same as
+                    # the add in _on_import_result.
+                    self.app_state.mark_modified()
 
                     self.logger.info("Undone import of %d dataset(s)", len(self.dataset_ids))
                     return

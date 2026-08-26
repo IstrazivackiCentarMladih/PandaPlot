@@ -27,6 +27,9 @@ class SaveProjectCommand(Command):
         self.task_scheduler: TaskScheduler = app_context.get_task_scheduler()
         self.save_as_path = None
         self.previous_file_path = None
+        # AppState.modification_revision as of the moment the background
+        # save task was kicked off -- see _on_save_result.
+        self._save_started_revision: int = 0
 
         # Task state
         self.is_saving = False
@@ -86,6 +89,7 @@ class SaveProjectCommand(Command):
 
             # Start background save operation
             self.is_saving = True
+            self._save_started_revision = self.app_state.modification_revision
 
             # Run save in background thread
             self.task_scheduler.run_task(
@@ -188,12 +192,21 @@ class SaveProjectCommand(Command):
                     # Update app state with new file path (if it changed)
                     if save_path != self.previous_file_path:
                         self.app_state.load_project(project)
-
-                    # A successful save has nothing left unsaved. load_project
-                    # (above) already does this when the path changed; call it
-                    # unconditionally too so a repeat save to the same path
-                    # (which skips that branch) also clears the flag.
-                    self.app_state.mark_saved()
+                        # load_project unconditionally clears is_modified (a
+                        # freshly (re)loaded project has nothing unsaved
+                        # yet) -- but if a command modified the project in
+                        # the gap between the background save finishing and
+                        # this callback running, that edit wasn't part of
+                        # the file just written, so restore the dirty flag
+                        # rather than letting load_project's reset silently
+                        # swallow it.
+                        if self.app_state.modification_revision != self._save_started_revision:
+                            self.app_state.mark_modified()
+                    else:
+                        # A successful save has nothing left unsaved -- but
+                        # only if nothing modified the project since this
+                        # save started (see mark_saved's at_revision).
+                        self.app_state.mark_saved(at_revision=self._save_started_revision)
 
                     # Emit save event
                     self.app_state.event_bus.emit(

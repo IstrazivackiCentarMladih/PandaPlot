@@ -1,8 +1,11 @@
-"""Tests for PandaMainWindow._update_window_title (#209).
+"""Tests for PandaMainWindow._update_window_title (#209) and closeEvent
+(PR #235 review: the OS window-close button/Cmd+Q previously bypassed every
+unsaved-changes check).
 
-Exercises the method directly against a lightweight stand-in (rather than
-constructing a full PandaMainWindow, which builds the entire app UI) since
-_update_window_title only touches self.app_context and self.setWindowTitle.
+Exercises these methods directly against a lightweight stand-in (rather
+than constructing a full PandaMainWindow, which builds the entire app UI)
+since they only touch self.app_context, self._is_closing, and
+self.setWindowTitle/the passed-in close event.
 """
 from unittest.mock import Mock
 
@@ -10,14 +13,28 @@ from pandaplot.gui.main_window import PandaMainWindow
 
 
 class _FakeMainWindow:
-    """Stand-in exposing just what _update_window_title reads/writes."""
+    """Stand-in exposing just what _update_window_title/closeEvent read/write."""
 
     def __init__(self, app_context):
         self.app_context = app_context
         self.title = None
+        self._is_closing = False
 
     def setWindowTitle(self, title):  # noqa: N802 - matches Qt's method name
         self.title = title
+
+
+class _FakeCloseEvent:
+    """Stand-in for QCloseEvent -- records whether accept()/ignore() won."""
+
+    def __init__(self):
+        self.accepted = None
+
+    def accept(self):
+        self.accepted = True
+
+    def ignore(self):
+        self.accepted = False
 
 
 def _make_window(has_project, project_name="P", is_modified=False):
@@ -44,3 +61,52 @@ def test_modified_project_shows_unsaved_marker():
     window = _make_window(has_project=True, project_name="My Project", is_modified=True)
     PandaMainWindow._update_window_title(window)
     assert window.title == "My Project* - PandaPlot"
+
+
+def test_close_event_accepts_when_no_unsaved_changes():
+    window = _make_window(has_project=False)
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    window.app_context.get_ui_controller.return_value.show_question.assert_not_called()
+    assert event.accepted is True
+
+
+def test_close_event_asks_and_accepts_when_confirmed():
+    window = _make_window(has_project=True, is_modified=True)
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    window.app_context.get_ui_controller.return_value.show_question.assert_called_once()
+    assert event.accepted is True
+
+
+def test_close_event_ignores_the_close_when_declined():
+    """Regression (PR #235 review): previously there was no closeEvent
+    override at all, so Qt's default always accepted -- the OS window-close
+    button/Cmd+Q could silently discard unsaved changes."""
+    window = _make_window(has_project=True, is_modified=True)
+    window.app_context.get_ui_controller.return_value.show_question.return_value = False
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    assert event.accepted is False
+
+
+def test_close_event_skips_the_check_when_already_closing_via_exit_command():
+    """Avoids asking twice: File > Exit's ExitCommand already confirmed
+    before emitting APP_CLOSING, which on_app_closing_event handles by
+    setting _is_closing before calling self.close() -- the very thing that
+    triggers this method."""
+    window = _make_window(has_project=True, is_modified=True)
+    window._is_closing = True
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    window.app_context.get_ui_controller.return_value.show_question.assert_not_called()
+    assert event.accepted is True

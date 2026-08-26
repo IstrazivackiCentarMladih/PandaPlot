@@ -52,3 +52,96 @@ def test_on_load_result_invokes_the_on_loaded_callback():
     command._on_load_result({"success": True, "project": project, "file_path": "/p.pplot"})
 
     assert calls == [project]
+
+
+def test_on_load_result_stamps_the_project_with_the_actual_load_path():
+    """Regression (PR #235 review): Project.from_dict deserializes
+    project_file_path from the saved project.json's own record of where it
+    was saved from. If the .pplot file was since moved or copied, that
+    stored value is stale -- it must be overwritten with the path this
+    command actually loaded from, or later "already open" comparisons and
+    Save would keep targeting the old location."""
+    app_context = _make_app_context()
+    command = LoadProjectCommand(app_context, "/new/location.pplot")
+
+    project = Mock()
+    project.name = "P"
+    project.project_file_path = "/old/stale-location.pplot"
+    command._on_load_result({"success": True, "project": project, "file_path": "/new/location.pplot"})
+
+    assert project.project_file_path == "/new/location.pplot"
+
+
+def _make_configured_app_context(has_project=False, project_file_path=None, is_modified=False):
+    """Like _make_app_context, but with an app_state whose has_project/
+    project_file_path/is_modified are explicitly controllable -- needed to
+    exercise execute()'s centralized already-open/unsaved-changes guards."""
+    app_context = Mock()
+    app_state = Mock()
+    app_state.has_project = has_project
+    app_state.project_file_path = project_file_path
+    app_state.is_modified = is_modified
+    app_context.get_app_state.return_value = app_state
+    return app_context, app_state
+
+
+class TestLoadProjectCommandGuards:
+    """Regression (PR #235 review): these checks used to live only in
+    OpenProjectCommand's file-dialog flow. The welcome tab's recent/example
+    project handlers and the main menu's Examples dialog all call
+    LoadProjectCommand directly and had no such protection -- they now get
+    it for free since the guard lives in the one place every caller goes
+    through."""
+
+    def test_execute_skips_reload_when_the_same_file_is_already_open(self):
+        app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
+        command = LoadProjectCommand(app_context, "/p/current.pplot")
+
+        assert command.execute() is False
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_treats_equivalent_paths_as_the_same_file(self):
+        """Comparison is canonical (os.path.realpath), so a differently-
+        spelled path to the same file (relative segments here) is still
+        recognized as already open."""
+        app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
+        command = LoadProjectCommand(app_context, "/p/sub/../current.pplot")
+
+        assert command.execute() is False
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_proceeds_without_asking_when_unmodified(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=False)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+
+        assert command.execute() is True
+        command.ui_controller.show_question.assert_not_called()
+        command.task_scheduler.run_task.assert_called_once()
+
+    def test_execute_asks_for_confirmation_when_modified(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=True)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        command.ui_controller.show_question.return_value = True
+
+        assert command.execute() is True
+        command.ui_controller.show_question.assert_called_once()
+        command.task_scheduler.run_task.assert_called_once()
+
+    def test_execute_aborts_when_user_declines_confirmation(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=True)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        command.ui_controller.show_question.return_value = False
+
+        assert command.execute() is False
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_proceeds_without_asking_when_no_project_loaded(self):
+        app_context, _ = _make_configured_app_context(has_project=False)
+        command = LoadProjectCommand(app_context, "/p/new.pplot")
+
+        assert command.execute() is True
+        command.ui_controller.show_question.assert_not_called()
+        command.task_scheduler.run_task.assert_called_once()

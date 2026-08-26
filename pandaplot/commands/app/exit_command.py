@@ -4,6 +4,7 @@
 from typing import override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.project.unsaved_changes import confirm_discard_unsaved_changes
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
 
@@ -12,18 +13,28 @@ class ExitCommand(Command):
     """
     Command to exit the application.
     """
-    
+
+    # Exiting (or cancelling an exit) isn't itself a project edit.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
 
     @override
-    def execute(self):
+    def execute(self) -> bool:
         """
-        Execute the exit command.
+        Execute the exit command. Returns False (without closing anything)
+        if the user cancels on an unsaved-changes prompt -- previously this
+        path had no such check at all, so File > Exit could silently
+        discard edits.
         """
         self.logger.info("Executing ExitCommand")
+        if not confirm_discard_unsaved_changes(self.app_context):
+            self.logger.info("Exit cancelled by user (unsaved changes)")
+            return False
         self.app_context.event_bus.emit(AppEvents.APP_CLOSING)
+        return True
 
     @override
     def undo(self):

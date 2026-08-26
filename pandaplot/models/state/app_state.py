@@ -18,6 +18,12 @@ class AppState:
 
         self._current_project: Optional[Project] = None
         self._is_modified: bool = False
+        # Bumped on every mark_modified() call, even while already dirty --
+        # lets an async operation (e.g. SaveProjectCommand) snapshot "what
+        # modification state was current when I started" and later detect
+        # whether a *newer* edit landed before its completion callback runs,
+        # so it doesn't clobber that edit's dirty flag. See mark_saved().
+        self._modification_revision: int = 0
 
     @property
     def current_project(self) -> Optional[Project]:
@@ -47,15 +53,36 @@ class AppState:
         """
         return self._is_modified
 
+    @property
+    def modification_revision(self) -> int:
+        """Monotonic counter bumped on every mark_modified() call. See
+        mark_saved()'s `at_revision` parameter for why this exists."""
+        return self._modification_revision
+
     def mark_modified(self) -> None:
         """Flag the current project as having unsaved changes."""
-        if not self.has_project or self._is_modified:
+        if not self.has_project:
+            return
+        self._modification_revision += 1
+        if self._is_modified:
             return
         self._is_modified = True
         self.event_bus.emit(ProjectEvents.PROJECT_MODIFIED_CHANGED, {"is_modified": True})
 
-    def mark_saved(self) -> None:
-        """Flag the current project as having no unsaved changes."""
+    def mark_saved(self, at_revision: Optional[int] = None) -> None:
+        """Flag the current project as having no unsaved changes.
+
+        `at_revision` should be the `modification_revision` captured when
+        the save that's completing began. A save runs in the background, so
+        another command can call `mark_modified()` in the gap between the
+        file actually being written and this method's (asynchronous)
+        completion callback running -- that edit is not reflected in what
+        was just saved. If the revision has moved on since, skip the clear
+        so that edit's dirty flag survives; leave `at_revision` unset to
+        clear unconditionally (e.g. for a caller with no such race, like
+        `close_project`/`load_project` starting fresh)."""
+        if at_revision is not None and at_revision != self._modification_revision:
+            return
         if not self._is_modified:
             return
         self._is_modified = False

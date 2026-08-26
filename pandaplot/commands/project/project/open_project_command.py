@@ -54,33 +54,14 @@ class OpenProjectCommand(Command):
                 self.was_executed = False
                 return
 
-            # The selected file is already the open project -- switch to it
-            # (a no-op, since it's already current) instead of reloading it
-            # from disk, which would needlessly discard undo history and any
-            # in-memory edits not yet saved.
-            app_state = self.app_context.app_state
-            if app_state.has_project and app_state.project_file_path == file_path:
-                self.logger.info("'%s' is already open; skipping reload", file_path)
+            # Create and execute load command. The "already open"/unsaved-
+            # changes checks live in LoadProjectCommand itself (shared by
+            # every load path, not just this file-dialog-driven one) -- see
+            # its execute() for why.
+            self.load_command = LoadProjectCommand(self.app_context, file_path)
+            if self.load_command.execute() is False:
                 self.was_executed = False
                 return False
-
-            # Check if we need to save current project. Only ask when there
-            # are actually unsaved changes to lose -- otherwise this fires on
-            # every open regardless of whether anything would be discarded.
-            if app_state.has_project and app_state.is_modified:
-                should_continue = self.app_context.ui_controller.show_question(
-                    "Open Project",
-                    "Opening a new project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
-                )
-
-                if not should_continue:
-                    self.logger.info("Open project cancelled by user (current project protection)")
-                    self.was_executed = False
-                    return
-
-            # Create and execute load command
-            self.load_command = LoadProjectCommand(self.app_context, file_path)
-            self.load_command.execute()
 
             self.was_executed = True
             self.logger.info(f"Project opened successfully: {file_path}")

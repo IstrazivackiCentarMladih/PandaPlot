@@ -292,6 +292,60 @@ class TestExitCommandEdgeCases:
         assert command.app_context is mock_app_context
 
 
+class TestExitCommandUnsavedChangesGuard:
+    """Regression (PR #235 review): File > Exit previously emitted
+    APP_CLOSING unconditionally, with no unsaved-changes check at all."""
+
+    def _make_context(self, has_project, is_modified):
+        app_state = Mock()
+        app_state.has_project = has_project
+        app_state.is_modified = is_modified
+        app_state.current_project.name = "P"
+        app_context = Mock(spec=AppContext)
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = Mock()
+        app_context.event_bus = Mock()
+        return app_context, app_state
+
+    def test_exits_without_asking_when_no_project(self):
+        app_context, _ = self._make_context(has_project=False, is_modified=False)
+        command = ExitCommand(app_context)
+
+        assert command.execute() is True
+        app_context.get_ui_controller.return_value.show_question.assert_not_called()
+        app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
+
+    def test_exits_without_asking_when_unmodified(self):
+        app_context, _ = self._make_context(has_project=True, is_modified=False)
+        command = ExitCommand(app_context)
+
+        assert command.execute() is True
+        app_context.get_ui_controller.return_value.show_question.assert_not_called()
+        app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
+
+    def test_asks_and_proceeds_when_modified_and_confirmed(self):
+        app_context, _ = self._make_context(has_project=True, is_modified=True)
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        command = ExitCommand(app_context)
+
+        assert command.execute() is True
+        app_context.get_ui_controller.return_value.show_question.assert_called_once()
+        app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
+
+    def test_cancels_when_modified_and_declined(self):
+        app_context, _ = self._make_context(has_project=True, is_modified=True)
+        app_context.get_ui_controller.return_value.show_question.return_value = False
+        command = ExitCommand(app_context)
+
+        assert command.execute() is False
+        app_context.event_bus.emit.assert_not_called()
+
+
+def test_marks_project_modified_is_false():
+    """Exiting (or cancelling an exit) isn't itself a project edit."""
+    assert ExitCommand.marks_project_modified is False
+
+
 class TestExitCommandDocumentation:
     """Test command documentation and metadata."""
     

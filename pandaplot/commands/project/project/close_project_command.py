@@ -2,6 +2,7 @@
 from typing import override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.project.unsaved_changes import confirm_discard_unsaved_changes
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.session import SessionPersistenceManager
@@ -33,15 +34,9 @@ class CloseProjectCommand(Command):
 
             # Give the user a chance to save/cancel if there are unsaved
             # changes -- previously this closed silently and discarded them.
-            if app_state.is_modified:
-                should_continue = self.ui_controller.show_question(
-                    "Close Project",
-                    f"Project '{project_name}' has unsaved changes.\n"
-                    "Closing now will discard them.\n\nDo you want to continue?",
-                )
-                if not should_continue:
-                    self.logger.info("Close project cancelled by user (unsaved changes)")
-                    return False
+            if not confirm_discard_unsaved_changes(self.app_context):
+                self.logger.info("Close project cancelled by user (unsaved changes)")
+                return False
 
             self.logger.info(f"Closing project: {project_name}")
 
