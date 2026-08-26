@@ -39,9 +39,19 @@ def test_chart_menu_sits_between_data_and_settings():
     assert menu_titles.index("Settings") == menu_titles.index("Chart") + 1
 
 
-def test_create_new_action_disabled_with_no_datasets():
+def test_create_new_action_enabled_with_no_datasets_but_a_project():
     parent = QWidget()
     menu = MainMenu(parent=parent, app_context=_fake_app_context(datasets=[]))
+
+    assert menu.create_chart_action.isEnabled() is True
+
+
+def test_create_new_action_disabled_with_no_project():
+    parent = QWidget()
+    app_context = _fake_app_context(datasets=[])
+    app_context.get_app_state.return_value.has_project = False
+    app_context.get_app_state.return_value.current_project = None
+    menu = MainMenu(parent=parent, app_context=app_context)
 
     assert menu.create_chart_action.isEnabled() is False
 

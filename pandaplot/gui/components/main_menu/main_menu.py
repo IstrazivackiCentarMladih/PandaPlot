@@ -267,14 +267,16 @@ class MainMenu(PMenuBar):
         return chart_menu
 
     def _update_dataset_dependent_actions(self):
-        """Enable the actions that need an existing dataset to act on."""
+        """Enable the actions that need an existing project (chart creation)
+        or an existing dataset (row/column insertion) to act on."""
         app_state = self.app_context.get_app_state()
+        has_project = bool(app_state.has_project and app_state.current_project)
         has_datasets = False
-        if app_state.has_project and app_state.current_project:
+        if has_project:
             has_datasets = any(
                 isinstance(item, Dataset) for item in app_state.current_project.get_all_items()
             )
-        self.create_chart_action.setEnabled(has_datasets)
+        self.create_chart_action.setEnabled(has_project)
         self.add_rows_columns_action.setEnabled(has_datasets)
 
     def _on_tab_changed(self, event_data: dict):
