@@ -33,13 +33,17 @@ class CreateChartCommand(Command):
         if not self.app_state.has_project or not self.app_state.current_project:
             self.logger.warning("CreateChartCommand.execute: no project is currently loaded")
             return False
-        project = self.app_state.current_project
-        project.add_item(self.chart, parent_id=self.parent_id)
-        self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
-            chart_id=self.chart_id
-        ).to_dict())
-        self.logger.info("CreateChartCommand: created chart '%s'", self.chart_id)
-        return True
+        try:
+            project = self.app_state.current_project
+            project.add_item(self.chart, parent_id=self.parent_id)
+            self.app_context.event_bus.emit(ChartEvents.CHART_CREATED, ChartCreatedData(
+                chart_id=self.chart_id
+            ).to_dict())
+            self.logger.info("CreateChartCommand: created chart '%s'", self.chart_id)
+            return True
+        except Exception as e:
+            self.logger.error("CreateChartCommand Execute Error: %s", str(e))
+            return False
 
     @override
     def undo(self):

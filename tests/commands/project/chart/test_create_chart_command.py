@@ -96,3 +96,14 @@ def test_undo_without_project_does_not_raise(app_context_with_project):
     app_context.get_app_state.return_value.has_project = False
 
     command.undo()  # must not raise
+
+
+def test_execute_returns_false_when_add_item_raises(app_context_with_project):
+    app_context, project = app_context_with_project
+    chart = _chart()
+    project.add_item.side_effect = ValueError("Duplicate item ID")
+
+    command = CreateChartCommand(app_context, chart)
+    result = command.execute()
+
+    assert result is False
