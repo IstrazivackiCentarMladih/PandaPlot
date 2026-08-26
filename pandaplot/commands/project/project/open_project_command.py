@@ -62,7 +62,7 @@ class OpenProjectCommand(Command):
             if app_state.has_project and app_state.project_file_path == file_path:
                 self.logger.info("'%s' is already open; skipping reload", file_path)
                 self.was_executed = False
-                return
+                return False
 
             # Check if we need to save current project. Only ask when there
             # are actually unsaved changes to lose -- otherwise this fires on
