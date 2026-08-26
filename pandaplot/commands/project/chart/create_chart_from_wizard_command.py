@@ -11,6 +11,7 @@ from typing import Optional, override
 from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_style_builder import build_series_style
@@ -18,6 +19,7 @@ from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.events import ChartEvents, ProjectEvents
 from pandaplot.models.events.event_data import ChartCreatedData
 from pandaplot.models.project.items import Chart, Dataset
+from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config.config_manager import ConfigManager
 
@@ -48,7 +50,7 @@ class CreateChartFromWizardCommand(Command):
         self._dialog: Optional[QDialog] = None
 
     def _dataset_options(self, project) -> list[tuple[str, str]]:
-        return [(item.id, item.name) for item in project.get_all_items() if isinstance(item, Dataset)]
+        return dataset_display_options(project)
 
     def _columns_provider(self, project):
         def provider(dataset_id: str) -> list[tuple[str, str]]:
@@ -123,8 +125,11 @@ class CreateChartFromWizardCommand(Command):
 
             if not self.app_state.has_project or not self.app_state.current_project:
                 self.logger.warning("CreateChartFromWizardCommand.execute: no project is currently loaded")
-                self.ui_controller.show_error_message("Create Chart Error", "No project is currently loaded")
-                return False
+                if not ensure_project_or_offer_create(
+                    self.app_context, "Create Chart",
+                    "Creating a chart requires a project. Create a new project to continue?",
+                ):
+                    return False
             project = self.app_state.current_project
 
             dialog = ChartWizard(
@@ -140,21 +145,15 @@ class CreateChartFromWizardCommand(Command):
             # Keep a strong reference so the dialog isn't garbage-collected while
             # open.
             self._dialog = dialog
-            # Connect a lambda closure, *not* the bound method
-            # `self._on_wizard_finished`: PySide gives bound-method connections
-            # weak-reference-like treatment for the receiver, so a bound method
-            # would not keep this command alive. The command is only referenced
-            # by CommandExecutor's undo stack, which drops entries past
-            # `max_undo_levels` -- 10 unrelated commands while the wizard sits
-            # open (the user may take a while configuring it) would collect the
-            # command and silently break Finish.
-            # The closure holds a genuine strong reference to `self` and to
-            # `dialog`, and the dialog owns the connection, so
-            # `self <-> dialog <-> closure` keeps everything alive for as long
-            # as the wizard is open. The dialog is also captured explicitly
-            # rather than re-read from `self._dialog` at emit time, so a stale
-            # or replaced `self._dialog` can never make the wrong wizard's state
-            # build the chart.
+            # Use a lambda closure, not the bound method `self._on_wizard_finished`:
+            # PySide treats bound-method slots as weak references, so it wouldn't
+            # keep this command alive -- the command is otherwise only held by the
+            # undo stack, which can evict it past `max_undo_levels` while the wizard
+            # sits open, silently breaking Finish. The closure's strong references
+            # to `self` and `dialog` keep both alive for as long as the wizard is
+            # open. `dialog` is captured explicitly rather than read from
+            # `self._dialog` at emit time, so a replaced `self._dialog` can't make
+            # the wrong wizard's state build the chart.
             dialog.finished.connect(lambda result: self._on_wizard_finished(result, dialog))
             # `exec()` used to make the wizard application-modal implicitly;
             # `show()` does not, so set it explicitly to keep the project from

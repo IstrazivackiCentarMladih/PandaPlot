@@ -44,14 +44,25 @@ from pandaplot.models.chart.series_style import (
 )
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
+from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.project.items.chart import DataSeries, FitData
 from pandaplot.models.state.config import (
     MAX_CHART_HEIGHT_CM,
     MAX_CHART_WIDTH_CM,
     MIN_CHART_HEIGHT_CM,
     MIN_CHART_WIDTH_CM,
+    LengthUnit,
 )
 from pandaplot.services.config.config_manager import ConfigManager
+from pandaplot.utils.length_units import (
+    format_size,
+    from_cm,
+    to_cm,
+    unit_bounds,
+    unit_decimals,
+    unit_step,
+    unit_suffix,
+)
 
 # Preset swatch palette offered by the Style tab's line/marker color pickers.
 STYLE_SWATCH_PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
@@ -81,13 +92,27 @@ COLORMAP_OPTIONS = [
 ]
 
 # Heatmap-only: how scattered (x, y, z) points become a regular grid for
-# pcolormesh (see chart_heatmap.build_heatmap_grid). Colormap (a color-mapped
-# scatter) has no gridding concept -- these controls are hidden for it
-# entirely (see SeriesTypeSpec.supports_gridding).
+# pcolormesh/contour (see chart_heatmap.build_heatmap_grid). "Triangulated"
+# instead skips gridding and renders straight from the scattered points via
+# matplotlib's own Delaunay triangulation (tripcolor/tricontour/tricontourf)
+# -- see series_renderers/heatmap.py. Colormap (a color-mapped scatter) has
+# no gridding concept -- these controls are hidden for it entirely (see
+# SeriesTypeSpec.supports_gridding).
 HEATMAP_GRIDDING_OPTIONS = [
     ("Exact grid", "grid"),
     ("Binned (mean)", "binned"),
     ("Interpolated", "interpolated"),
+    ("Triangulated (scattered)", "triangulated"),
+]
+
+# Heatmap-only: how the Z surface is drawn -- the original flat-shaded
+# pcolormesh/tripcolor "mesh", or a contour surface (lines, a filled band
+# per level, or both together). See series_renderers/heatmap.py.
+HEATMAP_RENDER_MODE_OPTIONS = [
+    ("Mesh", "mesh"),
+    ("Contour lines", "contour_lines"),
+    ("Filled contour", "contour_filled"),
+    ("Filled contour + lines", "contour_filled_lines"),
 ]
 
 
@@ -108,17 +133,14 @@ class StyleTab(QWidget):
     """Chart-style settings plus per-entry Line/Marker style controls.
 
     There is deliberately no independent series selector here: the chip row
-    at the top mirrors the same "currently selected entry" state the Data
-    tab's expand/collapse cards drive -- until Data tab migrates (Task 5),
-    the panel is the source of truth for that selection and calls
-    `set_selected` directly; a non-"chart" chip click is relayed back to the
-    panel (which still owns `_expand_series`) via `seriesChipSelected`.
+    mirrors the "currently selected entry" state the Data tab's
+    expand/collapse cards drive -- the panel is the source of truth for that
+    selection and calls `set_selected` directly; a non-"chart" chip click is
+    relayed back to the panel (which still owns `_expand_series`) via
+    `seriesChipSelected`.
 
-    A literal rendered line/marker preview (as sketched in the original
-    design brief) is intentionally omitted here: this panel has no chart
-    canvas of its own to paint into, and the live chart view already
-    re-renders immediately on every change, so a second, redundant
-    mini-renderer wasn't worth the complexity.
+    No rendered line/marker preview: this panel has no chart canvas of its
+    own, and the live chart view already re-renders on every change.
     """
 
     configChanged = Signal()
@@ -155,6 +177,7 @@ class StyleTab(QWidget):
         # user toggles back and forth between Custom and a preset.
         self._custom_size_prefilled: bool = False
         self._custom_dpi_prefilled: bool = False
+        self._chart_size_unit: LengthUnit = self._measurement_unit()
 
         layout = QVBoxLayout(self)
 
@@ -312,8 +335,8 @@ class StyleTab(QWidget):
         size_layout.addWidget(SectionHeader("Size"), 0, 0, 1, 2)
 
         self.chart_size_combo = QComboBox()
-        self.chart_size_combo.addItem("15 × 8 cm", (15.0, 8.0))
-        self.chart_size_combo.addItem("20 × 15 cm", (20.0, 15.0))
+        self.chart_size_combo.addItem(format_size(15.0, 8.0, self._chart_size_unit), (15.0, 8.0))
+        self.chart_size_combo.addItem(format_size(20.0, 15.0, self._chart_size_unit), (20.0, 15.0))
         self.chart_size_combo.addItem("Custom", "custom")
         self.chart_size_combo.addItem("Use app default", None)
         _field_row(size_layout, 1, "Size", self.chart_size_combo)
@@ -322,12 +345,10 @@ class StyleTab(QWidget):
         custom_size_layout = QGridLayout(self.custom_size_row)
         custom_size_layout.setContentsMargins(0, 0, 0, 0)
         self.chart_width_spin = QDoubleSpinBox()
-        self.chart_width_spin.setRange(MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
-        self.chart_width_spin.setSuffix(" cm")
+        self._configure_size_spin(self.chart_width_spin, MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
         _field_row(custom_size_layout, 0, "Width", self.chart_width_spin)
         self.chart_height_spin = QDoubleSpinBox()
-        self.chart_height_spin.setRange(MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
-        self.chart_height_spin.setSuffix(" cm")
+        self._configure_size_spin(self.chart_height_spin, MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
         _field_row(custom_size_layout, 1, "Height", self.chart_height_spin)
         size_layout.addWidget(self.custom_size_row, 2, 0, 1, 2)
         self.custom_size_row.setVisible(False)
@@ -651,23 +672,49 @@ class StyleTab(QWidget):
         self.heatmap_gridding_card = Card()
         heatmap_gridding_card = self.heatmap_gridding_card
         heatmap_gridding_layout = QGridLayout(heatmap_gridding_card)
-        heatmap_gridding_layout.addWidget(SectionHeader("Gridding"), 0, 0, 1, 2)
+        heatmap_gridding_layout.addWidget(SectionHeader("Heatmap Rendering"), 0, 0, 1, 2)
+
+        self.heatmap_render_mode_label = QLabel("Render as:")
+        heatmap_gridding_layout.addWidget(self.heatmap_render_mode_label, 1, 0)
+        self.heatmap_render_mode_control = ValueComboBox(HEATMAP_RENDER_MODE_OPTIONS)
+        heatmap_gridding_layout.addWidget(self.heatmap_render_mode_control, 1, 1)
 
         # "Exact grid" mode has no resolution to configure (it uses the
         # data's own lattice, see chart_heatmap.build_heatmap_grid), so the
         # resolution row is additionally hidden while that mode is selected
-        # (see _on_heatmap_gridding_changed).
+        # (see _on_heatmap_gridding_changed). "Triangulated" likewise has no
+        # resolution -- matplotlib's own Delaunay triangulation uses the
+        # points as-is.
         self.heatmap_gridding_label = QLabel("Gridding:")
-        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 1, 0)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_label, 2, 0)
         self.heatmap_gridding_control = ValueComboBox(HEATMAP_GRIDDING_OPTIONS)
-        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 1, 1)
+        heatmap_gridding_layout.addWidget(self.heatmap_gridding_control, 2, 1)
 
         self.heatmap_resolution_label = QLabel("Resolution:")
-        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 2, 0)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_label, 3, 0)
         self.heatmap_resolution_spin = QSpinBox()
         self.heatmap_resolution_spin.setRange(2, 500)
         self.heatmap_resolution_spin.setValue(50)
-        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 2, 1)
+        heatmap_gridding_layout.addWidget(self.heatmap_resolution_spin, 3, 1)
+
+        # Contour-only (render_mode != "mesh"): level count and, only while
+        # lines are actually drawn, inline value labels on them.
+        self.heatmap_contour_levels_label = QLabel("Contour levels:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_levels_label, 4, 0)
+        self.heatmap_contour_levels_spin = QSpinBox()
+        self.heatmap_contour_levels_spin.setRange(2, 100)
+        self.heatmap_contour_levels_spin.setValue(10)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_levels_spin, 4, 1)
+
+        self.heatmap_contour_line_labels_label = QLabel("Line labels:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_labels_label, 5, 0)
+        self.heatmap_contour_line_labels_toggle = ToggleSwitch(checked=False)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_labels_toggle, 5, 1)
+
+        self.heatmap_contour_line_width_label = QLabel("Line width:")
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_width_label, 6, 0)
+        self.heatmap_contour_line_width_slider = SliderWithSpinbox(minimum=0.5, maximum=10.0, decimals=1)
+        heatmap_gridding_layout.addWidget(self.heatmap_contour_line_width_slider, 6, 1)
 
         layout.addWidget(heatmap_gridding_card)
 
@@ -786,6 +833,10 @@ class StyleTab(QWidget):
         self.color_vmax_spin.valueChanged.connect(self._on_field_changed)
         self.heatmap_gridding_control.currentValueChanged.connect(self._on_heatmap_gridding_changed)
         self.heatmap_resolution_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_render_mode_control.currentValueChanged.connect(self._on_heatmap_render_mode_changed)
+        self.heatmap_contour_levels_spin.valueChanged.connect(self._on_field_changed)
+        self.heatmap_contour_line_labels_toggle.toggled.connect(self._on_field_changed)
+        self.heatmap_contour_line_width_slider.valueChanged.connect(self._on_field_changed)
 
         # chart_style_card field connections.
         self.title_font_size_spin.valueChanged.connect(self._on_chart_style_field_changed)
@@ -815,6 +866,47 @@ class StyleTab(QWidget):
         self.axes_bg_color_row.colorChanged.connect(self._on_chart_style_field_changed)
         self.axes_bg_transparent_toggle.toggled.connect(self._on_bg_transparent_toggled)
 
+        # `StyleTab` is an app-lifetime singleton (built once by
+        # ChartPropertiesPanel), so without this the Size card's displayed
+        # measurement unit only refreshes on the next load_chart_style/
+        # clear_chart_style call (e.g. switching charts) -- it would
+        # otherwise stay stale if the user changes the unit in Settings
+        # while this panel is already visible. Subscribed manually (rather
+        # than via the PWidget/WidgetExtension mixin, which StyleTab does
+        # not inherit) with the same defensive guard `_measurement_unit`
+        # uses, since some existing tests construct StyleTab with
+        # app_context=None or a stand-in lacking `event_bus`.
+        self._config_event_subscribed = False
+        try:
+            event_bus = self.app_context.event_bus if self.app_context else None
+        except AttributeError:
+            event_bus = None
+        if event_bus is not None:
+            event_bus.subscribe(ConfigEvents.CONFIG_UPDATED, self._on_config_updated)
+            self._config_event_subscribed = True
+            self.destroyed.connect(self._unsubscribe_config_event)
+
+    def _on_config_updated(self, _event_data: dict) -> None:
+        # Guarded like load_chart_style/clear_chart_style: _refresh_size_unit_
+        # display() now sets the custom width/height spin values (converted
+        # to the new unit), which would otherwise fire _on_chart_style_field_
+        # changed and rewrite every chart-style field from the currently
+        # displayed widgets -- redundant at best while nothing else changed.
+        previous_guard = self._updating_controls
+        self._updating_controls = True
+        try:
+            self._refresh_size_unit_display()
+        finally:
+            self._updating_controls = previous_guard
+
+    def _unsubscribe_config_event(self) -> None:
+        if self._config_event_subscribed:
+            try:
+                self.app_context.event_bus.unsubscribe(ConfigEvents.CONFIG_UPDATED, self._on_config_updated)
+            except Exception:  # noqa: BLE001 -- best-effort cleanup on teardown
+                pass
+            self._config_event_subscribed = False
+
     # -- Chip selection / target routing -----------------------------------
 
     def _on_chip_selected(self, value):
@@ -828,11 +920,11 @@ class StyleTab(QWidget):
             self._current_target = ("colormap_config", None)
             self._update_target_cards_visibility()
         elif value is not None:
-            # The panel (until Task 5) or DataTab (after Task 5) is the
-            # source of truth for series/fit selection -- this tab does not
-            # self-select a series; it only reacts to set_selected(). `None`
-            # is the transient value QComboBox reports mid-`clear()` (no
-            # current item yet) and isn't a real selection to relay.
+            # The panel is the source of truth for series/fit selection --
+            # this tab does not self-select a series; it only reacts to
+            # set_selected(). `None` is the transient value QComboBox
+            # reports mid-`clear()` (no current item yet) and isn't a real
+            # selection to relay.
             self.seriesChipSelected.emit(value)
 
     def _update_target_cards_visibility(self):
@@ -841,19 +933,13 @@ class StyleTab(QWidget):
         visibility for a selected series is driven by SERIES_TYPE_SPECS for
         the selected series' own type (falling back to the chart's type for
         the Chart/Axes chips, which have no specific series) -- the single
-        source of truth this design introduces, replacing the is_scatter/
-        is_vector booleans this method used to compute locally (which had
-        already drifted out of sync with chart_editor.py's own per-type
-        rendering, e.g. showing error-bar controls for a histogram series
-        the renderer never draws).
+        source of truth for this, replacing per-type booleans this method
+        used to compute locally.
 
-        A selected *fit* entry is unaffected by the series' spec -- a fit is
-        always rendered as a line (chart_editor.py plots it unconditionally),
-        regardless of the chart's own type -- so the Line card stays visible
-        for fit even on Scatter charts.
-
-        The Marker card only applies to a series: fit data has no marker
-        concept at all (see load_fit_style/apply_fit_style_to).
+        A selected *fit* is unaffected by the series' spec -- a fit is
+        always rendered as a line regardless of chart type -- so the Line
+        card stays visible for fit even on Scatter charts. The Marker card
+        only applies to a series: fit data has no marker concept.
         """
         kind, obj = self._current_target
         is_chart = kind == "chart"
@@ -1182,21 +1268,15 @@ class StyleTab(QWidget):
 
     def _is_scatter_series_target(self) -> bool:
         """Whether the current target is a data series with no drawn line at
-        all (Line card is hidden; see _update_target_cards_visibility), so
+        all (Line card hidden; see _update_target_cards_visibility), so
         "match line" has nothing to refer to and marker colors must always
         be set explicitly. Spec-driven off SERIES_TYPE_SPECS.supports_color
-        (the same flag the Line card's own visibility is gated on) rather
-        than hardcoding SeriesType.SCATTER, so this stays correct for any
-        other no-line series type -- e.g. Colormap, which also has
-        supports_color=False and a required marker (see marker_mode) but
-        was previously missed by the SCATTER-only check, leaving "Match
-        line" visible and able to silently blank marker_edge_color/
-        swatch_color for Colormap series.
+        (the same flag gating the Line card) rather than hardcoding
+        SeriesType.SCATTER, so it also covers Colormap (supports_color=False,
+        required marker).
 
-        In practice this only affects LINE/SCATTER/COLORMAP: BAR/HIST/
-        VECTOR/HEATMAP all have marker_mode="unsupported", so their Marker
-        card (and this toggle) is never shown regardless of this value (see
-        marker_supported in _update_target_cards_visibility)."""
+        BAR/HIST/VECTOR/HEATMAP have marker_mode="unsupported", so their
+        Marker card is never shown regardless of this value."""
         kind, obj = self._current_target
         if kind != "series" or not isinstance(obj, DataSeries):
             return False
@@ -1250,33 +1330,25 @@ class StyleTab(QWidget):
     def set_series_list(self, data_series, fit_data, selected_index: int = 0):
         """Sync `style_series_chips` with the same series+fit list the Data
         tab's cards are built from, keeping its selection in lockstep with
-        `selected_index` (the Data tab's own combined series/fit index,
-        `DataTab.selected_index`) -- unless "Chart" is the currently selected
-        target, which is independent of the series/fit list and must survive
-        a refresh.
+        `selected_index` (`DataTab.selected_index`) -- unless "Chart" is the
+        currently selected target, which is independent of the series/fit
+        list and must survive a refresh.
 
         Values are the combined index (int) for series/fit, or the "chart"
         sentinel, so selecting an entry can drive `set_selected` directly.
+        `DataTab.seriesListChanged` is a plain `(data_series, fit_data)`
+        two-arg signal, so the panel's connection wraps it to also pass
+        `self.data_tab.selected_index` as `selected_index` here.
 
-        `DataTab.seriesListChanged` itself is a plain `(data_series,
-        fit_data)` two-arg signal (this tab has no direct reference to
-        DataTab), so the panel's connection wraps it to also pass
-        `self.data_tab.selected_index` as `selected_index` here -- this tab
-        does not otherwise track that index itself (unlike the pre-Task-5
-        panel's single `_expanded_series_index` shared by both concerns).
-
-        The "was Chart explicitly selected" check is intentionally based on
-        `style_series_chips.currentValue()` (this widget's own previous
-        state), not `self._current_target`: `_current_target` gets
-        reflexively reassigned to the currently-expanded series/fit on every
-        Data-tab card rebuild (via `seriesSelected`, emitted regardless of
-        whether the user actually changed anything, e.g. a purely-visual
-        accordion toggle or a live theme refresh) and so cannot reliably
-        answer "did the user deliberately choose Chart" by the time this
-        runs. The chip widget's own value is untouched by any of that -- it
-        only ever changes via a direct chip click (`_on_chip_selected`) or
-        this method's own prior conclusion -- so it survives those
-        reflexive reassignments correctly.
+        The "was Chart explicitly selected" check is based on
+        `style_series_chips.currentValue()`, not `self._current_target`:
+        `_current_target` gets reflexively reassigned to the
+        currently-expanded series/fit on every Data-tab card rebuild
+        (emitted regardless of whether the user changed anything, e.g. an
+        accordion toggle or theme refresh), so it can't reliably answer "did
+        the user deliberately choose Chart". The chip widget's own value only
+        changes via a direct chip click or this method's own prior
+        conclusion, so it survives those reflexive reassignments.
         """
         self._data_series = list(data_series)
         previous_value = self.style_series_chips.currentValue()
@@ -1370,21 +1442,16 @@ class StyleTab(QWidget):
 
     def _update_marker_controls_enabled(self):
         """Show the marker sub-controls only while markers are enabled;
-        hide them (not just grey them out) when disabled, leaving only
-        the greyed section title -- reported live: "if I disable entire
-        section, such as marker, we should hide options and just leave
-        the section title with a disabled state, instead of showing all
-        options in a disabled state." Same "match line hides colors"
-        sub-behavior as before once markers are on.
+        hide them (not just grey them out) when disabled, leaving only the
+        greyed section title. Same "match line hides colors" sub-behavior
+        once markers are on.
 
-        For a scatter-chart series there is no drawn line at all (the Line
-        card is hidden -- see _update_target_cards_visibility), so "Match
-        line" is meaningless: that row alone is hidden outright whenever
-        markers are on, regardless of the toggle's stored state -- UNLESS
-        the target is Z-driven (Colormap), whose fill genuinely varies per
-        point through the colormap and so has its own, different thing to
-        match (each point's own color, via edgecolors="face") -- see the
-        relabeling below.
+        For a scatter-chart series there is no drawn line at all (Line card
+        hidden), so "Match line" is meaningless and that row is hidden
+        outright whenever markers are on -- UNLESS the target is Z-driven
+        (Colormap), whose fill varies per point through the colormap and so
+        has its own thing to match (each point's own color via
+        edgecolors="face") -- see the relabeling below.
 
         A required-marker series (Scatter, Colormap) can never turn its
         markers off -- they're the only thing it draws -- so the on/off
@@ -1454,24 +1521,49 @@ class StyleTab(QWidget):
         self._update_colormap_gridding_visibility()
         self._on_field_changed()
 
+    def _on_heatmap_render_mode_changed(self, _value):
+        """Handle the Heatmap 'Render as' mode change."""
+        self._update_colormap_gridding_visibility()
+        self._on_field_changed()
+
     def _update_colormap_gridding_visibility(self):
-        """Show the Gridding/Resolution sub-controls only for a series whose
-        type supports gridding (SeriesTypeSpec.supports_gridding -- Heatmap
-        only; Colormap, a plain color-mapped scatter, needs no gridding at
-        all). Resolution is further hidden while gridding mode is "grid"
-        (build_heatmap_grid ignores resolution for that mode -- it pivots
-        the data's own exact lattice instead of binning/interpolating)."""
+        """Show the Render-as/Gridding/Resolution/Contour sub-controls only
+        for a series whose type supports gridding (SeriesTypeSpec.
+        supports_gridding -- Heatmap only; Colormap, a plain color-mapped
+        scatter, needs no gridding at all). Resolution is further hidden
+        while gridding mode is "grid" or "triangulated" (build_heatmap_grid
+        ignores resolution for "grid" -- it pivots the data's own exact
+        lattice instead of binning/interpolating -- and "triangulated"
+        bypasses gridding entirely). Contour levels/line-labels only apply
+        once render_mode actually draws a contour; line-labels and line
+        width further only while lines are actually drawn (not for a
+        lines-less "Filled contour")."""
         kind, obj = self._current_target
         if kind == "series" and isinstance(obj, DataSeries):
             spec = SERIES_TYPE_SPECS[obj.series_type]
         else:
             spec = None
         supports_gridding = spec is not None and spec.supports_gridding
+        self.heatmap_render_mode_label.setVisible(supports_gridding)
+        self.heatmap_render_mode_control.setVisible(supports_gridding)
         self.heatmap_gridding_label.setVisible(supports_gridding)
         self.heatmap_gridding_control.setVisible(supports_gridding)
-        show_resolution = supports_gridding and self.heatmap_gridding_control.currentValue() != "grid"
+        show_resolution = (
+            supports_gridding
+            and self.heatmap_gridding_control.currentValue() not in ("grid", "triangulated")
+        )
         self.heatmap_resolution_label.setVisible(show_resolution)
         self.heatmap_resolution_spin.setVisible(show_resolution)
+
+        render_mode = self.heatmap_render_mode_control.currentValue()
+        show_contour = supports_gridding and render_mode != "mesh"
+        show_line_labels = show_contour and render_mode in ("contour_lines", "contour_filled_lines")
+        self.heatmap_contour_levels_label.setVisible(show_contour)
+        self.heatmap_contour_levels_spin.setVisible(show_contour)
+        self.heatmap_contour_line_labels_label.setVisible(show_line_labels)
+        self.heatmap_contour_line_labels_toggle.setVisible(show_line_labels)
+        self.heatmap_contour_line_width_label.setVisible(show_line_labels)
+        self.heatmap_contour_line_width_slider.setVisible(show_line_labels)
 
     # -- Error-bar match-line toggle ------------------------------------
 
@@ -1641,6 +1733,15 @@ class StyleTab(QWidget):
             style.heatmap_gridding = self.heatmap_gridding_control.currentValue()
             style.heatmap_resolution = self.heatmap_resolution_spin.value()
 
+        if isinstance(style, HeatmapSeriesStyle):
+            # Contour rendering options are Heatmap-only -- Surface/
+            # Wireframe are always solid 3D surfaces with no contour_lines/
+            # contour_filled render mode to configure.
+            style.render_mode = self.heatmap_render_mode_control.currentValue()
+            style.contour_levels = self.heatmap_contour_levels_spin.value()
+            style.contour_line_labels = self.heatmap_contour_line_labels_toggle.isChecked()
+            style.contour_line_width = self.heatmap_contour_line_width_slider.value()
+
         if isinstance(style, (HeatmapSeriesStyle, SurfaceSeriesStyle, TrisurfSeriesStyle)):
             # Nothing else on these applies: their color comes from the
             # chart-level Color Map card (see apply_colormap_config_to) and
@@ -1668,12 +1769,11 @@ class StyleTab(QWidget):
             series.alpha = self.line_opacity_slider.value()
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
-        # the existing MarkerType.NONE member -- except for a
-        # required-marker target (Scatter, Colormap), which can never
-        # write NONE regardless of the (hidden) toggle's stored state.
-        # "Match line"/"Match point color" reuses the existing "" ==
-        # inherit convention for marker_color/marker_edge_color (rendering
-        # falls back to style.color for either field when empty -- see
+        # MarkerType.NONE -- except for a required-marker target (Scatter,
+        # Colormap), which can never write NONE regardless of the (hidden)
+        # toggle's stored state. "Match line"/"Match point color" reuses the
+        # "" == inherit convention for marker_color/marker_edge_color
+        # (rendering falls back to style.color when empty -- see
         # series_renderers/line.py and scatter.py; render_colormap_series
         # falls back to matplotlib's "face" sentinel for marker_edge_color
         # instead, and never reads marker_color at all, since fill color
@@ -1765,10 +1865,15 @@ class StyleTab(QWidget):
             self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
             self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
 
-            # Heatmap-only gridding fields (colormap/colorbar/scale moved to
-            # the chart-level Color Map card -- see load_colormap_config).
+            # Heatmap-only gridding/render fields (colormap/colorbar/scale
+            # moved to the chart-level Color Map card -- see
+            # load_colormap_config).
             self.heatmap_gridding_control.setCurrentValue(getattr(style, "heatmap_gridding", "grid"))
             self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
+            self.heatmap_render_mode_control.setCurrentValue(getattr(style, "render_mode", "mesh"))
+            self.heatmap_contour_levels_spin.setValue(getattr(style, "contour_levels", 10))
+            self.heatmap_contour_line_labels_toggle.setChecked(getattr(style, "contour_line_labels", False))
+            self.heatmap_contour_line_width_slider.setValue(getattr(style, "contour_line_width", 1.5))
             self._update_colormap_gridding_visibility()
 
             color = getattr(style, "color", "#1f77b4")
@@ -1900,6 +2005,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self._refresh_size_unit_display()
             self.load_colormap_config(chart)
             self.title_font_size_spin.setValue(chart.config.get("title_font_size", 14))
             self.subtitle_font_size_spin.setValue(chart.config.get("subtitle_font_size", 12))
@@ -1951,8 +2057,8 @@ class StyleTab(QWidget):
                 self.chart_size_combo.setCurrentIndex(size_index)
             elif target_size[0] is not None and target_size[1] is not None:
                 self.chart_size_combo.setCurrentIndex(self.chart_size_combo.findData("custom"))
-                self.chart_width_spin.setValue(target_size[0])
-                self.chart_height_spin.setValue(target_size[1])
+                self.chart_width_spin.setValue(from_cm(target_size[0], self._chart_size_unit))
+                self.chart_height_spin.setValue(from_cm(target_size[1], self._chart_size_unit))
                 self._custom_size_prefilled = True
             else:
                 self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
@@ -2068,6 +2174,7 @@ class StyleTab(QWidget):
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
+            self._refresh_size_unit_display()
             self.clear_colormap_config()
             self.title_font_size_spin.setValue(14)
             self.subtitle_font_size_spin.setValue(12)
@@ -2094,8 +2201,8 @@ class StyleTab(QWidget):
             self.axes_bg_color_row.setCurrentColor("#ffffff")
             self.axes_bg_color_row.setEnabled(True)
             self.chart_size_combo.setCurrentIndex(self.chart_size_combo.count() - 1)
-            self.chart_width_spin.setValue(20.0)
-            self.chart_height_spin.setValue(15.0)
+            self.chart_width_spin.setValue(from_cm(20.0, self._chart_size_unit))
+            self.chart_height_spin.setValue(from_cm(15.0, self._chart_size_unit))
             self._custom_size_prefilled = False
             self.chart_dpi_combo.setCurrentIndex(self.chart_dpi_combo.count() - 1)
             self.chart_dpi_spin.setValue(100)
@@ -2177,6 +2284,51 @@ class StyleTab(QWidget):
 
     # -- Chart size/dpi combo helpers -----------------------------------------
 
+    def _measurement_unit(self) -> LengthUnit:
+        """Read the app-wide chart-size display unit from Settings."""
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager) if self.app_context else None
+        except AttributeError:
+            cfg_manager = None
+        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
+        unit = getattr(display_cfg, "measurement_unit", LengthUnit.CM) if display_cfg else LengthUnit.CM
+        return unit if isinstance(unit, LengthUnit) else LengthUnit.CM
+
+    def _configure_size_spin(self, spin, min_cm: float, max_cm: float) -> None:
+        lo, hi = unit_bounds(min_cm, max_cm, self._chart_size_unit)
+        spin.setDecimals(unit_decimals(self._chart_size_unit))
+        spin.setRange(lo, hi)
+        spin.setSingleStep(unit_step(self._chart_size_unit))
+        spin.setSuffix(unit_suffix(self._chart_size_unit))
+
+    def _refresh_size_unit_display(self) -> None:
+        """Re-resolve the configured measurement unit and re-apply it to the
+        Size card widgets. `StyleTab` is an app-lifetime singleton, so the
+        unit resolved in `__init__` can go stale if the user changes it in
+        Settings later -- this must be called whenever a chart is loaded or
+        cleared so the Size card always reflects the current setting.
+
+        Converts the custom width/height spin boxes' currently displayed
+        value from the outgoing unit to the new one, so a live unit change
+        (via `_on_config_updated`, with no chart (re)load in between)
+        updates the shown number, not just the suffix/decimals/range --
+        `load_chart_style`/`clear_chart_style` immediately overwrite these
+        values from the chart/default afterward regardless, so this is a
+        no-op in those call sites."""
+        old_unit = self._chart_size_unit
+        self._chart_size_unit = self._measurement_unit()
+        width_cm = to_cm(self.chart_width_spin.value(), old_unit)
+        height_cm = to_cm(self.chart_height_spin.value(), old_unit)
+        self._configure_size_spin(self.chart_width_spin, MIN_CHART_WIDTH_CM, MAX_CHART_WIDTH_CM)
+        self._configure_size_spin(self.chart_height_spin, MIN_CHART_HEIGHT_CM, MAX_CHART_HEIGHT_CM)
+        self.chart_width_spin.setValue(from_cm(width_cm, self._chart_size_unit))
+        self.chart_height_spin.setValue(from_cm(height_cm, self._chart_size_unit))
+        for i in range(self.chart_size_combo.count()):
+            data = self.chart_size_combo.itemData(i)
+            if isinstance(data, tuple) and len(data) == 2:
+                width_cm, height_cm = data
+                self.chart_size_combo.setItemText(i, format_size(width_cm, height_cm, self._chart_size_unit))
+
     def _app_chart_display_defaults(self):
         """Read the app-wide default chart width/height/dpi from Settings."""
         cfg_manager = self.app_context.get_manager(ConfigManager)
@@ -2207,10 +2359,14 @@ class StyleTab(QWidget):
 
     def _size_from_controls(self):
         """Resolve (width_cm, height_cm) from chart_size_combo, reading the
-        dedicated Custom spin boxes when that sentinel is selected."""
+        dedicated Custom spin boxes (in the configured display unit) when
+        that sentinel is selected."""
         data = self.chart_size_combo.currentData()
         if data == "custom":
-            return self.chart_width_spin.value(), self.chart_height_spin.value()
+            return (
+                to_cm(self.chart_width_spin.value(), self._chart_size_unit),
+                to_cm(self.chart_height_spin.value(), self._chart_size_unit),
+            )
         if data is None:
             return None, None
         return data
@@ -2230,8 +2386,8 @@ class StyleTab(QWidget):
         self.custom_size_row.setVisible(is_custom)
         if is_custom and not self._updating_controls and not self._custom_size_prefilled:
             width, height, _ = self._effective_chart_size_dpi()
-            self.chart_width_spin.setValue(width)
-            self.chart_height_spin.setValue(height)
+            self.chart_width_spin.setValue(from_cm(width, self._chart_size_unit))
+            self.chart_height_spin.setValue(from_cm(height, self._chart_size_unit))
             self._custom_size_prefilled = True
         self._on_chart_style_field_changed()
 
@@ -2340,6 +2496,9 @@ class StyleTab(QWidget):
         self.colorbar_show_toggle.set_tokens(tokens)
         self.color_scale_auto_toggle.set_tokens(tokens)
         self.heatmap_gridding_control.set_tokens(tokens)
+        self.heatmap_render_mode_control.set_tokens(tokens)
+        self.heatmap_contour_line_labels_toggle.set_tokens(tokens)
+        self.heatmap_contour_line_width_slider.set_tokens(tokens)
         self.figure_bg_color_row.set_tokens(tokens)
         self.figure_bg_transparent_toggle.set_tokens(tokens)
         self.axes_bg_color_row.set_tokens(tokens)
