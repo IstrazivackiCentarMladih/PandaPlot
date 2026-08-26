@@ -1,12 +1,64 @@
 import json
 import logging
-from typing import Dict, override
+from typing import Any, Dict, List, override
 from zipfile import ZipFile
 
+import numpy as np
 import pandas as pd
 
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.storage.item_data_manager import ItemDataManager
+
+
+def _json_safe_scalar(value: Any) -> Any:
+    """Convert a single category/interval-bound value into a JSON-serializable form."""
+    if pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, np.bool_):
+        return bool(value)
+    return value
+
+
+def _serialize_categorical_dtype(dtype: pd.CategoricalDtype) -> Dict[str, Any]:
+    """Capture enough of a CategoricalDtype to reconstruct it exactly on load.
+
+    `str(dtype)` collapses to the literal string "category", discarding both
+    the `ordered` flag and the categories themselves. For a `cut`/`qcut`
+    column (whitelisted transform functions, see #208) the categories are
+    ordered `pd.Interval`s -- re-deriving them from the CSV text alone would
+    mean re-parsing interval strings and would still lose `ordered=True`.
+    """
+    categories = dtype.categories
+    if isinstance(categories, pd.IntervalIndex):
+        return {
+            "kind": "interval",
+            "ordered": bool(dtype.ordered),
+            "closed": categories.closed,
+            "subtype": str(categories.dtype.subtype),
+            "left": [_json_safe_scalar(v) for v in categories.left],
+            "right": [_json_safe_scalar(v) for v in categories.right],
+        }
+    return {
+        "kind": "value",
+        "ordered": bool(dtype.ordered),
+        "subtype": str(categories.dtype),
+        "categories": [_json_safe_scalar(v) for v in categories],
+    }
+
+
+def _restore_scalar_index(values: List[Any], subtype: str) -> pd.Index:
+    if subtype.startswith("datetime64"):
+        return pd.to_datetime(pd.Index(values))
+    try:
+        return pd.Index(values, dtype=subtype)
+    except (TypeError, ValueError):
+        return pd.Index(values)
 
 
 class DatasetDataManager(ItemDataManager[Dataset]):
@@ -24,6 +76,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
         try:
             # Save DataFrame as CSV if data exists
             column_dtypes: Dict[str, str] = {}
+            column_categoricals: Dict[str, Dict[str, Any]] = {}
             if item.data is not None:
                 csv_path = f"{path_in_zip}.csv"
                 self.logger.debug("Saving dataset data to CSV: %s (shape: %s)", csv_path, item.data.shape)
@@ -36,6 +89,9 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 # whitelisted transform functions). Persist the dtype each
                 # column had so load() can restore it. See #208.
                 column_dtypes = {col: str(dtype) for col, dtype in item.data.dtypes.items()}
+                for col, dtype in item.data.dtypes.items():
+                    if isinstance(dtype, pd.CategoricalDtype):
+                        column_categoricals[str(col)] = _serialize_categorical_dtype(dtype)
             else:
                 self.logger.debug("Dataset '%s' has no data to save", item.name)
 
@@ -51,6 +107,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                 "has_data": item.data is not None,
                 "column_ids": dict(item.column_ids),
                 "column_dtypes": column_dtypes,
+                "column_categoricals": column_categoricals,
             }
             
             self.logger.debug("Saving dataset metadata for '%s'", item.name)
@@ -91,7 +148,11 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                     # Use StringIO to read CSV from string
                     from io import StringIO
                     data = pd.read_csv(StringIO(csv_content))
-                    self._restore_column_dtypes(data, metadata.get("column_dtypes") or {})
+                    self._restore_column_dtypes(
+                        data,
+                        metadata.get("column_dtypes") or {},
+                        metadata.get("column_categoricals") or {},
+                    )
                     self.logger.debug("Loaded dataset data with shape: %s", data.shape)
                 except KeyError:
                     # CSV file doesn't exist, data will be None
@@ -137,7 +198,12 @@ class DatasetDataManager(ItemDataManager[Dataset]):
             self.logger.error("Failed to load dataset from %s: %s", path_in_zip, str(e), exc_info=True)
             raise
 
-    def _restore_column_dtypes(self, data: pd.DataFrame, column_dtypes: Dict[str, str]) -> None:
+    def _restore_column_dtypes(
+        self,
+        data: pd.DataFrame,
+        column_dtypes: Dict[str, str],
+        column_categoricals: Dict[str, Dict[str, Any]] | None = None,
+    ) -> None:
         """Best-effort cast each column back to the dtype it had at save time.
 
         `pd.read_csv` re-infers every column from plain text, which loses
@@ -151,6 +217,7 @@ class DatasetDataManager(ItemDataManager[Dataset]):
         (e.g. a hand-edited CSV) is left as read_csv inferred it rather
         than failing the whole load.
         """
+        column_categoricals = column_categoricals or {}
         for column, dtype_str in column_dtypes.items():
             if column not in data.columns or dtype_str == str(data[column].dtype):
                 continue
@@ -164,10 +231,42 @@ class DatasetDataManager(ItemDataManager[Dataset]):
                         parsed = pd.to_datetime(data[column])
                     data[column] = parsed.astype(target_dtype)
                 elif dtype_str == "category":
-                    data[column] = data[column].astype("category")
+                    info = column_categoricals.get(column)
+                    if info:
+                        data[column] = self._restore_categorical_column(data[column], info)
+                    else:
+                        # No categorical metadata (e.g. file saved before
+                        # this was tracked) -- fall back to categorizing
+                        # the raw CSV text, same as before.
+                        data[column] = data[column].astype("category")
                 else:
                     data[column] = data[column].astype(dtype_str)
             except (ValueError, TypeError) as e:
                 self.logger.warning(
                     "Could not restore dtype '%s' for column '%s': %s", dtype_str, column, e,
                 )
+
+    def _restore_categorical_column(self, series: pd.Series, info: Dict[str, Any]) -> pd.Categorical:
+        """Reconstruct the exact categories and `ordered` flag from saved metadata.
+
+        The CSV round trip only gives back each cell's text, so cells are
+        mapped back to their original category object by matching that
+        text against `str(category)` -- the same textual form `to_csv`
+        wrote -- rather than treating the text itself as the category
+        (which is what a plain `astype("category")` does, and is how this
+        silently dropped ordered `Interval` categories from `cut`/`qcut`).
+        """
+        ordered = bool(info.get("ordered", False))
+        if info.get("kind") == "interval":
+            closed = info.get("closed", "right")
+            subtype = info.get("subtype", "float64")
+            lefts = _restore_scalar_index(info.get("left", []), subtype)
+            rights = _restore_scalar_index(info.get("right", []), subtype)
+            categories: pd.Index = pd.IntervalIndex.from_arrays(lefts, rights, closed=closed)
+        else:
+            subtype = info.get("subtype", "object")
+            categories = _restore_scalar_index(info.get("categories", []), subtype)
+
+        text_to_category = {str(category): category for category in categories}
+        mapped = series.astype(str).map(text_to_category)
+        return pd.Categorical(mapped, categories=categories, ordered=ordered)
