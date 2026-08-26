@@ -1,8 +1,9 @@
 """Top-level chart creation wizard: Type step, then Data step."""
 from typing import Callable, Optional, override
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QWizard
+from PySide6.QtWidgets import QDialog, QWizard
 
 from pandaplot.gui.core.widget_extension import PWizard
 from pandaplot.gui.dialogs.chart.chart_data_page import ChartDataPage
@@ -256,15 +257,39 @@ class ChartWizard(PWizard):
         command = ImportDataCommand(self.app_context)
         self.app_context.get_command_executor().execute_command(command)
 
+    def _is_active_on_no_dataset_page(self) -> bool:
+        # QWizard's internal reset() (Cancel/Esc/window-close) resets currentId
+        # to -1, and accept() (e.g. "Create Empty Chart") leaves currentId
+        # unchanged but sets result() to Accepted -- either means this wizard
+        # is closed/finished and no longer the active recipient of import
+        # events. Comparing currentId() to the no-dataset page also means a
+        # DATASET_CREATED that arrives after the wizard has moved on to the
+        # Data page (or backed up past it) is ignored, and -- since it isn't
+        # gated on "has any import ever succeeded" -- a second import started
+        # after backing up to this page is not silently swallowed either.
+        if self.result() == QDialog.DialogCode.Accepted:
+            return False
+        return self.currentId() == self._no_dataset_page_id
+
     def _on_dataset_created(self, event_data: dict) -> None:
-        if not self._no_dataset_mode:
-            # Not from this wizard's import flow (or a stray second dataset
-            # from the same multi-sheet Excel import) -- already handled.
+        if not self._is_active_on_no_dataset_page():
             return
         self._no_dataset_mode = False
+        if self._initial_dataset_id is None:
+            self._initial_dataset_id = event_data.get("dataset_id")
+        # Defer to the next event-loop turn: a multi-sheet Excel import emits
+        # one DATASET_CREATED per sheet, synchronously, in a loop that adds
+        # each dataset to the project before emitting for it. Reacting to the
+        # *first* event immediately would only see that one sheet's dataset;
+        # deferring lets the whole loop finish so every sheet is visible by
+        # the time the Data page's dataset options are computed.
+        QTimer.singleShot(0, self._advance_after_import)
+
+    def _advance_after_import(self) -> None:
+        if not self._is_active_on_no_dataset_page():
+            return
         self.data_page.set_datasets(self._current_dataset_options())
         self.data_page.set_dataset_columns_provider(self._current_columns_provider())
-        self._initial_dataset_id = event_data.get("dataset_id")
         self.next()
 
     def _current_dataset_options(self) -> list[tuple[str, str]]:

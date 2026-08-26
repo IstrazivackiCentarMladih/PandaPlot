@@ -497,6 +497,7 @@ def test_dataset_created_event_advances_to_data_page_with_the_new_dataset_presel
     assert DatasetEvents.DATASET_CREATED in subscribed
 
     subscribed[DatasetEvents.DATASET_CREATED]({"dataset_id": "ds-new"})
+    QApplication.processEvents()  # the actual advance is deferred via QTimer.singleShot(0, ...)
 
     assert wizard.currentId() == wizard._data_page_id
     assert wizard.data_page.cards[0].dataset_combo.currentData() == "ds-new"
@@ -520,6 +521,7 @@ def test_dataset_created_event_is_ignored_once_already_out_of_no_dataset_mode():
         for event_type, handler in (call.args for call in app_context.event_bus.subscribe.call_args_list)
     }
     subscribed[DatasetEvents.DATASET_CREATED]({"dataset_id": "ds-1"})
+    QApplication.processEvents()  # the actual advance is deferred via QTimer.singleShot(0, ...)
     assert wizard.currentId() == wizard._data_page_id
 
     wizard.back()
@@ -532,3 +534,69 @@ def test_dataset_created_event_is_ignored_once_already_out_of_no_dataset_mode():
 
     # Still on the Type page (no forced navigation), untouched by the stray event.
     assert wizard.currentId() == wizard._type_page_id
+
+
+def test_multi_sheet_import_makes_every_imported_dataset_available_as_an_option():
+    """Regression: ImportDataCommand adds every imported dataset to the project
+    and fires DATASET_CREATED once per dataset, all synchronously, before
+    control returns to the event loop. Reacting to the first event immediately
+    used to snapshot dataset options after only the first sheet had been
+    added; deferring the actual navigation lets the whole import loop finish
+    first, so every sheet ends up selectable."""
+    app_context = _fake_app_context()
+    project = Mock()
+    first = Mock(spec=Dataset)
+    first.id, first.name, first.data = "ds-sheet1", "Sheet1", None
+    second = Mock(spec=Dataset)
+    second.id, second.name, second.data = "ds-sheet2", "Sheet2", None
+    project.get_all_items.return_value = [first]
+    wizard = ChartWizard(
+        app_context=app_context, datasets=[], columns_provider=lambda _id: [], project=project,
+    )
+    wizard.next()  # Type -> no-dataset page
+
+    subscribed = {
+        event_type: handler
+        for event_type, handler in (call.args for call in app_context.event_bus.subscribe.call_args_list)
+    }
+
+    # Sheet 1's dataset is added and its event fires...
+    subscribed[DatasetEvents.DATASET_CREATED]({"dataset_id": "ds-sheet1"})
+    # ...then sheet 2's dataset is added to the project and its event fires,
+    # both still synchronously, before either deferred advance has run.
+    project.get_all_items.return_value = [first, second]
+    subscribed[DatasetEvents.DATASET_CREATED]({"dataset_id": "ds-sheet2"})
+
+    QApplication.processEvents()  # runs the deferred advance(s)
+
+    assert wizard.currentId() == wizard._data_page_id
+    assert wizard.data_page.cards[0].dataset_combo.count() == 2
+
+
+def test_dataset_created_event_after_the_wizard_is_finished_is_ignored():
+    """Regression: the wizard keeps its DATASET_CREATED subscription for its
+    whole lifetime, and a background import can still be in flight (or a
+    completely unrelated import can fire) after the wizard has already
+    finished via "Create Empty Chart". That must not resurrect navigation on
+    a wizard that is done."""
+    app_context = _fake_app_context()
+    project = Mock()
+    wizard = ChartWizard(
+        app_context=app_context, datasets=[], columns_provider=lambda _id: [], project=project,
+    )
+    wizard.next()  # Type -> no-dataset page
+
+    subscribed = {
+        event_type: handler
+        for event_type, handler in (call.args for call in app_context.event_bus.subscribe.call_args_list)
+    }
+
+    wizard.no_dataset_page.emptyRequested.emit()  # "Create Empty Chart" -> accept()
+    assert wizard.is_empty() is True
+
+    # A stray/late DATASET_CREATED must not raise or move the finished wizard.
+    subscribed[DatasetEvents.DATASET_CREATED]({"dataset_id": "ds-late"})
+    QApplication.processEvents()
+
+    assert wizard.currentId() == wizard._no_dataset_page_id
+    assert wizard.is_empty() is True
