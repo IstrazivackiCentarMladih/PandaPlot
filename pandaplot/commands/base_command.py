@@ -27,5 +27,15 @@ class Command(ABC):
         CreateChartFromWizardCommand)."""
         return True
 
+    def cleanup(self) -> None:
+        """Called by CommandExecutor when this command is dropped from a
+        stack outside the normal undo/redo lifecycle: eviction past
+        max_undo_levels, a redo-stack clear, or clear_history(). Not called
+        when the command is merely moved between undo_stack and redo_stack
+        by undo()/redo(), since it may still need its state then. Default
+        no-op; override to release resources held for undo (e.g. a large
+        DataFrame snapshot)."""
+        return
+
     def __repr__(self):
         return f"{self.__class__.__name__}()"

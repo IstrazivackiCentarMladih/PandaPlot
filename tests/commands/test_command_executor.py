@@ -6,7 +6,7 @@ from pandaplot.commands.command_executor import CommandExecutor
 
 class MockCommand(Command):
     """Mock command for testing."""
-    
+
     def __init__(self, name="MockCommand", *, should_fail=False, fail_on=None):
         self.name = name
         self.should_fail = should_fail
@@ -17,25 +17,29 @@ class MockCommand(Command):
         self.execute_count = 0
         self.undo_count = 0
         self.redo_count = 0
-    
+        self.cleanup_count = 0
+
     def execute(self):
         if self.should_fail and self.fail_on == "execute":
             raise RuntimeError(f"{self.name} execute failed")
         self.executed = True
         self.execute_count += 1
-    
+
     def undo(self):
         if self.should_fail and self.fail_on == "undo":
             raise RuntimeError(f"{self.name} undo failed")
         self.undone = True
         self.undo_count += 1
-    
+
     def redo(self):
         if self.should_fail and self.fail_on == "redo":
             raise RuntimeError(f"{self.name} redo failed")
         self.redone = True
         self.redo_count += 1
-    
+
+    def cleanup(self):
+        self.cleanup_count += 1
+
     def __repr__(self):
         return f"{self.__class__.__name__}(name='{self.name}')"
 
@@ -503,40 +507,102 @@ class TestMaxUndoLevels:
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""
-    
+
     def test_clear_history_with_commands(self):
         """Test clearing history when commands exist."""
         executor = CommandExecutor()
         cmd1 = MockCommand("Command1")
         cmd2 = MockCommand("Command2")
-        
+
         executor.execute_command(cmd1)
         executor.execute_command(cmd2)
         executor.undo()
-        
+
         # Should have commands in both stacks
         assert len(executor.undo_stack) == 1
         assert len(executor.redo_stack) == 1
-        
+
         executor.clear_history()
-        
+
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
         assert not executor.can_undo()
         assert not executor.can_redo()
         assert executor.get_undo_description() is None
         assert executor.get_redo_description() is None
-    
+
     def test_clear_history_empty_stacks(self):
         """Test clearing history when stacks are already empty."""
         executor = CommandExecutor()
-        
+
         executor.clear_history()
-        
+
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
         assert not executor.can_undo()
         assert not executor.can_redo()
+
+
+class TestCleanupOnEviction:
+    """Test cases for Command.cleanup() being called when a command is
+    dropped from a stack outside the normal undo/redo lifecycle."""
+
+    def test_cleanup_called_on_eviction_past_max_undo_levels(self):
+        executor = CommandExecutor()
+        executor.max_undo_levels = 2
+        cmd1 = MockCommand("Command1")
+        cmd2 = MockCommand("Command2")
+        cmd3 = MockCommand("Command3")
+
+        executor.execute_command(cmd1)
+        executor.execute_command(cmd2)
+        assert cmd1.cleanup_count == 0
+
+        executor.execute_command(cmd3)  # evicts cmd1
+
+        assert cmd1.cleanup_count == 1
+        assert cmd2.cleanup_count == 0
+        assert cmd3.cleanup_count == 0
+
+    def test_cleanup_called_on_redo_stack_clear(self):
+        executor = CommandExecutor()
+        cmd1 = MockCommand("Command1")
+        cmd2 = MockCommand("Command2")
+
+        executor.execute_command(cmd1)
+        executor.undo()
+        assert len(executor.redo_stack) == 1
+
+        executor.execute_command(cmd2)  # clears redo_stack, dropping cmd1's redo entry
+
+        assert cmd1.cleanup_count == 1
+
+    def test_cleanup_called_on_clear_history(self):
+        executor = CommandExecutor()
+        cmd1 = MockCommand("Command1")
+        cmd2 = MockCommand("Command2")
+
+        executor.execute_command(cmd1)
+        executor.execute_command(cmd2)
+        executor.undo()  # cmd2 -> redo_stack, cmd1 stays on undo_stack
+
+        executor.clear_history()
+
+        assert cmd1.cleanup_count == 1
+        assert cmd2.cleanup_count == 1
+
+    def test_cleanup_not_called_on_ordinary_undo_redo(self):
+        """Moving a command between undo_stack and redo_stack via undo()/redo()
+        must not release its state -- it may still be needed."""
+        executor = CommandExecutor()
+        command = MockCommand("TestCommand")
+
+        executor.execute_command(command)
+        executor.undo()
+        executor.redo()
+        executor.undo()
+
+        assert command.cleanup_count == 0
 
 
 class TestEdgeCases:
