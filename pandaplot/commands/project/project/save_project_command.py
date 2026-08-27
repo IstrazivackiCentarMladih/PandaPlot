@@ -273,6 +273,12 @@ class SaveProjectCommand(Command):
             self.logger.warning("Cannot redo save command while save is in progress")
             return False
 
+    @override
+    def cleanup(self) -> None:
+        """Release the previous-file-path snapshot held for undo once this
+        command is dropped from the stacks for good (see Command.cleanup)."""
+        self.previous_file_path = None
+
 
 class SaveProjectAsCommand(SaveProjectCommand):
     """

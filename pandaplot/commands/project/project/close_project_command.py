@@ -52,8 +52,14 @@ class CloseProjectCommand(Command):
         self.logger.warning("Cannot undo project close operation")
         return False
 
-    @override 
+    @override
     def redo(self):
         """Redo is not supported for project closing."""
         self.logger.warning("Cannot redo project close operation")
         return False
+
+    @override
+    def cleanup(self) -> None:
+        """No undo state to release -- this command does not support
+        undo/redo."""
+        return
