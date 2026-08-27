@@ -372,6 +372,7 @@ class DataTab(QWidget):
             "▲", role="secondary", icon=True,  # ▲
             on_click=lambda _checked=False, i=index: self._move_series(i, i - 1)
         )
+        button.setAccessibleName("Move series up")
         button.setFixedWidth(24)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setToolTip("Move up (draw earlier, further back)")
