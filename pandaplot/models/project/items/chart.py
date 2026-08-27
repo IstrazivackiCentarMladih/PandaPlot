@@ -249,7 +249,12 @@ class Chart(Item):
             # docs/superpowers/specs/2026-08-21-shared-chart-level-color-map-design.md.
             "colormap": "viridis",
             "colorbar_show": True,
-            "colorbar_label": "",
+            # None means "not customized" -- the colorbar falls back to the
+            # Z column's own name (see chart_editor.py). Only becomes a
+            # string once the user actually types into the Colorbar label
+            # field; from then on even "" is respected literally (no label),
+            # rather than falling back again.
+            "colorbar_label": None,
             "color_scale_auto": True,
             "color_vmin": 0.0,
             "color_vmax": 1.0,

@@ -723,7 +723,7 @@ class TestChartConfigHasColorMapDefaults:
         chart = Chart(name="C", chart_type="line")
         assert chart.config["colormap"] == "viridis"
         assert chart.config["colorbar_show"] is True
-        assert chart.config["colorbar_label"] == ""
+        assert chart.config["colorbar_label"] is None
         assert chart.config["color_scale_auto"] is True
         assert chart.config["color_vmin"] == 0.0
         assert chart.config["color_vmax"] == 1.0
