@@ -371,6 +371,43 @@ def test_changing_a_color_axis_widget_live_writes_to_chart_config():
     assert chart.config["colorbar_label"] == "Live Label"
 
 
+def test_colorbar_label_is_not_customized_until_the_field_is_actually_touched():
+    """A freshly loaded chart with no saved colorbar_label must not have one
+    written into config just because some other Color axis widget changed --
+    only touching the label field itself should start tracking it (see
+    AxesTab._colorbar_label_customized)."""
+    chart = Chart(name="C", chart_type="heatmap")
+    chart.data_series.append(_heatmap_series())
+
+    tab = AxesTab(_make_app_context())
+    tab.load(chart)
+    assert chart.config["colorbar_label"] is None
+
+    tab.axes_forms["color"]["colormap_control"].setCurrentValue("plasma")
+
+    assert chart.config["colorbar_label"] is None
+
+
+def test_clearing_a_customized_colorbar_label_writes_an_explicit_empty_string():
+    """Regression: once the user has typed into the label field, clearing it
+    back out must be written as a real "" (rendered with no label), not left
+    indistinguishable from "never customized" (which falls back to the Z
+    column's name -- see chart_editor.py)."""
+    chart = Chart(name="C", chart_type="heatmap")
+    chart.data_series.append(_heatmap_series())
+
+    tab = AxesTab(_make_app_context())
+    tab.load(chart)
+    label_edit = tab.axes_forms["color"]["colorbar_label_edit"]
+
+    label_edit.setText("Temp (C)")
+    assert chart.config["colorbar_label"] == "Temp (C)"
+
+    label_edit.setText("")
+
+    assert chart.config["colorbar_label"] == ""
+
+
 def test_color_scale_auto_toggle_hides_manual_min_max():
     chart = Chart(name="C", chart_type="heatmap")
     chart.data_series.append(_heatmap_series())

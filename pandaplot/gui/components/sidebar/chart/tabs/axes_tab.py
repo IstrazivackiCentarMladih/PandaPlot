@@ -61,6 +61,13 @@ class AxesTab(QWidget):
         self.app_context = app_context
         self._chart = None
         self._updating_controls = False
+        # Whether the user has ever actually typed into the colorbar label
+        # field for the currently loaded chart -- distinguishes "never
+        # customized" (fall back to the Z column's name) from "customized to
+        # empty" (show no label at all). Without this, _write_color_axis_config
+        # writing the field's current (blank) text on every unrelated field
+        # change would be indistinguishable from an explicit clear.
+        self._colorbar_label_customized = False
 
         layout = QVBoxLayout(self)
 
@@ -339,13 +346,22 @@ class AxesTab(QWidget):
 
         colormap_control.currentValueChanged.connect(self._on_field_changed)
         colorbar_show_toggle.toggled.connect(self._on_field_changed)
-        colorbar_label_edit.textChanged.connect(self._on_field_changed)
+        colorbar_label_edit.textChanged.connect(self._on_colorbar_label_changed)
         color_scale_auto_toggle.toggled.connect(self._on_color_scale_auto_toggled)
         color_vmin_spin.valueChanged.connect(self._on_field_changed)
         color_vmax_spin.valueChanged.connect(self._on_field_changed)
 
         form_widget.setVisible(False)
         self._axis_form_container_layout.addWidget(form_widget)
+
+    def _on_colorbar_label_changed(self, _text: str) -> None:
+        """Marks the colorbar label as user-customized before the normal
+        live-write. `_read_color_axis_config`'s own `setText()` is wrapped in
+        blockSignals, so `textChanged` here always means some other caller
+        (a real edit, or a test driving the widget directly) set the text --
+        never the tab's own load path."""
+        self._colorbar_label_customized = True
+        self._on_field_changed()
 
     def _on_color_scale_auto_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
         """Handle the Color axis' "Auto scale" toggle."""
@@ -369,7 +385,14 @@ class AxesTab(QWidget):
         form = self.axes_forms["color"]
         config["colormap"] = form["colormap_control"].currentValue()
         config["colorbar_show"] = form["colorbar_show_toggle"].isChecked()
-        config["colorbar_label"] = form["colorbar_label_edit"].text()
+        # Only ever written once the user has actually typed into the field
+        # (see _on_colorbar_label_edited) -- this method runs on every field
+        # change on the whole tab, not just this one, so unconditionally
+        # writing the widget's current (possibly still-blank) text here would
+        # make "never customized" indistinguishable from "customized to
+        # empty" the moment any other field changed.
+        if self._colorbar_label_customized:
+            config["colorbar_label"] = form["colorbar_label_edit"].text()
         config["color_scale_auto"] = form["color_scale_auto_toggle"].isChecked()
         config["color_vmin"] = form["color_vmin_spin"].value()
         config["color_vmax"] = form["color_vmax_spin"].value()
@@ -380,8 +403,10 @@ class AxesTab(QWidget):
         form["colorbar_show_toggle"].blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         form["colorbar_show_toggle"].setChecked(checked=config.get("colorbar_show", True))
         form["colorbar_show_toggle"].blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+        stored_label = config.get("colorbar_label")
+        self._colorbar_label_customized = stored_label is not None
         form["colorbar_label_edit"].blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-        form["colorbar_label_edit"].setText(config.get("colorbar_label", ""))
+        form["colorbar_label_edit"].setText(stored_label or "")
         form["colorbar_label_edit"].blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
         form["color_scale_auto_toggle"].blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         form["color_scale_auto_toggle"].setChecked(checked=config.get("color_scale_auto", True))
