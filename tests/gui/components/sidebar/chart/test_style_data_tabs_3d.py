@@ -100,21 +100,6 @@ def test_a_surface_series_is_treated_as_color_scale_driven():
     assert tab.marker_card.isVisible() is False
 
 
-def test_the_color_map_chip_appears_only_for_color_scaled_3d_series():
-    color_scaled = _tab()
-    color_scaled.set_series_list([_series(SeriesType.SURFACE)], [])
-
-    flat = _tab()
-    flat.set_series_list([_series(SeriesType.SCATTER3D)], [])
-
-    def chip_values(tab):
-        return [tab.style_series_chips.itemData(index)
-                for index in range(tab.style_series_chips.count())]
-
-    assert "colormap_config" in chip_values(color_scaled)
-    assert "colormap_config" not in chip_values(flat)
-
-
 @pytest.mark.parametrize("series_type", _3D_SERIES_TYPES)
 def test_editing_style_controls_never_crashes_for_a_3d_series(series_type):
     """apply_series_style_to writes fields by concrete style class; a class

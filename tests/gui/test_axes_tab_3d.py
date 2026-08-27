@@ -69,6 +69,26 @@ def test_a_3d_chart_never_offers_the_secondary_y_chip():
     assert "y2" not in _chip_data(tab)
 
 
+def test_the_color_chip_appears_only_for_color_scaled_3d_series():
+    """uses_color_scale, not needs_z_column, gates the Color chip: several
+    3-D types (Scatter3D, Line3D, Bar3D, Wireframe) pick a Z column without
+    taking their color from the chart's shared color scale -- they use
+    their own marker/line color instead (see series_type_spec.py) -- so a
+    needs_z_column check would offer a meaningless Color chip for them."""
+    color_scaled = AxesTab(_make_app_context())
+    color_scaled.load(_3d_chart())  # SURFACE: uses_color_scale=True
+
+    flat = AxesTab(_make_app_context())
+    flat_chart = Chart(name="Cloud", chart_type=ChartType.SCATTER3D)
+    flat_chart.data_series.append(DataSeries(
+        dataset_id="ds-1", series_type=SeriesType.SCATTER3D,
+        style=build_series_style(SeriesType.SCATTER3D, z_column_id="col-z")))
+    flat.load(flat_chart)
+
+    assert "color" in _chip_data(color_scaled)
+    assert "color" not in _chip_data(flat)
+
+
 def test_the_z_form_writes_its_settings_into_the_chart_config():
     chart = _3d_chart()
     tab = AxesTab(_make_app_context())
