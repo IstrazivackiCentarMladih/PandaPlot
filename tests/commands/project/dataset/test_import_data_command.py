@@ -41,6 +41,17 @@ def test_read_frames_honors_delimiter_and_header(tmp_path):
     assert df.iloc[0].tolist() == [10, 20, 30]
 
 
+def test_cleanup_releases_the_imported_datasets():
+    from pandaplot.models.project.items.dataset import Dataset
+
+    command = ImportDataCommand(Mock())
+    command.imported_datasets = [Dataset(name="ds", data=pd.DataFrame({"a": [1, 2]}))]
+
+    command.cleanup()
+
+    assert command.imported_datasets == []
+
+
 def test_read_frames_single_excel_sheet_named_after_file(tmp_path):
     path = tmp_path / "book.xlsx"
     with pd.ExcelWriter(path) as writer:

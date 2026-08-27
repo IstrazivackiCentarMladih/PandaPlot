@@ -411,3 +411,10 @@ class ImportDataCommand(Command):
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
             return False
+
+    @override
+    def cleanup(self) -> None:
+        """Release the imported Dataset objects (and their DataFrames) held
+        for undo once this command is dropped from the stacks for good (see
+        Command.cleanup)."""
+        self.imported_datasets = []
