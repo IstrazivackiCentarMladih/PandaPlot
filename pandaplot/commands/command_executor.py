@@ -42,14 +42,14 @@ class CommandExecutor:
                 self.undo_stack.append(command)
                 if len(self.undo_stack) > self.max_undo_levels:
                     removed_command = self.undo_stack.pop(0)
-                    removed_command.cleanup()
+                    self._safe_cleanup(removed_command)
                     self.logger.debug("Removed old command from undo stack: %s", removed_command.__class__.__name__)
 
                 # Clear redo stack since we executed a new command
                 if self.redo_stack:
                     self.logger.debug("Clearing redo stack (%d commands) due to new command execution", len(self.redo_stack))
                     for stale_command in self.redo_stack:
-                        stale_command.cleanup()
+                        self._safe_cleanup(stale_command)
                     self.redo_stack.clear()
 
             self.logger.info("Successfully executed command: %s", command_name)
@@ -140,8 +140,20 @@ class CommandExecutor:
     def clear_history(self):
         """Clear undo/redo history."""
         for command in self.undo_stack:
-            command.cleanup()
+            self._safe_cleanup(command)
         for command in self.redo_stack:
-            command.cleanup()
+            self._safe_cleanup(command)
         self.undo_stack.clear()
         self.redo_stack.clear()
+
+    def _safe_cleanup(self, command: Command) -> None:
+        """Call command.cleanup(), isolating any exception it raises so it
+        can never corrupt the caller's own control flow (e.g. turning an
+        otherwise-successful execute_command() into a reported failure, or
+        aborting a stack-clearing loop partway through)."""
+        try:
+            command.cleanup()
+        except Exception as e:
+            self.logger.error(
+                "Error cleaning up command '%s': %s",
+                command.__class__.__name__, str(e), exc_info=True)

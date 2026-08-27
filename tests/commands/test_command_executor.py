@@ -131,6 +131,16 @@ class TestCommandExecution:
         assert executor.undo_stack[0] is cmd2
 
 
+class RaisingCleanupCommand(MockCommand):
+    """A command whose cleanup() raises, to verify CommandExecutor isolates
+    cleanup() failures from its own control flow (execute_command()'s return
+    value, and the redo/undo-stack-clearing loops)."""
+
+    def cleanup(self):
+        self.cleanup_count += 1
+        raise RuntimeError(f"{self.name} cleanup failed")
+
+
 class StackExemptCommand(MockCommand):
     """A command that never occupies an undo/redo slot, e.g. a fire-and-forget
     dialog opener whose real effect happens later via its own execute_command()
@@ -603,6 +613,65 @@ class TestCleanupOnEviction:
         executor.undo()
 
         assert command.cleanup_count == 0
+
+
+class TestCleanupExceptionIsolation:
+    """A raising cleanup() must never corrupt CommandExecutor's own control
+    flow: it can't turn a successful execute_command() into a reported
+    failure, and it can't prevent the redo/undo stacks from being cleared or
+    prevent cleanup from being attempted on the remaining stack entries."""
+
+    def test_execute_command_still_succeeds_when_evicted_commands_cleanup_raises(self):
+        executor = CommandExecutor()
+        executor.max_undo_levels = 1
+        cmd1 = RaisingCleanupCommand("Command1")
+        cmd2 = MockCommand("Command2")
+
+        executor.execute_command(cmd1)
+
+        result = executor.execute_command(cmd2)  # evicts cmd1; cmd1.cleanup() raises
+
+        assert result is True
+        assert cmd1.cleanup_count == 1
+        assert len(executor.undo_stack) == 1
+        assert executor.undo_stack[0] is cmd2
+
+    def test_redo_stack_fully_cleared_when_a_stale_commands_cleanup_raises(self):
+        executor = CommandExecutor()
+        cmd1 = RaisingCleanupCommand("Command1")
+        cmd2 = MockCommand("Command2")
+        cmd3 = MockCommand("Command3")
+
+        executor.execute_command(cmd1)
+        executor.execute_command(cmd2)
+        executor.undo()
+        executor.undo()
+        assert len(executor.redo_stack) == 2
+
+        result = executor.execute_command(cmd3)  # clears redo_stack; cmd1.cleanup() raises
+
+        assert result is True
+        assert len(executor.redo_stack) == 0
+        assert cmd1.cleanup_count == 1
+
+    def test_clear_history_clears_both_stacks_and_cleans_up_remaining_commands_when_one_raises(self):
+        executor = CommandExecutor()
+        cmd1 = RaisingCleanupCommand("Command1")
+        cmd2 = MockCommand("Command2")
+        cmd3 = MockCommand("Command3")
+
+        executor.execute_command(cmd1)
+        executor.execute_command(cmd2)
+        executor.execute_command(cmd3)
+        executor.undo()  # cmd3 -> redo_stack
+
+        executor.clear_history()
+
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert cmd1.cleanup_count == 1
+        assert cmd2.cleanup_count == 1
+        assert cmd3.cleanup_count == 1
 
 
 class TestEdgeCases:
