@@ -16,7 +16,7 @@ from pandaplot.models.chart.series_style import TrisurfSeriesStyle
 
 
 def render_trisurf_series(axes, series_data: SeriesData, style: TrisurfSeriesStyle,
-                           label: str, alpha: float, visible: bool, extra: dict):
+                           label: str, alpha: float, *, visible: bool, extra: dict):
     vmin, vmax = extra["color_limits"]
     try:
         x = np.asarray(series_data.x_data, dtype=float)

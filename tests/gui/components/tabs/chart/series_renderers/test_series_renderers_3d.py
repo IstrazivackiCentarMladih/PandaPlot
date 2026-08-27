@@ -72,7 +72,7 @@ def test_render_scatter3d_series_draws_a_3d_point_cloud_in_its_own_color():
     style = Scatter3DSeriesStyle(color="#ff0000",
                                   marker=MarkerStyle(marker_style="square", marker_size=4.0))
 
-    render_scatter3d_series(axes, _lattice_data(), style, "pts", 1.0, True, _extra())
+    render_scatter3d_series(axes, _lattice_data(), style, "pts", 1.0, visible=True, extra=_extra())
 
     scatters = [c for c in axes.collections if isinstance(c, Path3DCollection)]
     assert len(scatters) == 1
@@ -84,7 +84,7 @@ def test_render_line3d_series_draws_one_3d_line_with_its_style_fields():
     style = Line3DSeriesStyle(color="#00ff00", line_width=3.0, line_style="dashed",
                                marker=MarkerStyle(marker_style="none"))
 
-    render_line3d_series(axes, _lattice_data(), style, "trace", 1.0, True, _extra())
+    render_line3d_series(axes, _lattice_data(), style, "trace", 1.0, visible=True, extra=_extra())
 
     lines = axes.get_lines()
     assert len(lines) == 1
@@ -100,7 +100,7 @@ def test_render_surface_series_returns_a_mappable_for_the_colorbar():
     fig, axes = _axes3d()
 
     mappable = render_surface_series(
-        axes, _lattice_data(), SurfaceSeriesStyle(), "surf", 1.0, True, _extra())
+        axes, _lattice_data(), SurfaceSeriesStyle(), "surf", 1.0, visible=True, extra=_extra())
 
     assert isinstance(mappable, Poly3DCollection)
     assert mappable.get_cmap().name == "viridis"
@@ -112,7 +112,7 @@ def test_render_wireframe_series_draws_a_line_mesh_in_one_flat_color():
 
     rendered = render_wireframe_series(
         axes, _lattice_data(), WireframeSeriesStyle(color="#123456", line_width=1.5),
-        "mesh", 1.0, True, _extra())
+        "mesh", 1.0, visible=True, extra=_extra())
 
     assert isinstance(rendered, Line3DCollection)
     plt.close(fig)
@@ -121,7 +121,7 @@ def test_render_wireframe_series_draws_a_line_mesh_in_one_flat_color():
 def test_render_bar3d_series_draws_one_box_collection():
     fig, axes = _axes3d()
 
-    render_bar3d_series(axes, _lattice_data(), Bar3DSeriesStyle(), "bars", 1.0, True, _extra())
+    render_bar3d_series(axes, _lattice_data(), Bar3DSeriesStyle(), "bars", 1.0, visible=True, extra=_extra())
 
     assert len([c for c in axes.collections if isinstance(c, Poly3DCollection)]) == 1
     plt.close(fig)
@@ -150,7 +150,7 @@ def test_render_bar3d_series_centers_each_box_on_its_own_data_point():
     axes = _RecordingAxes()
 
     render_bar3d_series(axes, _lattice_data(), Bar3DSeriesStyle(bar_width=0.8, bar_depth=0.8),
-                         "bars", 1.0, True, _extra())
+                         "bars", 1.0, visible=True, extra=_extra())
 
     x, y, z, dx, dy, dz, _kwargs = axes.bar3d_call
     # Lattice spacing is 1.0, so a 0.8 fraction is a 0.8-wide box, and the
@@ -173,7 +173,7 @@ def test_render_bar3d_series_box_size_follows_the_data_spacing():
                        error=None, z_data=[1.0, 2.0, 3.0])
 
     render_bar3d_series(axes, wide, Bar3DSeriesStyle(bar_width=0.8, bar_depth=0.8),
-                         "bars", 1.0, True, _extra())
+                         "bars", 1.0, visible=True, extra=_extra())
 
     _x, _y, _z, dx, dy, _dz, _kwargs = axes.bar3d_call
     assert dx == pytest.approx(80.0)
@@ -184,7 +184,7 @@ def test_render_trisurf_series_returns_a_mappable_for_the_colorbar():
     fig, axes = _axes3d()
 
     mappable = render_trisurf_series(
-        axes, _lattice_data(), TrisurfSeriesStyle(), "tri", 1.0, True, _extra())
+        axes, _lattice_data(), TrisurfSeriesStyle(), "tri", 1.0, visible=True, extra=_extra())
 
     assert isinstance(mappable, Poly3DCollection)
     plt.close(fig)
@@ -199,7 +199,7 @@ def test_render_trisurf_series_returns_none_for_untriangulatable_points():
                             error=None, z_data=[1.0, 2.0, 3.0])
 
     assert render_trisurf_series(
-        axes, collinear, TrisurfSeriesStyle(), "tri", 1.0, True, _extra()) is None
+        axes, collinear, TrisurfSeriesStyle(), "tri", 1.0, visible=True, extra=_extra()) is None
     plt.close(fig)
 
 
@@ -213,7 +213,7 @@ def test_renderers_that_report_no_data_return_none_for_empty_input(series_type):
 
     rendered = SERIES_RENDERERS[series_type](
         axes, _empty_data(), SERIES_TYPE_SPECS[series_type].style_cls(),
-        "s", 1.0, True, _extra())
+        "s", 1.0, visible=True, extra=_extra())
 
     assert rendered is None
     plt.close(fig)
@@ -230,7 +230,7 @@ def test_3d_renderers_accept_scattered_data_via_the_gridding_modes():
 
     mappable = render_surface_series(
         axes, scattered, SurfaceSeriesStyle(heatmap_gridding="binned", heatmap_resolution=4),
-        "surf", 1.0, True, _extra())
+        "surf", 1.0, visible=True, extra=_extra())
 
     assert isinstance(mappable, Poly3DCollection)
     plt.close(fig)

@@ -62,7 +62,7 @@ def test_button_clicks_emit_their_signals():
 def test_next_disabled_when_page_incomplete():
     footer = WizardFooter(step_number=1, total_steps=3, show_empty_link=True)
 
-    footer.set_next_enabled(False)
+    footer.set_next_enabled(enabled=False)
 
     assert footer.next_button.isEnabled() is False
 

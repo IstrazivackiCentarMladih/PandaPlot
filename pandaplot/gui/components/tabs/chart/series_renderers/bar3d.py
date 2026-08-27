@@ -20,7 +20,7 @@ from pandaplot.models.chart.series_style import Bar3DSeriesStyle
 
 
 def render_bar3d_series(axes, series_data: SeriesData, style: Bar3DSeriesStyle,
-                         label: str, alpha: float, visible: bool, extra: dict):
+                         label: str, alpha: float, *, visible: bool, extra: dict):
     try:
         x = np.asarray(series_data.x_data, dtype=float)
         y = np.asarray(series_data.y_data, dtype=float)

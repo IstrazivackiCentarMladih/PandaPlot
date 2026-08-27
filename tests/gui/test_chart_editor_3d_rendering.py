@@ -237,7 +237,7 @@ def test_an_ungriddable_surface_series_degrades_to_a_per_series_message():
 
     editor.update_chart()
 
-    assert "no data to grid" in editor.status_label.text()
+    assert "no plottable data" in editor.status_label.text()
     assert editor._colorbar is None
 
 

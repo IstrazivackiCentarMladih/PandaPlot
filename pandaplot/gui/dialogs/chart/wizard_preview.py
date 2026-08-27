@@ -104,12 +104,12 @@ def draw_chart_type_sample(canvas: ChartCanvas, chart_type: str) -> None:
     Labels step's fallback for when no configured series resolves, so the
     two steps can't show the same chart type differently.
     """
-    canvas.set_projection(CHART_TYPE_SPECS[ChartType(chart_type)].is_3d)
+    canvas.set_projection(projection_3d=CHART_TYPE_SPECS[ChartType(chart_type)].is_3d)
     series_type = SeriesType(chart_type)
     style = build_series_style(series_type)
     SERIES_RENDERERS[series_type](
         canvas.axes, _sample_series_data(series_type), style,
-        "", 1.0, True, _preview_extra())
+        "", 1.0, visible=True, extra=_preview_extra())
 
 
 def _series_label(project, config: dict) -> str:
@@ -136,11 +136,11 @@ def _series_label(project, config: dict) -> str:
 def render_wizard_preview(
     canvas: ChartCanvas, project, chart_type: str, series_configs: list[dict],
     title: str, subtitle: str, x_label: str, y_label: str,
-    show_legend: bool, show_grid: bool,
+    *, show_legend: bool, show_grid: bool,
 ) -> None:
     series_type = SeriesType(chart_type)
     spec = SERIES_TYPE_SPECS[series_type]
-    canvas.set_projection(CHART_TYPE_SPECS[ChartType(chart_type)].is_3d)
+    canvas.set_projection(projection_3d=CHART_TYPE_SPECS[ChartType(chart_type)].is_3d)
     axes = canvas.axes
     axes.clear()
 
@@ -180,7 +180,7 @@ def render_wizard_preview(
         # any_plotted, which would let the sample-data fallback below draw
         # on top of an earlier series that rendered fine (PR #190 review).
         rendered = SERIES_RENDERERS[series_type](
-            axes, data, style, _series_label(project, config), 1.0, True, extra)
+            axes, data, style, _series_label(project, config), 1.0, visible=True, extra=extra)
         if rendered is None and series_type in _NO_DATA_MEANS_SKIP:
             continue
         any_plotted = True

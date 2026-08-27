@@ -78,7 +78,7 @@ def test_the_z_form_writes_its_settings_into_the_chart_config():
     z_form["label_edit"].setText("Height (m)")
     z_form["mode_control"].setCurrentValue("count")
     z_form["count_spin"].setValue(7)
-    z_form["grid_toggle"].setChecked(False)
+    z_form["grid_toggle"].setChecked(checked=False)
 
     assert chart.config["z_label"] == "Height (m)"
     assert chart.config["z_tick_mode"] == "count"

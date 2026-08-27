@@ -7,7 +7,7 @@ from pandaplot.models.chart.series_style import Line3DSeriesStyle
 
 
 def render_line3d_series(axes, series_data: SeriesData, style: Line3DSeriesStyle,
-                          label: str, alpha: float, visible: bool, extra: dict) -> None:
+                          label: str, alpha: float, *, visible: bool, extra: dict) -> None:
     mfc = style.marker.marker_color or style.color
     mec = style.marker.marker_edge_color or style.color
     axes.plot(series_data.x_data, series_data.y_data, series_data.z_data,

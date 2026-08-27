@@ -95,7 +95,7 @@ def test_a_configured_3d_series_renders_real_data_in_the_labels_preview(chart_ty
     }]
 
     render_wizard_preview(canvas, project, chart_type.value, series_configs,
-                           "Title", "", "X", "Y", True, True)
+                           "Title", "", "X", "Y", show_legend=True, show_grid=True)
 
     assert canvas.is_3d is True
     axes = canvas.axes
@@ -115,7 +115,7 @@ def test_a_3d_series_missing_its_z_column_falls_back_to_the_sample():
     }]
 
     render_wizard_preview(canvas, project, "surface", series_configs,
-                           "Title", "", "X", "Y", True, True)
+                           "Title", "", "X", "Y", show_legend=True, show_grid=True)
 
     assert canvas.is_3d is True
     assert bool(canvas.axes.collections)

@@ -15,7 +15,7 @@ from pandaplot.models.chart.series_style import WireframeSeriesStyle
 
 
 def render_wireframe_series(axes, series_data: SeriesData, style: WireframeSeriesStyle,
-                             label: str, alpha: float, visible: bool, extra: dict):
+                             label: str, alpha: float, *, visible: bool, extra: dict):
     try:
         mesh_x, mesh_y, mesh_z = build_surface_mesh(
             series_data.x_data, series_data.y_data, series_data.z_data,

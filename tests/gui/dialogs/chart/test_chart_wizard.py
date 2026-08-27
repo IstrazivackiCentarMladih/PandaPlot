@@ -315,7 +315,7 @@ def test_subtitle_and_toggles_flow_through_to_the_wizards_getters():
     wizard.next()
     wizard.next()
     wizard.labels_page.subtitle_edit.setText("A closer look")
-    wizard.labels_page.show_legend_toggle.setChecked(False)
+    wizard.labels_page.show_legend_toggle.setChecked(checked=False)
 
     assert wizard.get_subtitle() == "A closer look"
     assert wizard.get_show_legend() is False

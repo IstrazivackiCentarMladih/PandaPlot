@@ -16,7 +16,7 @@ from pandaplot.models.chart.series_style import SurfaceSeriesStyle
 
 
 def render_surface_series(axes, series_data: SeriesData, style: SurfaceSeriesStyle,
-                           label: str, alpha: float, visible: bool, extra: dict):
+                           label: str, alpha: float, *, visible: bool, extra: dict):
     vmin, vmax = extra["color_limits"]
     try:
         mesh_x, mesh_y, mesh_z = build_surface_mesh(

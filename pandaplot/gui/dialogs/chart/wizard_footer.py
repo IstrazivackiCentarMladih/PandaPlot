@@ -19,7 +19,7 @@ class WizardFooter(QWidget):
     cancelClicked = Signal()
     emptyRequested = Signal()
 
-    def __init__(self, step_number: int, total_steps: int, show_empty_link: bool,
+    def __init__(self, step_number: int, total_steps: int, *, show_empty_link: bool,
                  show_next: bool = True, parent: QWidget | None = None):
         super().__init__(parent)
         self.setFixedHeight(48)
@@ -63,10 +63,10 @@ class WizardFooter(QWidget):
         self.finish_button.setVisible(show_next and is_last_step)
         layout.addWidget(self.finish_button)
 
-    def set_back_enabled(self, enabled: bool) -> None:
+    def set_back_enabled(self, *, enabled: bool) -> None:
         self.back_button.setEnabled(enabled)
 
-    def set_next_enabled(self, enabled: bool) -> None:
+    def set_next_enabled(self, *, enabled: bool) -> None:
         self.next_button.setEnabled(enabled)
         self.finish_button.setEnabled(enabled)
 
