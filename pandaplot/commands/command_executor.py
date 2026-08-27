@@ -10,7 +10,7 @@ class CommandExecutor:
     This is the central point for executing commands.
     """
 
-    def __init__(self):
+    def __init__(self, on_history_changed: Optional[Callable[[], None]] = None):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Undo/Redo functionality
@@ -23,7 +23,7 @@ class CommandExecutor:
         # cleared) -- wired by app.py to emit AppEvents.HISTORY_CHANGED, so
         # e.g. the Edit menu's Undo/Redo actions can keep their enabled
         # state in sync without polling.
-        self.on_history_changed: Optional[Callable[[], None]] = None
+        self.on_history_changed = on_history_changed
 
     def _notify_history_changed(self) -> None:
         if self.on_history_changed:

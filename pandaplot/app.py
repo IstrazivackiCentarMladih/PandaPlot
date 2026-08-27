@@ -51,8 +51,7 @@ def build_app_context() -> AppContext:
     theme_manager = ThemeManager(event_bus, config_manager)
     session_manager = SessionPersistenceManager(config_manager)
     ui_controller = UIController()
-    command_executor = CommandExecutor()
-    command_executor.on_history_changed = lambda: event_bus.emit(AppEvents.HISTORY_CHANGED)
+    command_executor = CommandExecutor(on_history_changed=lambda: event_bus.emit(AppEvents.HISTORY_CHANGED))
     task_scheduler = TaskScheduler()
 
     # Create list of managers to pass to AppContext
