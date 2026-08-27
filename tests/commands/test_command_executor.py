@@ -191,6 +191,47 @@ class TestOccupiesUndoSlotOptOut:
         assert command.redo_count == 0
 
 
+class TestTrackUndoOptOut:
+    """Test cases for the per-call track_undo=False opt-out of
+    execute_command(), independent of the command class's own
+    occupies_undo_slot() default."""
+
+    def test_track_undo_false_does_not_push_normally_tracked_command(self):
+        executor = CommandExecutor()
+        command = MockCommand("TrackedButOptedOut")  # occupies_undo_slot() defaults to True
+
+        result = executor.execute_command(command, track_undo=False)
+
+        assert result is True
+        assert command.executed
+        assert len(executor.undo_stack) == 0
+        assert not executor.can_undo()
+
+    def test_default_track_undo_true_still_pushes_command(self):
+        """Regression guard: the default behavior (track_undo=True) must be
+        unchanged by the new parameter."""
+        executor = CommandExecutor()
+        command = MockCommand("DefaultTracked")
+
+        result = executor.execute_command(command)
+
+        assert result is True
+        assert len(executor.undo_stack) == 1
+        assert executor.undo_stack[0] is command
+
+    def test_track_undo_false_on_stack_exempt_command_is_still_not_pushed(self):
+        """Redundant-but-consistent case: a command that already opts itself
+        out via occupies_undo_slot()==False stays off the stack when the
+        caller also passes track_undo=False."""
+        executor = CommandExecutor()
+        command = StackExemptCommand("AlreadyExempt")
+
+        result = executor.execute_command(command, track_undo=False)
+
+        assert result is True
+        assert len(executor.undo_stack) == 0
+
+
 class TestUndoFunctionality:
     """Test cases for undo functionality."""
 

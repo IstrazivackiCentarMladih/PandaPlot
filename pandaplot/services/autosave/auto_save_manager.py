@@ -98,7 +98,7 @@ class AutoSaveManager:
         self._logger.debug("Auto-saving project '%s'", project.name)
         self._current_save = SaveProjectCommand(self._app_context)
         try:
-            self._current_save.execute()
+            self._app_context.get_command_executor().execute_command(self._current_save, track_undo=False)
         except Exception:
             self._logger.exception("Auto-save failed")
 

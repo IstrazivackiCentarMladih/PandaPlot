@@ -18,19 +18,26 @@ class CommandExecutor:
         self.redo_stack: List[Command] = []
         self.max_undo_levels = 10
     
-    def execute_command(self, command: Command) -> bool:
+    def execute_command(self, command: Command, *, track_undo: bool = True) -> bool:
         """
         Execute a command instance directly.
-        
+
         Args:
             command (Command): Command instance to execute
-            
+            track_undo (bool): When False, forces this specific call off the
+                undo stack regardless of the command class's own
+                occupies_undo_slot() default -- use for an automated/background
+                trigger of a command that IS normally undo-tracked from other
+                call sites (e.g. an autosave tick invoking SaveProjectCommand,
+                which must still occupy an undo slot for the manual Save menu
+                action).
+
         Returns:
             bool: True if command executed successfully
         """
         command_name = command.__class__.__name__
         self.logger.debug("Executing command: %s", command_name)
-        
+
         try:
             success = command.execute()
 
@@ -38,7 +45,7 @@ class CommandExecutor:
                 self.logger.warning("Command execution failed: %s", command_name)
                 return False
 
-            if command.occupies_undo_slot():
+            if track_undo and command.occupies_undo_slot():
                 self.undo_stack.append(command)
                 if len(self.undo_stack) > self.max_undo_levels:
                     removed_command = self.undo_stack.pop(0)

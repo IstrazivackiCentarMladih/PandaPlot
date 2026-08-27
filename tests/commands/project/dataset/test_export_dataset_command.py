@@ -104,6 +104,17 @@ def test_redo_logs_warning_when_nothing_to_redo(mock_app_context, caplog):
     assert "cannot redo" in caplog.text.lower()
 
 
+def test_occupies_undo_slot_returns_false(mock_app_context):
+    """ExportDatasetCommand's undo() is a documented no-op, so it must never
+    occupy an undo slot -- its only call site (DatasetTab.export_data) relies
+    on this to keep it off the undo stack when routed through
+    CommandExecutor.execute_command()."""
+    app_context, _app_state, _ui_controller = mock_app_context
+    command = ExportDatasetCommand(app_context, "ds-1")
+
+    assert command.occupies_undo_slot() is False
+
+
 def test_cleanup_releases_the_project_and_dataset_references(mock_app_context, sample_project):
     app_context, app_state, ui_controller = mock_app_context
     command = ExportDatasetCommand(app_context, "ds-1")
