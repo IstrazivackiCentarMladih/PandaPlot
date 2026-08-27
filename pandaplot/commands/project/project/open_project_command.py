@@ -113,6 +113,7 @@ class OpenProjectCommand(Command):
             self.logger.debug("Re-executing open project command")
             self.execute()
 
+    @override
     def cleanup(self) -> None:
         """Release the wrapped LoadProjectCommand's undo snapshots once this
         command is dropped from the stacks for good (see Command.cleanup)."""
