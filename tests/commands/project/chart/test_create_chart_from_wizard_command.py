@@ -11,6 +11,7 @@ from types import MethodType
 from unittest.mock import Mock, patch
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.project.chart import CreateChartFromWizardCommand
@@ -122,6 +123,21 @@ def test_execute_shows_the_wizard_without_blocking(mock_wizard_cls, app_context_
     # `exec()` made the wizard application-modal implicitly; `show()` does not,
     # so the command must ask for it explicitly.
     wizard.setModal.assert_called_once_with(True)  # noqa: FBT003 - mirrors Qt's positional-only setModal call
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_execute_sets_delete_on_close_so_the_dialog_isnt_leaked(mock_wizard_cls, app_context_with_project):
+    """Qt does not delete a `.show()`'d top-level widget on close by default;
+    without WA_DeleteOnClose the dialog (and, via its `finished` closure,
+    this command) would survive indefinitely as a hidden top-level widget."""
+    app_context, _ = app_context_with_project
+    wizard = _fake_wizard()
+    mock_wizard_cls.return_value = wizard
+
+    command = CreateChartFromWizardCommand(app_context)
+    assert command.execute() is True
+
+    wizard.setAttribute.assert_called_once_with(Qt.WidgetAttribute.WA_DeleteOnClose)
 
 
 @patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")

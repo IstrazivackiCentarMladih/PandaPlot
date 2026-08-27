@@ -8,6 +8,7 @@ as soon as the wizard is on screen, and the chart is built later in
 
 from typing import Optional, override
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command
@@ -150,6 +151,13 @@ class CreateChartFromWizardCommand(Command):
                 columns_provider=self._columns_provider(project),
                 project=project,
             )
+            # Qt does not delete a `.show()`'d top-level widget on close by
+            # default (that's only implicit for `exec()`'d modal dialogs);
+            # without this, the dialog survives as a hidden top-level widget
+            # for as long as the (parent) main window is alive. This also
+            # lets the `finished` closure below release its references to
+            # `dialog`/`self` once the C++ object is actually destroyed.
+            dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
             # Keep a strong reference so the dialog isn't garbage-collected while
             # open.
             self._dialog = dialog
