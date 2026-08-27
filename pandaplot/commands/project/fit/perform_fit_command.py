@@ -80,3 +80,9 @@ class PerformFitCommand(Command):
     @override
     def redo(self) -> bool:
         return self.execute()
+
+    @override
+    def cleanup(self) -> None:
+        """Release the computed fit result held for undo once this command
+        is dropped from the stacks for good (see Command.cleanup)."""
+        self.result = None
