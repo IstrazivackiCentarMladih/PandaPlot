@@ -342,3 +342,11 @@ class ExportDatasetCommand(Command):
             bool(self.export_path), bool(self.export_format), self.is_exporting,
         )
         return False
+
+    @override
+    def cleanup(self) -> None:
+        """Release the live project/dataset references held during export
+        once this command is dropped from the stacks for good (see
+        Command.cleanup)."""
+        self.project = None
+        self.dataset = None
