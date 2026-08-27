@@ -27,7 +27,7 @@ class TabFactory:
         self.logger.info(f"Registering tab loader for item type '{item_class.__name__}'")
         self._registry[item_class] = loader
 
-    def create_tab(self, app_context: AppContext, item: Item, parent: QWidget) -> QWidget:
+    def create_tab(self, app_context: AppContext, item: Item | None, parent: QWidget) -> QWidget:
         if item is None:
             raise ValueError("Item cannot be None")
 

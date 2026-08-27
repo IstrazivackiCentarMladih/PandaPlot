@@ -6,10 +6,10 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.commands.command_executor import CommandExecutor
 from pandaplot.commands.project.project import LoadProjectCommand
+from pandaplot.gui.components.tabs.tab_factory import TabFactory
 from pandaplot.gui.controllers import UIController
 from pandaplot.gui.main_window import PandaMainWindow
 from pandaplot.gui.resources.app_icon import create_app_icon
-from pandaplot.gui.components.tabs.tab_factory import TabFactory
 from pandaplot.models.events import EventBus
 from pandaplot.models.project.items import Chart, Dataset, Folder, Image, ImageGallery, Note
 from pandaplot.models.state import AppContext, AppState
