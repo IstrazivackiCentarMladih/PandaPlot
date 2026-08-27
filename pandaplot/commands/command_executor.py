@@ -10,7 +10,8 @@ class CommandExecutor:
     This is the central point for executing commands.
     """
 
-    def __init__(self):
+    def __init__(self, on_history_changed: Optional[Callable[[], None]] = None,
+                 on_project_modified: Optional[Callable[[], None]] = None):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Undo/Redo functionality
@@ -23,11 +24,22 @@ class CommandExecutor:
         # app.py to AppState.mark_modified, the single choke point every
         # command passes through, so individual commands don't each need to
         # touch AppState's dirty flag themselves.
-        self.on_project_modified: Optional[Callable[[], None]] = None
+        self.on_project_modified = on_project_modified
+
+        # Optional hook invoked whenever can_undo()/can_redo() may have
+        # changed (a command executed, was undone/redone, or history was
+        # cleared) -- wired by app.py to emit AppEvents.HISTORY_CHANGED, so
+        # e.g. the Edit menu's Undo/Redo actions can keep their enabled
+        # state in sync without polling.
+        self.on_history_changed = on_history_changed
 
     def _notify_project_modified(self, command: Command) -> None:
         if self.on_project_modified and getattr(command, "marks_project_modified", True):
             self.on_project_modified()
+
+    def _notify_history_changed(self) -> None:
+        if self.on_history_changed:
+            self.on_history_changed()
 
     def execute_command(self, command: Command, *, track_undo: bool = True) -> bool:
         """
@@ -72,6 +84,7 @@ class CommandExecutor:
 
             self._notify_project_modified(command)
             self.logger.info("Successfully executed command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -104,6 +117,7 @@ class CommandExecutor:
             self.redo_stack.append(command)
             self._notify_project_modified(command)
             self.logger.info("Successfully undid command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -136,6 +150,7 @@ class CommandExecutor:
             self.undo_stack.append(command)
             self._notify_project_modified(command)
             self.logger.info("Successfully redid command: %s", command_name)
+            self._notify_history_changed()
             return True
             
         except Exception as e:
@@ -172,6 +187,7 @@ class CommandExecutor:
             self._safe_cleanup(command)
         self.undo_stack.clear()
         self.redo_stack.clear()
+        self._notify_history_changed()
 
     def _safe_cleanup(self, command: Command) -> None:
         """Call command.cleanup(), isolating any exception it raises so it
