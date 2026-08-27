@@ -2,6 +2,7 @@
 Transform column command for applying data transformations with undo/redo support.
 """
 
+import keyword
 from typing import Any, Dict, Optional, override
 
 import pandas as pd
@@ -299,6 +300,12 @@ class TransformColumnCommand(Command):
             "column": source_data,
             "data": source_data
         }
+        # Also bind the column's own name (#203), so an expression can read
+        # e.g. `t * 2` for a column literally named "t" instead of only the
+        # generic aliases above -- skipped when it isn't a valid identifier
+        # (spaces, leading digit, ...) or would shadow a Python keyword.
+        if source_column.isidentifier() and not keyword.iskeyword(source_column):
+            local_vars[source_column] = source_data
 
         # Execute expression
         result = eval(self.expression, safe_globals, local_vars)

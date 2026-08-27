@@ -5,6 +5,7 @@ Adapted from transform_tab.py to provide a compact sidebar interface
 for applying transformations to dataset tabs.
 """
 
+import keyword
 from typing import Optional, override
 
 from PySide6.QtCore import Qt
@@ -210,7 +211,15 @@ class TransformPanel(SidebarPanel):
         self.source_column_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.source_column_list.setMaximumHeight(80)  # Compact height for sidebar
         form_layout.addRow("Source Columns:", self.source_column_list)
-        
+
+        # Which real column the expression's "x" (see _function_reference_text)
+        # currently refers to (#203) -- only the first selected column is
+        # actually used, which is otherwise easy to lose track of once
+        # several columns are highlighted in the list above.
+        self.variable_hint_label = QLabel()
+        self.variable_hint_label.setWordWrap(True)
+        form_layout.addRow("Used as:", self.variable_hint_label)
+
         # New column name
         self.new_column_name = QLineEdit()
         self.new_column_name.setPlaceholderText("new_column")
@@ -251,7 +260,8 @@ class TransformPanel(SidebarPanel):
         self.function_text = QTextEdit()
         self.function_text.setMaximumHeight(100)  # Keep compact
         self.function_text.setPlaceholderText(
-            "Use 'x' for the selected column, e.g.\n"
+            "Use 'x' for the selected column (see 'Used as:' above for which\n"
+            "one -- its own name works too, when it's a valid identifier), e.g.\n"
             "  x * 2            (double the values)\n"
             "  (x - x.mean()) / x.std()   (z-score)\n"
             "  np.sqrt(x)       (square root)\n"
@@ -289,7 +299,9 @@ class TransformPanel(SidebarPanel):
         """Human-readable list of the variables and functions available."""
         return (
             "<b>Variables</b>: <code>x</code> (also <code>value</code>, "
-            "<code>column</code>, <code>data</code>) = the selected column.<br>"
+            "<code>column</code>, <code>data</code>, and the column's own name "
+            "when it's a valid identifier) = the selected column -- see "
+            "'Used as:' above for exactly which one.<br>"
             "<b>Math</b>: <code>np.sqrt</code>, <code>np.log</code>, "
             "<code>np.log10</code>, <code>np.exp</code>, <code>np.abs</code>, "
             "<code>np.sin/cos/tan</code>, <code>np.sign</code>.<br>"
@@ -411,6 +423,7 @@ class TransformPanel(SidebarPanel):
         """Clear dataset information display."""
         self.dataset_label.setText("No dataset selected")
         self.row_count_label.setText("")
+        self._update_variable_hint([])
     
     def get_selected_columns(self):
         """Get list of currently selected column names."""
@@ -421,7 +434,7 @@ class TransformPanel(SidebarPanel):
         """Update the available columns list."""
         self.source_column_list.clear()
         self.available_columns = []
-        
+
         if self.current_dataset and hasattr(self.current_dataset, "data") and self.current_dataset.data is not None:
             try:
                 df = self.current_dataset.data
@@ -429,7 +442,8 @@ class TransformPanel(SidebarPanel):
                 self.source_column_list.addItems(self.available_columns)
             except Exception as e:
                 self.logger.error("TransformPanel: error getting columns: %s", e, exc_info=True)
-    
+        self._update_variable_hint([])
+
     def enable_controls(self, *, enabled: bool):
         """Enable or disable all controls based on dataset availability."""
         self.transform_type_combo.setEnabled(enabled)
@@ -467,7 +481,29 @@ class TransformPanel(SidebarPanel):
                 self.new_column_name.setText(f"{selected_columns[0]}_transformed")
             else:
                 self.new_column_name.setText("combined_transformed")
-    
+        self._update_variable_hint(selected_columns)
+
+    def _update_variable_hint(self, selected_columns: Optional[list] = None):
+        """Refresh the "Used as:" hint (#203) with which real column `x`
+        (also `value`/`column`/`data`, and the column's own name when it's a
+        valid Python identifier -- see TransformColumnCommand) currently
+        refers to. Only the first selected column is ever actually used
+        (_execute_column_operation), regardless of how many are highlighted
+        in the multi-select list, so a second/third selection is flagged as
+        having no effect rather than silently ignored."""
+        if selected_columns is None:
+            selected_columns = self.get_selected_columns()
+        if not selected_columns:
+            self.variable_hint_label.setText("")
+            return
+        source_column = selected_columns[0]
+        hint = f'x = "{source_column}"'
+        if source_column.isidentifier() and not keyword.iskeyword(source_column):
+            hint += f" (also usable directly as {source_column})"
+        if len(selected_columns) > 1:
+            hint += " -- the other selected columns have no effect"
+        self.variable_hint_label.setText(hint)
+
     def insert_function_code(self, function_text: str):
         """Insert a ready-made function at the cursor, replacing any selection."""
         # If the box is empty, just set it; otherwise insert at the cursor so the
@@ -611,9 +647,10 @@ class TransformPanel(SidebarPanel):
         # Reset to first column if available
         if self.source_column_list.count() > 0:
             self.source_column_list.setCurrentRow(0)
-        
+
         # Reset to default transform type
         self.transform_type_combo.setCurrentText("Custom Function")
+        self._update_variable_hint()
     
     def get_available_columns(self) -> list:
         """Get column names from current active dataset."""

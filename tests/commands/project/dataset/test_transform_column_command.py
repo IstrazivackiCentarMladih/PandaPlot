@@ -71,6 +71,28 @@ class TestTransformColumnCommand:
         assert command.execute() is False
         assert "a" in command.error_message
 
+    def test_expression_can_reference_the_source_column_by_its_own_name(self, ctx):
+        """Regression (#203): a valid-identifier column name is bound
+        directly, e.g. `a * 2` for a column literally named "a" -- not just
+        the generic x/value/column/data aliases."""
+        app_context, dataset, _ = ctx
+        command = TransformColumnCommand(app_context, "ds-1", _config("a_x2", expression="a * 2"))
+        assert command.execute() is True
+        assert list(dataset.data["a_x2"]) == [2.0, 4.0, 6.0]
+
+    def test_column_name_that_is_a_python_keyword_is_not_bound_as_a_variable(self, ctx):
+        """A column literally named "class" (a Python keyword) can't be used
+        as an expression identifier regardless -- referencing it directly
+        must fail like any other undefined name, not silently resolve."""
+        app_context, dataset, _ = ctx
+        dataset.data["class"] = [10.0, 20.0, 30.0]
+        command = TransformColumnCommand(app_context, "ds-1", {
+            "new_column_name": "bad", "transform_type": "column",
+            "source_columns": ["class"], "expression": "class * 2", "replace_existing": False,
+        })
+        assert command.execute() is False
+        assert command.error_message
+
     def test_expression_error_is_captured_in_error_message(self, ctx):
         app_context, _, _ = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("bad", expression="1 / 0"))
