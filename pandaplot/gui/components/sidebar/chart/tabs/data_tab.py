@@ -758,7 +758,8 @@ class DataTab(QWidget):
             from_index=from_index,
             to_index=to_index,
         )
-        self.command_executor.execute_command(command)
+        if not self.command_executor.execute_command(command):
+            return
 
         def _swap(i):
             if i == from_index:
