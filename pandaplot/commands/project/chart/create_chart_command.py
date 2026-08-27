@@ -63,3 +63,10 @@ class CreateChartCommand(Command):
     @override
     def redo(self):
         self.execute()
+
+    @override
+    def cleanup(self) -> None:
+        """No undo-only state to release -- self.chart is needed by redo()
+        (execute() re-adds it), so it must stay alive for as long as this
+        command could still be on a stack. Nothing else is held."""
+        return

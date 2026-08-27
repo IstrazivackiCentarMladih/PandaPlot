@@ -825,3 +825,16 @@ def test_non_vector_series_config_leaves_u_v_magnitude_empty(mock_wizard_cls, ap
     assert not hasattr(series.style, "u_column_id")
     assert not hasattr(series.style, "v_column_id")
     assert not hasattr(series.style, "magnitude_column_id")
+
+
+@patch("pandaplot.gui.dialogs.chart.chart_wizard.ChartWizard")
+def test_cleanup_does_not_raise(mock_wizard_cls, app_context_with_project):
+    """This command never occupies an undo slot, so CommandExecutor never
+    calls cleanup() on it -- this only guards the documented no-op."""
+    app_context, _ = app_context_with_project
+    mock_wizard_cls.return_value = _fake_wizard()
+
+    command = CreateChartFromWizardCommand(app_context)
+    command.execute()
+
+    command.cleanup()  # must not raise

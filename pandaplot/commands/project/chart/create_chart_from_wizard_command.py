@@ -324,3 +324,10 @@ class CreateChartFromWizardCommand(Command):
     def redo(self):
         """See undo() -- unreachable via CommandExecutor for the same reason."""
         return
+
+    @override
+    def cleanup(self) -> None:
+        """Unreachable via CommandExecutor: occupies_undo_slot() is False, so
+        this command is never pushed onto a stack for cleanup() to apply to.
+        Kept as a documented no-op only to complete the Command interface."""
+        return

@@ -107,3 +107,17 @@ def test_execute_returns_false_when_add_item_raises(app_context_with_project):
     result = command.execute()
 
     assert result is False
+
+
+def test_cleanup_does_not_raise_and_keeps_chart_for_redo(app_context_with_project):
+    """cleanup() must not null out self.chart -- redo() calls execute(),
+    which re-adds self.chart, so it needs to stay alive for the lifetime of
+    the command even after cleanup() (see Command.cleanup)."""
+    app_context, project = app_context_with_project
+    chart = _chart()
+    command = CreateChartCommand(app_context, chart)
+    command.execute()
+
+    command.cleanup()  # must not raise
+
+    assert command.chart is chart
