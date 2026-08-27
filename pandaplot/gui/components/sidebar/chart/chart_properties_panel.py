@@ -207,7 +207,7 @@ class ChartPropertiesPanel(SidebarPanel):
         """)
         
         # Title label with improved styling
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
         
         # Tab widget with theme-aware colors
         self.tab_widget.setStyleSheet(f"""

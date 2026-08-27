@@ -137,7 +137,7 @@ class TransformPanel(SidebarPanel):
         """)
         
         # Style panel title
-        self.title_label.setStyleSheet(self.title_stylesheet(base_fg, card_border))
+        self._apply_title_theme(base_fg, card_border)
         
         # Style dataset labels in header
         self.dataset_label.setStyleSheet(f"""
