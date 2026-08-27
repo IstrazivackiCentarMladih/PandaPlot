@@ -483,4 +483,7 @@ class DeleteColumnsCommand(Command):
         """Release the undo snapshots held for undo once this command is
         dropped from the stacks for good (see Command.cleanup)."""
         self.original_data = None
+        self.original_column_ids = None
         self.deleted_columns_data = None
+        self.removed_chart_refs = {}
+        self.cleared_error_refs = {}
