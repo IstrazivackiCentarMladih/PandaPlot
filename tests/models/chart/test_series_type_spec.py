@@ -83,6 +83,18 @@ def test_vector_spec():
     assert spec.needs_secondary_columns is True
 
 
+def test_curve_analysis_is_supported_only_by_line_and_scatter():
+    """Regression (#202): ChartAnalysisPanel's derivative/integral/arc-length/
+    smoothing/interpolation operations assume a single ordered (x, y) curve.
+    Asserted against the full SeriesType enum (not just the two True cases)
+    so a newly added type defaults to being excluded rather than silently
+    inheriting a meaningless analysis option."""
+    curve_types = {SeriesType.LINE, SeriesType.SCATTER}
+    for series_type in SeriesType:
+        expected = series_type in curve_types
+        assert SERIES_TYPE_SPECS[series_type].supports_curve_analysis is expected, series_type
+
+
 def test_style_cls_matches_each_series_type():
     assert SERIES_TYPE_SPECS[SeriesType.LINE].style_cls is LineSeriesStyle
     assert SERIES_TYPE_SPECS[SeriesType.SCATTER].style_cls is ScatterSeriesStyle

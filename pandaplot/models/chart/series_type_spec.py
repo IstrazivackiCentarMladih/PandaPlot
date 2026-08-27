@@ -76,6 +76,15 @@ class SeriesTypeSpec:
     # dispatches on the SERIES' type, and a chart may legitimately mix
     # types (a Scatter3D overlay on a Surface chart).
     is_3d: bool
+    # Whether this type represents a single ordered (x, y) curve, which is
+    # what ChartAnalysisPanel's derivative/integral/arc-length/smoothing/
+    # interpolation operations assume (see AnalyzeChartSeriesCommand). True
+    # only for LINE/SCATTER: BAR/HIST have no meaningful curve to
+    # differentiate/integrate, VECTOR's (x, y) is an arrow's tail position
+    # rather than a curve, COLORMAP/HEATMAP's points are an unordered 2-D
+    # scatter (not a sequence), and every 3-D type would silently drop its Z
+    # dimension if analyzed as a flat (x, y) pair.
+    supports_curve_analysis: bool
     style_cls: type[SeriesStyleBase]
 
 
@@ -85,6 +94,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=False, supports_gridding=False,
         uses_color_scale=False, is_3d=False,
+        supports_curve_analysis=True,
         style_cls=LineSeriesStyle,
     ),
     SeriesType.SCATTER: SeriesTypeSpec(
@@ -92,6 +102,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=False, supports_gridding=False,
         uses_color_scale=False, is_3d=False,
+        supports_curve_analysis=True,
         style_cls=ScatterSeriesStyle,
     ),
     SeriesType.BAR: SeriesTypeSpec(
@@ -99,6 +110,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=True, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=False, supports_gridding=False,
         uses_color_scale=False, is_3d=False,
+        supports_curve_analysis=False,
         style_cls=BarSeriesStyle,
     ),
     SeriesType.HIST: SeriesTypeSpec(
@@ -106,6 +118,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=False, needs_secondary_columns=False,
         needs_z_column=False, supports_gridding=False,
         uses_color_scale=False, is_3d=False,
+        supports_curve_analysis=False,
         style_cls=HistSeriesStyle,
     ),
     SeriesType.VECTOR: SeriesTypeSpec(
@@ -113,6 +126,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=True,
         needs_z_column=False, supports_gridding=False,
         uses_color_scale=False, is_3d=False,
+        supports_curve_analysis=False,
         style_cls=VectorSeriesStyle,
     ),
     SeriesType.COLORMAP: SeriesTypeSpec(
@@ -120,6 +134,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=False,
         uses_color_scale=True, is_3d=False,
+        supports_curve_analysis=False,
         style_cls=ColormapSeriesStyle,
     ),
     SeriesType.HEATMAP: SeriesTypeSpec(
@@ -127,6 +142,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=True,
         uses_color_scale=True, is_3d=False,
+        supports_curve_analysis=False,
         style_cls=HeatmapSeriesStyle,
     ),
     # -- 3-D types (is_3d=True) ------------------------------------------
@@ -137,6 +153,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=False,
         uses_color_scale=False, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=Scatter3DSeriesStyle,
     ),
     SeriesType.LINE3D: SeriesTypeSpec(
@@ -144,6 +161,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=False,
         uses_color_scale=False, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=Line3DSeriesStyle,
     ),
     SeriesType.SURFACE: SeriesTypeSpec(
@@ -151,6 +169,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=True,
         uses_color_scale=True, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=SurfaceSeriesStyle,
     ),
     SeriesType.WIREFRAME: SeriesTypeSpec(
@@ -161,6 +180,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=True,
         uses_color_scale=False, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=WireframeSeriesStyle,
     ),
     SeriesType.BAR3D: SeriesTypeSpec(
@@ -168,6 +188,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=False,
         uses_color_scale=False, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=Bar3DSeriesStyle,
     ),
     SeriesType.TRISURF: SeriesTypeSpec(
@@ -175,6 +196,7 @@ SERIES_TYPE_SPECS: dict[SeriesType, SeriesTypeSpec] = {
         supports_error_bars=False, needs_x_column=True, needs_secondary_columns=False,
         needs_z_column=True, supports_gridding=False,
         uses_color_scale=True, is_3d=True,
+        supports_curve_analysis=False,
         style_cls=TrisurfSeriesStyle,
     ),
 }
