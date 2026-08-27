@@ -71,7 +71,19 @@ def test_cleanup_releases_previous_file_path_snapshot():
     app_context, _app_state = _make_app_context()
     command = SaveProjectCommand(app_context)
     command.previous_file_path = "/old/path/project.pplot"
+    command.is_saving = False
 
     command.cleanup()
 
     assert command.previous_file_path is None
+
+
+def test_cleanup_does_not_release_previous_file_path_while_save_in_progress():
+    app_context, _app_state = _make_app_context()
+    command = SaveProjectCommand(app_context)
+    command.previous_file_path = "/old/path/project.pplot"
+    command.is_saving = True
+
+    command.cleanup()
+
+    assert command.previous_file_path == "/old/path/project.pplot"

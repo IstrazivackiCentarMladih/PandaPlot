@@ -59,6 +59,13 @@ class CloseProjectCommand(Command):
         return False
 
     @override
+    def occupies_undo_slot(self) -> bool:
+        """undo()/redo() are both documented no-ops (closing a project isn't
+        undoable/redoable), so this command should never occupy an undo
+        slot or clear redo history when executed."""
+        return False
+
+    @override
     def cleanup(self) -> None:
         """No undo state to release -- this command does not support
         undo/redo."""

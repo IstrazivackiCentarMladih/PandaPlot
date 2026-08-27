@@ -36,3 +36,9 @@ def test_cleanup_does_not_raise():
     app_context, _app_state = _make_app_context()
     command = CloseProjectCommand(app_context)
     command.cleanup()
+
+
+def test_does_not_occupy_undo_slot():
+    app_context, _app_state = _make_app_context()
+    command = CloseProjectCommand(app_context)
+    assert command.occupies_undo_slot() is False
