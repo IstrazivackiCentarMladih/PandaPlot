@@ -112,3 +112,10 @@ class OpenProjectCommand(Command):
             # Re-execute the command (will show dialog again)
             self.logger.debug("Re-executing open project command")
             self.execute()
+
+    def cleanup(self) -> None:
+        """Release the wrapped LoadProjectCommand's undo snapshots once this
+        command is dropped from the stacks for good (see Command.cleanup)."""
+        if self.load_command:
+            self.load_command.cleanup()
+            self.load_command = None
