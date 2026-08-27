@@ -20,12 +20,12 @@ from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 
 
-def test_all_seven_series_types_are_registered():
-    assert set(SERIES_TYPE_SPECS.keys()) == {
-        SeriesType.LINE, SeriesType.SCATTER, SeriesType.BAR,
-        SeriesType.HIST, SeriesType.VECTOR,
-        SeriesType.COLORMAP, SeriesType.HEATMAP,
-    }
+def test_every_series_type_is_registered():
+    """Asserted against the SeriesType enum rather than a hardcoded list --
+    a series type with no spec makes every consumer (the renderer dispatch,
+    the Style tab's card visibility, DataSeries.__post_init__) KeyError,
+    and that stays caught without editing this test per new type."""
+    assert set(SERIES_TYPE_SPECS.keys()) == set(SeriesType)
 
 
 def test_line_spec():
