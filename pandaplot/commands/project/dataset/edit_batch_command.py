@@ -290,5 +290,11 @@ class EditBatchCommand(Command):
         Command.cleanup)."""
         self.old_data = None
         for command in self.executed_commands:
-            command.cleanup()
+            try:
+                command.cleanup()
+            except Exception as e:
+                self.logger.error(
+                    "Error cleaning up sub-command '%s': %s",
+                    command.__class__.__name__, str(e), exc_info=True,
+                )
         self.executed_commands = []

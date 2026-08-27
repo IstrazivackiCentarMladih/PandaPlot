@@ -118,5 +118,10 @@ class OpenProjectCommand(Command):
         """Release the wrapped LoadProjectCommand's undo snapshots once this
         command is dropped from the stacks for good (see Command.cleanup)."""
         if self.load_command:
-            self.load_command.cleanup()
+            try:
+                self.load_command.cleanup()
+            except Exception as e:
+                self.logger.error(
+                    "Error cleaning up wrapped LoadProjectCommand: %s", str(e), exc_info=True,
+                )
             self.load_command = None

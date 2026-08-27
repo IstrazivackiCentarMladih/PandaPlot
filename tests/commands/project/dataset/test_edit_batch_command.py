@@ -181,3 +181,24 @@ def test_cleanup_cascades_to_sub_commands():
     sub_command_1.cleanup.assert_called_once_with()
     sub_command_2.cleanup.assert_called_once_with()
     assert command.executed_commands == []
+
+
+def test_cleanup_isolates_a_raising_sub_command():
+    """If one sub-command's cleanup() raises, the remaining sub-commands must
+    still get cleaned up, executed_commands must still be cleared, and the
+    exception must not propagate out of EditBatchCommand.cleanup()."""
+    app_context = Mock(spec=AppContext)
+    app_context.app_state = Mock()
+    app_context.get_ui_controller.return_value = Mock()
+
+    command = EditBatchCommand(app_context, "ds-1", 0, 0, [[1, 2], [3, 4]])
+    command.old_data = pd.DataFrame({"a": [1, 2, 3]})
+    raising_sub_command = Mock()
+    raising_sub_command.cleanup.side_effect = RuntimeError("boom")
+    ok_sub_command = Mock()
+    command.executed_commands = [raising_sub_command, ok_sub_command]
+
+    command.cleanup()  # must not raise
+
+    ok_sub_command.cleanup.assert_called_once_with()
+    assert command.executed_commands == []
