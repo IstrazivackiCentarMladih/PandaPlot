@@ -37,7 +37,7 @@ class _FakeCloseEvent:
         self.accepted = False
 
 
-def _make_window(has_project, project_name="P", is_modified=False):
+def _make_window(*, has_project, project_name="P", is_modified=False):
     app_context = Mock()
     app_context.get_app_state.return_value.has_project = has_project
     app_context.get_app_state.return_value.current_project.name = project_name

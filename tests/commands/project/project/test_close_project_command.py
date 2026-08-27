@@ -6,7 +6,7 @@ from pandaplot.commands.project.project.close_project_command import CloseProjec
 from pandaplot.models.state import AppContext, AppState
 
 
-def _make_app_context(has_project=True, is_modified=False):
+def _make_app_context(*, has_project=True, is_modified=False):
     app_context = Mock(spec=AppContext)
     app_state = Mock(spec=AppState)
     app_state.has_project = has_project
@@ -68,3 +68,15 @@ def test_marks_project_modified_is_false():
     close_project) and must not be double-counted by CommandExecutor's
     generic on_project_modified hook."""
     assert CloseProjectCommand.marks_project_modified is False
+
+
+def test_cleanup_does_not_raise():
+    app_context, _app_state = _make_app_context()
+    command = CloseProjectCommand(app_context)
+    command.cleanup()
+
+
+def test_does_not_occupy_undo_slot():
+    app_context, _app_state = _make_app_context()
+    command = CloseProjectCommand(app_context)
+    assert command.occupies_undo_slot() is False

@@ -11,7 +11,7 @@ from pandaplot.models.events import EventBus
 from pandaplot.models.state.app_state import AppState
 
 
-def _make_app_context(has_project=True, current_project=None, project_file_path=None):
+def _make_app_context(*, has_project=True, current_project=None, project_file_path=None):
     app_state = Mock()
     app_state.has_project = has_project
     app_state.current_project = current_project
@@ -165,3 +165,25 @@ def test_on_save_result_restores_modified_after_path_change_when_a_newer_edit_ha
     command._on_save_result({"success": True, "project": project, "path": "/new.pplot"})
 
     assert app_state.is_modified is True
+
+
+def test_cleanup_releases_previous_file_path_snapshot():
+    app_context, _app_state = _make_app_context()
+    command = SaveProjectCommand(app_context)
+    command.previous_file_path = "/old/path/project.pplot"
+    command.is_saving = False
+
+    command.cleanup()
+
+    assert command.previous_file_path is None
+
+
+def test_cleanup_does_not_release_previous_file_path_while_save_in_progress():
+    app_context, _app_state = _make_app_context()
+    command = SaveProjectCommand(app_context)
+    command.previous_file_path = "/old/path/project.pplot"
+    command.is_saving = True
+
+    command.cleanup()
+
+    assert command.previous_file_path == "/old/path/project.pplot"
