@@ -705,9 +705,6 @@ class TabContainer(PWidget):
             "tab_type": tab_data.get("type"),
             "tab_id": tab_data.get("id"),
             "tab_title": pane.tabText(index) if pane and index >= 0 else "",
-            "dataset_id": tab_data.get("dataset_id"),
-            "chart_id": tab_data.get("chart_id"),
-            "note_id": tab_data.get("note_id")
         })
 
         self._persist_tab_session()
