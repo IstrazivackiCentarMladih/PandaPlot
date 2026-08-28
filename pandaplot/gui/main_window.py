@@ -130,10 +130,11 @@ class PandaMainWindow(PMainWindow):
     def on_app_closing_event(self, event_data: dict):
         """Handle app closing event from the internal event bus.
 
-        This should initiate the normal Qt window close sequence which will emit a
-        QCloseEvent and invoke the overridden closeEvent below with a proper event object.
+        This initiates the normal Qt window close sequence via self.close(),
+        which invokes Qt's own default closeEvent handling (there is no
+        custom closeEvent override on this class or its PMainWindow base).
         We avoid doing cleanup work here to prevent duplication and to ensure the
-        correct event type is passed to the Qt closeEvent handler.
+        correct event type is passed to Qt's close handling.
         """
         if self._is_closing:
             self.logger.debug(
@@ -159,6 +160,12 @@ class PandaMainWindow(PMainWindow):
             # Log cleanup completion
             self.logger.info("Application cleanup completed successfully")
 
+            # Keep the guard flag True for the full duration of close(), since
+            # that's the call that could re-enter this handler (e.g. via a
+            # synchronous QCloseEvent side effect) -- resetting the flag
+            # before calling close() would make the re-entrancy guard above
+            # a no-op.
+            self.close()
         except Exception as e:
             self.logger.error("Error during cleanup: %s",
                               str(e), exc_info=True)
@@ -166,7 +173,5 @@ class PandaMainWindow(PMainWindow):
             self.logger.warning(
                 "Forcing application exit despite cleanup errors")
         finally:
-            # Cleanup flag
             self._is_closing = False
-        self.close()
 

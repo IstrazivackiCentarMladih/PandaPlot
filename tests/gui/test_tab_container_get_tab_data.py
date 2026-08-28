@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 
+from pandaplot.gui.components.tabs.image.image_gallery_tab import ImageGalleryTab
 from pandaplot.gui.components.tabs.tab_container import TabContainer
 from pandaplot.models.events import UIEvents
 
@@ -16,6 +17,27 @@ def test_dispatches_to_widget_get_tab_data():
     widget.get_tab_data.return_value = {"type": "dataset", "id": "ds-1"}
 
     assert container.get_tab_data(widget) == {"type": "dataset", "id": "ds-1"}
+
+
+def test_image_gallery_tab_type_is_not_other_so_its_id_survives_persistence():
+    """Regression: _persist_tab_session (tab_container.py) only remembers the
+    active tab's id when `get_tab_data(active_widget)["type"] != "other"`.
+    ImageGalleryTab.get_tab_data() used to fall through to the generic
+    `{"type": "other", "id": id(widget)}` default, which meant an active
+    gallery tab's id was silently dropped from persisted sessions -- galleries
+    lost their "was the active tab" status across app restarts for no good
+    reason. It now reports its own type/id, so this must gate the same way
+    every other real tab type does (see test_dispatches_to_widget_get_tab_data
+    above for the analogous dataset-tab case)."""
+    container = _container()
+    gallery_tab = ImageGalleryTab.__new__(ImageGalleryTab)
+    gallery_tab.root_gallery = Mock(id="gal-1")
+
+    data = container.get_tab_data(gallery_tab)
+
+    assert data == {"type": "imagegallery", "id": "gal-1"}
+    # This is the exact condition _persist_tab_session branches on.
+    assert data["type"] != "other"
 
 
 def test_falls_back_to_other_for_widgets_without_get_tab_data():
