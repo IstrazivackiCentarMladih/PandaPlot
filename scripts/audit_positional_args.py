@@ -50,7 +50,9 @@ def _annotation_name(annotation: ast.expr | None) -> str | None:
 
 
 def _check_function(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[Finding]:
-    args = node.args.args
+    # posonlyargs (before a `/`) come first in calling order, and are even more
+    # squarely "positional" than plain args, which a caller could pass by keyword.
+    args = [*node.args.posonlyargs, *node.args.args]
     # Drop a leading self/cls: it's never passed positionally by a caller.
     if args and args[0].arg in ("self", "cls"):
         args = args[1:]
