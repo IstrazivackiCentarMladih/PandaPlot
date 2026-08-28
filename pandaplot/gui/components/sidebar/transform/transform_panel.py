@@ -646,7 +646,7 @@ class TransformPanel(SidebarPanel):
         """Handle tab change events."""
         if event_data.get("tab_type") == "dataset":
             # Update context for new dataset tab
-            dataset_id = event_data.get("dataset_id")
+            dataset_id = event_data.get("tab_id")
             project = self.app_context.app_state.current_project
             if project:
                 dataset = project.find_item(dataset_id)

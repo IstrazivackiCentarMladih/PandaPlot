@@ -682,7 +682,7 @@ class AnalysisPanel(SidebarPanel):
     def on_tab_changed(self, event_data):
         """Handle tab change events."""
         if event_data.get("tab_type") == "dataset":
-            new_dataset_id = event_data.get("dataset_id")
+            new_dataset_id = event_data.get("tab_id")
             if new_dataset_id != self.current_dataset_id:
                 self.current_dataset_id = new_dataset_id
                 

@@ -113,6 +113,10 @@ class ChartTab(PWidget):
         """Get the tab title."""
         return f"📈 {self.chart.name}"
 
+    def get_tab_data(self) -> dict:
+        """Identify this tab to TabContainer for session/event bookkeeping."""
+        return {"type": "chart", "id": self.chart.id}
+
     def get_chart(self) -> Chart:
         """Get the chart object."""
         return self.chart

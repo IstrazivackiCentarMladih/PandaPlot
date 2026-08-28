@@ -90,6 +90,10 @@ class NoteTab(PWidget):
         modified_indicator = " *" if self.note_editor.has_unsaved_changes() else ""
         return f"📝 {self.note.name}{modified_indicator}"
 
+    def get_tab_data(self) -> dict:
+        """Identify this tab to TabContainer for session/event bookkeeping."""
+        return {"type": "note", "id": self.note.id}
+
     def can_close(self) -> bool:
         """Check if the tab can be closed."""
         if self.note_editor.has_unsaved_changes():

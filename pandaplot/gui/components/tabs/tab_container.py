@@ -705,38 +705,18 @@ class TabContainer(PWidget):
             "tab_type": tab_data.get("type"),
             "tab_id": tab_data.get("id"),
             "tab_title": pane.tabText(index) if pane and index >= 0 else "",
-            "dataset_id": tab_data.get("dataset_id"),
-            "chart_id": tab_data.get("chart_id"),
-            "note_id": tab_data.get("note_id")
         })
 
         self._persist_tab_session()
 
     def get_tab_data(self, widget):
-        """Get tab data for a widget."""
-        if hasattr(widget, "dataset") and widget.dataset:
-            return {
-                "type": "dataset",
-                "id": widget.dataset.id,
-                "dataset_id": widget.dataset.id
-            }
-        elif hasattr(widget, "chart") and widget.chart:
-            return {
-                "type": "chart",
-                "id": widget.chart.id,
-                "chart_id": widget.chart.id
-            }
-        elif hasattr(widget, "note") and widget.note:
-            return {
-                "type": "note",
-                "id": widget.note.id,
-                "note_id": widget.note.id
-            }
-        else:
-            return {
-                "type": "other",
-                "id": id(widget)
-            }
+        """Get tab data for a widget, via its own get_tab_data() when it has one."""
+        if hasattr(widget, "get_tab_data"):
+            return widget.get_tab_data()
+        return {
+            "type": "other",
+            "id": id(widget)
+        }
 
     def on_analysis_completed(self, event_data):
         """Handle analysis completion events."""
