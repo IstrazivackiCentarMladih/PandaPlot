@@ -1088,3 +1088,10 @@ class TestImageGalleryTabLongNameTruncation:
         displayed = row.text(0)
         assert displayed != long_name
         assert row.toolTip(0) == long_name
+
+
+def test_get_tab_data_returns_imagegallery_type_and_id():
+    tab = ImageGalleryTab.__new__(ImageGalleryTab)
+    tab.root_gallery = Mock(id="gal-1")
+
+    assert tab.get_tab_data() == {"type": "imagegallery", "id": "gal-1"}

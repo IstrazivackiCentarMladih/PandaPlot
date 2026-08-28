@@ -212,6 +212,10 @@ class DatasetTab(PWidget):
         title = f"📊 {self.dataset.name}"
         return title
 
+    def get_tab_data(self) -> dict:
+        """Identify this tab to TabContainer for session/event bookkeeping."""
+        return {"type": "dataset", "id": self.dataset.id}
+
     def create_chart_from_data(self):
         """Create a chart from this dataset, pre-selecting any columns the
         user has already selected in this tab's table view."""

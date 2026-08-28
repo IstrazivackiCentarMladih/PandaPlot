@@ -271,6 +271,10 @@ class ImageGalleryTab(PWidget):
     def get_tab_title(self) -> str:
         return self.root_gallery.name
 
+    def get_tab_data(self) -> dict:
+        """Identify this tab to TabContainer for session/event bookkeeping."""
+        return {"type": "imagegallery", "id": self.root_gallery.id}
+
     def _navigate_to(self, gallery: ImageGallery) -> None:
         """Drill into (or jump to) `gallery` within this same tab, pushing
         onto history and truncating any stale forward branch."""
