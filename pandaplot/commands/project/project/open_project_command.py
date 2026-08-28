@@ -19,7 +19,7 @@ class OpenProjectCommand(Command):
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
-        self.project_manager = ProjectManager()
+        self.project_manager = app_context.get_manager(ProjectManager)
         self.load_command: Optional[LoadProjectCommand] = None
         self.was_executed = False
 

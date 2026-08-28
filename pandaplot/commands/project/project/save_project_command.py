@@ -4,9 +4,9 @@ from pandaplot.commands.base_command import Command
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.services.data_managers.project_manager import ProjectManager
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.session import SessionPersistenceManager
-from pandaplot.storage.project_data_manager import ProjectDataManager
 
 
 class SaveProjectCommand(Command):
@@ -153,8 +153,8 @@ class SaveProjectCommand(Command):
                 progress_callback(0.4)  # Project path updated
 
             # Perform the actual save operation
-            project_data_manager = self.app_context.get_manager(ProjectDataManager)
-            project_data_manager.save(project, save_path)
+            project_manager = self.app_context.get_manager(ProjectManager)
+            project_manager.save_project(project, save_path)
 
             if progress_callback:
                 progress_callback(0.9)  # Save operation complete
