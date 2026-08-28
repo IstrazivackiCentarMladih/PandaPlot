@@ -282,7 +282,7 @@ class ChartPropertiesPanel(SidebarPanel):
     def _on_tab_changed(self, event_data):
         """Handle tab change events to update context."""
         current_tab_type = event_data.get("tab_type")
-        chart_id = event_data.get("chart_id")
+        chart_id = event_data.get("tab_id")
         
         # Check if current tab is a chart tab
         if current_tab_type == "chart" and chart_id:

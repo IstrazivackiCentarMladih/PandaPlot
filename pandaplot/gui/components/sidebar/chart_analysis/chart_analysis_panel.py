@@ -443,7 +443,7 @@ class ChartAnalysisPanel(PWidget):
 
     def _on_tab_changed(self, event_data):
         if event_data.get("tab_type") == "chart":
-            chart_id = event_data.get("chart_id")
+            chart_id = event_data.get("tab_id")
             self.current_chart_id = chart_id
             project = self.app_context.get_app_state().current_project
             chart = project.find_item(chart_id) if project and chart_id else None
