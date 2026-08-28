@@ -20,6 +20,7 @@ from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
+from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -264,6 +265,29 @@ class ChartPropertiesPanel(SidebarPanel):
         self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, self._on_project_loaded)  # may not fire yet
         self.subscribe_to_event("project_loaded", self._on_project_loaded)
         self.subscribe_to_event("first_project_loaded", self._on_project_loaded)
+        # A renamed dataset's display name in the Data tab's dataset combo
+        # otherwise stays stale until the next tab switch re-triggers
+        # set_project(); refresh it live instead.
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_renamed)
+
+    def _on_project_item_renamed(self, event_data):
+        """Refresh dataset-name displays in the Data tab after a dataset rename.
+
+        The rename payload doesn't carry an item type, so look the renamed
+        item up to filter out chart/note/folder/etc. renames -- rebuilding
+        is otherwise wasted work on every unrelated rename.
+        """
+        if not self.current_project:
+            return
+        item = self.current_project.find_item(event_data.get("item_id"))
+        if isinstance(item, Dataset):
+            self.data_tab.set_project(self.current_project)
+            # The combo rebuild above doesn't touch the expanded-but-not-
+            # selected series/fit detail rows, which render the dataset's
+            # display name as static QLabel text via _dataset_display_name()
+            # at card-build time -- rebuild those too so they don't go stale.
+            if self.current_chart:
+                self.data_tab._rebuild_series_cards()
 
     def _ensure_datasets_loaded(self):
         """Populate datasets if empty (idempotent)."""

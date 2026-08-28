@@ -29,6 +29,7 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.gui.components.sidebar.transform.transform_controller import TransformController
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -628,6 +629,10 @@ class TransformPanel(SidebarPanel):
             
             # UI events
             (UIEvents.TAB_CHANGED, self.on_tab_changed),
+
+            # Keep the dataset name label in sync while this panel stays open
+            # across a rename (no tab change fires in that case).
+            (ProjectEvents.PROJECT_ITEM_RENAMED, self.on_dataset_renamed),
         ])
     
     def on_column_added(self, event_data):
@@ -642,6 +647,11 @@ class TransformPanel(SidebarPanel):
         if self.current_dataset and hasattr(self.current_dataset, "id") and dataset_id == self.current_dataset.id:
             self.refresh_column_list()
     
+    def on_dataset_renamed(self, event_data):
+        """Refresh the dataset name label when the active dataset is renamed."""
+        if self.current_dataset and event_data.get("item_id") == self.current_dataset.id:
+            self.update_dataset_info()
+
     def on_tab_changed(self, event_data):
         """Handle tab change events."""
         if event_data.get("tab_type") == "dataset":
