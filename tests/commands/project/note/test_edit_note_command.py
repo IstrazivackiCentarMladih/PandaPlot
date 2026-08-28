@@ -212,7 +212,7 @@ class TestEditNoteCommand:
         
         result = command.undo()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         sample_note.update_content.assert_called_once_with("Original content")
         
         # Check event emission
@@ -257,7 +257,7 @@ class TestEditNoteCommand:
         
         result = command.undo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_warning_message.assert_called_once_with(
             "Undo Edit Note", 
             "No project is currently loaded."
@@ -276,7 +276,7 @@ class TestEditNoteCommand:
         
         result = command.undo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_warning_message.assert_called_once_with(
             "Undo Edit Note", 
             "Note with ID 'note-123' not found in the project."
@@ -296,7 +296,7 @@ class TestEditNoteCommand:
         
         result = command.undo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_warning_message.assert_called_once_with(
             "Undo Edit Note", 
             "Note with ID 'note-123' not found in the project."
@@ -316,7 +316,7 @@ class TestEditNoteCommand:
         
         result = command.undo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to undo edit note: Test error" in ui_controller.show_error_message.call_args[0][1]
 
@@ -332,7 +332,7 @@ class TestEditNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "note-123" in caplog.text
 
     def test_undo_logs_warning_when_note_not_found(self, mock_app_context, sample_project, caplog):
@@ -348,7 +348,7 @@ class TestEditNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "note-123" in caplog.text
 
     def test_redo_successful(self, mock_app_context, sample_project, sample_note):
@@ -364,7 +364,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         sample_note.update_content.assert_called_once_with("New content")
         
         # Check event emission
@@ -382,7 +382,7 @@ class TestEditNoteCommand:
         # old_content is None
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_no_project(self, mock_app_context):
         """Test redo when no project is loaded."""
@@ -394,7 +394,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_no_current_project(self, mock_app_context):
         """Test redo when current project is None."""
@@ -407,7 +407,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_note_not_found(self, mock_app_context, sample_project):
         """Test redo when note is not found."""
@@ -422,7 +422,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_item_not_note(self, mock_app_context, sample_project):
         """Test redo when found item is not a Note."""
@@ -438,7 +438,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_with_exception(self, mock_app_context, sample_project, sample_note):
         """Test redo when an exception occurs."""
@@ -454,7 +454,7 @@ class TestEditNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to redo edit note: Test error" in ui_controller.show_error_message.call_args[0][1]
 
@@ -470,7 +470,7 @@ class TestEditNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "note-123" in caplog.text
 
     def test_redo_logs_warning_when_note_not_found(self, mock_app_context, sample_project, caplog):
@@ -486,7 +486,7 @@ class TestEditNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "note-123" in caplog.text
 
     def test_content_storage_during_execute(self, mock_app_context, sample_project, sample_note):

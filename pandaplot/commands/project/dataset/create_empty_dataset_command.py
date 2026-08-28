@@ -158,7 +158,7 @@ class CreateEmptyDatasetCommand(Command):
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the create empty dataset command."""
         try:
             if self.dataset_name:
@@ -170,7 +170,7 @@ class CreateEmptyDatasetCommand(Command):
             error_msg = f"Failed to redo dataset creation: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

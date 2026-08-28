@@ -83,14 +83,14 @@ class TestTransformColumnCommand:
         original = list(dataset.data["a"])
         command = TransformColumnCommand(app_context, "ds-1", _config("a", replace=True))
         command.execute()
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert list(dataset.data["a"]) == original
 
     def test_undo_removes_new_column(self, ctx):
         app_context, dataset, event_bus = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("a_x2"))
         command.execute()
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert "a_x2" not in dataset.data.columns
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_REMOVED)
 
@@ -113,7 +113,7 @@ def test_undo_logs_a_warning_when_dataset_not_set(caplog):
     # undo() called without a prior successful execute(): self.dataset is None.
 
     with caplog.at_level(logging.WARNING):
-        assert command.undo() is False
+        assert command.undo() is CommandResult.FAILURE
     assert "ds-1" in caplog.text
 
 
@@ -124,7 +124,7 @@ def test_undo_logs_a_warning_when_dataset_has_no_data(caplog):
     command.dataset = dataset
 
     with caplog.at_level(logging.WARNING):
-        assert command.undo() is False
+        assert command.undo() is CommandResult.FAILURE
     assert "ds-1" in caplog.text
 
 

@@ -70,7 +70,7 @@ class TestPreprocessColumnCommand:
         command.execute()
         assert "A_minmax" in dataset.data.columns
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert list(dataset.data.columns) == original_columns
 
     def test_replace_existing_overwrites_source(self, app_context_with_project):
@@ -93,7 +93,7 @@ class TestPreprocessColumnCommand:
         )
         command.execute()
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         pd.testing.assert_series_equal(dataset.data["A"], original, check_names=False)
 
     def test_minmax_params_passed_through(self, app_context_with_project):
@@ -158,7 +158,7 @@ class TestPreprocessColumnCommand:
         # undo() called without a prior successful execute(): self.dataset is None.
 
         with caplog.at_level(logging.WARNING):
-            assert command.undo() is False
+            assert command.undo() is CommandResult.FAILURE
         assert "ds-1" in caplog.text
 
 

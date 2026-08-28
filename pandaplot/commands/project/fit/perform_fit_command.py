@@ -73,9 +73,9 @@ class PerformFitCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         self.result = None
-        return True
+        return CommandResult.SUCCESS
 
     @override
     def redo(self) -> CommandResult:

@@ -265,13 +265,13 @@ class SaveProjectCommand(Command):
             self.logger.error("SaveProjectCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the save project command."""
         if not self.is_saving:
             return self.execute()
         else:
             self.logger.warning("Cannot redo save command while save is in progress")
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

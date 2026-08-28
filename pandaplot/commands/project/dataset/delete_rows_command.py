@@ -151,13 +151,13 @@ class DeleteRowsCommand(Command):
             self.ui_controller.show_error_message("Delete Rows Error", error_msg)
             return CommandResult.FAILURE
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the delete rows command by restoring the original data."""
         try:
             if self.dataset and self.original_data is not None:
                 # Restore original data
                 self.dataset.set_data(self.original_data)
-                
+
                 # Emit event
                 self.app_state.event_bus.emit(DatasetOperationEvents.DATASET_ROW_ADDED, DatasetRowsAddedData(
                     dataset_id=self.dataset_id,
@@ -165,7 +165,7 @@ class DeleteRowsCommand(Command):
                 ).to_dict())
 
                 self.logger.info(f"Undid deleting {len(self.row_positions)} rows from dataset '{self.dataset.name}'")
-                return True
+                return CommandResult.SUCCESS
 
             self.logger.warning(
                 "DeleteRowsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
@@ -173,7 +173,7 @@ class DeleteRowsCommand(Command):
             )
         except Exception as e:
             self.logger.error(f"DeleteRowsBatchCommand Undo Error: {e}")
-            return False
+            return CommandResult.FAILURE
 
     def redo(self):
         """Redo the delete rows command."""

@@ -102,7 +102,7 @@ def test_undo_restores_data_and_chart_references(env):
     command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
     command.execute()
 
-    assert command.undo() is True
+    assert command.undo() is CommandResult.SUCCESS
     assert list(dataset.data.columns) == ["a", "b", "c", "d"]
     assert len(chart.data_series) == 2
     # After undo, the restored column keeps its id so the series resolves again.
@@ -117,7 +117,7 @@ def test_redo_reapplies_deletion_and_removes_references_again(env):
     command.execute()
     command.undo()
 
-    assert command.redo() is True
+    assert command.redo() is CommandResult.SUCCESS
     assert list(dataset.data.columns) == ["b", "c", "d"]
     assert len(chart.data_series) == 1
     assert chart.data_series[0].label == "s2"
@@ -136,7 +136,7 @@ def test_redo_failure_surfaces_error_message(env):
     # redo's _perform_deletion raises instead of silently succeeding.
     dataset.set_data(dataset.data.drop(columns=["a"]))
 
-    assert command.redo() is False
+    assert command.redo() is CommandResult.FAILURE
     ui_controller.show_error_message.assert_called_once()
 
 
@@ -211,7 +211,7 @@ def test_undo_restores_a_cleared_magnitude_reference(env):
     command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
     command.execute()
 
-    assert command.undo() is True
+    assert command.undo() is CommandResult.SUCCESS
     series = vector_chart.data_series[0]
     assert resolve_series_column(dataset, series.style.magnitude_column_id, series.style.magnitude_column) == "a"
 
@@ -350,7 +350,7 @@ def test_undo_restores_a_cleared_error_bar_reference(env):
     command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
     command.execute()
 
-    assert command.undo() is True
+    assert command.undo() is CommandResult.SUCCESS
     series = line_chart.data_series[0]
     assert resolve_series_column(
         dataset, series.style.error_bars.y_error_column_id, series.style.error_bars.y_error_column

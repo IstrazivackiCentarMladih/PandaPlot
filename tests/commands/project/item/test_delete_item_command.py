@@ -277,7 +277,7 @@ class TestDeleteItemCommand:
         
         result = command.undo()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
 
         # Verify add_item was called with recreated note
         sample_project.add_item.assert_called_once()
@@ -311,7 +311,7 @@ class TestDeleteItemCommand:
         
         result = command.undo()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
 
         # Verify add_item was called with parent_id
         sample_project.add_item.assert_called_once()
@@ -326,7 +326,7 @@ class TestDeleteItemCommand:
         # deleted_item_data is None
         result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_undo_no_project(self, mock_app_context):
         """Test undo when no project is loaded."""
@@ -339,7 +339,7 @@ class TestDeleteItemCommand:
 
         result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_undo_logs_a_warning_when_current_project_is_none(self, mock_app_context, caplog):
         """Test undo logs a warning when has_project is True but current_project is None."""
@@ -354,7 +354,7 @@ class TestDeleteItemCommand:
         with caplog.at_level(logging.WARNING):
             result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "DeleteItemCommand.undo" in caplog.text
         assert "note-123" in caplog.text
 
@@ -372,7 +372,7 @@ class TestDeleteItemCommand:
         
         result = command.undo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to undo delete item: Test error" in ui_controller.show_error_message.call_args[0][1]
 
@@ -390,7 +390,7 @@ class TestDeleteItemCommand:
         
         result = command.redo()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
         sample_project.remove_item.assert_called_once_with(sample_note)
         
         # Check event emission
@@ -410,7 +410,7 @@ class TestDeleteItemCommand:
         # deleted_item_data is None
         result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_item_not_found(self, mock_app_context, sample_project):
         """Test redo when item is not found."""
@@ -426,7 +426,7 @@ class TestDeleteItemCommand:
 
         result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_item_not_found_logs_a_warning(self, mock_app_context, sample_project, caplog):
         """Test redo logs a warning when item is not found."""
@@ -443,7 +443,7 @@ class TestDeleteItemCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "note-123" in caplog.text
 
     def test_redo_logs_a_warning_when_current_project_is_none(self, mock_app_context, caplog):
@@ -459,7 +459,7 @@ class TestDeleteItemCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "DeleteItemCommand.redo" in caplog.text
         assert "note-123" in caplog.text
 
@@ -478,7 +478,7 @@ class TestDeleteItemCommand:
         
         result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to redo delete item: Test error" in ui_controller.show_error_message.call_args[0][1]
 
@@ -535,7 +535,7 @@ class TestDeleteItemCommand:
         # Simulate undo to recreate the item
         result = command.undo()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
 
         # Verify the recreated item matches the original
         sample_project.add_item.assert_called_once()

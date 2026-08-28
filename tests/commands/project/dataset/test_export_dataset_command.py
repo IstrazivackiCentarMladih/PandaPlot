@@ -101,7 +101,7 @@ def test_redo_logs_warning_when_nothing_to_redo(mock_app_context, caplog):
     command = ExportDatasetCommand(app_context, "ds-1")
 
     with caplog.at_level(logging.WARNING):
-        assert command.redo() is False
+        assert command.redo() is CommandResult.FAILURE
     assert "cannot redo" in caplog.text.lower()
 
 

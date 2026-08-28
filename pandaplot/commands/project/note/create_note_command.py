@@ -121,7 +121,7 @@ class CreateNoteCommand(Command):
             self.logger.error("CreateNoteCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the create note command."""
         try:
             if self.created_note_id and self.created_note is not None and self.app_state.has_project:
@@ -131,7 +131,7 @@ class CreateNoteCommand(Command):
                         "CreateNoteCommand.redo: has_project is True but current_project is None for note id=%s",
                         self.created_note_id,
                     )
-                    return False
+                    return CommandResult.FAILURE
 
                 # Re-add the same note object to the project
                 project.add_item(self.created_note, parent_id=self.folder_id)
@@ -150,15 +150,15 @@ class CreateNoteCommand(Command):
                     self.created_note_id,
                     self.folder_id or "root"
                 )
-                return True
+                return CommandResult.SUCCESS
             else:
-                return False
+                return CommandResult.FAILURE
 
         except Exception as e:
             error_msg = f"Failed to redo create note: {str(e)}"
             self.logger.error("CreateNoteCommand Redo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

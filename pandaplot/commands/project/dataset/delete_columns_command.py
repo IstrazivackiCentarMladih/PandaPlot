@@ -441,7 +441,7 @@ class DeleteColumnsCommand(Command):
             else:
                 self.logger.warning(f"Invalid column specification: {spec}")
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the delete columns command by restoring the original data and chart refs."""
         try:
             if self.dataset and self.original_data is not None and self.column_positions:
@@ -458,25 +458,25 @@ class DeleteColumnsCommand(Command):
                     DatasetColumnsAddedData(dataset_id=self.dataset_id, column_positions=self.column_positions).to_dict())
 
                 self.logger.info(f"Undid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
-                return True
+                return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error(f"DeleteColumnsCommand Undo Error: {e}")
-            return False
+            return CommandResult.FAILURE
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the delete columns command using the already-confirmed parameters."""
         try:
             if not (self.dataset and self.original_data is not None and self.column_names):
-                return False
+                return CommandResult.FAILURE
             references = self._find_chart_references(self.column_names)
             self._perform_deletion(references)
             self.logger.info(f"Redid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
-            return True
+            return CommandResult.SUCCESS
         except Exception as e:
             error_msg = f"Failed to redo deleting {len(self.column_names)} columns: {e}"
             self.logger.error(f"DeleteColumnsCommand Redo Error: {error_msg}")
             self.ui_controller.show_error_message("Delete Columns Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

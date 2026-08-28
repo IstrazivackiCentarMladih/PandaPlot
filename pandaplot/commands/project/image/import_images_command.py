@@ -242,18 +242,18 @@ class ImportImagesCommand(Command):
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the import by re-running execute() after clearing prior created ids."""
         try:
             if self.created_image_ids and self.app_state.has_project:
                 self.created_image_ids = []
                 return self.execute()
-            return False
+            return CommandResult.FAILURE
         except Exception as e:
             error_msg = f"Failed to redo image import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

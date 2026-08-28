@@ -59,7 +59,7 @@ class TestStatisticalTestCommand:
         new_id = command.result_dataset_id
         assert project.find_item(new_id) is not None
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert project.find_item(new_id) is None
 
     def test_missing_column_fails_gracefully(self, app_context_with_project):
@@ -81,7 +81,7 @@ class TestStatisticalTestCommand:
         # execute() never ran, so result_dataset_id is unset.
 
         with caplog.at_level(logging.WARNING):
-            assert command.undo() is False
+            assert command.undo() is CommandResult.FAILURE
         assert "cannot undo" in caplog.text.lower()
 
     def test_execute_surfaces_no_project_loaded_to_the_user(self):

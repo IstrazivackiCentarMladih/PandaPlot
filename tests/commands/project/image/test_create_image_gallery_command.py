@@ -52,7 +52,7 @@ class TestCreateImageGalleryCommand:
         command.execute()
         command.undo()
 
-        assert command.redo() is True
+        assert command.redo() is CommandResult.SUCCESS
         project = app_context_with_project.get_app_state().current_project
         assert project.find_item(command.created_gallery_id) is not None
 
@@ -142,5 +142,5 @@ class TestCreateImageGalleryCommandLogging:
         app_context_with_project.get_app_state().current_project = None
 
         with caplog.at_level(logging.WARNING):
-            assert command.redo() is False
+            assert command.redo() is CommandResult.FAILURE
         assert "CreateImageGalleryCommand.redo" in caplog.text

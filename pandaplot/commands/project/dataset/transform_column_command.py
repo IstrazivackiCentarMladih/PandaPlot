@@ -114,7 +114,7 @@ class TransformColumnCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         """Remove the added column from dataset or restore original data."""
         try:
             if not self.dataset or not isinstance(self.dataset, Dataset):
@@ -122,14 +122,14 @@ class TransformColumnCommand(Command):
                     "TransformColumnCommand.undo: cannot undo for dataset '%s' (dataset found=%s)",
                     self.dataset_id, self.dataset is not None,
                 )
-                return False
+                return CommandResult.FAILURE
 
             if not hasattr(self.dataset, "data") or self.dataset.data is None:
                 self.logger.warning(
                     "TransformColumnCommand.undo: dataset '%s' has no data to restore",
                     self.dataset_id,
                 )
-                return False
+                return CommandResult.FAILURE
 
             df = self.dataset.data.copy()
 
@@ -173,11 +173,11 @@ class TransformColumnCommand(Command):
                     )
 
             self.logger.info(f"Transform undone: '{self.new_column_name}' reverted")
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(f"Transform undo failed: {e}")
-            return False
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

@@ -91,7 +91,7 @@ def test_undo_clears_fit_result(fit_service, fit_result):
     command.execute()
     assert command.result is fit_result
 
-    assert command.undo() is True
+    assert command.undo() is CommandResult.SUCCESS
     assert command.result is None
 
 

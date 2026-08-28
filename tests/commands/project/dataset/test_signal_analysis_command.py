@@ -104,7 +104,7 @@ class TestSignalAnalysisCommand:
 
         assert project.find_item(new_id) is not None
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
 
         assert project.find_item(new_id) is None
 
@@ -144,7 +144,7 @@ class TestSignalAnalysisCommand:
         # undo() called without a prior successful execute(): result_dataset_id is None.
 
         with caplog.at_level(logging.WARNING):
-            assert command.undo() is False
+            assert command.undo() is CommandResult.FAILURE
         assert "SignalAnalysisCommand.undo" in caplog.text
 
     def test_execute_surfaces_no_project_loaded_to_the_user(self):

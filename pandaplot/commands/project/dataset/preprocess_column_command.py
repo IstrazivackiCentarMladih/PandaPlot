@@ -116,7 +116,7 @@ class PreprocessColumnCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         """Restore replaced columns and drop newly created ones."""
         try:
             if not isinstance(self.dataset, Dataset) or self.dataset.data is None:
@@ -124,7 +124,7 @@ class PreprocessColumnCommand(Command):
                     "PreprocessColumnCommand.undo: cannot undo for dataset '%s' (dataset found=%s)",
                     self.dataset_id, isinstance(self.dataset, Dataset),
                 )
-                return False
+                return CommandResult.FAILURE
 
             df = self.dataset.data.copy()
             removed_positions: List[int] = []
@@ -141,11 +141,11 @@ class PreprocessColumnCommand(Command):
             self.dataset.set_data(df)
             self._emit_undo_events(removed_positions, restored_columns)
             self.logger.info("Preprocessing undone (%s)", self.method.value)
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error("Preprocessing undo failed: %s", e)
-            return False
+            return CommandResult.FAILURE
 
     def _emit_undo_events(self, removed_positions, restored_columns) -> None:
         """Refresh the table after an undo (columns dropped / values restored)."""

@@ -4,14 +4,20 @@ from enum import Enum
 
 
 class CommandResult(Enum):
-    """Outcome of `Command.execute()`.
+    """Outcome of `Command.execute()`/`undo()`/`redo()`.
 
-    SUCCESS/FAILURE map to `CommandExecutor.execute_command()`'s True/False
-    return, same as the old bool contract. NOOP is also a "nothing happened"
-    outcome -- the command is not pushed onto the undo stack, same as
-    FAILURE -- but signals that this was expected (e.g. re-applying settings
-    that already match the current config, or renaming to the same name), so
-    the executor logs it quietly instead of as a warning.
+    For `execute()`: SUCCESS/FAILURE map to `CommandExecutor.execute_command()`'s
+    True/False return, same as the old bool contract. NOOP is also a "nothing
+    happened" outcome -- the command is not pushed onto the undo stack, same
+    as FAILURE -- but signals that this was expected (e.g. re-applying
+    settings that already match the current config, or renaming to the same
+    name), so the executor logs it quietly instead of as a warning.
+
+    For `undo()`/`redo()`: `CommandExecutor.undo()`/`redo()` still always move
+    the command between stacks regardless of the result (undoing/redoing is
+    assumed to always be attempted, unlike execute()'s NOOP short-circuit) --
+    only the log level changes (a warning for FAILURE, debug for NOOP, info
+    otherwise).
 
     A plain Enum, not IntEnum: every member is truthy, so `if
     command.execute():` would silently pass regardless of outcome. Always
@@ -31,11 +37,11 @@ class Command(ABC):
         pass
 
     @abstractmethod
-    def undo(self):
+    def undo(self) -> CommandResult:
         pass
 
     @abstractmethod
-    def redo(self):
+    def redo(self) -> CommandResult:
         pass
 
     def occupies_undo_slot(self) -> bool:

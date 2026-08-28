@@ -7,10 +7,10 @@ import pytest
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QImage
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.image.create_image_gallery_command import (
     CreateImageGalleryCommand,
 )
-from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.image.import_images_command import ImportImagesCommand
 from pandaplot.models.project.items import Image
 

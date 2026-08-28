@@ -334,13 +334,13 @@ class AddColumnsCommand(Command):
         
         return result
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the add columns command."""
         try:
             if self.dataset and self.original_data is not None:
                 # Restore original data
                 self.dataset.set_data(self.original_data)
-                
+
                 # Emit event
                 self.app_state.event_bus.emit(DatasetOperationEvents.DATASET_COLUMN_REMOVED, DatasetColumnsRemovedData(
                     dataset_id=self.dataset_id,
@@ -348,7 +348,7 @@ class AddColumnsCommand(Command):
                 ).to_dict())
 
                 self.logger.info(f"Undid adding {len(self.column_names)} columns to dataset '{self.dataset.name}'")
-                return True
+                return CommandResult.SUCCESS
 
             self.logger.warning(
                 "AddColumnsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
@@ -356,7 +356,7 @@ class AddColumnsCommand(Command):
             )
         except Exception as e:
             self.logger.error(f"AddColumnsCommand Undo Error: {e}")
-            return False
+            return CommandResult.FAILURE
 
     def redo(self):
         """Redo the add columns command."""

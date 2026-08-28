@@ -269,7 +269,7 @@ class AddRowsColumnsCommand(Command):
             return 0.0
         return ""
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the add rows/columns command."""
         try:
             if self.dataset and self.original_data is not None:
@@ -297,10 +297,10 @@ class AddRowsColumnsCommand(Command):
                     len(self.added_row_positions),
                     len(self.added_column_positions),
                     self.dataset.name)
-                return True
+                return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("AddRowsColumnsCommand Undo Error: %s", e)
-            return False
+            return CommandResult.FAILURE
 
     def redo(self):
         """Redo the add rows/columns command."""

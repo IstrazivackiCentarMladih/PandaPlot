@@ -329,7 +329,7 @@ class ExportDatasetCommand(Command):
         """
         pass
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """
         Redo the export operation.
         """
@@ -344,12 +344,12 @@ class ExportDatasetCommand(Command):
                 on_finished=self._on_export_finished,
                 on_progress=self._on_export_progress
             )
-            return True
+            return CommandResult.SUCCESS
         self.logger.warning(
             "ExportDatasetCommand.redo: cannot redo (export_path set=%s, export_format set=%s, is_exporting=%s)",
             bool(self.export_path), bool(self.export_format), self.is_exporting,
         )
-        return False
+        return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

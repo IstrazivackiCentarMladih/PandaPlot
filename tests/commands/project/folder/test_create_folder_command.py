@@ -331,7 +331,7 @@ class TestCreateFolderCommand:
         assert sample_project.find_item(original_folder_id) is None
         
         result = command.redo()
-        assert result is True
+        assert result is CommandResult.SUCCESS
         
         # Check that the same folder object was re-added (not a new one)
         assert command.created_folder_id == original_folder_id
@@ -348,7 +348,7 @@ class TestCreateFolderCommand:
         # Don't execute first, just try to redo
         result = command.redo()
         
-        assert result is False  # redo returns False when conditions not met
+        assert result is CommandResult.FAILURE  # redo returns FAILURE when conditions not met
 
     def test_redo_no_project(self, mock_app_context):
         """Test redo when no project is loaded."""
@@ -361,7 +361,7 @@ class TestCreateFolderCommand:
         
         result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_no_current_project_logs_a_warning(self, mock_app_context, sample_project, caplog):
         """Test redo logs a warning when has_project is True but current_project is None."""
@@ -379,7 +379,7 @@ class TestCreateFolderCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "CreateFolderCommand.redo" in caplog.text
         assert command.created_folder_id in caplog.text
 
@@ -400,7 +400,7 @@ class TestCreateFolderCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called()
         error_call = ui_controller.show_error_message.call_args
         assert error_call[0][0] == "Redo Error"

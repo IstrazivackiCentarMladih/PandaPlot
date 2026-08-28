@@ -145,7 +145,7 @@ class TestAddRowsColumnsCommand:
 
         command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
         assert command.execute() is CommandResult.SUCCESS
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
 
         pd.testing.assert_frame_equal(dataset.data, original)
         emitted = _emitted(app_state)
@@ -170,7 +170,7 @@ class TestAddRowsColumnsCommand:
 
         command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
         assert command.execute() is CommandResult.SUCCESS
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert command.redo() is CommandResult.SUCCESS
 
         assert dataset.data.shape == (4, 2)

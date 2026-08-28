@@ -150,7 +150,7 @@ class TestCreateNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.redo()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "test-id" in caplog.text
 
     def test_execute_with_default_name(self, mock_app_context, sample_project):
@@ -333,7 +333,7 @@ class TestCreateNoteCommand:
         
         result = command.redo()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         sample_project.add_item.assert_called_once_with(mock_note, parent_id="parent-folder")
         app_state.event_bus.emit.assert_called_once_with(ProjectEvents.PROJECT_ITEM_ADDED, {
             "project": sample_project,
@@ -353,7 +353,7 @@ class TestCreateNoteCommand:
         # Don't execute first, just try to redo
         result = command.redo()
         
-        assert result is False  # redo returns False when conditions not met
+        assert result is CommandResult.FAILURE  # redo returns FAILURE when conditions not met
 
     def test_redo_no_project(self, mock_app_context):
         """Test redo when no project is loaded."""
@@ -363,7 +363,7 @@ class TestCreateNoteCommand:
         command.created_note_id = "test-id"
         command.created_note = Mock(spec=Note)
         result = command.redo()
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_redo_with_exception(self, mock_app_context, sample_project):
         """Test redo when an exception occurs."""
@@ -383,7 +383,7 @@ class TestCreateNoteCommand:
         
         result = command.redo()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to redo create note: Test error" in ui_controller.show_error_message.call_args[0][1]
 

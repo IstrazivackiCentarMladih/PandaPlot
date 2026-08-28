@@ -124,17 +124,17 @@ class AnalysisCommand(Command):
             self.ui_controller.show_error_message("Analysis Error", str(e))
             return CommandResult.FAILURE
 
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         """Remove the analysis result column or restore original data."""
         try:
             if not self.dataset or not isinstance(self.dataset, Dataset):
                 self.logger.warning("Undo failed: Invalid dataset reference")
-                return False
+                return CommandResult.FAILURE
 
             df = self.dataset.data
             if df is None:
                 self.logger.warning("Undo failed: No data in dataset")
-                return False
+                return CommandResult.FAILURE
 
             from pandaplot.models.events.event_data import (
                 DatasetColumnsRemovedData,
@@ -176,11 +176,11 @@ class AnalysisCommand(Command):
 
             self.logger.info(
                 f"Analysis undone successfully: {self.new_column_name}")
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(f"Analysis undo failed: {e}")
-            return False
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """Re-execute the analysis."""

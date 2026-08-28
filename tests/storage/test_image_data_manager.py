@@ -153,7 +153,7 @@ class TestDeleteUndoSaveDoesNotCorruptProject:
         assert command.execute() is CommandResult.SUCCESS
         assert project.find_item("img-del-1") is None
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         restored = project.find_item("img-del-1")
         assert restored is not None
         assert restored.get_bytes() is None  # bytes are genuinely gone

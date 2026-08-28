@@ -294,13 +294,13 @@ class AddRowsCommand(Command):
         else:
             return ""
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the add rows command."""
         try:
             if self.dataset and self.original_data is not None:
                 # Restore original data
                 self.dataset.set_data(self.original_data)
-                
+
                 # Emit event
                 self.app_state.event_bus.emit(DatasetOperationEvents.DATASET_ROW_REMOVED, DatasetRowsRemovedData(
                     dataset_id=self.dataset_id,
@@ -308,10 +308,10 @@ class AddRowsCommand(Command):
                 ).to_dict())
 
                 self.logger.info(f"Undid adding {len(self.reference_positions)} rows to dataset '{self.dataset.name}'")
-                return True
+                return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error(f"AddRowsCommand Undo Error: {e}")
-            return False
+            return CommandResult.FAILURE
 
     def redo(self):
         """Redo the add rows command."""

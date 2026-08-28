@@ -153,7 +153,7 @@ class SignalAnalysisCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         try:
             if (
                 not self.result_dataset_id
@@ -163,7 +163,7 @@ class SignalAnalysisCommand(Command):
                     "SignalAnalysisCommand.undo: cannot undo (result_dataset_id=%s, project loaded=%s)",
                     self.result_dataset_id, bool(self.app_state.current_project),
                 )
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
 
@@ -183,7 +183,7 @@ class SignalAnalysisCommand(Command):
                     },
                 )
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(
@@ -191,7 +191,7 @@ class SignalAnalysisCommand(Command):
                 e,
                 exc_info=True,
             )
-            return False
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

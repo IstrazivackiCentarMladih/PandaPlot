@@ -122,7 +122,7 @@ class CreateImageGalleryCommand(Command):
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the create image gallery command."""
         try:
             if self.created_gallery_id and self.created_gallery is not None and self.app_state.has_project:
@@ -131,7 +131,7 @@ class CreateImageGalleryCommand(Command):
                     self.logger.warning(
                         "CreateImageGalleryCommand.redo: has_project is True but current_project is None"
                     )
-                    return False
+                    return CommandResult.FAILURE
 
                 project.add_item(self.created_gallery, parent_id=self.parent_id)
 
@@ -146,15 +146,15 @@ class CreateImageGalleryCommand(Command):
                     "CreateImageGalleryCommand: Redo creation of gallery '%s' (id=%s) under parent %s",
                     self.created_gallery.name, self.created_gallery_id, self.parent_id or "root"
                 )
-                return True
+                return CommandResult.SUCCESS
             else:
-                return False
+                return CommandResult.FAILURE
 
         except Exception as e:
             error_msg = f"Failed to redo create image gallery: {str(e)}"
             self.logger.error("CreateImageGalleryCommand Redo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

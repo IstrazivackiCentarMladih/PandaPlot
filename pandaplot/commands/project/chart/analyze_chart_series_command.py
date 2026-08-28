@@ -275,10 +275,10 @@ class AnalyzeChartSeriesCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         try:
             if not self.result_dataset_id or not self.app_state.current_project:
-                return False
+                return CommandResult.FAILURE
             project = self.app_state.current_project
             dataset = project.find_item(self.result_dataset_id)
             if dataset:
@@ -288,10 +288,10 @@ class AnalyzeChartSeriesCommand(Command):
                     "dataset_id": self.result_dataset_id,
                     "dataset_name": dataset.name,
                 })
-            return True
+            return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("Failed to undo analyze-chart-series: %s", e, exc_info=True)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

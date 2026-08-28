@@ -101,14 +101,19 @@ class CommandExecutor:
         
         try:
             command = self.undo_stack.pop()
-            command.undo()
+            result = command.undo()
             self.redo_stack.append(command)
-            self.logger.info("Successfully undid command: %s", command_name)
+            if result is CommandResult.FAILURE:
+                self.logger.warning("Command undo reported failure: %s", command_name)
+            elif result is CommandResult.NOOP:
+                self.logger.debug("Command undo was a no-op: %s", command_name)
+            else:
+                self.logger.info("Successfully undid command: %s", command_name)
             self._notify_history_changed()
             return True
-            
+
         except Exception as e:
-            self.logger.error("Error undoing command '%s': %s", 
+            self.logger.error("Error undoing command '%s': %s",
                             command.__class__.__name__ if command else "Unknown", str(e), exc_info=True)
             self.logger.debug("Undo operation failed for command: %s", repr(command) if command else "None")
             return False
@@ -130,14 +135,19 @@ class CommandExecutor:
         
         try:
             command = self.redo_stack.pop()
-            command.redo()
+            result = command.redo()
             self.undo_stack.append(command)
-            self.logger.info("Successfully redid command: %s", command_name)
+            if result is CommandResult.FAILURE:
+                self.logger.warning("Command redo reported failure: %s", command_name)
+            elif result is CommandResult.NOOP:
+                self.logger.debug("Command redo was a no-op: %s", command_name)
+            else:
+                self.logger.info("Successfully redid command: %s", command_name)
             self._notify_history_changed()
             return True
-            
+
         except Exception as e:
-            self.logger.error("Error redoing command '%s': %s", 
+            self.logger.error("Error redoing command '%s': %s",
                             command.__class__.__name__ if command else "Unknown", str(e), exc_info=True)
             self.logger.debug("Redo operation failed for command: %s", repr(command) if command else "None")
             return False

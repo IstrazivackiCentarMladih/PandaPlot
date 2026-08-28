@@ -219,19 +219,19 @@ class LoadProjectCommand(Command):
         else:
             self.app_state.close_project()
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the load project command."""
         if not self.is_loading:
             if self.loaded_project is not None:
                 # We have a cached project, load it directly without file I/O
                 self.app_state.load_project(self.loaded_project)
-                return True
+                return CommandResult.SUCCESS
             else:
                 # Re-execute if we don't have the loaded project cached
                 return self.execute()
         else:
             self.logger.warning("Cannot redo load command while load is in progress")
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

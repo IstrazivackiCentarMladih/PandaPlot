@@ -388,7 +388,7 @@ class ImportDataCommand(Command):
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """
         Redo the import by re-running it through the wizard.
 
@@ -398,19 +398,19 @@ class ImportDataCommand(Command):
         try:
             if self.is_importing:
                 self.logger.warning("Cannot redo import command while import is in progress")
-                return False
+                return CommandResult.FAILURE
 
             if self.dataset_ids and self.imported_datasets and self.app_state.has_project:
                 self.dataset_ids = []
                 return self.execute()
 
             self.logger.warning("Cannot redo: no cached import data available")
-            return False
+            return CommandResult.FAILURE
         except Exception as e:
             error_msg = f"Failed to redo data import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

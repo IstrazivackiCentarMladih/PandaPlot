@@ -131,14 +131,14 @@ class DescriptiveStatsCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         try:
             if not self.app_state.current_project:
                 self.logger.warning(
                     "DescriptiveStatsCommand.undo: no project loaded; cannot undo results '%s'",
                     self.result_dataset_id,
                 )
-                return False
+                return CommandResult.FAILURE
             project = self.app_state.current_project
 
             if self.report_note_id:
@@ -162,10 +162,10 @@ class DescriptiveStatsCommand(Command):
                     })
 
             self.logger.info("Undone descriptive stats results '%s'", self.result_dataset_id)
-            return True
+            return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("Failed to undo descriptive statistics: %s", e, exc_info=True)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

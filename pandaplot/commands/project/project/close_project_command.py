@@ -47,16 +47,16 @@ class CloseProjectCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo is not supported for project closing."""
         self.logger.warning("Cannot undo project close operation")
-        return False
+        return CommandResult.FAILURE
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo is not supported for project closing."""
         self.logger.warning("Cannot redo project close operation")
-        return False
+        return CommandResult.FAILURE
 
     @override
     def occupies_undo_slot(self) -> bool:

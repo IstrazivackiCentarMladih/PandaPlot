@@ -39,7 +39,7 @@ def test_undo_logs_a_warning_when_no_project_loaded(caplog):
     command.result_dataset_id = "result-1"
 
     with caplog.at_level(logging.WARNING):
-        assert command.undo() is False
+        assert command.undo() is CommandResult.FAILURE
     assert "result-1" in caplog.text
 
 

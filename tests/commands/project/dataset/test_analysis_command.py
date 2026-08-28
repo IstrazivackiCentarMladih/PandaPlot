@@ -136,7 +136,7 @@ class TestAnalysisCommand:
             "new_column_name": "dydx",
         })
         command.execute()
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert "dydx" not in dataset.data.columns
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_REMOVED)
 

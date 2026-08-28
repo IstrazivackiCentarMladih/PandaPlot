@@ -129,7 +129,7 @@ class CreateFolderCommand(Command):
             self.ui_controller.show_error_message("Undo Error", error_msg)
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the create folder command."""
         try:
             if self.created_folder_id and self.created_folder is not None and self.app_state.has_project:
@@ -139,7 +139,7 @@ class CreateFolderCommand(Command):
                         "CreateFolderCommand.redo: has_project is True but current_project is None (folder id=%s)",
                         self.created_folder_id,
                     )
-                    return False
+                    return CommandResult.FAILURE
 
                 # Re-add the same folder object to the project
                 project.add_item(self.created_folder, parent_id=self.parent_id)
@@ -158,15 +158,15 @@ class CreateFolderCommand(Command):
                     self.created_folder_id,
                     self.parent_id or "root"
                 )
-                return True
+                return CommandResult.SUCCESS
             else:
-                return False
+                return CommandResult.FAILURE
 
         except Exception as e:
             error_msg = f"Failed to redo create folder: {str(e)}"
             self.logger.error("CreateFolderCommand Redo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Redo Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

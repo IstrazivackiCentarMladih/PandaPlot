@@ -119,14 +119,14 @@ class StatisticalTestCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         try:
             if not self.result_dataset_id or not self.app_state.current_project:
                 self.logger.warning(
                     "StatisticalTestCommand.undo: cannot undo (result_dataset_id set=%s, current_project set=%s)",
                     bool(self.result_dataset_id), self.app_state.current_project is not None,
                 )
-                return False
+                return CommandResult.FAILURE
             project = self.app_state.current_project
             dataset = project.find_item(self.result_dataset_id)
             if dataset:
@@ -137,10 +137,10 @@ class StatisticalTestCommand(Command):
                     "dataset_name": dataset.name,
                 })
             self.logger.info("Undone statistical test results dataset '%s'", self.result_dataset_id)
-            return True
+            return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("Failed to undo statistical test: %s", e, exc_info=True)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

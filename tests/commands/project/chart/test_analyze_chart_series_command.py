@@ -128,7 +128,7 @@ class TestAnalyzeChartSeriesCommand:
         command.execute()
         new_id = command.result_dataset_id
         assert project.find_item(new_id) is not None
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert project.find_item(new_id) is None
 
     def test_invalid_source_index_fails(self, ctx):
