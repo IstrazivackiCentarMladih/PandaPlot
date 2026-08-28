@@ -353,6 +353,20 @@ class ImageGalleryTab(PWidget):
     def _on_project_item_changed(self, event_data: dict):
         if self._event_concerns_this_gallery(event_data):
             self._populate_grid()
+            self.refresh_tab_title()
+
+    def refresh_tab_title(self):
+        """Push the current tab title up to the tab container."""
+        parent_container = self.parent()
+        while parent_container is not None and not hasattr(parent_container, "update_tab_title"):
+            parent_container = parent_container.parent()
+        if parent_container:
+            update_fn = getattr(parent_container, "update_tab_title", None)
+            if callable(update_fn):
+                try:
+                    update_fn(self, self.get_tab_title())
+                except Exception:
+                    pass
 
     def _event_concerns_this_gallery(self, event_data: dict) -> bool:
         """

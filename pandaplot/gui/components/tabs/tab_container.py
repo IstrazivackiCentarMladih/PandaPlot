@@ -256,8 +256,14 @@ class TabContainer(PWidget):
         # Remove the tab
         pane.removeTab(index)
 
-        # Clean up the widget
+        # Clean up the widget. Unsubscribe synchronously rather than relying on
+        # the QObject `destroyed` signal (connected in WidgetExtension), since
+        # deleteLater() defers actual C++ destruction -- an event fired on the
+        # event bus in that window would invoke a callback on a widget whose
+        # C++ object may already be gone, raising a shiboken RuntimeError.
         if widget:
+            if hasattr(widget, "unsubscribe_all"):
+                widget.unsubscribe_all()
             widget.deleteLater()
 
         # Publish tab closed event
@@ -278,6 +284,13 @@ class TabContainer(PWidget):
         if item_id in self.floating_windows:
             window = self.floating_windows.pop(item_id)
             self.tabs.pop(item_id, None)
+            # Detach the content first so we can unsubscribe it synchronously
+            # (see _handle_close) before it's deleted along with the window.
+            content = window.take_content()
+            if content is not None:
+                if hasattr(content, "unsubscribe_all"):
+                    content.unsubscribe_all()
+                content.deleteLater()
             window.close_without_redock()
             self._persist_tab_session()
             return

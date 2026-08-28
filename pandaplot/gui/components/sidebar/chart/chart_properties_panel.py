@@ -264,6 +264,15 @@ class ChartPropertiesPanel(SidebarPanel):
         self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, self._on_project_loaded)  # may not fire yet
         self.subscribe_to_event("project_loaded", self._on_project_loaded)
         self.subscribe_to_event("first_project_loaded", self._on_project_loaded)
+        # A renamed dataset's display name in the Data tab's dataset combo
+        # otherwise stays stale until the next tab switch re-triggers
+        # set_project(); refresh it live instead.
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_renamed)
+
+    def _on_project_item_renamed(self, event_data):
+        """Refresh the Data tab's dataset combo labels after any item rename."""
+        if self.current_project:
+            self.data_tab.set_project(self.current_project)
 
     def _ensure_datasets_loaded(self):
         """Populate datasets if empty (idempotent)."""

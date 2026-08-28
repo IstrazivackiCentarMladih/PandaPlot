@@ -1095,3 +1095,19 @@ def test_get_tab_data_returns_imagegallery_type_and_id():
     tab.root_gallery = Mock(id="gal-1")
 
     assert tab.get_tab_data() == {"type": "imagegallery", "id": "gal-1"}
+
+
+class TestImageGalleryTabTitleRefresh:
+    def test_rename_of_root_gallery_refreshes_tab_title(self, app_context):
+        """Regression: unlike ChartTab/NoteTab/DatasetTab, ImageGalleryTab
+        never called refresh_tab_title() at all, so renaming the gallery an
+        open tab is showing left its tab title stale even though the grid
+        itself did repopulate on the same event."""
+        gallery = ImageGallery(name="Trip")
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.refresh_tab_title = Mock()
+
+        gallery.update_name("Trip Renamed")
+        tab._on_project_item_changed({"item_id": gallery.id, "new_name": "Trip Renamed"})
+
+        tab.refresh_tab_title.assert_called_once()

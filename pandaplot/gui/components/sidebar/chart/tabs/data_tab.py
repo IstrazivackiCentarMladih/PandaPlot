@@ -1130,6 +1130,9 @@ class DataTab(QWidget):
         whatever landed at the freshly-rebuilt combo's index 0/1 --
         corrupting a series unrelated to the tab switch that triggered it.
         """
+        previously_selected_id = (
+            self.dataset_combo.currentData() if self.dataset_combo.count() > 0 else None
+        )
         self.dataset_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         try:
             self.dataset_combo.clear()
@@ -1142,6 +1145,15 @@ class DataTab(QWidget):
                     if isinstance(item, Dataset):
                         self.dataset_combo.addItem(display_names[item.id], item.id)
                         self.datasets.append(item)
+
+            # Rebuilding the combo (e.g. after a dataset rename refreshes its
+            # display label) would otherwise silently reset the selection to
+            # index 0, desyncing the combo from the series actually loaded
+            # into the form -- restore it by id.
+            if previously_selected_id is not None:
+                restored_index = self.dataset_combo.findData(previously_selected_id)
+                if restored_index >= 0:
+                    self.dataset_combo.setCurrentIndex(restored_index)
         finally:
             self.dataset_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
