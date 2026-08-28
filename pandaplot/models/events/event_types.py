@@ -199,8 +199,7 @@ class EventHierarchy:
         # UI events (no hierarchy needed)
         "ui.tab_changed": ["ui.tab_changed"],
         "ui.tab_closed": ["ui.tab_closed"],
-        "ui.tab_title_changed": ["ui.tab_title_changed"],
-        
+
         # Project events (already top-level)
         "project.created": ["project.created"],
         "project.loaded": ["project.loaded"],

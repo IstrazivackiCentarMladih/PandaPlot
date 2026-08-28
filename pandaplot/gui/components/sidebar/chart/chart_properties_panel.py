@@ -271,17 +271,23 @@ class ChartPropertiesPanel(SidebarPanel):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_renamed)
 
     def _on_project_item_renamed(self, event_data):
-        """Refresh the Data tab's dataset combo labels after a dataset rename.
+        """Refresh dataset-name displays in the Data tab after a dataset rename.
 
         The rename payload doesn't carry an item type, so look the renamed
         item up to filter out chart/note/folder/etc. renames -- rebuilding
-        the combo is otherwise wasted work on every unrelated rename.
+        is otherwise wasted work on every unrelated rename.
         """
         if not self.current_project:
             return
         item = self.current_project.find_item(event_data.get("item_id"))
         if isinstance(item, Dataset):
             self.data_tab.set_project(self.current_project)
+            # The combo rebuild above doesn't touch the expanded-but-not-
+            # selected series/fit detail rows, which render the dataset's
+            # display name as static QLabel text via _dataset_display_name()
+            # at card-build time -- rebuild those too so they don't go stale.
+            if self.current_chart:
+                self.data_tab._rebuild_series_cards()
 
     def _ensure_datasets_loaded(self):
         """Populate datasets if empty (idempotent)."""

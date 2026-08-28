@@ -316,7 +316,10 @@ class ImageGalleryTab(PWidget):
         self._rebuild_breadcrumb()
         self._populate_grid()
 
-    def _rebuild_breadcrumb(self) -> None:
+    def _breadcrumb_chain(self) -> list["ImageGallery"]:
+        """The gallery chain from the root down to `current_gallery`, in
+        display order (root first) -- shared by `_rebuild_breadcrumb` and the
+        rename-staleness check in `_on_project_item_changed`."""
         chain: list[ImageGallery] = [self.current_gallery]
         cursor = self.current_gallery
         project = self.app_state.current_project
@@ -327,6 +330,10 @@ class ImageGalleryTab(PWidget):
             chain.append(parent)
             cursor = parent
         chain.reverse()
+        return chain
+
+    def _rebuild_breadcrumb(self) -> None:
+        chain = self._breadcrumb_chain()
         self._clear_breadcrumb_segments()
         last_index = len(chain) - 1
         for index, gallery in enumerate(chain):
@@ -358,6 +365,16 @@ class ImageGalleryTab(PWidget):
             # add/remove/move/rename) can actually change it.
             if event_data.get("item_id") == self.root_gallery.id:
                 self.refresh_tab_title()
+
+        # Breadcrumb segments capture each ancestor's name as static widget
+        # text at navigation time -- a rename of any gallery currently shown
+        # in the breadcrumb (not just root_gallery/current_gallery) leaves it
+        # stale until the next navigation, so check independently of
+        # _event_concerns_this_gallery (which only looks at current_gallery's
+        # own id/children, not its ancestors).
+        item_id = event_data.get("item_id")
+        if item_id is not None and any(gallery.id == item_id for gallery in self._breadcrumb_chain()):
+            self._rebuild_breadcrumb()
 
     def refresh_tab_title(self):
         """Push the current tab title up to the tab container."""
