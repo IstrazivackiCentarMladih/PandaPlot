@@ -59,7 +59,7 @@ def test_controller_transform_failed_surfaces_message_in_preview(transform_panel
 
 def test_apply_transform_generic_failure_surfaces_message_when_no_signal_fired(transform_panel, app_context):
     transform_panel.current_dataset = Mock(id="dataset-1", data=Mock(columns=["a"]))
-    transform_panel.source_column_list.addItem("a")
+    transform_panel._populate_column_list(["a"])
     transform_panel.source_column_list.item(0).setSelected(True)
     transform_panel.new_column_name.setText("b")
     transform_panel.function_text.setPlainText("x * 2")
@@ -70,53 +70,58 @@ def test_apply_transform_generic_failure_surfaces_message_when_no_signal_fired(t
     assert transform_panel.preview_text.toPlainText() == "Transform failed - see logs for details"
 
 
-def test_variable_hint_is_empty_before_any_column_is_selected(transform_panel):
-    assert transform_panel.variable_hint_label.text() == ""
+class TestSourceColumnMarkers:
+    """Regression (#203): which column `x` refers to is marked directly on
+    the source_column_list's own items, rather than in a separate summary
+    label duplicating what the list already shows."""
 
+    def test_unselected_items_show_the_plain_column_name(self, transform_panel):
+        transform_panel._populate_column_list(["temp"])
 
-def test_variable_hint_names_the_selected_column_and_its_direct_usability(transform_panel):
-    """Regression (#203): x always refers to the first selected column, but
-    which one was easy to lose track of -- the hint spells it out, plus
-    whether the column's own name doubles as an expression variable."""
-    transform_panel.source_column_list.addItem("temp")
-    transform_panel.source_column_list.item(0).setSelected(True)
+        assert transform_panel.source_column_list.item(0).text() == "temp"
 
-    hint = transform_panel.variable_hint_label.text()
-    assert '"temp"' in hint
-    assert "usable directly as temp" in hint
+    def test_selecting_a_column_marks_it_as_the_x_variable(self, transform_panel):
+        transform_panel._populate_column_list(["temp"])
 
+        transform_panel.source_column_list.item(0).setSelected(True)
 
-def test_variable_hint_omits_direct_usage_note_for_a_non_identifier_column_name(transform_panel):
-    """A column name with a space (or any other non-identifier name) can't
-    be written directly into a Python expression, so the hint must not
-    claim otherwise -- only the generic x/value/column/data aliases apply."""
-    transform_panel.source_column_list.addItem("my col")
-    transform_panel.source_column_list.item(0).setSelected(True)
+        item = transform_panel.source_column_list.item(0)
+        assert item.text() == "temp  →  x"
+        assert item.font().bold() is True
+        # The real name used for the transform must stay exactly "temp",
+        # unaffected by the decorated display text.
+        assert transform_panel.get_selected_columns() == ["temp"]
 
-    hint = transform_panel.variable_hint_label.text()
-    assert '"my col"' in hint
-    assert "usable directly" not in hint
+    def test_extra_selected_columns_are_marked_as_not_used(self, transform_panel):
+        """Only the first selected column is ever used
+        (_execute_column_operation), so selecting more must not silently
+        look like they all feed the expression."""
+        transform_panel._populate_column_list(["a", "b"])
 
+        transform_panel.source_column_list.item(0).setSelected(True)
+        transform_panel.source_column_list.item(1).setSelected(True)
 
-def test_variable_hint_flags_extra_selected_columns_as_unused(transform_panel):
-    """Only the first selected column is ever used (_execute_column_operation),
-    so selecting more must not silently look like they all feed the
-    expression."""
-    transform_panel.source_column_list.addItem("a")
-    transform_panel.source_column_list.addItem("b")
-    transform_panel.source_column_list.item(0).setSelected(True)
-    transform_panel.source_column_list.item(1).setSelected(True)
+        assert transform_panel.source_column_list.item(0).text() == "a  →  x"
+        assert transform_panel.source_column_list.item(1).text() == "b  (not used)"
+        assert transform_panel.get_selected_columns() == ["a", "b"]
 
-    hint = transform_panel.variable_hint_label.text()
-    assert '"a"' in hint
-    assert "no effect" in hint
+    def test_marker_clears_when_selection_is_cleared(self, transform_panel):
+        transform_panel._populate_column_list(["a"])
+        transform_panel.source_column_list.item(0).setSelected(True)
+        assert transform_panel.source_column_list.item(0).text() == "a  →  x"
 
+        transform_panel.source_column_list.item(0).setSelected(False)
 
-def test_variable_hint_clears_when_selection_is_cleared(transform_panel):
-    transform_panel.source_column_list.addItem("a")
-    transform_panel.source_column_list.item(0).setSelected(True)
-    assert transform_panel.variable_hint_label.text() != ""
+        assert transform_panel.source_column_list.item(0).text() == "a"
 
-    transform_panel.source_column_list.item(0).setSelected(False)
+    def test_marker_works_for_a_column_name_with_a_space(self, transform_panel):
+        """A column name with a space (or any other non-identifier name)
+        marks and selects exactly like any other -- unlike bare-identifier
+        binding, cols["name"] (see TransformColumnCommand) has no
+        restrictions on the real column name."""
+        transform_panel._populate_column_list(["my col"])
 
-    assert transform_panel.variable_hint_label.text() == ""
+        transform_panel.source_column_list.item(0).setSelected(True)
+
+        assert transform_panel.source_column_list.item(0).text() == "my col  →  x"
+        assert transform_panel.get_selected_columns() == ["my col"]
