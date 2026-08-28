@@ -88,7 +88,9 @@ class TabContainer(PWidget):
         pane.close_split_requested.connect(self._handle_close_split)
         pane.tab_popout_requested.connect(lambda index, p=pane: self.popout_tab(p, index))
         pane.bar_drop_requested.connect(
-            lambda src_id, src_idx, drop_idx, p=pane: self._handle_bar_drop(p, src_id, src_idx, drop_idx)
+            lambda src_id, src_idx, drop_idx, p=pane: self._handle_bar_drop(
+                p, source_pane_id=src_id, source_index=src_idx, drop_index=drop_idx
+            )
         )
         pane.edge_drop_requested.connect(
             lambda src_id, src_idx, p=pane: self._handle_edge_drop(p, src_id, src_idx)
