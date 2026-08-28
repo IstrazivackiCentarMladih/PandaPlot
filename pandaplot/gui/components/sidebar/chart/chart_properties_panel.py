@@ -20,6 +20,7 @@ from pandaplot.gui.components.sidebar.chart.tabs.style_tab import StyleTab
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, ProjectEvents, UIEvents
 from pandaplot.models.project.items.chart import restore_chart_state, snapshot_chart_state
+from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
 
@@ -270,8 +271,16 @@ class ChartPropertiesPanel(SidebarPanel):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_renamed)
 
     def _on_project_item_renamed(self, event_data):
-        """Refresh the Data tab's dataset combo labels after any item rename."""
-        if self.current_project:
+        """Refresh the Data tab's dataset combo labels after a dataset rename.
+
+        The rename payload doesn't carry an item type, so look the renamed
+        item up to filter out chart/note/folder/etc. renames -- rebuilding
+        the combo is otherwise wasted work on every unrelated rename.
+        """
+        if not self.current_project:
+            return
+        item = self.current_project.find_item(event_data.get("item_id"))
+        if isinstance(item, Dataset):
             self.data_tab.set_project(self.current_project)
 
     def _ensure_datasets_loaded(self):

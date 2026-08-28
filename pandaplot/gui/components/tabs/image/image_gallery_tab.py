@@ -353,7 +353,11 @@ class ImageGalleryTab(PWidget):
     def _on_project_item_changed(self, event_data: dict):
         if self._event_concerns_this_gallery(event_data):
             self._populate_grid()
-            self.refresh_tab_title()
+            # The tab title only reflects root_gallery.name, so only a rename
+            # of the root gallery itself (not some child image/sub-gallery
+            # add/remove/move/rename) can actually change it.
+            if event_data.get("item_id") == self.root_gallery.id:
+                self.refresh_tab_title()
 
     def refresh_tab_title(self):
         """Push the current tab title up to the tab container."""

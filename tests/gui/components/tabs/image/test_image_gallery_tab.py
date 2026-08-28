@@ -1111,3 +1111,18 @@ class TestImageGalleryTabTitleRefresh:
         tab._on_project_item_changed({"item_id": gallery.id, "new_name": "Trip Renamed"})
 
         tab.refresh_tab_title.assert_called_once()
+
+    def test_rename_of_child_image_does_not_refresh_tab_title(self, app_context):
+        """The tab title only reflects root_gallery.name, so a rename of a
+        child image/sub-gallery (which does still repopulate the grid) has
+        nothing to refresh the title for."""
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.refresh_tab_title = Mock()
+
+        image.update_name("Beach Renamed")
+        tab._on_project_item_changed({"item_id": image.id, "new_name": "Beach Renamed"})
+
+        tab.refresh_tab_title.assert_not_called()
