@@ -109,7 +109,6 @@ class UIEvents:
     """
     TAB_CHANGED = "ui.tab_changed"
     TAB_CLOSED = "ui.tab_closed"
-    TAB_TITLE_CHANGED = "ui.tab_title_changed"
     TAB_OPEN_REQUESTED = "ui.tab_open_requested"
     # Request a note editor to scroll to and select a specific match, used by
     # note search to jump into a result. Payload: note_id, line_number,
