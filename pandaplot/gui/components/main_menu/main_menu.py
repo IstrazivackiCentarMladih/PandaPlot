@@ -40,13 +40,18 @@ class MainMenu(PMenuBar):
         """Apply theme-specific styling to the main menu based on current theme."""
         theme_manager = self.app_context.get_manager(ThemeManager)
         palette = theme_manager.get_surface_palette()
-        
+        tokens = theme_manager.get_design_tokens()
+
         # Get theme-appropriate colors
         card_bg = palette.get("card_bg", "#F0F0F0")
         base_fg = palette.get("base_fg", "#000000")
         card_border = palette.get("card_border", "#D0D0D0")
         accent = palette.get("accent", "#4A90E2")
         card_pressed = palette.get("card_pressed", "#dee2e6")
+        # Standard Qt disabled-item graying is too subtle against this menu's
+        # explicit colors (issue #255) -- use the same hint-level muted text
+        # design tokens already use for their most de-emphasized state.
+        text_hint = tokens.get("text_hint", "#9AA0AB")
         
         # Apply dynamic theme-based styling
         self.setStyleSheet(f"""
@@ -87,6 +92,14 @@ class MainMenu(PMenuBar):
             QMenu::item:pressed {{
                 background-color: {card_pressed};
                 color: {base_fg};
+            }}
+            QMenu::item:disabled {{
+                color: {text_hint};
+                background-color: transparent;
+            }}
+            QMenu::item:disabled:selected {{
+                color: {text_hint};
+                background-color: transparent;
             }}
             QMenu::separator {{
                 height: 1px;
@@ -247,7 +260,16 @@ class MainMenu(PMenuBar):
         from PySide6.QtWidgets import QDialog
 
         from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
+        from pandaplot.commands.project.require_project import ensure_project_or_offer_create
         from pandaplot.gui.dialogs.image.image_import_dialog import ImageImportDialog
+
+        # Checked up front, like Create Chart/Import Data, so the user isn't
+        # asked to pick files first only to hit a "no project" dead end.
+        if not ensure_project_or_offer_create(
+            self.app_context, "Import Images",
+            "Importing images requires a project. Create a new project to continue?",
+        ):
+            return
 
         dialog = ImageImportDialog(self.app_context, parent=self)
         if dialog.exec() != QDialog.DialogCode.Accepted:

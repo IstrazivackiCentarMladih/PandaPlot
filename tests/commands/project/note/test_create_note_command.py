@@ -66,18 +66,39 @@ class TestCreateNoteCommand:
         assert command.folder_id == "folder-123"
 
     def test_execute_no_project_loaded(self, mock_app_context):
-        """Test execute when no project is loaded."""
+        """Test execute when no project is loaded: offers to create one and
+        bails out cleanly when the user declines."""
         app_context, app_state, ui_controller = mock_app_context
         app_state.has_project = False
-        
+        ui_controller.show_action_or_cancel.return_value = False
+
         command = CreateNoteCommand(app_context, "Test Note")
         result = command.execute()
-        
+
         assert result is False
-        ui_controller.show_warning_message.assert_called_once_with(
-            "New Note", 
-            "Please open or create a project first."
-        )
+        ui_controller.show_action_or_cancel.assert_called_once()
+
+    def test_execute_continues_after_the_user_creates_a_project(self, mock_app_context):
+        """Matches Create Chart/Import Data: accepting the "create a project"
+        offer must let note creation proceed instead of still bailing out."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = False
+        ui_controller.show_action_or_cancel.return_value = True
+
+        project = Project("Test Project")
+
+        def _execute_command(_command):
+            app_state.has_project = True
+            app_state.current_project = project
+
+        app_context.get_command_executor.return_value.execute_command.side_effect = _execute_command
+
+        command = CreateNoteCommand(app_context, "Test Note")
+        result = command.execute()
+
+        assert result is True
+        assert command.created_note_id is not None
+        assert project.find_item(command.created_note_id) is command.created_note
 
     def test_execute_no_current_project(self, mock_app_context):
         """Test execute when current project is None."""

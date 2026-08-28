@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.preprocess_column_command import (
     PreprocessColumnCommand,
 )
@@ -41,7 +42,7 @@ class TestPreprocessColumnCommand:
             {"method": "standardize", "source_columns": ["A"]},
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert "A_zscore" in dataset.data.columns
         assert dataset.data["A_zscore"].mean() == pytest.approx(0.0)
         assert dataset.data["A_zscore"].std(ddof=0) == pytest.approx(1.0)
@@ -53,7 +54,7 @@ class TestPreprocessColumnCommand:
             {"method": "center", "source_columns": ["A", "B"]},
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert "A_centered" in dataset.data.columns
         assert "B_centered" in dataset.data.columns
         assert dataset.data["A_centered"].mean() == pytest.approx(0.0)
@@ -79,7 +80,7 @@ class TestPreprocessColumnCommand:
             {"method": "standardize", "source_columns": ["A"], "replace_existing": True},
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert list(dataset.data.columns) == ["A", "B"]
         assert dataset.data["A"].mean() == pytest.approx(0.0)
 
@@ -106,7 +107,7 @@ class TestPreprocessColumnCommand:
             },
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert dataset.data["A_minmax"].min() == pytest.approx(-1.0)
         assert dataset.data["A_minmax"].max() == pytest.approx(1.0)
 
@@ -116,7 +117,7 @@ class TestPreprocessColumnCommand:
             app_context, "missing-ds",
             {"method": "center", "source_columns": ["A"]},
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_missing_column_fails(self, app_context_with_project):
@@ -125,7 +126,7 @@ class TestPreprocessColumnCommand:
             app_context, "ds-1",
             {"method": "center", "source_columns": ["Missing"]},
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_non_numeric_column_fails(self, app_context_with_project):
@@ -135,7 +136,7 @@ class TestPreprocessColumnCommand:
             app_context, "ds-1",
             {"method": "center", "source_columns": ["label"]},
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_existing_target_without_replace_fails(self, app_context_with_project):
@@ -145,7 +146,7 @@ class TestPreprocessColumnCommand:
             app_context, "ds-1",
             {"method": "center", "source_columns": ["A"]},
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_undo_logs_a_warning_when_nothing_to_undo(self, app_context_with_project, caplog):

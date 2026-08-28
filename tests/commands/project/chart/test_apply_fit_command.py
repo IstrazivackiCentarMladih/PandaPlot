@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.models.project.items.chart import Chart
 
@@ -56,7 +57,7 @@ def test_execute_adds_fit_to_chart(app_context_with_chart, fit_results):
         label="Linear fit",
     )
 
-    assert command.execute() is True
+    assert command.execute() is CommandResult.SUCCESS
 
     assert len(chart.fit_data) == 1
     assert command.added_index == 0
@@ -96,7 +97,7 @@ def test_execute_logs_a_warning_when_chart_not_found(fit_results, caplog):
     )
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "missing" in caplog.text
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
@@ -131,7 +132,7 @@ def test_undo_removes_fit_from_chart(app_context_with_chart, fit_results):
         source_y_column_id="y_id",
     )
 
-    assert command.execute() is True
+    assert command.execute() is CommandResult.SUCCESS
     assert len(chart.fit_data) == 1
 
     command.undo()

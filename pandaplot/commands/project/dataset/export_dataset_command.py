@@ -1,7 +1,7 @@
 import os
 from typing import Any, Callable, Tuple, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -78,7 +78,7 @@ class ExportDatasetCommand(Command):
         self.is_exporting = False
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the export dataset command."""
         try:
             self.logger.info(f"Executing ExportDatasetCommand for dataset {self.dataset_id}")
@@ -89,12 +89,12 @@ class ExportDatasetCommand(Command):
                     "Export Dataset",
                     "Please open or create a project first."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning("ExportDatasetCommand.execute: has_project is True but current_project is None")
-                return False
+                return CommandResult.FAILURE
 
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
@@ -106,7 +106,7 @@ class ExportDatasetCommand(Command):
                     "Export Dataset",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
-                return False
+                return CommandResult.FAILURE
 
             if not isinstance(found_item, Dataset):
                 self.logger.warning(
@@ -117,7 +117,7 @@ class ExportDatasetCommand(Command):
                     "Export Dataset",
                     "Selected item is not a dataset."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.dataset = found_item
 
@@ -130,12 +130,12 @@ class ExportDatasetCommand(Command):
                     "Export Dataset",
                     "Cannot export empty dataset."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Get export path and format from user using UIController
             export_result = self.ui_controller.show_export_dataset_dialog(self.dataset.name)
             if not export_result:
-                return False  # User cancelled
+                return CommandResult.FAILURE  # User cancelled
                 
             self.export_path, self.export_format = export_result
             
@@ -158,13 +158,13 @@ class ExportDatasetCommand(Command):
                 on_progress=self._on_export_progress
             )
             
-            return True  # Command initiated successfully
+            return CommandResult.SUCCESS  # Command initiated successfully
             
         except Exception as e:
             error_msg = f"Failed to export dataset: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Export Dataset Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
 
 

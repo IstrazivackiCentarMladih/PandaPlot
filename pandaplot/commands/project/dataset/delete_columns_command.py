@@ -2,7 +2,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import List, Union, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData
@@ -79,7 +79,7 @@ class DeleteColumnsCommand(Command):
         self.cleared_error_refs = {}
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the delete columns command."""
         try:
             self.logger.info(f"Executing DeleteColumnsCommand for {len(self.column_specs)} column specifications")
@@ -93,7 +93,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "No columns specified for deletion."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Check if we have a project loaded
             if not self.app_state.has_project:
@@ -104,14 +104,14 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "Please open or create a project first."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "DeleteColumnsCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Find the dataset
             found_item = self.project.find_item(self.dataset_id)
@@ -123,7 +123,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     f"Dataset with ID '{self.dataset_id}' not found."
                 )
-                return False
+                return CommandResult.FAILURE
 
             if not isinstance(found_item, Dataset):
                 self.logger.warning(
@@ -134,7 +134,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "Selected item is not a dataset."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.dataset = found_item
 
@@ -148,7 +148,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "Cannot delete columns from empty dataset."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Resolve column names and positions based on input type
             self._resolve_columns()
@@ -163,7 +163,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "No valid columns found for deletion."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Check if all resolved columns exist
             existing_columns = set(self.dataset.data.columns)
@@ -177,7 +177,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     f"The following columns do not exist: {', '.join(missing_columns)}"
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Check for duplicate column names
             if len(set(self.column_names)) != len(self.column_names):
@@ -189,7 +189,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "Duplicate column names found in the deletion list."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Check if we're trying to delete all columns
             remaining_columns = len(self.dataset.data.columns) - len(self.column_names)
@@ -202,7 +202,7 @@ class DeleteColumnsCommand(Command):
                     "Delete Columns",
                     "Cannot delete all columns from dataset. Dataset must have at least one column."
                 )
-                return False
+                return CommandResult.FAILURE
             
             # Warn if any chart depends on the columns being deleted, since those
             # series/fit curves will be removed from the chart as part of this action
@@ -225,7 +225,7 @@ class DeleteColumnsCommand(Command):
                     details=details
                 )
                 if not proceed:
-                    return False
+                    return CommandResult.FAILURE
 
             # Store original data + column-id registry for undo. Restoring the
             # registry keeps deleted columns' ids stable across delete/undo, so
@@ -242,13 +242,13 @@ class DeleteColumnsCommand(Command):
             self._perform_deletion(references)
 
             self.logger.info(f"Deleted {len(self.column_names)} columns from dataset '{self.dataset.name}' (ID: {self.dataset_id})")
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to delete {len(self.column_specs) if self.column_specs else 0} columns: {str(e)}"
             self.logger.error(error_msg)
             self.ui_controller.show_error_message("Delete Columns Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def _find_chart_references(
         self, column_names: List[str]

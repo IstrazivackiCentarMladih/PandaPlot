@@ -1,6 +1,6 @@
 from typing import Any, Callable, Tuple, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state import AppContext, AppState
@@ -28,7 +28,7 @@ class SaveProjectCommand(Command):
         self.is_saving = False
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the save project command."""
         try:
             self.logger.info("Executing SaveProjectCommand")
@@ -37,19 +37,19 @@ class SaveProjectCommand(Command):
             if self.is_saving:
                 self.logger.warning("SaveProjectCommand.execute: a save operation is already in progress")
                 self.ui_controller.show_warning_message("Save Project", "A save operation is already in progress. Please wait for it to complete.")
-                return False
+                return CommandResult.FAILURE
 
             # Check if we have a project to save
             if not self.app_state.has_project:
                 self.logger.warning("SaveProjectCommand.execute: no project is currently loaded to save")
                 self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
             if not project:  # Additional safety check
                 self.logger.warning("SaveProjectCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
-                return False
+                return CommandResult.FAILURE
 
             current_path = self.app_state.project_file_path
 
@@ -64,7 +64,7 @@ class SaveProjectCommand(Command):
                 # This is a new project, need to prompt for save location
                 save_path = self.ui_controller.show_save_project_dialog(default_name=f"{project.name}.pplot")
                 if not save_path:
-                    return False  # User cancelled
+                    return CommandResult.FAILURE  # User cancelled
 
             # Store previous path for undo
             self.previous_file_path = current_path
@@ -93,14 +93,14 @@ class SaveProjectCommand(Command):
                 on_progress=self._on_save_progress,
             )
 
-            return True  # Command initiated successfully
+            return CommandResult.SUCCESS  # Command initiated successfully
 
         except Exception as e:
             error_msg = f"Failed to initiate project save: {e}"
             self.logger.error("SaveProjectCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Save Project Error", error_msg)
             self.is_saving = False  # Reset flag on error
-            return False
+            return CommandResult.FAILURE
 
     def _save_project_task(self, progress_callback: Callable[[float], None], **kwargs) -> dict:
         """
@@ -295,25 +295,25 @@ class SaveProjectAsCommand(SaveProjectCommand):
         super().__init__(app_context)
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the save as command."""
         try:
             # Check if we have a project to save
             if not self.app_state.has_project:
                 self.logger.warning("SaveProjectAsCommand.execute: no project is currently loaded to save")
                 self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
             if not project:  # Additional safety check
                 self.logger.warning("SaveProjectAsCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
-                return False
+                return CommandResult.FAILURE
 
             # Always prompt for new save location
             save_path = self.ui_controller.show_save_project_dialog(default_name=f"{project.name}.pplot")
             if not save_path:
-                return False  # User cancelled
+                return CommandResult.FAILURE  # User cancelled
 
             # Set the save path and delegate to parent
             self.save_as_path = save_path

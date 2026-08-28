@@ -1,6 +1,6 @@
 from typing import override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_data import NoteContentChangedData
 from pandaplot.models.events.event_types import NoteEvents
@@ -26,7 +26,7 @@ class EditNoteCommand(Command):
         self.old_content = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the edit note command."""
         try:
             # Check if we have a project loaded
@@ -39,14 +39,14 @@ class EditNoteCommand(Command):
                     "Edit Note",
                     "No project is currently loaded."
                 )
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
             if not project:
                 self.logger.warning(
                     "EditNoteCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             item = project.find_item(self.note_id)
             if item is None or not isinstance(item, Note):
@@ -58,7 +58,7 @@ class EditNoteCommand(Command):
                     "Edit Note",
                     f"Note '{self.note_id}' not found in the project."
                 )
-                return False
+                return CommandResult.FAILURE
 
             note: Note = item
             # Store old content for undo
@@ -78,13 +78,13 @@ class EditNoteCommand(Command):
             self.logger.info(
                 "Edited content of note '%s'", self.note_id
             )
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to edit note: {e}"
             self.logger.error("EditNoteCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Edit Note Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def undo(self):
         """Undo the edit note command."""

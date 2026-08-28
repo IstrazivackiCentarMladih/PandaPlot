@@ -1,6 +1,6 @@
 from typing import Any, Callable, Optional, Tuple, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
@@ -39,7 +39,7 @@ class LoadProjectCommand(Command):
         self.is_loading = False
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the load project command."""
         try:
             self.logger.info("Executing LoadProjectCommand")
@@ -48,7 +48,7 @@ class LoadProjectCommand(Command):
             if self.is_loading:
                 self.logger.warning("Load operation already in progress")
                 self.ui_controller.show_info_message("Load In Progress", "A project load is already in progress.")
-                return False
+                return CommandResult.FAILURE
 
             # Store current state for undo
             self.previous_project = self.app_state.current_project
@@ -70,14 +70,14 @@ class LoadProjectCommand(Command):
                 on_progress=self._on_load_progress,
             )
 
-            return True  # Command initiated successfully
+            return CommandResult.SUCCESS  # Command initiated successfully
 
         except Exception as e:
             error_msg = f"Failed to initiate project load: {e}"
             self.logger.error("LoadProjectCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Load Project Error", error_msg)
             self.is_loading = False  # Reset flag on error
-            return False
+            return CommandResult.FAILURE
 
     def _load_project_task(self, progress_callback: Callable[[float], None], **kwargs) -> dict:
         """

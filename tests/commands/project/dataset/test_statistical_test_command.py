@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from pandaplot.analysis import StatTestType
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.statistical_test_command import StatisticalTestCommand
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
@@ -42,7 +43,7 @@ class TestStatisticalTestCommand:
             app_context, "ds-1", StatTestType.INDEPENDENT_T, ["A", "B"], equal_var=False
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
 
         results = project.find_item(command.result_dataset_id)
         assert results is not None
@@ -66,7 +67,7 @@ class TestStatisticalTestCommand:
         command = StatisticalTestCommand(
             app_context, "ds-1", StatTestType.PEARSON, ["A", "Missing"]
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         assert command.result_dataset_id is None
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
         _title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
@@ -91,7 +92,7 @@ class TestStatisticalTestCommand:
         app_context.get_app_state.return_value = app_state
 
         command = StatisticalTestCommand(app_context, "ds-1", StatTestType.PEARSON, ["A", "B"])
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_cleanup_releases_the_result_dataset_id_and_result(self, app_context_with_project):
@@ -99,7 +100,7 @@ class TestStatisticalTestCommand:
         command = StatisticalTestCommand(
             app_context, "ds-1", StatTestType.PEARSON, ["A", "B"]
         )
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert command.result_dataset_id is not None
         assert command.result is not None
 

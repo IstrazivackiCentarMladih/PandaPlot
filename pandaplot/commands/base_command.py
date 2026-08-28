@@ -1,5 +1,25 @@
 import logging
 from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class CommandResult(Enum):
+    """Outcome of `Command.execute()`.
+
+    SUCCESS/FAILURE map to `CommandExecutor.execute_command()`'s True/False
+    return, same as the old bool contract. NOOP is also a "nothing happened"
+    outcome -- the command is not pushed onto the undo stack, same as
+    FAILURE -- but signals that this was expected (e.g. re-applying settings
+    that already match the current config, or renaming to the same name), so
+    the executor logs it quietly instead of as a warning.
+
+    A plain Enum, not IntEnum: every member is truthy, so `if
+    command.execute():` would silently pass regardless of outcome. Always
+    compare explicitly, e.g. `if command.execute() is CommandResult.SUCCESS:`.
+    """
+    SUCCESS = "success"
+    FAILURE = "failure"
+    NOOP = "noop"
 
 
 class Command(ABC):
@@ -7,7 +27,7 @@ class Command(ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         pass
 
     @abstractmethod

@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Folder
@@ -28,7 +28,7 @@ class CreateFolderCommand(Command):
         self.project = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the create folder command."""
         try:
             self.logger.info("Executing CreateFolderCommand")
@@ -38,14 +38,14 @@ class CreateFolderCommand(Command):
                     "Create Folder",
                     "Please open or create a project first."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "CreateFolderCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Get folder name if not provided
             if not self.folder_name:
@@ -63,7 +63,7 @@ class CreateFolderCommand(Command):
                     "Create Folder",
                     "Folder name cannot be empty."
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Create folder ID
             self.created_folder_id = str(uuid.uuid4())
@@ -91,14 +91,14 @@ class CreateFolderCommand(Command):
                 self.parent_id or "root"
             )
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to create folder: {str(e)}"
             self.logger.error("CreateFolderCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message(
                 "Create Folder Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def undo(self):

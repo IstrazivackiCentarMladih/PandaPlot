@@ -13,7 +13,7 @@ from typing import Any, List, Optional, override
 import pandas as pd
 from PySide6.QtWidgets import QDialog
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_data import (
     DatasetColumnsAddedData,
@@ -66,7 +66,7 @@ class AddRowsColumnsCommand(Command):
         self.added_column_positions: List[int] = []
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the add rows/columns command."""
         try:
             self.logger.info("Executing AddRowsColumnsCommand")
@@ -79,25 +79,25 @@ class AddRowsColumnsCommand(Command):
                     "Add Rows / Columns",
                     "Please open or create a project first."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "AddRowsColumnsCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Ask for the target dataset and size unless they were provided
             # programmatically (or already resolved by a previous execute(),
             # which is what redo() replays).
             if self.target_rows is None or self.target_columns is None:
                 if not self._prompt_for_target():
-                    return False
+                    return CommandResult.FAILURE
 
             dataset = self._resolve_dataset()
             if dataset is None:
-                return False
+                return CommandResult.FAILURE
             self.dataset = dataset
 
             data = dataset.data if dataset.data is not None else pd.DataFrame()
@@ -113,7 +113,7 @@ class AddRowsColumnsCommand(Command):
                     f"'{dataset.name}' is already {current_rows} rows x "
                     f"{current_columns} columns or larger. Nothing to add."
                 )
-                return False
+                return CommandResult.NOOP
 
             # Store original data for undo
             self.original_data = data.copy()
@@ -149,13 +149,13 @@ class AddRowsColumnsCommand(Command):
             self.logger.info(
                 "Added %d rows and %d columns to dataset '%s' (ID: %s)",
                 rows_to_add, columns_to_add, dataset.name, dataset.id)
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to add rows/columns: {str(e)}"
             self.logger.error("AddRowsColumnsCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Add Rows / Columns Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def _prompt_for_target(self) -> bool:
         """Ask for the dataset and target size. False if there is nothing to

@@ -8,7 +8,7 @@ import uuid
 from typing import List, Optional, override
 
 from pandaplot.analysis import DescriptiveStatsEngine, DescriptiveStatsResult
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
 from pandaplot.models.project.items import Dataset, Note
@@ -67,14 +67,14 @@ class DescriptiveStatsCommand(Command):
         return DescriptiveStatsEngine.describe(columns, digits=self.digits)
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         try:
             self.logger.info("Executing DescriptiveStatsCommand on %s", self.column_names)
             if not self.app_state.has_project or not self.app_state.current_project:
                 message = "No project loaded; cannot compute descriptive statistics."
                 self.logger.warning(message)
                 self.ui_controller.show_error_message("Descriptive Statistics Error", message)
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
 
@@ -123,12 +123,12 @@ class DescriptiveStatsCommand(Command):
                 })
 
             self.logger.info("Created descriptive stats results '%s' (%s)", name, self.result_dataset_id)
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error("Descriptive statistics failed: %s", e, exc_info=True)
             self.ui_controller.show_error_message("Descriptive Statistics Error", str(e))
-            return False
+            return CommandResult.FAILURE
 
     @override
     def undo(self) -> bool:
@@ -168,7 +168,7 @@ class DescriptiveStatsCommand(Command):
             return False
 
     @override
-    def redo(self) -> bool:
+    def redo(self) -> CommandResult:
         return self.execute()
 
     @override

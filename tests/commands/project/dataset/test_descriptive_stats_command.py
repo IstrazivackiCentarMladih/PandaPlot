@@ -8,6 +8,7 @@ and undo() (see issue-184-audit-command-logging).
 import logging
 from unittest.mock import Mock
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.descriptive_stats_command import DescriptiveStatsCommand
 from pandaplot.models.state import AppContext, AppState
 
@@ -27,7 +28,7 @@ def test_execute_logs_a_warning_when_no_project_loaded(caplog):
     command = DescriptiveStatsCommand(app_context, "ds-1", ["A"])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "no project" in caplog.text.lower()
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
@@ -48,7 +49,7 @@ def test_execute_surfaces_compute_failure_to_the_user():
     app_context, _ = _make_app_context(has_project=True, current_project=project)
     command = DescriptiveStatsCommand(app_context, "ds-1", ["A"])
 
-    assert command.execute() is False
+    assert command.execute() is CommandResult.FAILURE
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
     _title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
     assert "not available" in message

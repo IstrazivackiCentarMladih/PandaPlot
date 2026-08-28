@@ -3,7 +3,7 @@
 import uuid
 from typing import List, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery
@@ -32,7 +32,7 @@ class CopyImagesCommand(Command):
         self.project = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the copy images command."""
         try:
             self.logger.info("Executing CopyImagesCommand for %d image(s) into gallery %s",
@@ -40,14 +40,14 @@ class CopyImagesCommand(Command):
 
             if not self.app_state.has_project:
                 self.ui_controller.show_warning_message("Copy Images", "Please open or create a project first.")
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "CopyImagesCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             target_gallery = self.project.find_item(self.target_gallery_id)
             if not isinstance(target_gallery, ImageGallery):
@@ -58,7 +58,7 @@ class CopyImagesCommand(Command):
                 self.ui_controller.show_error_message(
                     "Copy Images Error", f"Target gallery '{self.target_gallery_id}' not found."
                 )
-                return False
+                return CommandResult.FAILURE
 
             originals = []
             for image_id in self.image_ids:
@@ -71,7 +71,7 @@ class CopyImagesCommand(Command):
                     self.ui_controller.show_error_message(
                         "Copy Images Error", f"Image '{image_id}' not found."
                     )
-                    return False
+                    return CommandResult.FAILURE
                 originals.append(original)
 
             new_images = [self._build_copy(original) for original in originals]
@@ -90,13 +90,13 @@ class CopyImagesCommand(Command):
 
             self.logger.info("CopyImagesCommand: Copied %d image(s) into gallery %s",
                               len(new_images), self.target_gallery_id)
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to copy images: {str(e)}"
             self.logger.error("CopyImagesCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Copy Images Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def _build_copy(self, original: Image) -> Image:
         """Build a duplicate Image, independent in-memory bytes for copied mode."""

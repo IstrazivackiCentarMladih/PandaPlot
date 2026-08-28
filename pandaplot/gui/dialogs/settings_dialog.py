@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.commands.app.change_settings_command import ChangeSettingsCommand
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.state.config import (
@@ -647,7 +648,11 @@ class SettingsDialog(PDialog):
                         "measurement_unit": self.current_settings.get("measurement_unit", "cm"),
                     }
                 }
-                self._config_manager.update(mapping, save=True)
+                self.app_context.get_command_executor().execute_command(
+                    ChangeSettingsCommand(
+                        self.app_context, mapping, config_manager=self._config_manager
+                    )
+                )
                 self._chart_width_raw_cm = width_cm
                 self._chart_height_raw_cm = height_cm
             self.settings_changed.emit(self.current_settings)

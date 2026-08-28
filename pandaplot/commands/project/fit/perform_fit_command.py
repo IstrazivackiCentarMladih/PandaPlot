@@ -1,6 +1,6 @@
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.services.fit.fit_service import FitResult, FitService
 
 
@@ -41,7 +41,7 @@ class PerformFitCommand(Command):
         self.error_message: Optional[str] = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         self.logger.debug("Executing PerformFitCommand: %s", self.fit_type)
 
         try:
@@ -62,15 +62,15 @@ class PerformFitCommand(Command):
                     "PerformFitCommand.execute: fit_service returned no result for fit_type=%s",
                     self.fit_type,
                 )
-                return False
+                return CommandResult.FAILURE
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.exception("PerformFitCommand failed")
             self.result = None
             self.error_message = str(e)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def undo(self) -> bool:
@@ -78,7 +78,7 @@ class PerformFitCommand(Command):
         return True
 
     @override
-    def redo(self) -> bool:
+    def redo(self) -> CommandResult:
         return self.execute()
 
     @override

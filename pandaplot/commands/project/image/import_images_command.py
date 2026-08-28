@@ -13,7 +13,7 @@ import requests
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 from PySide6.QtGui import QImageReader
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery
@@ -48,21 +48,21 @@ class ImportImagesCommand(Command):
         self.project = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the import images command."""
         try:
             self.logger.info("Executing ImportImagesCommand for gallery %s", self.gallery_id)
 
             if not self.app_state.has_project:
                 self.ui_controller.show_warning_message("Import Images", "Please open or create a project first.")
-                return False
+                return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "ImportImagesCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             gallery = self.project.find_item(self.gallery_id)
             if not isinstance(gallery, ImageGallery):
@@ -73,14 +73,14 @@ class ImportImagesCommand(Command):
                 self.ui_controller.show_error_message(
                     "Import Images Error", f"Gallery '{self.gallery_id}' not found."
                 )
-                return False
+                return CommandResult.FAILURE
 
             if not self.sources:
                 self.logger.warning(
                     "ImportImagesCommand.execute: no sources given for gallery '%s'", self.gallery_id
                 )
                 self.ui_controller.show_warning_message("Import Images", "No images selected to import.")
-                return False
+                return CommandResult.FAILURE
 
             new_images = [self._build_image(source) for source in self.sources]
 
@@ -99,17 +99,17 @@ class ImportImagesCommand(Command):
             self.logger.info(
                 "ImportImagesCommand: Imported %d image(s) into gallery %s", len(new_images), self.gallery_id
             )
-            return True
+            return CommandResult.SUCCESS
 
         except (FileNotFoundError, ValueError) as e:
             self.ui_controller.show_error_message("Import Images Error", str(e))
             self.logger.error("ImportImagesCommand Error: %s", e)
-            return False
+            return CommandResult.FAILURE
         except Exception as e:
             error_msg = f"Failed to import images: {str(e)}"
             self.logger.error("ImportImagesCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Import Images Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def _build_image(self, source: str) -> Image:
         """Build one Image item from a local path or URL source."""

@@ -2,6 +2,7 @@ import uuid
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Note
@@ -34,16 +35,16 @@ class CreateNoteCommand(Command):
         """Execute the create note command."""
         try:
             # Check if we have a project loaded
-            if not self.app_state.has_project:
+            if not self.app_state.has_project or not self.app_state.current_project:
                 self.logger.warning(
-                    "CreateNoteCommand.execute: cannot create note '%s', no project is loaded",
+                    "CreateNoteCommand.execute: no project is currently loaded, note '%s'",
                     self.note_name,
                 )
-                self.ui_controller.show_warning_message(
-                    "New Note",
-                    "Please open or create a project first."
-                )
-                return False
+                if not ensure_project_or_offer_create(
+                    self.app_context, "New Note",
+                    "Creating a note requires a project. Create a new project to continue?",
+                ):
+                    return False
 
             self.project = self.app_state.current_project
             if not self.project:

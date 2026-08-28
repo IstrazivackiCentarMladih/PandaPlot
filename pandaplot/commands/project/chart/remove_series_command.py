@@ -3,7 +3,7 @@
 import copy
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.project.items.chart import Chart, DataSeries
@@ -28,7 +28,7 @@ class RemoveSeriesCommand(Command):
         return app_state.current_project.find_item(self.chart_id)
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         chart = self._find_chart()
         if not chart or not isinstance(chart, Chart):
             self.logger.warning(
@@ -38,7 +38,7 @@ class RemoveSeriesCommand(Command):
             self.ui_controller.show_error_message(
                 "Remove Series Error", f"Chart '{self.chart_id}' not found."
             )
-            return False
+            return CommandResult.FAILURE
 
         if self.series_index < 0 or self.series_index >= len(chart.data_series):
             self.logger.warning(
@@ -48,7 +48,7 @@ class RemoveSeriesCommand(Command):
             self.ui_controller.show_error_message(
                 "Remove Series Error", f"Series index {self.series_index} is out of range."
             )
-            return False
+            return CommandResult.FAILURE
 
         # Snapshot the series before removing
         series = chart.data_series[self.series_index]
@@ -61,7 +61,7 @@ class RemoveSeriesCommand(Command):
             "update_type": "series_removed",
             "chart": chart,
         })
-        return True
+        return CommandResult.SUCCESS
 
     @override
     def undo(self):

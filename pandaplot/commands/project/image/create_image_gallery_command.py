@@ -2,6 +2,7 @@ import uuid
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command
+from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import ImageGallery
@@ -33,12 +34,13 @@ class CreateImageGalleryCommand(Command):
         """Execute the create image gallery command."""
         try:
             self.logger.info("Executing CreateImageGalleryCommand")
-            if not self.app_state.has_project:
-                self.ui_controller.show_warning_message(
-                    "Create Image Gallery",
-                    "Please open or create a project first."
-                )
-                return False
+            if not self.app_state.has_project or not self.app_state.current_project:
+                self.logger.warning("CreateImageGalleryCommand.execute: no project is currently loaded")
+                if not ensure_project_or_offer_create(
+                    self.app_context, "Create Image Gallery",
+                    "Creating an image gallery requires a project. Create a new project to continue?",
+                ):
+                    return False
 
             self.project = self.app_state.current_project
             if not self.project:

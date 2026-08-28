@@ -1,7 +1,7 @@
 import logging
 from typing import Callable, List, Optional
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 
 
 class CommandExecutor:
@@ -50,9 +50,13 @@ class CommandExecutor:
         self.logger.debug("Executing command: %s", command_name)
 
         try:
-            success = command.execute()
+            result = command.execute()
 
-            if success is False:
+            if result is CommandResult.NOOP:
+                self.logger.debug("Command execution was a no-op: %s", command_name)
+                return False
+
+            if result is CommandResult.FAILURE:
                 self.logger.warning("Command execution failed: %s", command_name)
                 return False
 

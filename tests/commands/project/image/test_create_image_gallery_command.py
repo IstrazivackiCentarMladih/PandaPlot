@@ -5,11 +5,17 @@
 # app_state/ui_controller mock construction this test relies on).
 
 import logging
+from unittest.mock import Mock
+
+import pytest
 
 from pandaplot.commands.project.image.create_image_gallery_command import (
     CreateImageGalleryCommand,
 )
+from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.project import Project
 from pandaplot.models.project.items import ImageGallery
+from pandaplot.models.state import AppContext, AppState
 
 
 class TestCreateImageGalleryCommand:
@@ -48,6 +54,53 @@ class TestCreateImageGalleryCommand:
         assert command.redo() is True
         project = app_context_with_project.get_app_state().current_project
         assert project.find_item(command.created_gallery_id) is not None
+
+
+class TestCreateImageGalleryCommandNoProject:
+    """Matches Create Chart/Import Data/New Note: no project yet must offer
+    to create one on the spot instead of leaving the user at a dead end."""
+
+    @pytest.fixture
+    def mock_app_context(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        ui_controller = Mock(spec=UIController)
+
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = ui_controller
+        app_state.has_project = False
+        app_state.current_project = None
+        app_state.event_bus = Mock()
+
+        return app_context, app_state, ui_controller
+
+    def test_execute_returns_false_when_user_declines_project_offer(self, mock_app_context):
+        app_context, app_state, ui_controller = mock_app_context
+        ui_controller.show_action_or_cancel.return_value = False
+
+        command = CreateImageGalleryCommand(app_context, gallery_name="Trip")
+        result = command.execute()
+
+        assert result is False
+        ui_controller.show_action_or_cancel.assert_called_once()
+
+    def test_execute_continues_after_the_user_creates_a_project(self, mock_app_context):
+        app_context, app_state, ui_controller = mock_app_context
+        ui_controller.show_action_or_cancel.return_value = True
+
+        project = Project(name="Test Project")
+
+        def _execute_command(_command):
+            app_state.has_project = True
+            app_state.current_project = project
+
+        app_context.get_command_executor.return_value.execute_command.side_effect = _execute_command
+
+        command = CreateImageGalleryCommand(app_context, gallery_name="Trip")
+        result = command.execute()
+
+        assert result is True
+        assert project.find_item(command.created_gallery_id) is command.created_gallery
 
 
 class TestCreateImageGalleryCommandCleanup:

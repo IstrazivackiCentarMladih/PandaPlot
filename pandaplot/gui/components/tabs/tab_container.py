@@ -9,7 +9,7 @@ from pandaplot.gui.components.tabs.floating_tab_window import FloatingTabWindow
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.tab_factory import TabFactory
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.core.widget_extension import PWidget, unsubscribe_widget_tree
 from pandaplot.models.events import (
     AnalysisEvents,
     ChartEvents,
@@ -262,10 +262,13 @@ class TabContainer(PWidget):
         # the QObject `destroyed` signal (connected in WidgetExtension), since
         # deleteLater() defers actual C++ destruction -- an event fired on the
         # event bus in that window would invoke a callback on a widget whose
-        # C++ object may already be gone, raising a shiboken RuntimeError.
+        # C++ object may already be gone, raising a shiboken RuntimeError. This
+        # must cover the whole subtree, not just `widget` itself: a tab like
+        # ChartTab embeds its own independently-subscribed child widgets (e.g.
+        # ChartEditorWidget), which unsubscribe_all() on the parent alone
+        # wouldn't reach.
         if widget:
-            if hasattr(widget, "unsubscribe_all"):
-                widget.unsubscribe_all()
+            unsubscribe_widget_tree(widget)
             widget.deleteLater()
 
         # Publish tab closed event
@@ -290,8 +293,7 @@ class TabContainer(PWidget):
             # (see _handle_close) before it's deleted along with the window.
             content = window.take_content()
             if content is not None:
-                if hasattr(content, "unsubscribe_all"):
-                    content.unsubscribe_all()
+                unsubscribe_widget_tree(content)
                 content.deleteLater()
             window.close_without_redock()
             self._persist_tab_session()

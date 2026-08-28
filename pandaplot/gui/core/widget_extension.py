@@ -104,6 +104,39 @@ class WidgetExtension:
             pass  # Ignore errors during cleanup
 
 
+def unsubscribe_widget_tree(widget) -> None:
+    """Unsubscribe `widget` and every WidgetExtension descendant of it from
+    the event bus.
+
+    deleteLater() only defers actual C++ destruction, so a widget left
+    subscribed can still have its handler invoked -- e.g. by a theme change --
+    between now and whenever Qt gets around to the deferred delete. That
+    handler may reach into a nested WidgetExtension (like a tab's chart
+    editor) that has its own independent subscriptions on top of the
+    top-level widget's own, so unsubscribing only the top-level widget still
+    leaves those live. Call this instead of `widget.unsubscribe_all()` alone
+    wherever a widget subtree is being torn down.
+
+    Duck-typed like the callers this replaces: `widget` need not be a real
+    QWidget/WidgetExtension (tests exercise this with plain Mocks), so both
+    the top-level call and the descendant search degrade to a no-op rather
+    than raising when the expected methods aren't there.
+    """
+    if hasattr(widget, "unsubscribe_all"):
+        widget.unsubscribe_all()
+
+    find_children = getattr(widget, "findChildren", None)
+    if not callable(find_children):
+        return
+    try:
+        children = list(find_children(WidgetExtension))
+    except TypeError:
+        return
+    for child in children:
+        if hasattr(child, "unsubscribe_all"):
+            child.unsubscribe_all()
+
+
 class PMainWindow(WidgetExtension, QMainWindow):
     def __init__(self, app_context:AppContext):
         QMainWindow.__init__(self)

@@ -8,6 +8,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.transform_column_command import TransformColumnCommand
 from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationEvents
 from pandaplot.models.project.items.dataset import Dataset
@@ -50,14 +51,14 @@ class TestTransformColumnCommand:
     def test_new_column_added_and_event(self, ctx):
         app_context, dataset, event_bus = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("a_x2"))
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert list(dataset.data["a_x2"]) == [2.0, 4.0, 6.0]
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_ADDED)
 
     def test_target_can_be_existing_column(self, ctx):
         app_context, dataset, event_bus = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("a", replace=True))
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         # 'a' overwritten in place, no new column.
         assert list(dataset.data.columns) == ["a"]
         assert list(dataset.data["a"]) == [2.0, 4.0, 6.0]
@@ -68,13 +69,13 @@ class TestTransformColumnCommand:
     def test_existing_target_without_replace_fails(self, ctx):
         app_context, _, _ = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("a", replace=False))
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         assert "a" in command.error_message
 
     def test_expression_error_is_captured_in_error_message(self, ctx):
         app_context, _, _ = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("bad", expression="1 / 0"))
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         assert "division" in command.error_message.lower() or "zero" in command.error_message.lower()
 
     def test_undo_restores_replaced_column(self, ctx):
