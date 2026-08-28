@@ -29,6 +29,25 @@ class CommandExecutor:
         if self.on_history_changed:
             self.on_history_changed()
 
+    def _warn_if_not_command_result(self, result, command_name: str, method_name: str) -> None:
+        """Surface a command whose `execute()`/`undo()`/`redo()` hasn't been
+        migrated to return `CommandResult` yet -- some overrides still
+        implicitly return `None` on every path (a known, tracked gap, not
+        this call's job to fix). Such a value is neither CommandResult.NOOP
+        nor CommandResult.FAILURE, so it's silently treated as success below,
+        same as it would have been under the old bool contract -- this only
+        makes that fact loud instead of invisible, so remaining stragglers
+        are easy to find and migrate incrementally instead of a single
+        all-or-nothing conversion that would risk breaking every one of them
+        at once.
+        """
+        if not isinstance(result, CommandResult):
+            self.logger.warning(
+                "%s.%s() returned %r instead of a CommandResult -- treating as "
+                "success for backward compatibility. This command needs migrating.",
+                command_name, method_name, result,
+            )
+
     def execute_command(self, command: Command, *, track_undo: bool = True) -> bool:
         """
         Execute a command instance directly.
@@ -51,6 +70,7 @@ class CommandExecutor:
 
         try:
             result = command.execute()
+            self._warn_if_not_command_result(result, command_name, "execute")
 
             if result is CommandResult.NOOP:
                 self.logger.debug("Command execution was a no-op: %s", command_name)
@@ -102,6 +122,7 @@ class CommandExecutor:
         try:
             command = self.undo_stack.pop()
             result = command.undo()
+            self._warn_if_not_command_result(result, command_name, "undo")
             self.redo_stack.append(command)
             if result is CommandResult.FAILURE:
                 self.logger.warning("Command undo reported failure: %s", command_name)
@@ -136,6 +157,7 @@ class CommandExecutor:
         try:
             command = self.redo_stack.pop()
             result = command.redo()
+            self._warn_if_not_command_result(result, command_name, "redo")
             self.undo_stack.append(command)
             if result is CommandResult.FAILURE:
                 self.logger.warning("Command redo reported failure: %s", command_name)

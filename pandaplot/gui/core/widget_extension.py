@@ -130,7 +130,7 @@ def unsubscribe_widget_tree(widget: Any) -> None:
         try:
             widget.unsubscribe_all()
         except RuntimeError:
-            return
+            pass  # fall through -- the descendant search may still work
 
     find_children = getattr(widget, "findChildren", None)
     if not callable(find_children):

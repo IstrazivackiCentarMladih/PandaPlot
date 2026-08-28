@@ -115,7 +115,7 @@ class ChangeColumnDtypeCommand(Command):
                     "Change Column Type", 
                     f"Column '{self.column_name}' is already of type {self.target_dtype}."
                 )
-                return CommandResult.SUCCESS
+                return CommandResult.NOOP
 
             # Perform the conversion
             conversion_result = self._convert_column_dtype()

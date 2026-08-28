@@ -50,6 +50,22 @@ class TestChangeColumnDtypeCommand:
         assert result is CommandResult.SUCCESS
         assert str(dataset.data["a"].dtype) == "float64"
 
+    def test_column_already_of_target_dtype_is_a_noop(self, mock_app_context, sample_project):
+        """Nothing is converted (or pushed onto the undo stack) when the
+        column is already the requested dtype."""
+        app_context, app_state, ui_controller = mock_app_context
+        app_state.has_project = True
+        app_state.current_project = sample_project
+
+        dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1.0, 2.0, 3.0]}))
+        sample_project.find_item.return_value = dataset
+
+        command = ChangeColumnDtypeCommand(app_context, "ds-1", 0, "float64")
+        result = command.execute()
+
+        assert result is CommandResult.NOOP
+        ui_controller.show_info_message.assert_called_once()
+
 
 class TestChangeColumnDtypeCommandLogging:
     """Tests that genuine failure paths log a warning instead of failing silently."""
