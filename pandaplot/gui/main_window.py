@@ -6,8 +6,9 @@ from PySide6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from pandaplot.gui.components import CollapsibleSidebar, TabContainer
 from pandaplot.gui.components.main_menu.main_menu import MainMenu
-from pandaplot.gui.components.sidebar.panels.conditional_panel_manager import ConditionalPanelManager
-from pandaplot.gui.components.sidebar.panels.panel_setup_manager import PanelSetupManager
+from pandaplot.gui.components.sidebar.panels.sidebar_panel_coordinator import (
+    SidebarPanelCoordinator,
+)
 from pandaplot.gui.core.widget_extension import PMainWindow
 from pandaplot.gui.resources.app_icon import create_app_icon
 from pandaplot.models.events import AppEvents
@@ -71,10 +72,6 @@ class PandaMainWindow(PMainWindow):
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(self.main_splitter)
 
-        # TODO(#220): move panel setup somewhere else
-        self.panel_setup_manager = PanelSetupManager(self.app_context)
-        self.panel_setup_manager.register_default_panels()
-
         # Resolve the persisted dock side for the sidebar (defaults to left)
         sidebar_position = self._get_sidebar_position()
 
@@ -98,15 +95,10 @@ class PandaMainWindow(PMainWindow):
             self.main_splitter.addWidget(self.tab_container)
             self.main_splitter.setSizes([250, 1000])
 
-        # Initialize conditional panel manager for dynamic sidebar panels
-        # TODO(#220): move this outside of main window
-        self.conditional_panel_manager = ConditionalPanelManager(
+        # Register default sidebar panels and wire their conditional visibility
+        self.sidebar_panel_coordinator = SidebarPanelCoordinator(self.app_context)
+        self.conditional_panel_manager = self.sidebar_panel_coordinator.setup(
             self.sidebar, self.tab_container)
-        self.panel_setup_manager.add_panels(self.sidebar, self.conditional_panel_manager)
-
-        # Connect tab changes to conditional panel manager (centralized)
-        self.tab_container.active_tab_changed.connect(
-            self.conditional_panel_manager.on_tab_changed)
 
     def _get_sidebar_position(self) -> str:
         """Read the persisted sidebar dock side, defaulting to 'left'."""
