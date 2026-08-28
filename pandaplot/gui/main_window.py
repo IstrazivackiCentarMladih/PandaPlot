@@ -19,6 +19,7 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 class PandaMainWindow(PMainWindow):
     def __init__(self, app_context: AppContext):
         super().__init__(app_context=app_context)
+        self._is_closing = False
         self._initialize()
 
     @override
@@ -46,7 +47,6 @@ class PandaMainWindow(PMainWindow):
 
         self.showMaximized()
 
-
     @override
     def _apply_theme(self):
         """Apply theme-specific styling to the main window based on current theme."""
@@ -62,7 +62,7 @@ class PandaMainWindow(PMainWindow):
             
         self.logger.debug("Applied theme")
             
-    def create_widgets(self, main_layout):
+    def create_widgets(self, main_layout: QVBoxLayout):
         # Create menu
         self.main_menu = MainMenu(self, self.app_context)
         self.setMenuBar(self.main_menu)
@@ -129,6 +129,7 @@ class PandaMainWindow(PMainWindow):
             config_manager.update(
                 {"appearance": {"sidebar_position": position}}, save=True)
 
+    @override
     def setup_event_subscriptions(self):
         """Set up event subscriptions for the main window."""
         self.subscribe_to_event(AppEvents.APP_CLOSING,
@@ -142,6 +143,11 @@ class PandaMainWindow(PMainWindow):
         We avoid doing cleanup work here to prevent duplication and to ensure the
         correct event type is passed to the Qt closeEvent handler.
         """
+        if self._is_closing:
+            self.logger.debug(
+                "Ignoring app.closing event; close already in progress")
+            return
+
         self.logger.debug(
             "Received app.closing event via event bus; initiating Qt close()")
 
