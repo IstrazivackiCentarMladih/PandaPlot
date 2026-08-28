@@ -9,6 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.image.create_image_gallery_command import (
     CreateImageGalleryCommand,
 )
@@ -22,7 +23,7 @@ class TestCreateImageGalleryCommand:
     def test_execute_creates_gallery_with_given_name(self, app_context_with_project):
         command = CreateImageGalleryCommand(app_context_with_project, gallery_name="My Gallery")
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         project = app_context_with_project.get_app_state().current_project
         gallery = project.find_item(command.created_gallery_id)
         assert isinstance(gallery, ImageGallery)
@@ -31,7 +32,7 @@ class TestCreateImageGalleryCommand:
     def test_execute_generates_default_name_when_none_given(self, app_context_with_project):
         command = CreateImageGalleryCommand(app_context_with_project)
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         project = app_context_with_project.get_app_state().current_project
         gallery = project.find_item(command.created_gallery_id)
         assert gallery.name.startswith("New Image Gallery")
@@ -81,7 +82,7 @@ class TestCreateImageGalleryCommandNoProject:
         command = CreateImageGalleryCommand(app_context, gallery_name="Trip")
         result = command.execute()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_action_or_cancel.assert_called_once()
 
     def test_execute_continues_after_the_user_creates_a_project(self, mock_app_context):
@@ -99,7 +100,7 @@ class TestCreateImageGalleryCommandNoProject:
         command = CreateImageGalleryCommand(app_context, gallery_name="Trip")
         result = command.execute()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
         assert project.find_item(command.created_gallery_id) is command.created_gallery
 
 
@@ -123,14 +124,14 @@ class TestCreateImageGalleryCommandLogging:
         command = CreateImageGalleryCommand(app_context_with_project, gallery_name="Trip")
 
         with caplog.at_level(logging.WARNING):
-            assert command.execute() is False
+            assert command.execute() is CommandResult.FAILURE
         assert "CreateImageGalleryCommand.execute" in caplog.text
 
     def test_execute_logs_a_warning_when_gallery_name_is_empty(self, app_context_with_project, caplog):
         command = CreateImageGalleryCommand(app_context_with_project, gallery_name="   ")
 
         with caplog.at_level(logging.WARNING):
-            assert command.execute() is False
+            assert command.execute() is CommandResult.FAILURE
         assert "CreateImageGalleryCommand.execute" in caplog.text
 
     def test_redo_logs_a_warning_when_current_project_is_none(self, app_context_with_project, caplog):

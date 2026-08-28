@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
@@ -31,7 +31,7 @@ class CreateNoteCommand(Command):
         self.project = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the create note command."""
         try:
             # Check if we have a project loaded
@@ -44,14 +44,14 @@ class CreateNoteCommand(Command):
                     self.app_context, "New Note",
                     "Creating a note requires a project. Create a new project to continue?",
                 ):
-                    return False
+                    return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "CreateNoteCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             # Get note name if not provided
             if not self.note_name:
@@ -85,14 +85,14 @@ class CreateNoteCommand(Command):
                 self.folder_id or "root"
             )
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to create note: {str(e)}"
             self.logger.error("CreateNoteCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message(
                 "Create Note Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def undo(self):
         """Undo the create note command."""

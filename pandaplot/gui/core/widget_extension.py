@@ -104,7 +104,7 @@ class WidgetExtension:
             pass  # Ignore errors during cleanup
 
 
-def unsubscribe_widget_tree(widget) -> None:
+def unsubscribe_widget_tree(widget: Any) -> None:
     """Unsubscribe `widget` and every WidgetExtension descendant of it from
     the event bus.
 
@@ -120,21 +120,31 @@ def unsubscribe_widget_tree(widget) -> None:
     Duck-typed like the callers this replaces: `widget` need not be a real
     QWidget/WidgetExtension (tests exercise this with plain Mocks), so both
     the top-level call and the descendant search degrade to a no-op rather
-    than raising when the expected methods aren't there.
+    than raising when the expected methods aren't there. Also tolerates the
+    widget's own C++ object already being gone by the time this runs (a
+    shiboken RuntimeError, not a TypeError) -- the exact "already deleted"
+    failure mode this helper exists to prevent downstream, so it must not
+    itself blow up on it.
     """
     if hasattr(widget, "unsubscribe_all"):
-        widget.unsubscribe_all()
+        try:
+            widget.unsubscribe_all()
+        except RuntimeError:
+            return
 
     find_children = getattr(widget, "findChildren", None)
     if not callable(find_children):
         return
     try:
         children = list(find_children(WidgetExtension))
-    except TypeError:
+    except (TypeError, RuntimeError):
         return
     for child in children:
         if hasattr(child, "unsubscribe_all"):
-            child.unsubscribe_all()
+            try:
+                child.unsubscribe_all()
+            except RuntimeError:
+                continue
 
 
 class PMainWindow(WidgetExtension, QMainWindow):

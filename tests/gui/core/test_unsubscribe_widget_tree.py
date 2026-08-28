@@ -8,6 +8,7 @@ any other event that child listens for) invoked its handler on a widget
 whose C++ object could already be partially torn down.
 """
 import sys
+from unittest.mock import Mock
 
 import pytest
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
@@ -77,3 +78,37 @@ def test_unsubscribe_widget_tree_tolerates_plain_qwidget():
     """A widget with no WidgetExtension mixin at all must not raise."""
     widget = QWidget()
     unsubscribe_widget_tree(widget)  # no-op, must not raise
+
+
+def test_unsubscribe_widget_tree_tolerates_already_deleted_widget():
+    """The widget's own C++ object can already be gone by the time this
+    runs (shiboken raises RuntimeError, not TypeError) -- this is the exact
+    "already deleted" failure this helper exists to prevent downstream, so
+    it must degrade to a no-op rather than raising itself."""
+    widget = Mock()
+    widget.unsubscribe_all.side_effect = RuntimeError(
+        "Internal C++ object already deleted."
+    )
+    widget.findChildren.side_effect = RuntimeError(
+        "Internal C++ object already deleted."
+    )
+
+    unsubscribe_widget_tree(widget)  # must not raise
+
+    widget.unsubscribe_all.assert_called_once()
+
+
+def test_unsubscribe_widget_tree_tolerates_a_child_already_deleted():
+    """One nested child raising on unsubscribe_all() must not stop the
+    others in the same subtree from being unsubscribed."""
+    ok_child = Mock()
+    dying_child = Mock()
+    dying_child.unsubscribe_all.side_effect = RuntimeError("already deleted")
+
+    widget = Mock()
+    widget.findChildren.return_value = [dying_child, ok_child]
+
+    unsubscribe_widget_tree(widget)  # must not raise
+
+    dying_child.unsubscribe_all.assert_called_once()
+    ok_child.unsubscribe_all.assert_called_once()

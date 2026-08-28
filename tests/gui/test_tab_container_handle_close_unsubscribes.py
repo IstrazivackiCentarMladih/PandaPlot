@@ -16,6 +16,8 @@ def _container_stub():
     container.publish_event = Mock()
     container._maybe_collapse_pane = Mock()
     container._persist_tab_session = Mock()
+    container.logger = Mock()
+    container.panes = []
     return container
 
 
@@ -89,3 +91,33 @@ def test_handle_close_tolerates_widget_without_unsubscribe_all():
     container._handle_close(pane, 0)
 
     assert widget.deleted is True
+
+
+def test_on_project_closed_unsubscribes_floating_window_content():
+    """Same race as test_close_tab_by_item_id_unsubscribes_floating_window_content,
+    but via the project-closed path: on_project_closed() used to call
+    window.close_without_redock() directly for every popped-out tab, without
+    ever detaching/unsubscribing its content first -- leaving a nested
+    WidgetExtension (e.g. a chart editor) subscribed during the same
+    deleteLater()-deferred-destruction window this file's other tests guard
+    against."""
+    container = _container_stub()
+
+    content = Mock()
+    content.unsubscribe_all = Mock()
+    content.deleteLater = Mock()
+
+    window = Mock()
+    window.take_content.return_value = content
+
+    container.floating_windows = {"item-1": window}
+    container.tabs = {"item-1": content}
+
+    container.on_project_closed()
+
+    window.take_content.assert_called_once()
+    content.unsubscribe_all.assert_called_once()
+    content.deleteLater.assert_called_once()
+    window.close_without_redock.assert_called_once()
+    assert container.floating_windows == {}
+    assert container.tabs == {}

@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.note import CreateNoteCommand
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
@@ -75,7 +76,7 @@ class TestCreateNoteCommand:
         command = CreateNoteCommand(app_context, "Test Note")
         result = command.execute()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_action_or_cancel.assert_called_once()
 
     def test_execute_continues_after_the_user_creates_a_project(self, mock_app_context):
@@ -96,7 +97,7 @@ class TestCreateNoteCommand:
         command = CreateNoteCommand(app_context, "Test Note")
         result = command.execute()
 
-        assert result is True
+        assert result is CommandResult.SUCCESS
         assert command.created_note_id is not None
         assert project.find_item(command.created_note_id) is command.created_note
 
@@ -109,7 +110,7 @@ class TestCreateNoteCommand:
         command = CreateNoteCommand(app_context, "Test Note")
         result = command.execute()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
 
     def test_execute_logs_warning_when_no_project_loaded(self, mock_app_context, caplog):
         """Test execute logs a warning when no project is loaded."""
@@ -120,7 +121,7 @@ class TestCreateNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.execute()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "Test Note" in caplog.text
 
     def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
@@ -133,7 +134,7 @@ class TestCreateNoteCommand:
         with caplog.at_level(logging.WARNING):
             result = command.execute()
 
-        assert result is False
+        assert result is CommandResult.FAILURE
         assert "CreateNoteCommand.execute" in caplog.text
 
     def test_redo_logs_warning_when_current_project_none(self, mock_app_context, caplog):
@@ -166,7 +167,7 @@ class TestCreateNoteCommand:
             
             result = command.execute()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         assert command.created_note_id == "test-uuid"
         assert command.created_note is not None
         assert command.created_note.name == "New Note"
@@ -194,7 +195,7 @@ class TestCreateNoteCommand:
             
             result = command.execute()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         assert command.created_note is not None
         assert command.created_note.name == "Custom Note"
         assert command.created_note.content == "Custom content"
@@ -214,7 +215,7 @@ class TestCreateNoteCommand:
             
             result = command.execute()
         
-        assert result is True
+        assert result is CommandResult.SUCCESS
         sample_project.add_item.assert_called_once_with(command.created_note, parent_id="parent-folder")
         
         # Check event data
@@ -234,7 +235,7 @@ class TestCreateNoteCommand:
         command = CreateNoteCommand(app_context, "Test Note")
         result = command.execute()
         
-        assert result is False
+        assert result is CommandResult.FAILURE
         ui_controller.show_error_message.assert_called_once()
         assert "Failed to create note: Test error" in ui_controller.show_error_message.call_args[0][1]
 

@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
@@ -30,7 +30,7 @@ class CreateImageGalleryCommand(Command):
         self.project = None
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the create image gallery command."""
         try:
             self.logger.info("Executing CreateImageGalleryCommand")
@@ -40,14 +40,14 @@ class CreateImageGalleryCommand(Command):
                     self.app_context, "Create Image Gallery",
                     "Creating an image gallery requires a project. Create a new project to continue?",
                 ):
-                    return False
+                    return CommandResult.FAILURE
 
             self.project = self.app_state.current_project
             if not self.project:
                 self.logger.warning(
                     "CreateImageGalleryCommand.execute: has_project is True but current_project is None"
                 )
-                return False
+                return CommandResult.FAILURE
 
             if not self.gallery_name:
                 existing_galleries = [item for item in self.project.get_all_items()
@@ -65,7 +65,7 @@ class CreateImageGalleryCommand(Command):
                     "Create Image Gallery",
                     "Gallery name cannot be empty."
                 )
-                return False
+                return CommandResult.FAILURE
 
             self.created_gallery_id = str(uuid.uuid4())
             self.created_gallery = ImageGallery(
@@ -86,13 +86,13 @@ class CreateImageGalleryCommand(Command):
                 "CreateImageGalleryCommand: Created gallery '%s' (id=%s) under parent %s",
                 gallery_name, self.created_gallery_id, self.parent_id or "root"
             )
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to create image gallery: {str(e)}"
             self.logger.error("CreateImageGalleryCommand Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Create Image Gallery Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     @override
     def undo(self):

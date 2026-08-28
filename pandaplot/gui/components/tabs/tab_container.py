@@ -648,9 +648,16 @@ class TabContainer(PWidget):
         self.logger.info("Closing all project-related tabs")
 
         # Close any popped-out tabs (their windows aren't inside the panes).
+        # Detach content first so it can be unsubscribed synchronously (see
+        # _handle_close) before the window's WA_DeleteOnClose defers its
+        # actual destruction.
         for item_id in list(self.floating_windows.keys()):
             window = self.floating_windows.pop(item_id)
             self.tabs.pop(item_id, None)
+            content = window.take_content()
+            if content is not None:
+                unsubscribe_widget_tree(content)
+                content.deleteLater()
             window.close_without_redock()
 
         # Close all project-related tabs (tracked in self.tabs dictionary)
