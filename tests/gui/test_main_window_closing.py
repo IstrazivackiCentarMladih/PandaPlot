@@ -46,10 +46,10 @@ def test_ignores_event_when_close_already_in_progress():
 
 
 def test_close_is_still_called_and_flag_cleared_when_cleanup_raises():
-    """Cleanup happens before close() inside the same try block; if a future
-    cleanup step raises, close() must not run (an exception before it means
-    we skip straight to the except/finally), but the guard flag must still
-    be released afterward so the app isn't stuck refusing to close."""
+    """If a cleanup step raises, close() must still run (in the finally
+    block) so the app doesn't stay open despite the "forcing application
+    exit" log message, and the guard flag must still be released afterward
+    so the app isn't stuck refusing to close."""
     window = _window()
     window.close = Mock()
 
@@ -61,6 +61,6 @@ def test_close_is_still_called_and_flag_cleared_when_cleanup_raises():
 
     window.on_app_closing_event({})
 
-    window.close.assert_not_called()
+    window.close.assert_called_once()
     assert window._is_closing is False
     window.logger.error.assert_called_once()

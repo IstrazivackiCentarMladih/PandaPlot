@@ -159,13 +159,6 @@ class PandaMainWindow(PMainWindow):
 
             # Log cleanup completion
             self.logger.info("Application cleanup completed successfully")
-
-            # Keep the guard flag True for the full duration of close(), since
-            # that's the call that could re-enter this handler (e.g. via a
-            # synchronous QCloseEvent side effect) -- resetting the flag
-            # before calling close() would make the re-entrancy guard above
-            # a no-op.
-            self.close()
         except Exception as e:
             self.logger.error("Error during cleanup: %s",
                               str(e), exc_info=True)
@@ -173,5 +166,13 @@ class PandaMainWindow(PMainWindow):
             self.logger.warning(
                 "Forcing application exit despite cleanup errors")
         finally:
-            self._is_closing = False
+            # close() must run unconditionally, whether cleanup succeeded or
+            # raised, and the guard flag must stay True for its full duration
+            # since it's the call that could re-enter this handler (e.g. via
+            # a synchronous QCloseEvent side effect) -- resetting the flag
+            # first would make the re-entrancy guard above a no-op.
+            try:
+                self.close()
+            finally:
+                self._is_closing = False
 
