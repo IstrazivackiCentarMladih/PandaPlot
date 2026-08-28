@@ -40,8 +40,8 @@ def qapp():
     yield app
 
 
-LIGHT_TOKENS = {"text_hint": "#9AA0AB"}
-DARK_TOKENS = {"text_hint": "#6B7280"}
+LIGHT_TOKENS = {"text_disabled": "#AEB2BC"}
+DARK_TOKENS = {"text_disabled": "#5B6270"}
 
 
 def _menu_with_palette(palette, tokens=None):
@@ -121,11 +121,11 @@ def test_disabled_menu_items_are_visibly_muted_without_hovering(palette, tokens)
     disabled_rule = _rule(menu.styleSheet(), "QMenu::item:disabled")
     enabled_rule = _rule(menu.styleSheet(), "QMenu::item")
 
-    assert disabled_rule["color"] == tokens["text_hint"]
+    assert disabled_rule["color"] == tokens["text_disabled"]
     assert disabled_rule["color"] != enabled_rule.get("color", palette["base_fg"])
     assert disabled_rule["color"] != palette["base_fg"]
 
     # Hovering a disabled item must not light it up as if it were enabled.
     disabled_selected_rule = _rule(menu.styleSheet(), "QMenu::item:disabled:selected")
-    assert disabled_selected_rule["color"] == tokens["text_hint"]
+    assert disabled_selected_rule["color"] == tokens["text_disabled"]
     assert disabled_selected_rule["background-color"] == "transparent"

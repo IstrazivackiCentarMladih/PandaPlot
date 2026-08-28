@@ -49,9 +49,10 @@ class MainMenu(PMenuBar):
         accent = palette.get("accent", "#4A90E2")
         card_pressed = palette.get("card_pressed", "#dee2e6")
         # Standard Qt disabled-item graying is too subtle against this menu's
-        # explicit colors (issue #255) -- use the same hint-level muted text
-        # design tokens already use for their most de-emphasized state.
-        text_hint = tokens.get("text_hint", "#9AA0AB")
+        # explicit colors (issue #255) -- use the dedicated disabled-text
+        # token (see #257) rather than the merely-similar-looking text_hint,
+        # which is semantically "hint text", not "disabled".
+        text_disabled = tokens.get("text_disabled", "#9AA0AB")
         
         # Apply dynamic theme-based styling
         self.setStyleSheet(f"""
@@ -94,11 +95,11 @@ class MainMenu(PMenuBar):
                 color: {base_fg};
             }}
             QMenu::item:disabled {{
-                color: {text_hint};
+                color: {text_disabled};
                 background-color: transparent;
             }}
             QMenu::item:disabled:selected {{
-                color: {text_hint};
+                color: {text_disabled};
                 background-color: transparent;
             }}
             QMenu::separator {{
