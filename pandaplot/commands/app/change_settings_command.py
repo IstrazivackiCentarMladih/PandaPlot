@@ -45,13 +45,16 @@ class ChangeSettingsCommand(Command):
         return CommandResult.SUCCESS
 
     @override
-    def undo(self):
-        if self.old_mapping is not None:
-            self.config_manager.update(self.old_mapping, save=True)
+    def undo(self) -> CommandResult:
+        if self.old_mapping is None:
+            return CommandResult.FAILURE
+        self.config_manager.update(self.old_mapping, save=True)
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         self.config_manager.update(self.new_mapping, save=True)
+        return CommandResult.SUCCESS
 
     @staticmethod
     def _extract_matching(source: Mapping[str, Any], mapping: Mapping[str, Any]) -> dict[str, Any]:

@@ -5,6 +5,7 @@ from abc import abstractmethod
 from collections.abc import Callable
 from typing import Any, Dict, List, Optional, Tuple
 
+from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QDialog, QMainWindow, QMenuBar, QTabWidget, QWidget, QWizard, QWizardPage
 
 from pandaplot.models.events.event_types import ThemeEvents
@@ -105,17 +106,24 @@ class WidgetExtension:
 
 
 def unsubscribe_widget_tree(widget: Any) -> None:
-    """Unsubscribe `widget` and every WidgetExtension descendant of it from
-    the event bus.
+    """Unsubscribe `widget` and every descendant of it that subscribes to
+    the event bus, from the event bus.
 
     deleteLater() only defers actual C++ destruction, so a widget left
     subscribed can still have its handler invoked -- e.g. by a theme change --
     between now and whenever Qt gets around to the deferred delete. That
-    handler may reach into a nested WidgetExtension (like a tab's chart
-    editor) that has its own independent subscriptions on top of the
-    top-level widget's own, so unsubscribing only the top-level widget still
-    leaves those live. Call this instead of `widget.unsubscribe_all()` alone
-    wherever a widget subtree is being torn down.
+    handler may reach into a nested subscriber (like a tab's chart editor, or
+    a non-widget QObject such as a table model parented under the tab) that
+    has its own independent subscriptions on top of the top-level widget's
+    own, so unsubscribing only the top-level widget still leaves those live.
+    Call this instead of `widget.unsubscribe_all()` alone wherever a widget
+    subtree is being torn down.
+
+    The descendant search walks every QObject in the subtree, not just
+    WidgetExtension ones: a subscriber doesn't have to be a widget at all
+    (e.g. PandasTableModel subscribes directly to dataset events despite
+    being a QAbstractTableModel, not a widget) -- it only needs its own
+    `unsubscribe_all()` and to be Qt-parented somewhere under `widget`.
 
     Duck-typed like the callers this replaces: `widget` need not be a real
     QWidget/WidgetExtension (tests exercise this with plain Mocks), so both
@@ -136,7 +144,7 @@ def unsubscribe_widget_tree(widget: Any) -> None:
     if not callable(find_children):
         return
     try:
-        children = list(find_children(WidgetExtension))
+        children = list(find_children(QObject))
     except (TypeError, RuntimeError):
         return
     for child in children:

@@ -295,6 +295,11 @@ class TabContainer(PWidget):
             if content is not None:
                 unsubscribe_widget_tree(content)
                 content.deleteLater()
+            # The window itself (FloatingTabWindow -> PMainWindow) has its own
+            # theme subscription independent of its content's -- close_without_redock()
+            # -> close() defers the window's own destruction the same way, so it
+            # needs the same synchronous unsubscribe before that happens.
+            unsubscribe_widget_tree(window)
             window.close_without_redock()
             self._persist_tab_session()
             return
@@ -658,6 +663,10 @@ class TabContainer(PWidget):
             if content is not None:
                 unsubscribe_widget_tree(content)
                 content.deleteLater()
+            # The window itself (FloatingTabWindow -> PMainWindow) has its own
+            # theme subscription independent of its content's -- see the same
+            # fix in close_tab_by_item_id.
+            unsubscribe_widget_tree(window)
             window.close_without_redock()
 
         # Close all project-related tabs (tracked in self.tabs dictionary)

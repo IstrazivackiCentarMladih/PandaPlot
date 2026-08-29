@@ -65,6 +65,10 @@ def test_close_tab_by_item_id_unsubscribes_floating_window_content():
     window.take_content.assert_called_once()
     content.unsubscribe_all.assert_called_once()
     content.deleteLater.assert_called_once()
+    # The window itself (FloatingTabWindow -> PMainWindow) has its own theme
+    # subscription independent of its content's, and is itself deferred-deleted
+    # by close_without_redock()'s WA_DeleteOnClose -- same race, same fix.
+    window.unsubscribe_all.assert_called_once()
     window.close_without_redock.assert_called_once()
     assert "item-1" not in container.floating_windows
 
@@ -118,6 +122,7 @@ def test_on_project_closed_unsubscribes_floating_window_content():
     window.take_content.assert_called_once()
     content.unsubscribe_all.assert_called_once()
     content.deleteLater.assert_called_once()
+    window.unsubscribe_all.assert_called_once()
     window.close_without_redock.assert_called_once()
     assert container.floating_windows == {}
     assert container.tabs == {}

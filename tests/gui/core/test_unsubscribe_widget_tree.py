@@ -10,12 +10,15 @@ whose C++ object could already be partially torn down.
 import sys
 from unittest.mock import Mock
 
+import pandas as pd
 import pytest
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 
+from pandaplot.gui.components.tabs.dataset.pandas_table_model import PandasTableModel
 from pandaplot.gui.core.widget_extension import PWidget, unsubscribe_widget_tree
 from pandaplot.models.events.event_bus import EventBus
-from pandaplot.models.events.event_types import ThemeEvents
+from pandaplot.models.events.event_types import DatasetEvents, ThemeEvents
+from pandaplot.models.project.items.dataset import Dataset
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -112,3 +115,23 @@ def test_unsubscribe_widget_tree_tolerates_a_child_already_deleted():
 
     dying_child.unsubscribe_all.assert_called_once()
     ok_child.unsubscribe_all.assert_called_once()
+
+
+def test_unsubscribe_widget_tree_covers_non_widget_qobject_subscribers():
+    """PandasTableModel subscribes directly to dataset events despite being
+    a QAbstractTableModel, not a WidgetExtension -- e.g. DatasetTab parents
+    one under itself. The descendant search must not be scoped to
+    WidgetExtension only, or a subscriber like this would stay subscribed
+    after its owning tab closes and still react to a later dataset event."""
+    app_context = _FakeAppContext()
+    parent = QWidget()
+    dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1, 2, 3]}))
+    model = PandasTableModel(app_context, dataset, parent=parent)
+
+    subscribers = app_context.event_bus._subscribers[DatasetEvents.DATASET_DATA_CHANGED]
+    assert model.on_dataset_changed in subscribers
+
+    unsubscribe_widget_tree(parent)
+
+    subscribers = app_context.event_bus._subscribers[DatasetEvents.DATASET_DATA_CHANGED]
+    assert model.on_dataset_changed not in subscribers
