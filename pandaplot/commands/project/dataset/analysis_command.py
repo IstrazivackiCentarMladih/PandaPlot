@@ -7,7 +7,7 @@ from typing import Any, Dict, override
 import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.dataset.column_change_events import emit_columns_changed
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items import Dataset
@@ -54,7 +54,7 @@ class AnalysisCommand(Command):
         self.parameters = analysis_config.get("parameters", {})
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """Execute the analysis and add result column to dataset."""
         try:
             self.logger.info("Executing AnalysisCommand")
@@ -64,11 +64,11 @@ class AnalysisCommand(Command):
                 message = f"Dataset {self.dataset_id} not found"
                 self.logger.warning(f"Analysis execution failed: {message}")
                 self.ui_controller.show_error_message("Analysis Error", message)
-                return False
+                return CommandResult.FAILURE
 
             # Validate inputs
             if not self._validate_inputs():
-                return False
+                return CommandResult.FAILURE
 
             # Store original state for undo
             df = self.dataset.data
@@ -76,7 +76,7 @@ class AnalysisCommand(Command):
                 message = "Dataset is empty"
                 self.logger.warning(f"Analysis execution failed: {message}")
                 self.ui_controller.show_error_message("Analysis Error", message)
-                return False
+                return CommandResult.FAILURE
             self._store_original_state(df)
 
             # Execute analysis
@@ -85,7 +85,7 @@ class AnalysisCommand(Command):
                 message = "Analysis returned no result"
                 self.logger.warning(f"Analysis execution failed: {message}")
                 self.ui_controller.show_error_message("Analysis Error", message)
-                return False
+                return CommandResult.FAILURE
 
             # Add result column to dataset
             df_copy = df.copy()
@@ -117,24 +117,24 @@ class AnalysisCommand(Command):
                 added_columns=[] if self.column_existed_before else [self.new_column_name],
                 replaced_columns=[self.new_column_name] if self.column_existed_before else [],
             )
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(f"Analysis execution failed: {e}")
             self.ui_controller.show_error_message("Analysis Error", str(e))
-            return False
+            return CommandResult.FAILURE
 
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         """Remove the analysis result column or restore original data."""
         try:
             if not self.dataset or not isinstance(self.dataset, Dataset):
                 self.logger.warning("Undo failed: Invalid dataset reference")
-                return False
+                return CommandResult.FAILURE
 
             df = self.dataset.data
             if df is None:
                 self.logger.warning("Undo failed: No data in dataset")
-                return False
+                return CommandResult.FAILURE
 
             from pandaplot.models.events.event_data import (
                 DatasetColumnsRemovedData,
@@ -176,13 +176,13 @@ class AnalysisCommand(Command):
 
             self.logger.info(
                 f"Analysis undone successfully: {self.new_column_name}")
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(f"Analysis undo failed: {e}")
-            return False
+            return CommandResult.FAILURE
 
-    def redo(self) -> bool:
+    def redo(self) -> CommandResult:
         """Re-execute the analysis."""
         return self.execute()
 

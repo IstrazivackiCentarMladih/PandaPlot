@@ -3,6 +3,7 @@
 import logging
 from unittest.mock import Mock
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.project.save_project_command import (
     SaveProjectAsCommand,
     SaveProjectCommand,
@@ -27,7 +28,7 @@ def test_execute_logs_a_warning_when_save_already_in_progress(caplog):
     command.is_saving = True
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "SaveProjectCommand.execute" in caplog.text
 
 
@@ -36,7 +37,7 @@ def test_execute_logs_a_warning_when_no_project_loaded(caplog):
     command = SaveProjectCommand(app_context)
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "SaveProjectCommand.execute" in caplog.text
 
 
@@ -45,7 +46,7 @@ def test_execute_logs_a_warning_when_current_project_none(caplog):
     command = SaveProjectCommand(app_context)
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "SaveProjectCommand.execute" in caplog.text
 
 
@@ -54,7 +55,7 @@ def test_save_as_execute_logs_a_warning_when_no_project_loaded(caplog):
     command = SaveProjectAsCommand(app_context)
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "SaveProjectAsCommand.execute" in caplog.text
 
 
@@ -63,7 +64,7 @@ def test_save_as_execute_logs_a_warning_when_current_project_none(caplog):
     command = SaveProjectAsCommand(app_context)
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "SaveProjectAsCommand.execute" in caplog.text
 
 

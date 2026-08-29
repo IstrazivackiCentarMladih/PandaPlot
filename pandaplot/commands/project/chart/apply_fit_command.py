@@ -2,7 +2,7 @@
 
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.events import ChartEvents
@@ -75,7 +75,7 @@ class ApplyFitCommand(Command):
         return chart
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         chart = self._find_chart()
 
         if chart is None:
@@ -86,7 +86,7 @@ class ApplyFitCommand(Command):
             self.ui_controller.show_error_message(
                 "Apply Fit Error", f"Chart '{self.chart_id}' not found."
             )
-            return False
+            return CommandResult.FAILURE
 
         results = self.fit_results
 
@@ -123,10 +123,10 @@ class ApplyFitCommand(Command):
             },
         )
 
-        return True
+        return CommandResult.SUCCESS
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         chart = self._find_chart()
 
         if chart is None or self.added_index is None:
@@ -134,7 +134,7 @@ class ApplyFitCommand(Command):
                 "ApplyFitCommand.undo: cannot undo for chart '%s' (chart found=%s, added_index set=%s)",
                 self.chart_id, chart is not None, self.added_index is not None,
             )
-            return
+            return CommandResult.FAILURE
 
         chart.remove_fit_data(self.added_index)
 
@@ -146,10 +146,11 @@ class ApplyFitCommand(Command):
                 "chart": chart,
             },
         )
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
-        self.execute()
+    def redo(self) -> CommandResult:
+        return self.execute()
 
     @override
     def cleanup(self) -> None:

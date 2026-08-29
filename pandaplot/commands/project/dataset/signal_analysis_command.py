@@ -11,7 +11,7 @@ from pandaplot.analysis import (
     SignalAnalysisType,
     SignalEngine,
 )
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
@@ -83,7 +83,7 @@ class SignalAnalysisCommand(Command):
         )
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         try:
             self.logger.info(
                 "Executing SignalAnalysisCommand (%s)",
@@ -97,7 +97,7 @@ class SignalAnalysisCommand(Command):
                 message = "No project loaded; cannot run signal analysis."
                 self.logger.warning(message)
                 self.ui_controller.show_error_message("Signal Analysis Error", message)
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
 
@@ -141,7 +141,7 @@ class SignalAnalysisCommand(Command):
                 self.result_dataset_id,
             )
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(
@@ -150,10 +150,10 @@ class SignalAnalysisCommand(Command):
                 exc_info=True,
             )
             self.ui_controller.show_error_message("Signal Analysis Error", str(e))
-            return False
+            return CommandResult.FAILURE
 
     @override
-    def undo(self) -> bool:
+    def undo(self) -> CommandResult:
         try:
             if (
                 not self.result_dataset_id
@@ -163,7 +163,7 @@ class SignalAnalysisCommand(Command):
                     "SignalAnalysisCommand.undo: cannot undo (result_dataset_id=%s, project loaded=%s)",
                     self.result_dataset_id, bool(self.app_state.current_project),
                 )
-                return False
+                return CommandResult.FAILURE
 
             project = self.app_state.current_project
 
@@ -183,7 +183,7 @@ class SignalAnalysisCommand(Command):
                     },
                 )
 
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             self.logger.error(
@@ -191,10 +191,10 @@ class SignalAnalysisCommand(Command):
                 e,
                 exc_info=True,
             )
-            return False
+            return CommandResult.FAILURE
 
     @override
-    def redo(self) -> bool:
+    def redo(self) -> CommandResult:
         return self.execute()
 
     @override

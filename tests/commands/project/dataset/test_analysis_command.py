@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.analysis_command import AnalysisCommand
 from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationEvents
 from pandaplot.models.project.items.dataset import Dataset
@@ -45,7 +46,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
         })
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert "dydx" in dataset.data.columns
         # d/dx of x^2 = 2x; check away from the noisy endpoints.
         assert dataset.data["dydx"].iloc[5] == pytest.approx(10.0, abs=0.1)
@@ -61,7 +62,7 @@ class TestAnalysisCommand:
             "analysis_type": "integral", "x_column": "x", "y_column": "y",
             "new_column_name": "cum", "parameters": {"start_index": 3, "end_index": 8},
         })
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
 
         col = dataset.data["cum"]
         # Values land on the segment's own rows, NaN everywhere else.
@@ -77,7 +78,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "y", "replace_existing": True,
         })
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         # 'y' was overwritten in place; no new column.
         assert list(dataset.data.columns) == ["x", "y"]
 
@@ -91,7 +92,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
         })
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_dataset_with_no_data_is_surfaced_to_the_user(self, ctx):
@@ -101,7 +102,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
         })
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_existing_target_without_replace_fails(self, ctx):
@@ -110,7 +111,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "y", "replace_existing": False,
         })
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_analysis_engine_failure_is_surfaced_to_the_user(self, ctx, monkeypatch):
@@ -123,7 +124,7 @@ class TestAnalysisCommand:
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
         })
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
         title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
         assert "boom" in message
@@ -135,7 +136,7 @@ class TestAnalysisCommand:
             "new_column_name": "dydx",
         })
         command.execute()
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
         assert "dydx" not in dataset.data.columns
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_REMOVED)
 
@@ -145,7 +146,7 @@ class TestAnalysisCommand:
             "analysis_type": "arc_length", "x_column": "x", "y_column": "y",
             "new_column_name": "arc",
         })
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         # Arc length is monotonically increasing and starts at 0.
         arc = dataset.data["arc"]
         assert arc.iloc[0] == pytest.approx(0.0)

@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.fit.perform_fit_command import PerformFitCommand
 
 
@@ -28,7 +29,7 @@ def test_execute_performs_fit(fit_service, fit_result):
         y_data=[2, 4, 6],
     )
 
-    assert command.execute() is True
+    assert command.execute() is CommandResult.SUCCESS
     assert command.result is fit_result
 
     fit_service.perform_fit.assert_called_once_with(
@@ -56,7 +57,7 @@ def test_execute_logs_a_warning_when_fit_service_returns_no_result(fit_service, 
     )
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "linear" in caplog.text
 
 
@@ -90,7 +91,7 @@ def test_undo_clears_fit_result(fit_service, fit_result):
     command.execute()
     assert command.result is fit_result
 
-    assert command.undo() is True
+    assert command.undo() is CommandResult.SUCCESS
     assert command.result is None
 
 
@@ -110,7 +111,7 @@ def test_redo_performs_fit_again(fit_service, fit_result):
     assert command.result is None
     assert fit_service.perform_fit.call_count == 1
 
-    assert command.redo() is True
+    assert command.redo() is CommandResult.SUCCESS
 
     assert command.result is fit_result
     assert fit_service.perform_fit.call_count == 2

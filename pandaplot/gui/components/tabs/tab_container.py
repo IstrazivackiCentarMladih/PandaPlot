@@ -9,7 +9,7 @@ from pandaplot.gui.components.tabs.floating_tab_window import FloatingTabWindow
 from pandaplot.gui.components.tabs.tab import CustomTabWidget
 from pandaplot.gui.components.tabs.tab_factory import TabFactory
 from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
-from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.core.widget_extension import PWidget, unsubscribe_widget_tree
 from pandaplot.models.events import (
     AnalysisEvents,
     ChartEvents,
@@ -262,10 +262,13 @@ class TabContainer(PWidget):
         # the QObject `destroyed` signal (connected in WidgetExtension), since
         # deleteLater() defers actual C++ destruction -- an event fired on the
         # event bus in that window would invoke a callback on a widget whose
-        # C++ object may already be gone, raising a shiboken RuntimeError.
+        # C++ object may already be gone, raising a shiboken RuntimeError. This
+        # must cover the whole subtree, not just `widget` itself: a tab like
+        # ChartTab embeds its own independently-subscribed child widgets (e.g.
+        # ChartEditorWidget), which unsubscribe_all() on the parent alone
+        # wouldn't reach.
         if widget:
-            if hasattr(widget, "unsubscribe_all"):
-                widget.unsubscribe_all()
+            unsubscribe_widget_tree(widget)
             widget.deleteLater()
 
         # Publish tab closed event
@@ -290,9 +293,13 @@ class TabContainer(PWidget):
             # (see _handle_close) before it's deleted along with the window.
             content = window.take_content()
             if content is not None:
-                if hasattr(content, "unsubscribe_all"):
-                    content.unsubscribe_all()
+                unsubscribe_widget_tree(content)
                 content.deleteLater()
+            # The window itself (FloatingTabWindow -> PMainWindow) has its own
+            # theme subscription independent of its content's -- close_without_redock()
+            # -> close() defers the window's own destruction the same way, so it
+            # needs the same synchronous unsubscribe before that happens.
+            unsubscribe_widget_tree(window)
             window.close_without_redock()
             self._persist_tab_session()
             return
@@ -646,9 +653,20 @@ class TabContainer(PWidget):
         self.logger.info("Closing all project-related tabs")
 
         # Close any popped-out tabs (their windows aren't inside the panes).
+        # Detach content first so it can be unsubscribed synchronously (see
+        # _handle_close) before the window's WA_DeleteOnClose defers its
+        # actual destruction.
         for item_id in list(self.floating_windows.keys()):
             window = self.floating_windows.pop(item_id)
             self.tabs.pop(item_id, None)
+            content = window.take_content()
+            if content is not None:
+                unsubscribe_widget_tree(content)
+                content.deleteLater()
+            # The window itself (FloatingTabWindow -> PMainWindow) has its own
+            # theme subscription independent of its content's -- see the same
+            # fix in close_tab_by_item_id.
+            unsubscribe_widget_tree(window)
             window.close_without_redock()
 
         # Close all project-related tabs (tracked in self.tabs dictionary)
