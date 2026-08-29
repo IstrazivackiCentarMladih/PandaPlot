@@ -1,6 +1,6 @@
 from typing import Optional, override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.project.load_project_command import LoadProjectCommand
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.config.config_manager import ConfigManager
@@ -27,7 +27,7 @@ class OpenProjectCommand(Command):
         self.was_executed = False
 
     @override
-    def execute(self):
+    def execute(self) -> CommandResult:
         """Execute the open project command."""
         try:
             self.logger.info("Executing OpenProjectCommand")
@@ -35,10 +35,10 @@ class OpenProjectCommand(Command):
             file_path = self.app_context.ui_controller.show_open_project_dialog()
 
             if file_path is None:
-                # User cancelled the dialog
+                # User cancelled the dialog -- expected, not an error.
                 self.logger.info("Open project cancelled by user")
                 self.was_executed = False
-                return
+                return CommandResult.NOOP
 
             self.logger.info(f"Opening project: {file_path}")
 
@@ -52,16 +52,21 @@ class OpenProjectCommand(Command):
                     "Invalid Project File", f"The selected file is not a valid project file:\n{file_path}"
                 )
                 self.was_executed = False
-                return
+                return CommandResult.FAILURE
 
             # Create and execute load command. The "already open"/unsaved-
             # changes checks live in LoadProjectCommand itself (shared by
             # every load path, not just this file-dialog-driven one) -- see
             # its execute() for why.
             self.load_command = LoadProjectCommand(self.app_context, file_path)
-            if self.load_command.execute() is False:
+            load_result = self.load_command.execute()
+            if load_result is not CommandResult.SUCCESS:
+                self.logger.info(
+                    "OpenProjectCommand.execute: LoadProjectCommand returned %s for '%s'",
+                    load_result, file_path,
+                )
                 self.was_executed = False
-                return False
+                return load_result
 
             self.was_executed = True
             self.logger.info(f"Project opened successfully: {file_path}")
@@ -80,29 +85,35 @@ class OpenProjectCommand(Command):
             except Exception as e:  # noqa: BLE001
                 self.logger.warning("Failed to update recent projects list: %s", e)
 
+            return CommandResult.SUCCESS
+
         except Exception as e:
             error_msg = f"Failed to open project: {str(e)}"
             self.logger.error(error_msg)
             self.app_context.ui_controller.show_error_message("Open Project Error", error_msg)
             self.was_executed = False
+            return CommandResult.FAILURE
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the open project command."""
         if self.was_executed and self.load_command:
-            self.load_command.undo()
+            result = self.load_command.undo()
             self.logger.info("Open project command undone")
+            return result
         else:
             self.logger.debug("Nothing to undo for open project command")
+            return CommandResult.NOOP
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the open project command."""
         if self.was_executed and self.load_command:
-            self.load_command.redo()
+            result = self.load_command.redo()
             self.logger.info("Open project command redone")
+            return result
         else:
             # Re-execute the command (will show dialog again)
             self.logger.debug("Re-executing open project command")
-            self.execute()
+            return self.execute()
 
     @override
     def cleanup(self) -> None:

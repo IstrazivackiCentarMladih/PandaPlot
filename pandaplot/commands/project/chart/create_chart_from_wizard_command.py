@@ -11,13 +11,13 @@ from typing import Optional, override
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
+from pandaplot.models.chart.series_style_builder import build_series_style
 from pandaplot.models.chart.series_type import SeriesType
-from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Chart, Dataset
 from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
@@ -126,7 +126,7 @@ class CreateChartFromWizardCommand(Command):
         return False
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         from pandaplot.gui.dialogs.chart.chart_wizard import ChartWizard
 
         try:
@@ -138,7 +138,7 @@ class CreateChartFromWizardCommand(Command):
                     self.app_context, "Create Chart",
                     "Creating a chart requires a project. Create a new project to continue?",
                 ):
-                    return False
+                    return CommandResult.FAILURE
             project = self.app_state.current_project
 
             dialog = ChartWizard(
@@ -178,13 +178,13 @@ class CreateChartFromWizardCommand(Command):
             dialog.show()
             dialog.raise_()
             dialog.activateWindow()
-            return True
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to open chart wizard: {str(e)}"
             self.logger.error(f"CreateChartFromWizardCommand Error: {error_msg}")
             self.ui_controller.show_error_message("Create Chart Error", error_msg)
-            return False
+            return CommandResult.FAILURE
 
     def _on_wizard_finished(self, result: int, dialog: Optional[QDialog] = None) -> None:
         """Runs once the user actually finishes the wizard (Finish or Cancel).
@@ -248,33 +248,27 @@ class CreateChartFromWizardCommand(Command):
                 chart.config["show_grid_x"] = dialog.get_show_grid()
                 chart.config["show_grid_y"] = dialog.get_show_grid()
                 series_type = SeriesType(chart.chart_type)
-                spec = SERIES_TYPE_SPECS[series_type]
-                style_cls = spec.style_cls
                 for index, series_config in enumerate(series_configs):
                     # Cycle through the same default palette data_tab.py's
                     # "+Add series" uses, so multiple wizard-created series
                     # aren't all left on the style class's own single
                     # hardcoded default color.
                     color = _DEFAULT_SERIES_COLORS[index % len(_DEFAULT_SERIES_COLORS)]
-                    if spec.supports_error_bars:
-                        style = style_cls(color=color, error_bars=ErrorBarConfig(
+                    style = build_series_style(
+                        series_type,
+                        color=color,
+                        error_bars=ErrorBarConfig(
                             x_error_column_id=series_config["x_error_column_id"],
                             y_error_column_id=series_config["y_error_column_id"],
                             x_error_minus_column_id=series_config.get("x_error_minus_column_id", ""),
                             y_error_minus_column_id=series_config.get("y_error_minus_column_id", ""),
                             error_symmetric=series_config["error_symmetric"],
-                        ))
-                    elif series_type == SeriesType.VECTOR:
-                        style = style_cls(
-                            vector_color=color,
-                            u_column_id=series_config.get("u_column_id", ""),
-                            v_column_id=series_config.get("v_column_id", ""),
-                            magnitude_column_id=series_config.get("magnitude_column_id", ""),
-                        )
-                    elif series_type in (SeriesType.COLORMAP, SeriesType.HEATMAP):
-                        style = style_cls(z_column_id=series_config.get("z_column_id", ""))
-                    else:
-                        style = style_cls(color=color)
+                        ),
+                        u_column_id=series_config.get("u_column_id", ""),
+                        v_column_id=series_config.get("v_column_id", ""),
+                        magnitude_column_id=series_config.get("magnitude_column_id", ""),
+                        z_column_id=series_config.get("z_column_id", ""),
+                    )
                     chart.add_data_series(
                         series_config["dataset_id"],
                         x_column_id=series_config["x_column_id"],
@@ -312,18 +306,19 @@ class CreateChartFromWizardCommand(Command):
             self._dialog = None
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Unreachable via CommandExecutor: occupies_undo_slot() is False, so
         this command is never pushed onto undo_stack/redo_stack, and the
         executor's undo()/redo() only ever act on stack contents. Undoing
         the chart's creation is CreateChartCommand's job. Kept as a no-op
-        only to satisfy the abstract Command interface."""
-        return
+        only to satisfy the abstract Command interface; SUCCESS is reported
+        since "nothing to undo here" is the expected, correct outcome."""
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """See undo() -- unreachable via CommandExecutor for the same reason."""
-        return
+        return CommandResult.SUCCESS
 
     @override
     def cleanup(self) -> None:

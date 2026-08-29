@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, Mock, call
 import pytest
 
 from pandaplot.commands.app.exit_command import ExitCommand
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
 
@@ -311,7 +311,7 @@ class TestExitCommandUnsavedChangesGuard:
         app_context, _ = self._make_context(has_project=False, is_modified=False)
         command = ExitCommand(app_context)
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         app_context.get_ui_controller.return_value.show_question.assert_not_called()
         app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
 
@@ -319,7 +319,7 @@ class TestExitCommandUnsavedChangesGuard:
         app_context, _ = self._make_context(has_project=True, is_modified=False)
         command = ExitCommand(app_context)
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         app_context.get_ui_controller.return_value.show_question.assert_not_called()
         app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
 
@@ -328,7 +328,7 @@ class TestExitCommandUnsavedChangesGuard:
         app_context.get_ui_controller.return_value.show_question.return_value = True
         command = ExitCommand(app_context)
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         app_context.get_ui_controller.return_value.show_question.assert_called_once()
         app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
 
@@ -337,7 +337,7 @@ class TestExitCommandUnsavedChangesGuard:
         app_context.get_ui_controller.return_value.show_question.return_value = False
         command = ExitCommand(app_context)
 
-        assert command.execute() is False
+        assert command.execute() is CommandResult.NOOP
         app_context.event_bus.emit.assert_not_called()
 
 

@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.project.load_project_command import LoadProjectCommand
 
 
@@ -100,7 +101,7 @@ class TestLoadProjectCommandGuards:
         app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
         command = LoadProjectCommand(app_context, "/p/current.pplot")
 
-        assert command.execute() is False
+        assert command.execute() is CommandResult.NOOP
         command.task_scheduler.run_task.assert_not_called()
 
     def test_execute_treats_equivalent_paths_as_the_same_file(self):
@@ -110,7 +111,7 @@ class TestLoadProjectCommandGuards:
         app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
         command = LoadProjectCommand(app_context, "/p/sub/../current.pplot")
 
-        assert command.execute() is False
+        assert command.execute() is CommandResult.NOOP
         command.task_scheduler.run_task.assert_not_called()
 
     def test_execute_proceeds_without_asking_when_unmodified(self):
@@ -118,7 +119,7 @@ class TestLoadProjectCommandGuards:
             has_project=True, project_file_path="/p/current.pplot", is_modified=False)
         command = LoadProjectCommand(app_context, "/p/other.pplot")
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         command.ui_controller.show_question.assert_not_called()
         command.task_scheduler.run_task.assert_called_once()
 
@@ -128,7 +129,7 @@ class TestLoadProjectCommandGuards:
         command = LoadProjectCommand(app_context, "/p/other.pplot")
         command.ui_controller.show_question.return_value = True
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         command.ui_controller.show_question.assert_called_once()
         command.task_scheduler.run_task.assert_called_once()
 
@@ -138,14 +139,14 @@ class TestLoadProjectCommandGuards:
         command = LoadProjectCommand(app_context, "/p/other.pplot")
         command.ui_controller.show_question.return_value = False
 
-        assert command.execute() is False
+        assert command.execute() is CommandResult.NOOP
         command.task_scheduler.run_task.assert_not_called()
 
     def test_execute_proceeds_without_asking_when_no_project_loaded(self):
         app_context, _ = _make_configured_app_context(has_project=False)
         command = LoadProjectCommand(app_context, "/p/new.pplot")
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         command.ui_controller.show_question.assert_not_called()
         command.task_scheduler.run_task.assert_called_once()
 

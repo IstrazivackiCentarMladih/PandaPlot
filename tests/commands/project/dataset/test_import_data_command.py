@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.import_data_command import ImportDataCommand
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
@@ -116,7 +117,7 @@ class TestImportDataCommandLogging:
         command = ImportDataCommand(app_context)
 
         with caplog.at_level(logging.WARNING):
-            assert command.execute() is False
+            assert command.execute() is CommandResult.FAILURE
         assert "no project" in caplog.text.lower()
         ui_controller.show_action_or_cancel.assert_called_once()
 
@@ -145,7 +146,7 @@ class TestImportDataCommandLogging:
         # Proceeded past the "no project" gate (opened the import wizard)
         # instead of returning False immediately for lack of a project.
         mock_dialog_cls.assert_called_once()
-        assert result is False  # false because the *import* wizard was cancelled, not the project offer
+        assert result is CommandResult.FAILURE  # failure because the *import* wizard was cancelled, not the project offer
 
     def test_execute_logs_warning_when_current_project_none(self, mock_app_context, caplog):
         """has_project=True but current_project=None is the same inconsistent
@@ -158,7 +159,7 @@ class TestImportDataCommandLogging:
         command = ImportDataCommand(app_context)
 
         with caplog.at_level(logging.WARNING):
-            assert command.execute() is False
+            assert command.execute() is CommandResult.FAILURE
         assert "no project" in caplog.text.lower()
         ui_controller.show_action_or_cancel.assert_called_once()
 

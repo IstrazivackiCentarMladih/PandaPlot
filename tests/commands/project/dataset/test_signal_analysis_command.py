@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from pandaplot.analysis import SignalAnalysisType
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
@@ -72,7 +73,7 @@ class TestSignalAnalysisCommand:
             sampling_rate=1000,
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
 
         results = project.find_item(
             command.result_dataset_id
@@ -97,13 +98,13 @@ class TestSignalAnalysisCommand:
             "signal",
         )
 
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
 
         new_id = command.result_dataset_id
 
         assert project.find_item(new_id) is not None
 
-        assert command.undo() is True
+        assert command.undo() is CommandResult.SUCCESS
 
         assert project.find_item(new_id) is None
 
@@ -122,7 +123,7 @@ class TestSignalAnalysisCommand:
             sampling_rate=1000,
         )
 
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
 
         assert command.result_dataset_id is None
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
@@ -143,7 +144,7 @@ class TestSignalAnalysisCommand:
         # undo() called without a prior successful execute(): result_dataset_id is None.
 
         with caplog.at_level(logging.WARNING):
-            assert command.undo() is False
+            assert command.undo() is CommandResult.FAILURE
         assert "SignalAnalysisCommand.undo" in caplog.text
 
     def test_execute_surfaces_no_project_loaded_to_the_user(self):
@@ -156,7 +157,7 @@ class TestSignalAnalysisCommand:
         command = SignalAnalysisCommand(
             app_context, "ds-1", SignalAnalysisType.FFT, "signal", sampling_rate=1000,
         )
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
     def test_cleanup_releases_the_result_dataset_id_and_result(
@@ -168,7 +169,7 @@ class TestSignalAnalysisCommand:
         command = SignalAnalysisCommand(
             app_context, "ds-1", SignalAnalysisType.FFT, "signal", sampling_rate=1000,
         )
-        assert command.execute() is True
+        assert command.execute() is CommandResult.SUCCESS
         assert command.result_dataset_id is not None
         assert command.result is not None
 

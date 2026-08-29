@@ -10,6 +10,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.edit_batch_command import EditBatchCommand
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items.dataset import Dataset
@@ -38,7 +39,7 @@ def test_execute_logs_warning_when_no_project(mock_app_context, caplog):
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "no project" in caplog.text.lower()
 
 
@@ -48,7 +49,7 @@ def test_execute_logs_warning_when_current_project_none(mock_app_context, caplog
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "current_project is None" in caplog.text
 
 
@@ -59,7 +60,7 @@ def test_execute_logs_warning_when_dataset_not_found(mock_app_context, sample_pr
     command = EditBatchCommand(mock_app_context, "missing-ds", 0, 0, [[1]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "missing-ds" in caplog.text
 
 
@@ -70,7 +71,7 @@ def test_execute_logs_warning_when_item_not_a_dataset(mock_app_context, sample_p
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "ds-1" in caplog.text and "not a Dataset" in caplog.text
 
 
@@ -83,7 +84,7 @@ def test_execute_logs_warning_when_dataset_has_no_structure(mock_app_context, sa
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "ds-1" in caplog.text and "no structure" in caplog.text.lower()
 
 
@@ -95,7 +96,7 @@ def test_execute_logs_warning_when_no_new_data(mock_app_context, sample_project,
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "no data provided" in caplog.text.lower()
 
 
@@ -107,7 +108,7 @@ def test_execute_logs_warning_when_row_lengths_mismatch(mock_app_context, sample
     command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1, 2], [3]])
 
     with caplog.at_level(logging.WARNING):
-        assert command.execute() is False
+        assert command.execute() is CommandResult.FAILURE
     assert "row 1" in caplog.text.lower()
 
 
@@ -122,9 +123,9 @@ def test_execute_logs_warning_when_add_rows_fails(mock_app_context, sample_proje
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(
                 "pandaplot.commands.project.dataset.edit_batch_command.AddRowsCommand.execute",
-                lambda self: False,
+                lambda self: CommandResult.FAILURE,
             )
-            assert command.execute() is False
+            assert command.execute() is CommandResult.FAILURE
     assert "failed to add" in caplog.text.lower() and "rows" in caplog.text.lower()
 
 

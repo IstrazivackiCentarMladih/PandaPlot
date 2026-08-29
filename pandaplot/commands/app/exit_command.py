@@ -3,7 +3,7 @@
 
 from typing import override
 
-from pandaplot.commands.base_command import Command
+from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.project.unsaved_changes import confirm_discard_unsaved_changes
 from pandaplot.models.events import AppEvents
 from pandaplot.models.state.app_context import AppContext
@@ -22,19 +22,19 @@ class ExitCommand(Command):
         self.app_context = app_context
 
     @override
-    def execute(self) -> bool:
+    def execute(self) -> CommandResult:
         """
-        Execute the exit command. Returns False (without closing anything)
-        if the user cancels on an unsaved-changes prompt -- previously this
-        path had no such check at all, so File > Exit could silently
-        discard edits.
+        Execute the exit command. Returns CommandResult.NOOP (without closing
+        anything) if the user cancels on an unsaved-changes prompt --
+        previously this path had no such check at all, so File > Exit could
+        silently discard edits.
         """
         self.logger.info("Executing ExitCommand")
         if not confirm_discard_unsaved_changes(self.app_context):
             self.logger.info("Exit cancelled by user (unsaved changes)")
-            return False
+            return CommandResult.NOOP
         self.app_context.event_bus.emit(AppEvents.APP_CLOSING)
-        return True
+        return CommandResult.SUCCESS
 
     @override
     def undo(self):
