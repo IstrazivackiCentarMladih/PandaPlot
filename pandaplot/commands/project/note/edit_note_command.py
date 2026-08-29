@@ -133,6 +133,12 @@ class EditNoteCommand(Command):
                 )
                 return CommandResult.SUCCESS
 
+            self.logger.warning(
+                "EditNoteCommand.undo: cannot undo for note '%s' (old_content set=%s, has_project=%s)",
+                self.note_id, self.old_content is not None, self.app_state.has_project,
+            )
+            return CommandResult.FAILURE
+
         except Exception as e:
             error_msg = f"Failed to undo edit note: {e}"
             self.logger.error("EditNoteCommand Undo Error: %s", error_msg, exc_info=True)

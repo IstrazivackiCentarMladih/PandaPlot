@@ -168,6 +168,7 @@ class CreateEmptyDatasetCommand(Command):
             self.logger.warning(
                 "CreateEmptyDatasetCommand.redo: cannot redo, no dataset_name recorded (execute() likely never succeeded)"
             )
+            return CommandResult.FAILURE
         except Exception as e:
             error_msg = f"Failed to redo dataset creation: {str(e)}"
             self.logger.error(error_msg, exc_info=True)

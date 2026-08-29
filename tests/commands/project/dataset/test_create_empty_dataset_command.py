@@ -221,16 +221,18 @@ class TestCreateEmptyDatasetCommand:
         command = CreateEmptyDatasetCommand(app_context, dataset_name="Never executed")
 
         with caplog.at_level(logging.WARNING):
-            command.undo()
+            result = command.undo()
         assert "cannot undo" in caplog.text.lower()
+        assert result is CommandResult.FAILURE
 
     def test_redo_logs_warning_when_no_dataset_name(self, mock_app_context, caplog):
         app_context, app_state, ui_controller = mock_app_context
         command = CreateEmptyDatasetCommand(app_context)
 
         with caplog.at_level(logging.WARNING):
-            command.redo()
+            result = command.redo()
         assert "cannot redo" in caplog.text.lower()
+        assert result is CommandResult.FAILURE
 
     def test_cleanup_releases_the_dataset_id_and_project_reference(self, mock_app_context, sample_project):
         app_context, app_state, ui_controller = mock_app_context

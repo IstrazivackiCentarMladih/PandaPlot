@@ -459,6 +459,11 @@ class DeleteColumnsCommand(Command):
 
                 self.logger.info(f"Undid deleting {len(self.column_names)} columns from dataset '{self.dataset.name}'")
                 return CommandResult.SUCCESS
+            self.logger.warning(
+                "DeleteColumnsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s, column_positions set=%s)",
+                self.dataset_id, self.dataset is not None, self.original_data is not None, bool(self.column_positions),
+            )
+            return CommandResult.FAILURE
         except Exception as e:
             self.logger.error(f"DeleteColumnsCommand Undo Error: {e}")
             return CommandResult.FAILURE

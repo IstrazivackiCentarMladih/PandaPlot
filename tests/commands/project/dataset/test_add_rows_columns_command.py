@@ -246,6 +246,15 @@ class TestAddRowsColumnsCommand:
             assert command.execute() is CommandResult.FAILURE
         assert "ds-1" in caplog.text
 
+    def test_undo_logs_warning_when_nothing_to_undo(self, mock_app_context, caplog):
+        app_context, _, _ = mock_app_context
+        command = AddRowsColumnsCommand(app_context, "ds-1", target_rows=4, target_columns=2)
+
+        with caplog.at_level(logging.WARNING):
+            result = command.undo()
+        assert "ds-1" in caplog.text
+        assert result is CommandResult.FAILURE
+
 
 class TestAddRowsColumnsCommandPrompt:
     def test_prompts_for_the_target_when_none_was_given(self, mock_app_context, project_with, monkeypatch):

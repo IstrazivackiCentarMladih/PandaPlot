@@ -136,8 +136,9 @@ def test_undo_logs_warning_when_nothing_to_undo(mock_app_context, caplog):
     command = DeleteRowsCommand(app_context, "ds-1", row_positions=[0])
 
     with caplog.at_level(logging.WARNING):
-        command.undo()
+        result = command.undo()
     assert "ds-1" in caplog.text
+    assert result is CommandResult.FAILURE
 
 
 def test_cleanup_releases_the_undo_snapshots():

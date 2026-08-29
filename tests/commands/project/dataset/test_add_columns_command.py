@@ -229,8 +229,9 @@ class TestAddColumnsCommandLogging:
         command = AddColumnsCommand(app_context, "ds-1", column_names=["b"], reference_positions=[0])
 
         with caplog.at_level(logging.WARNING):
-            command.undo()
+            result = command.undo()
         assert "ds-1" in caplog.text
+        assert result is CommandResult.FAILURE
 
 
 def test_cleanup_releases_the_original_data_snapshot():

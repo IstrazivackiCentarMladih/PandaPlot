@@ -229,9 +229,9 @@ class TestEditNoteCommand:
         command = EditNoteCommand(app_context, "note-123", "New content")
         # old_content is None
         result = command.undo()
-        
+
         # Should not crash and should not perform any operations
-        assert result is None  # Method returns without explicit return value
+        assert result is CommandResult.FAILURE
 
     def test_undo_no_project(self, mock_app_context):
         """Test undo when no project is loaded."""
@@ -242,9 +242,9 @@ class TestEditNoteCommand:
         command.old_content = "Original content"
         
         result = command.undo()
-        
+
         # Should not crash and should not perform any operations
-        assert result is None
+        assert result is CommandResult.FAILURE
 
     def test_undo_no_current_project(self, mock_app_context):
         """Test undo when current project is None."""

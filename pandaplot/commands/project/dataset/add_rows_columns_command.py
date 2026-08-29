@@ -298,6 +298,11 @@ class AddRowsColumnsCommand(Command):
                     len(self.added_column_positions),
                     self.dataset.name)
                 return CommandResult.SUCCESS
+            self.logger.warning(
+                "AddRowsColumnsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
+                self.dataset_id, self.dataset is not None, self.original_data is not None,
+            )
+            return CommandResult.FAILURE
         except Exception as e:
             self.logger.error("AddRowsColumnsCommand Undo Error: %s", e)
             return CommandResult.FAILURE

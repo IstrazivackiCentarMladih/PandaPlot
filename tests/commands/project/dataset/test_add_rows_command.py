@@ -112,6 +112,16 @@ def test_execute_logs_a_warning_when_reference_position_out_of_bounds(mock_app_c
     assert "5" in caplog.text
 
 
+def test_undo_logs_warning_when_nothing_to_undo(mock_app_context, caplog):
+    app_context, _, _ = mock_app_context
+    command = AddRowsCommand(app_context, "ds-1", reference_positions=[0])
+
+    with caplog.at_level(logging.WARNING):
+        result = command.undo()
+    assert "ds-1" in caplog.text
+    assert result is CommandResult.FAILURE
+
+
 def test_cleanup_releases_the_original_data_snapshot():
     app_context = Mock(spec=AppContext)
     app_context.get_app_state.return_value = Mock(spec=AppState)

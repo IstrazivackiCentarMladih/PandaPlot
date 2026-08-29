@@ -309,6 +309,11 @@ class AddRowsCommand(Command):
 
                 self.logger.info(f"Undid adding {len(self.reference_positions)} rows to dataset '{self.dataset.name}'")
                 return CommandResult.SUCCESS
+            self.logger.warning(
+                "AddRowsCommand.undo: cannot undo for dataset '%s' (dataset found=%s, original_data set=%s)",
+                self.dataset_id, self.dataset is not None, self.original_data is not None,
+            )
+            return CommandResult.FAILURE
         except Exception as e:
             self.logger.error(f"AddRowsCommand Undo Error: {e}")
             return CommandResult.FAILURE

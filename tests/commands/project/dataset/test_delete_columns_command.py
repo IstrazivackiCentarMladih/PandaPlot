@@ -357,6 +357,19 @@ def test_undo_restores_a_cleared_error_bar_reference(env):
     ) == "a"
 
 
+def test_undo_logs_warning_when_nothing_to_undo(caplog):
+    app_context = Mock()
+    app_context.get_app_state.return_value = Mock(has_project=True)
+    app_context.get_ui_controller.return_value = Mock()
+
+    command = DeleteColumnsCommand(app_context, "ds-1", ["a"])
+
+    with caplog.at_level(logging.WARNING):
+        result = command.undo()
+    assert "ds-1" in caplog.text
+    assert result is CommandResult.FAILURE
+
+
 def test_cleanup_releases_the_undo_snapshots():
     app_context = Mock()
     app_context.get_app_state.return_value = Mock(has_project=True)
