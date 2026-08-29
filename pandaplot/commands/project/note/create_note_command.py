@@ -94,32 +94,49 @@ class CreateNoteCommand(Command):
                 "Create Note Error", error_msg)
             return CommandResult.FAILURE
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the create note command."""
         try:
             if self.created_note_id and self.app_state.has_project:
                 project = self.app_state.current_project
-                if project:
-                    note = project.find_item(self.created_note_id)
-                    if note is not None:
-                        project.remove_item(note)
-
-                    # Emit dotted delete event
-                    self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
-                        "project": project,
-                        "note_id": self.created_note_id,
-                        "note": self.created_note
-                    })
-                    self.logger.info(
-                        "CreateNoteCommand: Undo creation of note id=%s (name=%s)",
+                if not project:
+                    self.logger.warning(
+                        "CreateNoteCommand.undo: has_project is True but current_project is None (note id=%s)",
                         self.created_note_id,
-                        getattr(self.created_note, "name", "<unknown>")
                     )
+                    return CommandResult.FAILURE
+
+                note = project.find_item(self.created_note_id)
+                if note is None:
+                    self.logger.warning(
+                        "CreateNoteCommand.undo: note '%s' not found", self.created_note_id
+                    )
+                    return CommandResult.FAILURE
+
+                project.remove_item(note)
+
+                # Emit dotted delete event
+                self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
+                    "project": project,
+                    "note_id": self.created_note_id,
+                    "note": self.created_note
+                })
+                self.logger.info(
+                    "CreateNoteCommand: Undo creation of note id=%s (name=%s)",
+                    self.created_note_id,
+                    getattr(self.created_note, "name", "<unknown>")
+                )
+                return CommandResult.SUCCESS
+            else:
+                # The note was never actually created (execute() failed or
+                # was never called), so there's nothing to undo.
+                return CommandResult.NOOP
 
         except Exception as e:
             error_msg = f"Failed to undo create note: {str(e)}"
             self.logger.error("CreateNoteCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """Redo the create note command."""

@@ -70,14 +70,22 @@ class RenameProjectCommand(Command):
             ProjectEvents.PROJECT_CHANGED, {"project": project})
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         if self._applied and self.old_name is not None:
             self._apply_rename(self.old_name)
+            return CommandResult.SUCCESS
+        # The rename was never actually applied (execute() failed or was a
+        # NOOP), so there's nothing to undo.
+        return CommandResult.NOOP
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         if self._applied and self.old_name is not None:
             self._apply_rename(self.new_name)
+            return CommandResult.SUCCESS
+        # The rename was never actually applied (execute() failed or was a
+        # NOOP), so there's nothing to redo.
+        return CommandResult.NOOP
 
     @override
     def cleanup(self) -> None:

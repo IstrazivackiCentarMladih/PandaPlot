@@ -68,28 +68,30 @@ class ApplyChartPropertiesCommand(Command):
         return CommandResult.SUCCESS
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         chart = self._find_chart()
         if not chart or self.old_snapshot is None:
             self.logger.warning(
                 "ApplyChartPropertiesCommand.undo: cannot undo for chart '%s' (chart found=%s, old_snapshot set=%s)",
                 self.chart_id, chart is not None, self.old_snapshot is not None,
             )
-            return
+            return CommandResult.FAILURE
         restore_chart_state(chart, self.old_snapshot)
         self._emit_update(chart)
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         chart = self._find_chart()
         if not chart or self.new_snapshot is None:
             self.logger.warning(
                 "ApplyChartPropertiesCommand.redo: cannot redo for chart '%s' (chart found=%s, new_snapshot set=%s)",
                 self.chart_id, chart is not None, self.new_snapshot is not None,
             )
-            return
+            return CommandResult.FAILURE
         restore_chart_state(chart, self.new_snapshot)
         self._emit_update(chart)
+        return CommandResult.SUCCESS
 
     @override
     def cleanup(self) -> None:

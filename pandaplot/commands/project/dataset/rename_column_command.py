@@ -193,16 +193,28 @@ class RenameColumnCommand(Command):
         return affected
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Rename back and restore references (same walk, names swapped)."""
         if self._applied and self.old_name is not None:
             self._apply_rename(self.new_name, self.old_name)
+            return CommandResult.SUCCESS
+        self.logger.warning(
+            "RenameColumnCommand.undo: cannot undo for dataset '%s' (applied=%s, old_name set=%s)",
+            self.dataset_id, self._applied, self.old_name is not None,
+        )
+        return CommandResult.FAILURE
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Re-apply the rename and reference cascade."""
         if self._applied and self.old_name is not None:
             self._apply_rename(self.old_name, self.new_name)
+            return CommandResult.SUCCESS
+        self.logger.warning(
+            "RenameColumnCommand.redo: cannot redo for dataset '%s' (applied=%s, old_name set=%s)",
+            self.dataset_id, self._applied, self.old_name is not None,
+        )
+        return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

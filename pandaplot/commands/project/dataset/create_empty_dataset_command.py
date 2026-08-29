@@ -127,7 +127,7 @@ class CreateEmptyDatasetCommand(Command):
                 "Create Dataset Error", error_msg)
             return CommandResult.FAILURE
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the create empty dataset command."""
         try:
             if self.dataset_id and self.app_state.has_project:
@@ -147,16 +147,18 @@ class CreateEmptyDatasetCommand(Command):
                     self.logger.info(
                         "Undone creation of dataset '%s'", self.dataset_id
                     )
-                    return
+                    return CommandResult.SUCCESS
             self.logger.warning(
                 "CreateEmptyDatasetCommand.undo: cannot undo (dataset_id set=%s, has_project=%s)",
                 bool(self.dataset_id), self.app_state.has_project,
             )
+            return CommandResult.FAILURE
 
         except Exception as e:
             error_msg = f"Failed to undo dataset creation: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """Redo the create empty dataset command."""

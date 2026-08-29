@@ -63,8 +63,8 @@ class ReorderSeriesCommand(Command):
         return self._move(self.from_index, self.to_index)
 
     @override
-    def undo(self):
-        self._move(self.to_index, self.from_index)
+    def undo(self) -> CommandResult:
+        return self._move(self.to_index, self.from_index)
 
     @override
     def redo(self):

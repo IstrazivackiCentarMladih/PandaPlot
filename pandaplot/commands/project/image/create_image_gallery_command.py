@@ -95,31 +95,48 @@ class CreateImageGalleryCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the create image gallery command."""
         try:
             if self.created_gallery_id and self.app_state.has_project:
                 project = self.app_state.current_project
-                if project:
-                    gallery = project.find_item(self.created_gallery_id)
-                    if gallery is not None:
-                        project.remove_item(gallery)
-
-                    self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
-                        "project": project,
-                        "gallery_id": self.created_gallery_id,
-                        "gallery": self.created_gallery
-                    })
-                    self.logger.info(
-                        "CreateImageGalleryCommand: Undo creation of gallery id=%s (name=%s)",
+                if not project:
+                    self.logger.warning(
+                        "CreateImageGalleryCommand.undo: has_project is True but current_project is None (gallery id=%s)",
                         self.created_gallery_id,
-                        getattr(self.created_gallery, "name", "<unknown>")
                     )
+                    return CommandResult.FAILURE
+
+                gallery = project.find_item(self.created_gallery_id)
+                if gallery is None:
+                    self.logger.warning(
+                        "CreateImageGalleryCommand.undo: gallery '%s' not found", self.created_gallery_id
+                    )
+                    return CommandResult.FAILURE
+
+                project.remove_item(gallery)
+
+                self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
+                    "project": project,
+                    "gallery_id": self.created_gallery_id,
+                    "gallery": self.created_gallery
+                })
+                self.logger.info(
+                    "CreateImageGalleryCommand: Undo creation of gallery id=%s (name=%s)",
+                    self.created_gallery_id,
+                    getattr(self.created_gallery, "name", "<unknown>")
+                )
+                return CommandResult.SUCCESS
+            else:
+                # The gallery was never actually created (execute() failed or
+                # was never called), so there's nothing to undo.
+                return CommandResult.NOOP
 
         except Exception as e:
             error_msg = f"Failed to undo create image gallery: {str(e)}"
             self.logger.error("CreateImageGalleryCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     @override
     def redo(self) -> CommandResult:

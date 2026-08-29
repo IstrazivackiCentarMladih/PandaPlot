@@ -126,7 +126,7 @@ class ApplyFitCommand(Command):
         return CommandResult.SUCCESS
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         chart = self._find_chart()
 
         if chart is None or self.added_index is None:
@@ -134,7 +134,7 @@ class ApplyFitCommand(Command):
                 "ApplyFitCommand.undo: cannot undo for chart '%s' (chart found=%s, added_index set=%s)",
                 self.chart_id, chart is not None, self.added_index is not None,
             )
-            return
+            return CommandResult.FAILURE
 
         chart.remove_fit_data(self.added_index)
 
@@ -146,10 +146,11 @@ class ApplyFitCommand(Command):
                 "chart": chart,
             },
         )
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
-        self.execute()
+    def redo(self) -> CommandResult:
+        return self.execute()
 
     @override
     def cleanup(self) -> None:

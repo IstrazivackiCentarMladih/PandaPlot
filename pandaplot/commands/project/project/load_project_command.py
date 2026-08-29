@@ -212,12 +212,13 @@ class LoadProjectCommand(Command):
         except Exception as e:
             self.logger.error(f"Error handling load progress: {e}", exc_info=True)
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the load project command."""
         if self.previous_project is not None:
             self.app_state.load_project(self.previous_project)
         else:
             self.app_state.close_project()
+        return CommandResult.SUCCESS
 
     def redo(self) -> CommandResult:
         """Redo the load project command."""

@@ -239,7 +239,7 @@ class ChangeColumnDtypeCommand(Command):
             self.logger.error(f"Error converting column data: {e}", exc_info=True)
             return None
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Restore the original column data and dtype."""
         if (self.original_data is not None and self.dataset and
             self.dataset.data is not None and self.column_name):
@@ -255,14 +255,15 @@ class ChangeColumnDtypeCommand(Command):
                     end_index=(len(self.dataset.data) - 1, self.column_index)
                 ).to_dict()
             )
-            return
+            return CommandResult.SUCCESS
 
         self.logger.warning(
             "ChangeColumnDtypeCommand.undo: cannot undo for dataset '%s' (original_data set=%s, dataset found=%s, column_name set=%s)",
             self.dataset_id, self.original_data is not None, self.dataset is not None, bool(self.column_name),
         )
+        return CommandResult.FAILURE
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Reapply the column dtype change."""
         if (self.conversion_report and self.dataset and
             self.dataset.data is not None and self.column_name):
@@ -281,17 +282,18 @@ class ChangeColumnDtypeCommand(Command):
                         end_index=(len(self.dataset.data) - 1, self.column_index)
                     ).to_dict()
                 )
-                return
+                return CommandResult.SUCCESS
             self.logger.warning(
                 "ChangeColumnDtypeCommand.redo: re-conversion to '%s' failed for column '%s' in dataset '%s'",
                 self.target_dtype, self.column_name, self.dataset_id,
             )
-            return
+            return CommandResult.FAILURE
 
         self.logger.warning(
             "ChangeColumnDtypeCommand.redo: cannot redo for dataset '%s' (conversion_report set=%s, dataset found=%s, column_name set=%s)",
             self.dataset_id, bool(self.conversion_report), self.dataset is not None, bool(self.column_name),
         )
+        return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:

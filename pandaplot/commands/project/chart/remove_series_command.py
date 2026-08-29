@@ -64,14 +64,14 @@ class RemoveSeriesCommand(Command):
         return CommandResult.SUCCESS
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         chart = self._find_chart()
         if not chart or self.removed_series_data is None:
             self.logger.warning(
                 "RemoveSeriesCommand.undo: cannot undo for chart '%s' (chart found=%s, removed_series_data set=%s)",
                 self.chart_id, chart is not None, self.removed_series_data is not None,
             )
-            return
+            return CommandResult.FAILURE
 
         # Re-create and insert at original position
         series = copy.deepcopy(self.removed_series_data)
@@ -83,10 +83,11 @@ class RemoveSeriesCommand(Command):
             "update_type": "series_added",
             "chart": chart,
         })
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
-        self.execute()
+    def redo(self) -> CommandResult:
+        return self.execute()
 
     @override
     def cleanup(self) -> None:

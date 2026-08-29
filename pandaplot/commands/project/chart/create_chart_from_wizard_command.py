@@ -306,18 +306,19 @@ class CreateChartFromWizardCommand(Command):
             self._dialog = None
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Unreachable via CommandExecutor: occupies_undo_slot() is False, so
         this command is never pushed onto undo_stack/redo_stack, and the
         executor's undo()/redo() only ever act on stack contents. Undoing
         the chart's creation is CreateChartCommand's job. Kept as a no-op
-        only to satisfy the abstract Command interface."""
-        return
+        only to satisfy the abstract Command interface; SUCCESS is reported
+        since "nothing to undo here" is the expected, correct outcome."""
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
+    def redo(self) -> CommandResult:
         """See undo() -- unreachable via CommandExecutor for the same reason."""
-        return
+        return CommandResult.SUCCESS
 
     @override
     def cleanup(self) -> None:

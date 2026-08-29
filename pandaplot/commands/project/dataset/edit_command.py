@@ -85,21 +85,23 @@ class EditCommand(Command):
             self.ui_controller.show_error_message("Edit Error", error_msg)
             return CommandResult.FAILURE
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         self.dataset.data.iloc[self.index[0], self.index[1]] = self.old_value
         self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, DatasetDataChangedData(
                     dataset_id=self.dataset_id,
                     start_index=(self.index[0], self.index[1]),
                     end_index=(self.index[0], self.index[1])
                 ).to_dict())
-    
-    def redo(self):
+        return CommandResult.SUCCESS
+
+    def redo(self) -> CommandResult:
         self.dataset.data.iloc[self.index[0], self.index[1]] = self.new_value
         self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, DatasetDataChangedData(
                     dataset_id=self.dataset_id,
                     start_index=(self.index[0], self.index[1]),
                     end_index=(self.index[0], self.index[1])
                 ).to_dict())
+        return CommandResult.SUCCESS
 
     @override
     def cleanup(self) -> None:

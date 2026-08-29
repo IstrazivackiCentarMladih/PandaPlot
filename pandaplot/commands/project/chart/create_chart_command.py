@@ -46,9 +46,10 @@ class CreateChartCommand(Command):
             return CommandResult.FAILURE
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         if not self.app_state.has_project or not self.app_state.current_project:
-            return
+            self.logger.warning("CreateChartCommand.undo: no project is currently loaded")
+            return CommandResult.FAILURE
         try:
             project = self.app_state.current_project
             project.remove_item_by_id(self.chart_id)
@@ -57,12 +58,14 @@ class CreateChartCommand(Command):
                 "item_type": "chart",
             })
             self.logger.info("CreateChartCommand: undid creation of chart '%s'", self.chart_id)
+            return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("CreateChartCommand Undo Error: %s", str(e))
+            return CommandResult.FAILURE
 
     @override
-    def redo(self):
-        self.execute()
+    def redo(self) -> CommandResult:
+        return self.execute()
 
     @override
     def cleanup(self) -> None:

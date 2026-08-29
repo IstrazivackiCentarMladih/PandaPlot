@@ -322,12 +322,12 @@ class ExportDatasetCommand(Command):
         wants it tracked."""
         return False
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """
         Undo is not applicable for export operations.
         We could potentially delete the exported file, but that might be unexpected.
         """
-        pass
+        return CommandResult.NOOP
 
     def redo(self) -> CommandResult:
         """

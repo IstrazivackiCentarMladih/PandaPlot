@@ -248,7 +248,7 @@ class SaveProjectCommand(Command):
         except Exception as e:
             self.logger.error(f"Error handling save progress: {e}", exc_info=True)
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the save project command by reverting file path changes."""
         try:
             # Only need to undo if the file path changed
@@ -259,11 +259,19 @@ class SaveProjectCommand(Command):
                         self.app_state.load_project(project)
                         # TODO(#221): this doesn't do anything currently
                         self.logger.info("Reverted file path to '%s'", self.previous_file_path)
+                        return CommandResult.SUCCESS
+                self.logger.warning(
+                    "SaveProjectCommand.undo: file path changed but no project is currently loaded"
+                )
+                return CommandResult.FAILURE
+            # The save path never changed, so there's nothing to revert.
+            return CommandResult.NOOP
 
         except Exception as e:
             error_msg = f"Failed to undo save project: {e}"
             self.logger.error("SaveProjectCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """Redo the save project command."""

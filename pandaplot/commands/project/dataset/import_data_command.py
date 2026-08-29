@@ -359,7 +359,7 @@ class ImportDataCommand(Command):
         except Exception as e:
             self.logger.error(f"Error handling import progress: {e}", exc_info=True)
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the import data command."""
         try:
             if self.dataset_ids and self.app_state.has_project:
@@ -376,17 +376,19 @@ class ImportDataCommand(Command):
                         )
 
                     self.logger.info("Undone import of %d dataset(s)", len(self.dataset_ids))
-                    return
+                    return CommandResult.SUCCESS
 
             self.logger.warning(
                 "ImportDataCommand.undo: cannot undo (dataset_ids set=%s, has_project=%s)",
                 bool(self.dataset_ids), self.app_state.has_project,
             )
+            return CommandResult.FAILURE
 
         except Exception as e:
             error_msg = f"Failed to undo data import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """

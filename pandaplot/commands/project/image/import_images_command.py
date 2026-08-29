@@ -219,28 +219,39 @@ class ImportImagesCommand(Command):
 
         return data, ext, width, height
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the import images command by removing all created images."""
         try:
             if self.created_image_ids and self.app_state.has_project:
                 project = self.app_state.current_project
-                if project:
-                    for image_id in self.created_image_ids:
-                        image = project.find_item(image_id)
-                        if image is not None:
-                            project.remove_item(image)
+                if not project:
+                    self.logger.warning(
+                        "ImportImagesCommand.undo: has_project is True but current_project is None"
+                    )
+                    return CommandResult.FAILURE
 
-                        self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
-                            "project": project,
-                            "image_id": image_id,
-                        })
+                for image_id in self.created_image_ids:
+                    image = project.find_item(image_id)
+                    if image is not None:
+                        project.remove_item(image)
 
-                    self.logger.info("Undone import of %d image(s)", len(self.created_image_ids))
+                    self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
+                        "project": project,
+                        "image_id": image_id,
+                    })
+
+                self.logger.info("Undone import of %d image(s)", len(self.created_image_ids))
+                return CommandResult.SUCCESS
+            else:
+                # No images were ever created (execute() failed or was never
+                # called), so there's nothing to undo.
+                return CommandResult.NOOP
 
         except Exception as e:
             error_msg = f"Failed to undo image import: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
         """Redo the import by re-running execute() after clearing prior created ids."""

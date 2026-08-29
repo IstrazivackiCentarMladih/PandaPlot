@@ -51,10 +51,10 @@ class AddSeriesCommand(Command):
         return CommandResult.SUCCESS
 
     @override
-    def undo(self):
+    def undo(self) -> CommandResult:
         chart = self._find_chart()
         if not chart or self.added_index is None:
-            return
+            return CommandResult.FAILURE
 
         chart.remove_data_series(self.added_index)
         self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
@@ -62,10 +62,11 @@ class AddSeriesCommand(Command):
             "update_type": "series_removed",
             "chart": chart,
         })
+        return CommandResult.SUCCESS
 
     @override
-    def redo(self):
-        self.execute()
+    def redo(self) -> CommandResult:
+        return self.execute()
 
     @override
     def cleanup(self) -> None:

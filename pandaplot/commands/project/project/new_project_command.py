@@ -68,7 +68,7 @@ class NewProjectCommand(Command):
                 "New Project Error", error_msg)
             raise
 
-    def undo(self):
+    def undo(self) -> CommandResult:
         """Undo the new project command by restoring the previous project."""
         try:
             if self.previous_project:
@@ -83,15 +83,17 @@ class NewProjectCommand(Command):
                 self.logger.info(
                     "Closed project (no previous project to restore)"
                 )
+            return CommandResult.SUCCESS
 
         except Exception as e:
             error_msg = f"Failed to undo new project: {e}"
             self.logger.error("NewProjectCommand Undo Error: %s", error_msg, exc_info=True)
             self.ui_controller.show_error_message("Undo Error", error_msg)
+            return CommandResult.FAILURE
 
-    def redo(self):
+    def redo(self) -> CommandResult:
         """Redo the new project command."""
-        self.execute()
+        return self.execute()
 
     @override
     def cleanup(self) -> None:
