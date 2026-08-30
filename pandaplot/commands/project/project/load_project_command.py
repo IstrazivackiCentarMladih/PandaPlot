@@ -16,7 +16,10 @@ def _same_path(a: Optional[str], b: Optional[str]) -> bool:
     of relative-vs-absolute and symlink differences."""
     if not a or not b:
         return False
-    return os.path.realpath(a) == os.path.realpath(b)
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
 class LoadProjectCommand(Command):
