@@ -207,6 +207,70 @@ def test_apply_fit_resolves_id_only_series_columns(app_context):
     assert command.source_y_column_id == series.y_column_id
 
 
+def test_on_tab_changed_skips_work_while_panel_not_visible(app_context):
+    """Regression test for issue #246: FitPanel must not do get_current_data()
+    work (via load_chart_object) on tab-change events while it isn't the
+    visible sidebar panel."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: chart if item_id == chart.id else dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    assert panel.isVisible() is False
+
+    panel._on_tab_changed({"tab_type": "chart", "tab_id": chart.id})
+
+    assert panel.current_chart is None
+    assert panel.series_combo.count() == 0
+
+
+def test_on_tab_changed_resyncs_when_panel_becomes_visible(app_context):
+    """The tab-change event skipped while hidden must be replayed once the
+    panel is shown again, so its context catches up."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: chart if item_id == chart.id else dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    panel._on_tab_changed({"tab_type": "chart", "tab_id": chart.id})
+    assert panel.current_chart is None
+
+    panel.show()
+    QApplication.processEvents()
+
+    assert panel.current_chart is not None
+    assert panel.current_chart.id == chart.id
+    assert panel.series_combo.count() == len(chart.data_series)
+
+    panel.close()
+
+
+def test_on_chart_updated_skips_work_while_panel_not_visible(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    assert panel.isVisible() is False
+
+    panel._on_chart_updated({"chart": chart})
+
+    assert panel.current_chart is None
+    assert panel.series_combo.count() == 0
+
+
 def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_context):
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
     x_id = dataset.column_id("time")

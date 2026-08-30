@@ -48,6 +48,7 @@ class FitPanel(SidebarPanel):
         self.fit_results = None
         self.fit_fixed_parameters: Optional[str] = None
         self.datasets = []
+        self._last_tab_event_data: Optional[dict] = None
 
         # Check scipy availability lazily (only when FitPanel is instantiated)
         self.scipy_available = self._check_scipy_available()
@@ -387,7 +388,19 @@ class FitPanel(SidebarPanel):
         return df, mask, x_data, y_data, series
 
     def _on_tab_changed(self, event_data):
-        """Handle tab change events to update context."""
+        """Handle tab change events to update context.
+
+        The Fit panel does real work here (loading chart/dataset context,
+        which triggers get_current_data()), so skip it entirely while the
+        panel isn't the visible sidebar panel. The event is remembered and
+        replayed from showEvent() once the panel becomes visible again.
+        """
+        self._last_tab_event_data = event_data
+        if not self.isVisible():
+            return
+        self._apply_tab_change(event_data)
+
+    def _apply_tab_change(self, event_data):
         current_tab_type = event_data.get("tab_type")
         tab_id = event_data.get("tab_id")
         chart_id = tab_id if current_tab_type == "chart" else None
@@ -559,9 +572,16 @@ class FitPanel(SidebarPanel):
         """Load a Chart object for fitting analysis."""
         self._clear_results()
         self.current_chart = chart
+
+        # Clearing/populating a combo box fires currentIndexChanged as items
+        # come and go, which would call _on_series_changed() (and thus
+        # get_current_data()) repeatedly mid-update. Block it and trigger
+        # the update once, explicitly, once the combo reflects the new chart.
+        self.series_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         self.series_combo.clear()
 
         if chart is None:
+            self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.update_data_points_display()
             return
 
@@ -582,13 +602,21 @@ class FitPanel(SidebarPanel):
 
         if self.series_combo.count() > 0:
             self.series_combo.setCurrentIndex(0)
-            self._on_series_changed()
+        self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+        self._on_series_changed()
 
     def _on_series_changed(self):
         self._clear_results()
         self.update_data_points_display()
 
     def _on_chart_updated(self, event_data):
+        # Skip while the panel isn't visible: reactivating it re-runs
+        # _apply_tab_change (see showEvent), which reloads the chart fresh
+        # from the project and so already picks up this update.
+        if not self.isVisible():
+            return
+
         chart = event_data.get("chart")
 
         if not chart:
@@ -600,6 +628,13 @@ class FitPanel(SidebarPanel):
         self.current_project = self.app_context.app_state.current_project
 
         self.load_chart_object(chart)
+
+    def showEvent(self, event):
+        """Replay the last tab-change event once the panel becomes visible,
+        so context skipped while inactive is applied before use."""
+        super().showEvent(event)
+        if self._last_tab_event_data is not None:
+            self._apply_tab_change(self._last_tab_event_data)
 
     def _insert_function(self, function_str):
         cursor_pos = self.custom_function_edit.cursorPosition()
