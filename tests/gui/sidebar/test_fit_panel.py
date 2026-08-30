@@ -314,6 +314,78 @@ def test_on_chart_updated_skips_work_while_panel_not_visible(app_context):
     assert panel.series_combo.count() == 0
 
 
+def test_reshowing_panel_without_new_tab_change_preserves_fit_results(app_context):
+    """Regression test: showEvent must not replay a tab-change event that
+    was already applied while the panel was visible -- otherwise switching
+    to another sidebar panel and back would silently wipe completed fit
+    results even though nothing changed while the Fit panel was hidden."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: chart if item_id == chart.id else dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    panel.show()
+    QApplication.processEvents()
+
+    panel._on_tab_changed({"tab_type": "chart", "tab_id": chart.id})
+    panel.fit_results = _make_fake_fit_result()
+    panel.apply_button.setEnabled(True)
+
+    # Simulate switching to another sidebar panel and back -- no new
+    # tab-change event occurs in between.
+    panel.hide()
+    QApplication.processEvents()
+    panel.show()
+    QApplication.processEvents()
+
+    assert panel.fit_results is not None
+    assert panel.apply_button.isEnabled() is True
+
+    panel.close()
+
+
+def test_chart_updated_while_hidden_refreshes_chart_on_show(app_context):
+    """A chart update skipped while the panel is hidden -- with no
+    tab-change event at all in this scenario, pending or otherwise -- must
+    still be picked up once the panel becomes visible again. Seeds context
+    via load_chart_object() directly (not _on_tab_changed) so this only
+    exercises the chart-refresh path, not the tab-change-replay path."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: chart if item_id == chart.id else dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    panel.load_chart_object(chart)
+    panel.show()
+    QApplication.processEvents()
+    panel.hide()
+    QApplication.processEvents()
+
+    # Chart gains a second series while the panel is hidden; find_item
+    # keeps returning the same (mutated) chart object.
+    x_id = dataset.column_id("time")
+    y_id = dataset.column_id("value")
+    chart.add_data_series(dataset_id=dataset.id, x_column_id=x_id, y_column_id=y_id, label="second series")
+
+    panel._on_chart_updated({"chart": chart})
+    assert panel.series_combo.count() == 1  # not yet refreshed while hidden
+
+    panel.show()
+    QApplication.processEvents()
+
+    assert panel.series_combo.count() == 2
+
+    panel.close()
+
+
 def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_context):
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
     x_id = dataset.column_id("time")

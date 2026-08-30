@@ -47,7 +47,8 @@ class FitPanel(SidebarPanel):
         self.fit_results = None
         self.fit_fixed_parameters: Optional[str] = None
         self.datasets = []
-        self._last_tab_event_data: Optional[dict] = None
+        self._pending_tab_event_data: Optional[dict] = None
+        self._needs_chart_refresh: bool = False
 
         # Check scipy availability lazily (only when FitPanel is instantiated)
         self.scipy_available = self._check_scipy_available()
@@ -401,12 +402,17 @@ class FitPanel(SidebarPanel):
 
         The Fit panel does real work here (loading chart/dataset context,
         which triggers get_current_data()), so skip it entirely while the
-        panel isn't the visible sidebar panel. The event is remembered and
-        replayed from showEvent() once the panel becomes visible again.
+        panel isn't the visible sidebar panel. Only an event that was
+        actually skipped is remembered, and it's replayed from showEvent()
+        once the panel becomes visible again -- otherwise re-showing the
+        panel (e.g. after switching to another sidebar panel and back)
+        would needlessly reload the chart and wipe any completed fit
+        results, even though nothing changed while it was hidden.
         """
-        self._last_tab_event_data = event_data
         if not self.isVisible():
+            self._pending_tab_event_data = event_data
             return
+        self._pending_tab_event_data = None
         self._apply_tab_change(event_data)
 
     def _apply_tab_change(self, event_data):
@@ -616,10 +622,12 @@ class FitPanel(SidebarPanel):
         self.update_data_points_display()
 
     def _on_chart_updated(self, event_data):
-        # Skip while the panel isn't visible: reactivating it re-runs
-        # _apply_tab_change (see showEvent), which reloads the chart fresh
-        # from the project and so already picks up this update.
+        # Skip while the panel isn't visible, but remember that a refresh
+        # is owed: showEvent reloads the current chart fresh from the
+        # project on reactivation (unless a pending tab change already
+        # takes care of it), so this update is picked up either way.
         if not self.isVisible():
+            self._needs_chart_refresh = True
             return
 
         chart = event_data.get("chart")
@@ -632,12 +640,24 @@ class FitPanel(SidebarPanel):
 
         self.load_chart_object(chart)
 
+    @override
     def showEvent(self, event):
-        """Replay the last tab-change event once the panel becomes visible,
-        so context skipped while inactive is applied before use."""
+        """Apply context that was skipped while the panel was hidden: replay
+        a pending tab-change event, or -- if only a chart update was
+        skipped -- reload the current chart fresh from the project."""
         super().showEvent(event)
-        if self._last_tab_event_data is not None:
-            self._apply_tab_change(self._last_tab_event_data)
+
+        pending_tab_event = self._pending_tab_event_data
+        self._pending_tab_event_data = None
+        needs_chart_refresh = self._needs_chart_refresh
+        self._needs_chart_refresh = False
+
+        if pending_tab_event is not None:
+            self._apply_tab_change(pending_tab_event)
+        elif needs_chart_refresh and self.current_chart is not None:
+            project = self.app_context.app_state.current_project
+            chart = project.find_item(self.current_chart.id) if project else None
+            self.load_chart_object(chart)
 
     def _insert_function(self, function_str):
         cursor_pos = self.custom_function_edit.cursorPosition()
