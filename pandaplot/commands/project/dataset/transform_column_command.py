@@ -297,7 +297,15 @@ class TransformColumnCommand(Command):
             "value": source_data,
             "x": source_data,  # Alternative name
             "column": source_data,
-            "data": source_data
+            "data": source_data,
+            # Look up the column by its own real name (#203), e.g.
+            # cols["t"] for a column named "t" -- a dict subscript rather
+            # than binding "t" as a bare local variable, so it works for
+            # ANY column name (spaces, leading digits, ...) and can never
+            # shadow a Python keyword or one of safe_globals' bare names
+            # (sqrt/log/mean/std/... -- see _create_safe_execution_environment)
+            # the way a same-named bound identifier would.
+            "cols": {source_column: source_data},
         }
 
         # Execute expression

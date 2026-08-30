@@ -72,6 +72,46 @@ class TestTransformColumnCommand:
         assert command.execute() is CommandResult.FAILURE
         assert "a" in command.error_message
 
+    def test_expression_can_reference_the_source_column_via_cols_by_its_real_name(self, ctx):
+        """Regression (#203): cols["name"] looks a column up by its real
+        name, e.g. cols["a"] for a column literally named "a" -- a dict
+        subscript alongside the generic x/value/column/data aliases."""
+        app_context, dataset, _ = ctx
+        command = TransformColumnCommand(app_context, "ds-1", _config("a_x2", expression='cols["a"] * 2'))
+        assert command.execute() is True
+        assert list(dataset.data["a_x2"]) == [2.0, 4.0, 6.0]
+
+    def test_cols_works_for_a_column_name_that_is_not_a_valid_python_identifier(self, ctx):
+        """A column name with a space (or any other non-identifier name)
+        could never be written as a bound variable at all -- cols[...] has
+        no such restriction, since it's a string dict key, not an
+        identifier."""
+        app_context, dataset, _ = ctx
+        dataset.data["my col"] = [10.0, 20.0, 30.0]
+        command = TransformColumnCommand(app_context, "ds-1", {
+            "new_column_name": "out", "transform_type": "column",
+            "source_columns": ["my col"], "expression": 'cols["my col"] * 2', "replace_existing": False,
+        })
+        assert command.execute() is True
+        assert list(dataset.data["out"]) == [20.0, 40.0, 60.0]
+
+    def test_cols_does_not_shadow_a_safe_globals_function_of_the_same_name(self, ctx):
+        """Regression: a column literally named "log" (one of
+        _create_safe_execution_environment's bare math names) must not
+        shadow the global log() function the way binding "log" as a raw
+        local variable would have -- cols["log"] reaches the column, while
+        log(...) still reaches the function in the same expression."""
+        app_context, dataset, _ = ctx
+        dataset.data["log"] = [10.0, 20.0, 30.0]
+        command = TransformColumnCommand(app_context, "ds-1", {
+            "new_column_name": "combo", "transform_type": "column",
+            "source_columns": ["log"], "expression": 'cols["log"] + log(1)', "replace_existing": False,
+        })
+        assert command.execute() is True
+        # log(1) == 0.0, so the result is exactly the column's own values --
+        # proof log() still resolved to the function, not the column.
+        assert list(dataset.data["combo"]) == [10.0, 20.0, 30.0]
+
     def test_expression_error_is_captured_in_error_message(self, ctx):
         app_context, _, _ = ctx
         command = TransformColumnCommand(app_context, "ds-1", _config("bad", expression="1 / 0"))
