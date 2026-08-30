@@ -43,7 +43,6 @@ class FitPanel(SidebarPanel):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self.app_context = app_context
-        self.current_project = None
         self.current_chart = None
         self.fit_results = None
         self.fit_fixed_parameters: Optional[str] = None
@@ -329,12 +328,26 @@ class FitPanel(SidebarPanel):
         self.results_text.setPlainText(warning_text)
         self.results_text.setStyleSheet("color: red;")
     
-    def set_project(self, project):
-        """Set the current project."""
-        self.current_project = project
+    @property
+    def current_project(self):
+        """The active project, read live from app state.
+
+        Not cached: every real call site was re-deriving this same value
+        from app_state moments later anyway (via load_chart_object), so a
+        separate manually-synced field only risked going stale (see #246
+        follow-up).
+        """
+        app_state = getattr(self.app_context, "app_state", None)
+        if app_state is None:
+            return None
+        return app_state.current_project
 
     def get_current_data(self):
         """Get data from selected chart series."""
+        if not self.current_project:
+            self.logger.warning("No current project in FitPanel")
+            return None
+
         series = self.series_combo.currentData()
 
         self.logger.info("get_current_data: current_project=%r, series=%r, combo_count=%d",
@@ -342,10 +355,6 @@ class FitPanel(SidebarPanel):
 
         if series is None:
             self.logger.warning("No series selected in series_combo")
-            return None
-
-        if not self.current_project:
-            self.logger.warning("No current project in FitPanel")
             return None
 
         self.logger.info("Selected series: dataset_id=%r, x=%r, y=%r",
@@ -414,7 +423,6 @@ class FitPanel(SidebarPanel):
                 chart = project.find_item(chart_id)
                 if chart:
                     # Load the chart into the fit panel for data analysis
-                    self.set_project(project)
                     self.load_chart_object(chart)
                     self.logger.info("Fit panel context set to chart %s", chart.name)
                 else:
@@ -429,7 +437,6 @@ class FitPanel(SidebarPanel):
                 dataset = project.find_item(dataset_id)
                 if dataset:
                     # Set project context for dataset access
-                    self.set_project(project)
                     self.load_chart_object(None)  # Clear chart context
                     self.logger.debug("Fit panel dataset context set for dataset %s", dataset.name)
         else:
@@ -585,8 +592,6 @@ class FitPanel(SidebarPanel):
             self.update_data_points_display()
             return
 
-        self.current_project = self.app_context.app_state.current_project
-
         for series in chart.data_series:
             if series.label:
                 label = series.label
@@ -624,8 +629,6 @@ class FitPanel(SidebarPanel):
 
         if self.current_chart and chart.id != self.current_chart.id:
             return
-
-        self.current_project = self.app_context.app_state.current_project
 
         self.load_chart_object(chart)
 

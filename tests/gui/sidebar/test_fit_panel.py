@@ -64,7 +64,6 @@ def test_fit_button_enabled_state_matches_scipy_availability(app_context):
     panel = FitPanel(app_context)
     panel.app_context.app_state = Mock()
     panel.app_context.app_state.current_project = project
-    panel.set_project(project)
     panel.load_chart_object(chart)
 
     assert panel.fit_button.isEnabled() == panel.scipy_available
@@ -131,7 +130,6 @@ def test_get_current_data_resolves_id_only_series(app_context):
     panel = FitPanel(app_context)
     panel.app_context.app_state = Mock()
     panel.app_context.app_state.current_project = project
-    panel.set_project(project)
     panel.load_chart_object(chart)
 
     result = panel.get_current_data()
@@ -153,7 +151,6 @@ def test_load_chart_object_clears_stale_fit_results_across_charts(app_context):
     panel = FitPanel(app_context)
     panel.app_context.app_state = Mock()
     panel.app_context.app_state.current_project = project
-    panel.set_project(project)
     panel.load_chart_object(chart_a)
 
     panel.fit_results = _make_fake_fit_result()
@@ -163,6 +160,53 @@ def test_load_chart_object_clears_stale_fit_results_across_charts(app_context):
 
     assert panel.fit_results is None
     assert panel.apply_button.isEnabled() is False
+
+
+def test_current_project_reflects_app_state_without_explicit_sync(app_context):
+    """`current_project` must be a live read of app_state, not a cache that
+    needs an explicit setter call to stay in sync (see issue #246 follow-up:
+    every real call site was already re-deriving the same value moments
+    later via load_chart_object, making the old set_project() cache
+    write-only and pointless)."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    project_a = Mock()
+    project_a.find_item = Mock(return_value=dataset)
+    project_b = Mock()
+    project_b.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project_a
+    panel.load_chart_object(chart)
+
+    assert panel.current_project is project_a
+
+    # Swap the project directly on app_state, with no set_project() call.
+    panel.app_context.app_state.current_project = project_b
+
+    assert panel.current_project is project_b
+
+
+def test_get_current_data_returns_none_when_project_goes_away(app_context):
+    """A project that disappears out from under an already-loaded chart
+    (e.g. project closed) must make get_current_data() return None, even
+    though series_combo still has a selected series -- proving there's no
+    stale cached project keeping stale data usable."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    assert panel.get_current_data() is not None  # sanity check: data loads fine first
+
+    panel.app_context.app_state.current_project = None
+
+    assert panel.series_combo.currentData() is not None  # series selection untouched
+    assert panel.get_current_data() is None
 
 
 def test_apply_fit_resolves_id_only_series_columns(app_context):
@@ -183,7 +227,6 @@ def test_apply_fit_resolves_id_only_series_columns(app_context):
     panel = FitPanel(app_context)
     panel.app_context.app_state = Mock()
     panel.app_context.app_state.current_project = project
-    panel.set_project(project)
     panel.load_chart_object(chart)
 
     panel.fit_results = _make_fake_fit_result()
@@ -283,7 +326,6 @@ def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_contex
     panel = FitPanel(app_context)
     panel.app_context.app_state = Mock()
     panel.app_context.app_state.current_project = project
-    panel.set_project(project)
     panel.load_chart_object(chart)
 
     panel.fit_results = _make_fake_fit_result()
