@@ -162,6 +162,39 @@ def test_load_chart_object_clears_stale_fit_results_across_charts(app_context):
     assert panel.apply_button.isEnabled() is False
 
 
+def test_load_chart_object_calls_get_current_data_exactly_once(app_context):
+    """Regression test (PR review): populating series_combo in
+    load_chart_object() used to fire currentIndexChanged mid-update (via
+    clear()/addItem()), triggering get_current_data() multiple times for
+    the same load and producing duplicate/misleading log warnings for one
+    state change. blockSignals() fixed it; this pins the fix down so a
+    regression (e.g. removing blockSignals, or moving the explicit
+    _on_series_changed() call back inside an `if count() > 0` guard) fails
+    a test instead of silently reintroducing the duplicate calls."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    call_count = 0
+    original_get_current_data = panel.get_current_data
+
+    def _counting_get_current_data():
+        nonlocal call_count
+        call_count += 1
+        return original_get_current_data()
+
+    panel.get_current_data = _counting_get_current_data
+
+    panel.load_chart_object(chart)
+
+    assert call_count == 1
+
+
 def test_current_project_reflects_app_state_without_explicit_sync(app_context):
     """`current_project` must be a live read of app_state, not a cache that
     needs an explicit setter call to stay in sync (see issue #246 follow-up:
