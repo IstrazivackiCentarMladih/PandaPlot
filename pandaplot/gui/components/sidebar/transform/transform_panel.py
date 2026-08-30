@@ -416,7 +416,7 @@ class TransformPanel(SidebarPanel):
         """Clear dataset information display."""
         self.dataset_label.setText("No dataset selected")
         self.row_count_label.setText("")
-        self._update_source_column_markers()
+        self.update_column_list()
 
     def get_selected_columns(self):
         """Get list of currently selected column names.
