@@ -43,11 +43,12 @@ class FitPanel(SidebarPanel):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         self.app_context = app_context
-        self.current_project = None
         self.current_chart = None
         self.fit_results = None
         self.fit_fixed_parameters: Optional[str] = None
         self.datasets = []
+        self._pending_tab_event_data: Optional[dict] = None
+        self._needs_chart_refresh: bool = False
 
         # Check scipy availability lazily (only when FitPanel is instantiated)
         self.scipy_available = self._check_scipy_available()
@@ -328,12 +329,26 @@ class FitPanel(SidebarPanel):
         self.results_text.setPlainText(warning_text)
         self.results_text.setStyleSheet("color: red;")
     
-    def set_project(self, project):
-        """Set the current project."""
-        self.current_project = project
+    @property
+    def current_project(self):
+        """The active project, read live from app state.
+
+        Not cached: every real call site was re-deriving this same value
+        from app_state moments later anyway (via load_chart_object), so a
+        separate manually-synced field only risked going stale (see #246
+        follow-up).
+        """
+        app_state = getattr(self.app_context, "app_state", None)
+        if app_state is None:
+            return None
+        return app_state.current_project
 
     def get_current_data(self):
         """Get data from selected chart series."""
+        if not self.current_project:
+            self.logger.warning("No current project in FitPanel")
+            return None
+
         series = self.series_combo.currentData()
 
         self.logger.info("get_current_data: current_project=%r, series=%r, combo_count=%d",
@@ -341,10 +356,6 @@ class FitPanel(SidebarPanel):
 
         if series is None:
             self.logger.warning("No series selected in series_combo")
-            return None
-
-        if not self.current_project:
-            self.logger.warning("No current project in FitPanel")
             return None
 
         self.logger.info("Selected series: dataset_id=%r, x=%r, y=%r",
@@ -387,7 +398,24 @@ class FitPanel(SidebarPanel):
         return df, mask, x_data, y_data, series
 
     def _on_tab_changed(self, event_data):
-        """Handle tab change events to update context."""
+        """Handle tab change events to update context.
+
+        The Fit panel does real work here (loading chart/dataset context,
+        which triggers get_current_data()), so skip it entirely while the
+        panel isn't the visible sidebar panel. Only an event that was
+        actually skipped is remembered, and it's replayed from showEvent()
+        once the panel becomes visible again -- otherwise re-showing the
+        panel (e.g. after switching to another sidebar panel and back)
+        would needlessly reload the chart and wipe any completed fit
+        results, even though nothing changed while it was hidden.
+        """
+        if not self.isVisible():
+            self._pending_tab_event_data = event_data
+            return
+        self._pending_tab_event_data = None
+        self._apply_tab_change(event_data)
+
+    def _apply_tab_change(self, event_data):
         current_tab_type = event_data.get("tab_type")
         tab_id = event_data.get("tab_id")
         chart_id = tab_id if current_tab_type == "chart" else None
@@ -401,7 +429,6 @@ class FitPanel(SidebarPanel):
                 chart = project.find_item(chart_id)
                 if chart:
                     # Load the chart into the fit panel for data analysis
-                    self.set_project(project)
                     self.load_chart_object(chart)
                     self.logger.info("Fit panel context set to chart %s", chart.name)
                 else:
@@ -416,7 +443,6 @@ class FitPanel(SidebarPanel):
                 dataset = project.find_item(dataset_id)
                 if dataset:
                     # Set project context for dataset access
-                    self.set_project(project)
                     self.load_chart_object(None)  # Clear chart context
                     self.logger.debug("Fit panel dataset context set for dataset %s", dataset.name)
         else:
@@ -559,13 +585,18 @@ class FitPanel(SidebarPanel):
         """Load a Chart object for fitting analysis."""
         self._clear_results()
         self.current_chart = chart
+
+        # Clearing/populating a combo box fires currentIndexChanged as items
+        # come and go, which would call _on_series_changed() (and thus
+        # get_current_data()) repeatedly mid-update. Block it and trigger
+        # the update once, explicitly, once the combo reflects the new chart.
+        self.series_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
         self.series_combo.clear()
 
         if chart is None:
+            self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.update_data_points_display()
             return
-
-        self.current_project = self.app_context.app_state.current_project
 
         for series in chart.data_series:
             if series.label:
@@ -582,7 +613,9 @@ class FitPanel(SidebarPanel):
 
         if self.series_combo.count() > 0:
             self.series_combo.setCurrentIndex(0)
-            self._on_series_changed()
+        self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+        self._on_series_changed()
 
     def _on_series_changed(self):
         self._clear_results()
@@ -597,9 +630,37 @@ class FitPanel(SidebarPanel):
         if self.current_chart and chart.id != self.current_chart.id:
             return
 
-        self.current_project = self.app_context.app_state.current_project
+        # Skip doing the reload now while the panel isn't visible, but
+        # remember that a refresh is owed: showEvent reloads the current
+        # chart fresh from the project on reactivation (unless a pending
+        # tab change already takes care of it), so this update is picked
+        # up either way. The relevance check above must run first -- an
+        # update for some other chart shouldn't mark this one as needing
+        # a refresh.
+        if not self.isVisible():
+            self._needs_chart_refresh = True
+            return
 
         self.load_chart_object(chart)
+
+    @override
+    def showEvent(self, event):
+        """Apply context that was skipped while the panel was hidden: replay
+        a pending tab-change event, or -- if only a chart update was
+        skipped -- reload the current chart fresh from the project."""
+        super().showEvent(event)
+
+        pending_tab_event = self._pending_tab_event_data
+        self._pending_tab_event_data = None
+        needs_chart_refresh = self._needs_chart_refresh
+        self._needs_chart_refresh = False
+
+        if pending_tab_event is not None:
+            self._apply_tab_change(pending_tab_event)
+        elif needs_chart_refresh and self.current_chart is not None:
+            project = self.app_context.app_state.current_project
+            chart = project.find_item(self.current_chart.id) if project else None
+            self.load_chart_object(chart)
 
     def _insert_function(self, function_str):
         cursor_pos = self.custom_function_edit.cursorPosition()
