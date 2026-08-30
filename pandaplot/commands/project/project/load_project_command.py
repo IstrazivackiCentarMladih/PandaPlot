@@ -5,9 +5,9 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
+from pandaplot.services.data_managers.project_manager import ProjectManager
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.session import SessionPersistenceManager
-from pandaplot.storage.project_data_manager import ProjectDataManager
 
 
 class LoadProjectCommand(Command):
@@ -26,7 +26,7 @@ class LoadProjectCommand(Command):
         self.app_state: AppState = app_context.get_app_state()
         self.ui_controller: UIController = app_context.get_ui_controller()
         self.task_scheduler: TaskScheduler = app_context.get_task_scheduler()
-        self.project_data_manager = app_context.get_manager(ProjectDataManager)
+        self.project_manager = app_context.get_manager(ProjectManager)
         self.file_path = file_path
         # Called after the project has been loaded into app state (e.g. so the
         # caller can restore session tabs once the project is actually ready).
@@ -108,7 +108,7 @@ class LoadProjectCommand(Command):
                 progress_callback(0.3)  # Event emitted
 
             # Load the project using the data manager
-            loaded_project = self.project_data_manager.load(self.file_path)
+            loaded_project = self.project_manager.load_project(self.file_path)
 
             if progress_callback:
                 progress_callback(0.7)  # Project loaded from file
