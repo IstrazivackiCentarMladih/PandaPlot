@@ -386,6 +386,43 @@ def test_chart_updated_while_hidden_refreshes_chart_on_show(app_context):
     panel.close()
 
 
+def test_chart_updated_for_unrelated_chart_while_hidden_does_not_trigger_refresh(app_context):
+    """Regression test: a CHART_UPDATED event for some *other* chart while
+    the Fit panel is hidden must not mark a refresh as owed -- otherwise an
+    unrelated chart edit elsewhere would cause the panel to reload its own
+    chart (wiping fit results) the next time it's shown, for no reason."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    _, other_chart = _make_dataset_and_chart_with_id_only_series()
+    other_chart.id = "chart-2"
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: chart if item_id == chart.id else dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    panel.load_chart_object(chart)
+    panel.fit_results = _make_fake_fit_result()
+    panel.apply_button.setEnabled(True)
+
+    panel.show()
+    QApplication.processEvents()
+    panel.hide()
+    QApplication.processEvents()
+
+    panel._on_chart_updated({"chart": other_chart})
+    assert panel._needs_chart_refresh is False
+
+    panel.show()
+    QApplication.processEvents()
+
+    assert panel.fit_results is not None
+    assert panel.apply_button.isEnabled() is True
+
+    panel.close()
+
+
 def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_context):
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
     x_id = dataset.column_id("time")

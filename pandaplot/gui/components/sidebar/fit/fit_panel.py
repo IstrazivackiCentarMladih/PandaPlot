@@ -622,20 +622,23 @@ class FitPanel(SidebarPanel):
         self.update_data_points_display()
 
     def _on_chart_updated(self, event_data):
-        # Skip while the panel isn't visible, but remember that a refresh
-        # is owed: showEvent reloads the current chart fresh from the
-        # project on reactivation (unless a pending tab change already
-        # takes care of it), so this update is picked up either way.
-        if not self.isVisible():
-            self._needs_chart_refresh = True
-            return
-
         chart = event_data.get("chart")
 
         if not chart:
             return
 
         if self.current_chart and chart.id != self.current_chart.id:
+            return
+
+        # Skip doing the reload now while the panel isn't visible, but
+        # remember that a refresh is owed: showEvent reloads the current
+        # chart fresh from the project on reactivation (unless a pending
+        # tab change already takes care of it), so this update is picked
+        # up either way. The relevance check above must run first -- an
+        # update for some other chart shouldn't mark this one as needing
+        # a refresh.
+        if not self.isVisible():
+            self._needs_chart_refresh = True
             return
 
         self.load_chart_object(chart)
