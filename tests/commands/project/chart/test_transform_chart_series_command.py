@@ -157,13 +157,14 @@ class TestTransformChartSeriesCommand:
         assert isinstance(name, str)
         assert command.result_dataset_id is None
 
-    def test_new_series_copies_the_source_series_type_and_style(self, ctx):
+    def test_new_series_copies_the_source_series_type_style_and_opacity(self, ctx):
         _, project = ctx
         chart = project.find_item("chart-1")
         source_series = chart.data_series[0]
         source_series.series_type = SeriesType.SCATTER
         source_series.style = SERIES_TYPE_SPECS[SeriesType.SCATTER].style_cls()
         source_series.style.marker.marker_color = "#ff00ff"
+        source_series.alpha = 0.4
 
         command = _cmd(ctx, source_kind="series", source_index=0)
         assert command.execute() is CommandResult.SUCCESS
@@ -171,6 +172,7 @@ class TestTransformChartSeriesCommand:
         new_series = chart.data_series[command.added_series_index]
         assert new_series.series_type == SeriesType.SCATTER
         assert new_series.style.marker.marker_color == "#ff00ff"
+        assert new_series.alpha == 0.4
         # A copy, not the same object -- editing one must not edit the other.
         assert new_series.style is not source_series.style
 
