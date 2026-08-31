@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -301,20 +303,79 @@ class WelcomeTab(PWidget):
         content_layout.setSpacing(8)
         content_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Step items
+        # Step items: (title, description, click handler)
         steps = [
-            ("1. Create or Open a Project", "Start by creating a new project or opening an existing one"),
-            ("2. Import Your Data", "Import CSV, Excel, or other data files into your project"),
-            ("3. Explore Data", "Use the data view to examine and understand your dataset"),
-            ("4. Create Visualizations", "Generate charts and plots from your data"),
-            ("5. Customize and Export", "Customize your plots and export them for presentations")
+            (
+                "1. Create or Open a Project",
+                "Start by creating a new project or opening an existing one",
+                self.show_create_or_open_menu,
+            ),
+            (
+                "2. Import Your Data",
+                "Import CSV, Excel, or other data files into your project",
+                self.import_data_requested.emit,
+            ),
+            (
+                "3. Explore Data",
+                "Use the data view to examine and understand your dataset",
+                lambda: self.show_step_info(
+                    "Explore Data",
+                    "Once your data is imported, open it from the project tree to "
+                    "view it in the data view, where you can examine columns, "
+                    "filter rows, and understand your dataset.",
+                ),
+            ),
+            (
+                "4. Create Visualizations",
+                "Generate charts and plots from your data",
+                lambda: self.show_step_info(
+                    "Create Visualizations",
+                    "With a dataset open, use the chart creation tools to generate "
+                    "plots and visualizations from your data.",
+                ),
+            ),
+            (
+                "5. Customize and Export",
+                "Customize your plots and export them for presentations",
+                lambda: self.show_step_info(
+                    "Customize and Export",
+                    "Once you have a chart, use its style options to customize "
+                    "appearance, then export it for use in presentations or reports.",
+                ),
+            ),
         ]
-        
-        for step_title, step_desc in steps:
-            step_widget = self.create_step_item(step_title, step_desc)
+
+        for step_title, step_desc, on_click in steps:
+            step_widget = self.create_step_item(step_title, step_desc, on_click)
             content_layout.addWidget(step_widget)
-        
+
         layout.addLayout(content_layout)
+
+    def show_create_or_open_menu(self):
+        """Show a small menu for step 1, offering the ways to get a project open."""
+        menu = QMenu(self)
+        for label in ("New Project", "Open Project", "Browse Examples"):
+            menu.addAction(label)
+
+        sender = self.sender()
+        pos = sender.mapToGlobal(sender.rect().bottomLeft()) if isinstance(sender, QWidget) else self.mapToGlobal(self.rect().center())
+        chosen = menu.exec(pos)
+
+        if chosen is not None:
+            self.dispatch_create_or_open_action(chosen.text())
+
+    def dispatch_create_or_open_action(self, action_text: str):
+        """Run the effect of a chosen step-1 menu entry, given its label."""
+        if action_text == "New Project":
+            self.new_project_requested.emit()
+        elif action_text == "Open Project":
+            self.open_project_requested.emit()
+        elif action_text == "Browse Examples":
+            self.show_examples_dialog()
+
+    def show_step_info(self, title: str, message: str):
+        """Show a short informational dialog for a getting-started step."""
+        QMessageBox.information(self, title, message)
     
     def create_action_button(self, title, description, callback):
         """Create a styled action button."""
@@ -361,7 +422,7 @@ class WelcomeTab(PWidget):
         
         return button
     
-    def create_step_item(self, title, description):
+    def create_step_item(self, title, description, on_click):
         """Create a step item for the getting started section."""
         button = QPushButton()
         button.setMinimumHeight(65)
@@ -397,8 +458,7 @@ class WelcomeTab(PWidget):
         button_layout.addWidget(title_label)
         button_layout.addWidget(desc_label)
         # No inline stylesheet; themed globally
-        # Connect to a placeholder action (logging only)
-        button.clicked.connect(lambda: self.logger.info("Getting started step clicked: %s", title))  # TODO(#221): not implemented
+        button.clicked.connect(on_click)
         return button
     
     def create_recent_project_item(self, project_name, project_path, last_opened):
