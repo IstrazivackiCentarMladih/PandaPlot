@@ -23,8 +23,8 @@ from pandaplot.models.events.event_data import (
 )
 from pandaplot.models.events.event_types import DatasetOperationEvents
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
+from pandaplot.utils.item_display_options import dataset_display_options
 
 
 class AddRowsColumnsCommand(Command):
