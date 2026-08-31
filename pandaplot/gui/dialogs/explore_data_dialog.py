@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.project.items import Dataset
 from pandaplot.services.theme.theme_manager import ThemeManager
+from pandaplot.utils.item_display_options import dataset_display_options
 
 
 class ExploreDataDialog(PDialog):
@@ -34,9 +35,12 @@ class ExploreDataDialog(PDialog):
         self._on_create_dataset = on_create_dataset
         self._initialize()
 
-    def _get_datasets(self) -> list[Dataset]:
+    def _get_project(self):
         app_state = self.app_context.get_app_state()
-        project = app_state.current_project if app_state.has_project else None
+        return app_state.current_project if app_state.has_project else None
+
+    def _get_datasets(self) -> list[Dataset]:
+        project = self._get_project()
         if project is None:
             return []
         return [item for item in project.get_all_items() if isinstance(item, Dataset)]
@@ -110,14 +114,16 @@ class ExploreDataDialog(PDialog):
         list_layout = QVBoxLayout(list_widget)
         list_layout.setContentsMargins(0, 0, 0, 0)
         list_layout.setSpacing(8)
+        display_names = dict(dataset_display_options(self._get_project()))
         for dataset in datasets:
-            list_layout.addWidget(self._create_dataset_item(dataset))
+            display_name = display_names.get(dataset.id, dataset.name)
+            list_layout.addWidget(self._create_dataset_item(dataset, display_name))
         list_layout.addStretch()
 
         scroll_area.setWidget(list_widget)
         layout.addWidget(scroll_area)
 
-    def _create_dataset_item(self, dataset: Dataset) -> QPushButton:
+    def _create_dataset_item(self, dataset: Dataset, display_name: str) -> QPushButton:
         rows, cols = dataset.data.shape
         button = QPushButton()
         button.setObjectName("DatasetItemButton")
@@ -126,14 +132,16 @@ class ExploreDataDialog(PDialog):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Visible text lives in child QLabels (for independent name/shape
         # styling), which leaves the button itself unnamed for assistive tech.
-        button.setAccessibleName(dataset.name)
+        # display_name (not dataset.name) is used here since two datasets can
+        # share a plain name -- see dataset_display_options.
+        button.setAccessibleName(display_name)
         button.setAccessibleDescription(f"{rows} rows × {cols} columns")
 
         item_layout = QVBoxLayout(button)
         item_layout.setContentsMargins(14, 8, 14, 8)
         item_layout.setSpacing(2)
 
-        name_label = QLabel(dataset.name)
+        name_label = QLabel(display_name)
         name_font = name_label.font()
         name_font.setBold(True)
         name_label.setFont(name_font)

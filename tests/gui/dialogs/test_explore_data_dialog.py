@@ -5,10 +5,12 @@ from unittest.mock import Mock
 
 import pandas as pd
 import pytest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from pandaplot.gui.dialogs.explore_data_dialog import ExploreDataDialog
+from pandaplot.models.project import Project
 from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.folder import Folder
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -102,6 +104,32 @@ def test_dialog_builds_dataset_list_when_datasets_exist():
 
     assert not hasattr(dialog, "import_btn")
     assert not hasattr(dialog, "create_btn")
+
+
+def test_dataset_list_disambiguates_duplicate_dataset_names():
+    # Uses a real Project (not a Mock) so dataset_display_options' folder-path
+    # lookup (project.get_folder_path) has something real to resolve.
+    project = Project(name="Test Project")
+    runs = Folder(name="Runs")
+    project.add_item(runs)
+
+    # Built directly (not via the shared _dataset() helper, which derives a
+    # fixed id from the name) so the two same-named datasets get distinct ids.
+    root_dataset = Dataset(name="Sensor A", data=pd.DataFrame({"c0": [1, 2, 3]}))
+    nested_dataset = Dataset(name="Sensor A", data=pd.DataFrame({"c0": [1, 2, 3]}))
+    project.add_item(root_dataset)
+    project.add_item(nested_dataset, runs.id)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = True
+    app_context.get_app_state.return_value.current_project = project
+
+    dialog = _make_dialog(app_context)
+
+    buttons = dialog.findChildren(QPushButton, "DatasetItemButton")
+    names = {button.accessibleName() for button in buttons}
+    assert names == {"Sensor A  (project root)", "Sensor A  (Runs)"}
+    assert len(buttons) == 2
 
 
 def test_open_dataset_emits_tab_open_requested_and_accepts():

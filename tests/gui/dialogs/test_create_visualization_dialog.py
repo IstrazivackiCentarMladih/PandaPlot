@@ -144,6 +144,25 @@ def test_chart_list_disambiguates_duplicate_chart_names():
     assert len(buttons) == 2
 
 
+def test_chart_item_uses_canonical_chart_type_display_names():
+    # chart_type.value.capitalize() would mangle these: "hist" -> "Hist"
+    # (not "Histogram"), "colormap" -> "Colormap" (not "Color Map").
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = True
+    project = Mock()
+    project.get_all_items.return_value = [
+        _chart("Histogram Chart", chart_type="hist"),
+        _chart("Colormap Chart", chart_type="colormap"),
+    ]
+    app_context.get_app_state.return_value.current_project = project
+
+    dialog = _make_dialog(app_context)
+
+    buttons = dialog.findChildren(QPushButton, "ChartItemButton")
+    descriptions = {button.accessibleDescription() for button in buttons}
+    assert descriptions == {"Histogram chart · 0 series", "Color Map chart · 0 series"}
+
+
 def test_handle_create_chart_invokes_callback_and_accepts():
     app_context = Mock()
     app_context.get_app_state.return_value.has_project = False
