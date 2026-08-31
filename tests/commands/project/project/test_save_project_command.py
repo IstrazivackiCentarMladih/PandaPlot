@@ -68,23 +68,22 @@ def test_save_as_execute_logs_a_warning_when_current_project_none(caplog):
     assert "SaveProjectAsCommand.execute" in caplog.text
 
 
-def test_cleanup_releases_previous_file_path_snapshot():
+def test_does_not_occupy_undo_slot():
     app_context, _app_state = _make_app_context()
     command = SaveProjectCommand(app_context)
-    command.previous_file_path = "/old/path/project.pplot"
-    command.is_saving = False
 
-    command.cleanup()
-
-    assert command.previous_file_path is None
+    assert command.occupies_undo_slot() is False
 
 
-def test_cleanup_does_not_release_previous_file_path_while_save_in_progress():
+def test_undo_is_a_documented_noop():
     app_context, _app_state = _make_app_context()
     command = SaveProjectCommand(app_context)
-    command.previous_file_path = "/old/path/project.pplot"
-    command.is_saving = True
 
-    command.cleanup()
+    assert command.undo() is CommandResult.NOOP
 
-    assert command.previous_file_path == "/old/path/project.pplot"
+
+def test_redo_is_a_documented_noop():
+    app_context, _app_state = _make_app_context()
+    command = SaveProjectCommand(app_context)
+
+    assert command.redo() is CommandResult.NOOP

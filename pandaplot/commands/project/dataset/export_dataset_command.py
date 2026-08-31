@@ -317,9 +317,8 @@ class ExportDatasetCommand(Command):
     @override
     def occupies_undo_slot(self) -> bool:
         """This command's undo() is a documented no-op (exporting to a file
-        isn't meaningfully undoable), so it should never occupy an undo slot
-        -- unlike SaveProjectCommand, this class has no other call site that
-        wants it tracked."""
+        isn't meaningfully undoable), so it should never occupy an undo
+        slot."""
         return False
 
     def undo(self) -> CommandResult:
