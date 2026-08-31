@@ -1,6 +1,3 @@
-import datetime
-import os
-from pathlib import Path
 from typing import override
 
 from PySide6.QtCore import Qt, Signal
@@ -21,7 +18,7 @@ from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.state.app_context import AppContext
-from pandaplot.services.config.config_manager import ConfigManager
+from pandaplot.services.session.recent_projects import get_recent_projects
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
@@ -479,11 +476,10 @@ class WelcomeTab(PWidget):
     
     def update_recent_projects(self):
         """Update the recent projects list."""
-        # TODO(#221): this probably shouldn't be here, but somewhere else as we can update it in multiple places
         if not hasattr(self, "recent_projects_layout"):
             return
 
-        recent_projects = self.get_recent_projects()
+        recent_projects = get_recent_projects(self.app_context)
 
         # Dedupe by path while preserving order
         seen = set()
@@ -533,53 +529,7 @@ class WelcomeTab(PWidget):
                 project_info.get("last_opened", "Unknown")
             )
             self.recent_projects_layout.addWidget(project_item)
-    
-    def get_recent_projects(self):
-        """Return a list of recent projects from app configuration.
 
-        Expected config structure (if present):
-            app_context.get_app_state().config.recent_projects -> List[str]
-        Falls back to empty list if unavailable.
-        Each returned entry is dict: { name, path, last_opened }
-        """
-        # TODO(#221): this shouldn't be here as we might need recent projects in multiple places
-        try:
-            if not self.app_context:
-                return []
-            # Prefer ConfigManager (source of truth) instead of AppState (which currently has no config attr)
-            cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = cfg_manager.config
-            if not cfg:
-                return []
-            recent_paths = cfg.recent_projects
-            if not recent_paths:
-                return []
-            results = []
-            for p in recent_paths:
-                if not p:
-                    continue
-                try:
-                    path_obj = Path(p)
-                    if not path_obj.exists():
-                        continue
-                    name = path_obj.stem
-                    # Use file modified time as last_opened fallback
-                    ts = os.path.getmtime(p)
-                    last_opened = datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
-                    results.append({
-                        "name": name,
-                        "path": str(path_obj),
-                        "last_opened": last_opened
-                    })
-                except Exception:
-                    continue
-            # Sort newest first by last_opened timestamp string descending
-            results.sort(key=lambda x: x["last_opened"], reverse=True)
-            return results
-        except Exception as e:
-            self.logger.warning("Failed to load recent projects: %s", e)
-            return []
-    
     def get_tab_title(self):
         """Get the title for this tab."""
         return "🏠 Welcome"
