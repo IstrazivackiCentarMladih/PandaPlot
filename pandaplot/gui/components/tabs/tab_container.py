@@ -579,6 +579,19 @@ class TabContainer(PWidget):
         target_pane.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab
 
+    def show_welcome_tab(self):
+        """Show the Welcome tab for Help > Welcome: focus one if already open
+        (WelcomeTab instances aren't tracked in `self.tabs`, unlike
+        project-item tabs, so this walks the panes directly), otherwise
+        create one in the active pane."""
+        for pane in self.panes:
+            for index in range(pane.count()):
+                if isinstance(pane.widget(index), WelcomeTab):
+                    pane.setCurrentIndex(index)
+                    self._activate_pane(pane)
+                    return
+        self.create_welcome_tab()
+
     def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):
         """Open the chart creation wizard for a dataset.
 

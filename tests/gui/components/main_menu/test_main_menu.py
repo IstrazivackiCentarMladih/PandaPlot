@@ -68,6 +68,30 @@ class TestMainMenuHelpMenu:
 
         assert action is not None
 
+    def test_help_menu_has_welcome_action(self, app_context):
+        menu = MainMenu(parent=None, app_context=app_context)
+
+        action = _find_help_action(menu, "Welcome")
+
+        assert action is not None
+
+    def test_show_welcome_tab_delegates_to_the_tab_container_manager(self, app_context):
+        menu = MainMenu(parent=None, app_context=app_context)
+        tab_container = Mock()
+        original_side_effect = app_context.get_manager.side_effect
+
+        def _get_manager(manager_type, *args, **kwargs):
+            from pandaplot.gui.components.tabs.tab_container import TabContainer
+            if manager_type is TabContainer:
+                return tab_container
+            return original_side_effect(manager_type, *args, **kwargs)
+
+        app_context.get_manager.side_effect = _get_manager
+
+        menu.show_welcome_tab()
+
+        tab_container.show_welcome_tab.assert_called_once_with()
+
     def test_open_example_project_loads_selected_example(self, app_context):
         menu = MainMenu(parent=None, app_context=app_context)
         command_executor = Mock()

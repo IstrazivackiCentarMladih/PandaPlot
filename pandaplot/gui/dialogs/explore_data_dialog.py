@@ -68,6 +68,13 @@ class ExploreDataDialog(PDialog):
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
+        self.intro_label = QLabel(
+            "Once you're in a dataset's data view, you can sort and filter columns, "
+            "add computed columns, or transform values via the column/cell context menus."
+        )
+        self.intro_label.setWordWrap(True)
+        layout.addWidget(self.intro_label)
+
         datasets = self._get_datasets()
         if datasets:
             self._build_dataset_list(layout, datasets)
@@ -221,4 +228,5 @@ class ExploreDataDialog(PDialog):
                 border: 0px;
             }}
         """)
+        self.intro_label.setStyleSheet(f"color: {secondary_fg};")
         self.subtitle_label.setStyleSheet(f"color: {secondary_fg};")

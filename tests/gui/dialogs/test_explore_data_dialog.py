@@ -76,6 +76,21 @@ def test_dialog_builds_empty_state_actions_when_no_datasets():
     assert hasattr(dialog, "create_btn")
 
 
+def test_dialog_shows_an_intro_explanation_regardless_of_branch():
+    empty_context = Mock()
+    empty_context.get_app_state.return_value.has_project = False
+    empty_dialog = _make_dialog(empty_context)
+    assert empty_dialog.intro_label.text().strip()
+
+    populated_context = Mock()
+    populated_context.get_app_state.return_value.has_project = True
+    project = Mock()
+    project.get_all_items.return_value = [_dataset("A")]
+    populated_context.get_app_state.return_value.current_project = project
+    populated_dialog = _make_dialog(populated_context)
+    assert populated_dialog.intro_label.text().strip()
+
+
 def test_dialog_builds_dataset_list_when_datasets_exist():
     app_context = Mock()
     app_context.get_app_state.return_value.has_project = True

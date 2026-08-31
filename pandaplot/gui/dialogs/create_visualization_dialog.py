@@ -71,6 +71,13 @@ class CreateVisualizationDialog(PDialog):
         header_layout.addStretch()
         layout.addLayout(header_layout)
 
+        self.intro_label = QLabel(
+            "Use the wizard to pick from line, scatter, bar, heatmap, and other series "
+            "types, and combine multiple series on one chart to compare data."
+        )
+        self.intro_label.setWordWrap(True)
+        layout.addWidget(self.intro_label)
+
         charts = self._get_charts()
         if charts:
             self.subtitle_label = QLabel("Select a chart to open it, or create a new one.")
@@ -212,4 +219,5 @@ class CreateVisualizationDialog(PDialog):
                 border: 0px;
             }}
         """)
+        self.intro_label.setStyleSheet(f"color: {secondary_fg};")
         self.subtitle_label.setStyleSheet(f"color: {secondary_fg};")

@@ -145,6 +145,10 @@ class MainMenu(PMenuBar):
         help_menu = QMenu("Help", self)
         self.addMenu(help_menu)
 
+        welcome_action = QAction("Welcome", self)
+        welcome_action.triggered.connect(self.show_welcome_tab)
+        help_menu.addAction(welcome_action)
+
         open_example_project_action = QAction("Open Example Project...", self)
         open_example_project_action.triggered.connect(self.show_examples_dialog)
         help_menu.addAction(open_example_project_action)
@@ -409,3 +413,10 @@ class MainMenu(PMenuBar):
         from pandaplot.gui.dialogs.about_dialog import AboutDialog
         dialog = AboutDialog(self.app_context, self.parent())
         dialog.exec()
+
+    def show_welcome_tab(self):
+        """Show the Welcome tab from Help > Welcome, focusing one if already
+        open rather than opening a second one."""
+        from pandaplot.gui.components.tabs.tab_container import TabContainer
+        tab_container = self.app_context.get_manager(TabContainer)
+        tab_container.show_welcome_tab()
