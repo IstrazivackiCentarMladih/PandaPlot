@@ -63,6 +63,18 @@ class TabContainerCommandManager:
         command = CreateEmptyDatasetCommand(self.app_context)
         self.app_context.get_command_executor().execute_command(command)
 
+    def handle_create_chart(self):
+        """Handle create-chart request from the welcome tab's Create
+        Visualizations dialog.
+
+        Unlike handle_import_data/handle_create_dataset, this doesn't create
+        a project first: CreateChartFromWizardCommand already offers to
+        create one itself (ensure_project_or_offer_create) if none is open,
+        matching MainMenu's "Chart > Create New" entry point.
+        """
+        command = CreateChartFromWizardCommand(self.app_context)
+        self.app_context.get_command_executor().execute_command(command)
+
     def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):
         """Open the chart creation wizard for a dataset.
 

@@ -121,6 +121,23 @@ def test_handle_create_dataset_skips_new_project_when_one_is_already_loaded(mock
 
 
 @patch("pandaplot.gui.components.tabs.tab_container_command_manager.CreateChartFromWizardCommand")
+def test_handle_create_chart_executes_wizard_command_without_a_dataset(mock_command_cls):
+    app_context = Mock()
+    manager = _manager(app_context)
+    manager.handle_new_project = Mock()
+
+    manager.handle_create_chart()
+
+    mock_command_cls.assert_called_once_with(app_context)
+    app_context.get_command_executor.return_value.execute_command.assert_called_once_with(
+        mock_command_cls.return_value
+    )
+    # Unlike handle_create_dataset/handle_import_data, this doesn't pre-create
+    # a project -- CreateChartFromWizardCommand offers to do that itself.
+    manager.handle_new_project.assert_not_called()
+
+
+@patch("pandaplot.gui.components.tabs.tab_container_command_manager.CreateChartFromWizardCommand")
 def test_create_chart_from_dataset_builds_the_wizard_command(mock_command_cls):
     dataset_item = Mock()
     dataset_item.parent_id = "folder-1"

@@ -21,6 +21,7 @@ from pandaplot.gui.dialogs.create_or_open_project_dialog import (
     ACTION_OPEN_PROJECT,
     CreateOrOpenProjectDialog,
 )
+from pandaplot.gui.dialogs.create_visualization_dialog import CreateVisualizationDialog
 from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
 from pandaplot.gui.dialogs.explore_data_dialog import ExploreDataDialog
 from pandaplot.gui.dialogs.getting_started_step_dialog import GettingStartedStepDialog
@@ -42,6 +43,7 @@ class WelcomeTab(PWidget):
     import_data_requested = Signal()  # importing data
     example_project_selected = Signal(str)  # example project file path
     create_dataset_requested = Signal()  # creating a blank dataset
+    create_chart_requested = Signal()  # creating a chart via the wizard
 
     def __init__(self, app_context:AppContext, parent:QWidget):
         super().__init__(app_context=app_context, parent=parent)
@@ -357,17 +359,7 @@ class WelcomeTab(PWidget):
             (
                 "4. Create Visualizations",
                 "Generate charts and plots from your data",
-                lambda: self.show_step_info(
-                    "📊",
-                    "Create Visualizations",
-                    "Once your dataset looks right, turn it into a chart.",
-                    [
-                        "Select a dataset (or specific columns) and use the "
-                        "'Create Chart' button to launch the chart wizard.",
-                        "Pick from line, scatter, bar, heatmap, and other series types.",
-                        "Combine multiple series on one chart to compare data.",
-                    ],
-                ),
+                self.show_create_visualization_dialog,
             ),
             (
                 "5. Customize and Export",
@@ -414,6 +406,16 @@ class WelcomeTab(PWidget):
             self.app_context,
             on_import_data=self.import_data_requested.emit,
             on_create_dataset=self.create_dataset_requested.emit,
+            parent=self,
+        )
+        dialog.exec()
+
+    def show_create_visualization_dialog(self):
+        """Show step 4's dialog: jump to an existing chart, or open the chart
+        wizard to create a new one."""
+        dialog = CreateVisualizationDialog(
+            self.app_context,
+            on_create_chart=self.create_chart_requested.emit,
             parent=self,
         )
         dialog.exec()

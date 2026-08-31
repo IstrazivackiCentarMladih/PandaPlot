@@ -1,6 +1,6 @@
 """Tests for TabContainer.create_welcome_tab's signal wiring to TabContainerCommandManager.
 
-create_welcome_tab connects each of WelcomeTab's six signals directly to a
+create_welcome_tab connects each of WelcomeTab's seven signals directly to a
 method on self.command_manager (see issue #251's TabContainer/
 TabContainerCommandManager split). That wiring is a plain string of attribute
 names with no other test coverage, so a typo (e.g.
@@ -94,3 +94,11 @@ def test_create_dataset_requested_wired_to_handle_create_dataset():
     welcome_tab.create_dataset_requested.emit()
 
     container.command_manager.handle_create_dataset.assert_called_once_with()
+
+
+def test_create_chart_requested_wired_to_handle_create_chart():
+    container, welcome_tab = _make_container_with_welcome_tab()
+
+    welcome_tab.create_chart_requested.emit()
+
+    container.command_manager.handle_create_chart.assert_called_once_with()
