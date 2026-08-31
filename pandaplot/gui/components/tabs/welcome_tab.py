@@ -7,8 +7,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -17,7 +15,14 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.dialogs.create_or_open_project_dialog import (
+    ACTION_BROWSE_EXAMPLES,
+    ACTION_NEW_PROJECT,
+    ACTION_OPEN_PROJECT,
+    CreateOrOpenProjectDialog,
+)
 from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
+from pandaplot.gui.dialogs.getting_started_step_dialog import GettingStartedStepDialog
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.session.recent_projects import get_recent_projects
@@ -261,8 +266,35 @@ class WelcomeTab(PWidget):
     def show_examples_dialog(self):
         """Open the examples dialog and emit the chosen project's path, if any."""
         dialog = ExamplesDialog(self.app_context, self)
-        if dialog.exec() and dialog.selected_path:
-            self.example_project_selected.emit(dialog.selected_path)
+        if not dialog.exec() or not dialog.selected_path:
+            return
+        if not self._confirm_replace_current_project(
+            "Open Example Project",
+            "Opening the example project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
+        ):
+            return
+        self.example_project_selected.emit(dialog.selected_path)
+
+    def _confirm_replace_current_project(self, title: str, message: str) -> bool:
+        """Ask before an action would close the currently open project.
+
+        Mirrors MainMenu's show_examples_dialog/_load_recent_project: only
+        ask when there's a currently open project to lose, since with none
+        open there's nothing to override.
+        """
+        if not self.app_context.get_app_state().has_project:
+            return True
+        return self.app_context.get_ui_controller().show_question(title, message)
+
+    def _on_recent_project_clicked(self, project_path: str):
+        """Handle a click on a recent-project item, confirming first if it
+        would close a currently open project."""
+        if not self._confirm_replace_current_project(
+            "Open Recent Project",
+            "Opening this recent project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
+        ):
+            return
+        self.recent_project_selected.emit(project_path)
 
     def create_recent_projects_section(self, layout):
         """Create the recent projects section."""
@@ -308,7 +340,7 @@ class WelcomeTab(PWidget):
             (
                 "1. Create or Open a Project",
                 "Start by creating a new project or opening an existing one",
-                self.show_create_or_open_menu,
+                self.show_create_or_open_dialog,
             ),
             (
                 "2. Import Your Data",
@@ -319,28 +351,45 @@ class WelcomeTab(PWidget):
                 "3. Explore Data",
                 "Use the data view to examine and understand your dataset",
                 lambda: self.show_step_info(
+                    "📈",
                     "Explore Data",
-                    "Once your data is imported, open it from the project tree to "
-                    "view it in the data view, where you can examine columns, "
-                    "filter rows, and understand your dataset.",
+                    "Once your data is imported, open the dataset from the project "
+                    "tree to view it in the data view.",
+                    [
+                        "Sort and filter columns to focus on the rows you care about.",
+                        "Right-click a column header to add computed or derived columns.",
+                        "Use the cell/column context menus to transform values in place.",
+                    ],
                 ),
             ),
             (
                 "4. Create Visualizations",
                 "Generate charts and plots from your data",
                 lambda: self.show_step_info(
+                    "📊",
                     "Create Visualizations",
-                    "With a dataset open, use the chart creation tools to generate "
-                    "plots and visualizations from your data.",
+                    "Once your dataset looks right, turn it into a chart.",
+                    [
+                        "Select a dataset (or specific columns) and use the "
+                        "'Create Chart' button to launch the chart wizard.",
+                        "Pick from line, scatter, bar, heatmap, and other series types.",
+                        "Combine multiple series on one chart to compare data.",
+                    ],
                 ),
             ),
             (
                 "5. Customize and Export",
                 "Customize your plots and export them for presentations",
                 lambda: self.show_step_info(
+                    "🎨",
                     "Customize and Export",
-                    "Once you have a chart, use its style options to customize "
-                    "appearance, then export it for use in presentations or reports.",
+                    "Polish a chart once it's created, then share it.",
+                    [
+                        "Use the chart's style panel to adjust colors, axes, "
+                        "labels, and legends.",
+                        "Add a fit or trendline to highlight patterns in the data.",
+                        "Export the chart as an image for reports or presentations.",
+                    ],
                 ),
             ),
         ]
@@ -351,32 +400,26 @@ class WelcomeTab(PWidget):
 
         layout.addLayout(content_layout)
 
-    def show_create_or_open_menu(self):
-        """Show a small menu for step 1, offering the ways to get a project open."""
-        menu = QMenu(self)
-        for label in ("New Project", "Open Project", "Browse Examples"):
-            menu.addAction(label)
+    def show_create_or_open_dialog(self):
+        """Show a dialog for step 1, offering the ways to get a project open."""
+        dialog = CreateOrOpenProjectDialog(self.app_context, self)
+        if dialog.exec():
+            self.dispatch_create_or_open_action(dialog.selected_action)
 
-        sender = self.sender()
-        pos = sender.mapToGlobal(sender.rect().bottomLeft()) if isinstance(sender, QWidget) else self.mapToGlobal(self.rect().center())
-        chosen = menu.exec(pos)
-
-        if chosen is not None:
-            self.dispatch_create_or_open_action(chosen.text())
-
-    def dispatch_create_or_open_action(self, action_text: str):
-        """Run the effect of a chosen step-1 menu entry, given its label."""
-        if action_text == "New Project":
+    def dispatch_create_or_open_action(self, action: str):
+        """Run the effect of a chosen step-1 dialog option."""
+        if action == ACTION_NEW_PROJECT:
             self.new_project_requested.emit()
-        elif action_text == "Open Project":
+        elif action == ACTION_OPEN_PROJECT:
             self.open_project_requested.emit()
-        elif action_text == "Browse Examples":
+        elif action == ACTION_BROWSE_EXAMPLES:
             self.show_examples_dialog()
 
-    def show_step_info(self, title: str, message: str):
-        """Show a short informational dialog for a getting-started step."""
-        QMessageBox.information(self, title, message)
-    
+    def show_step_info(self, icon: str, title: str, intro: str, tips: list[str]):
+        """Show a richer informational dialog for a getting-started step."""
+        dialog = GettingStartedStepDialog(self.app_context, icon, title, intro, tips, self)
+        dialog.exec()
+
     def create_action_button(self, title, description, callback):
         """Create a styled action button."""
         button = QPushButton()
@@ -530,7 +573,7 @@ class WelcomeTab(PWidget):
         button_layout.addWidget(icon_label)
 
         # Connect to the signal
-        button.clicked.connect(lambda: self.recent_project_selected.emit(project_path))
+        button.clicked.connect(lambda: self._on_recent_project_clicked(project_path))
 
         return button
     
