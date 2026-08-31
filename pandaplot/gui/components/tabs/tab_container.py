@@ -573,6 +573,7 @@ class TabContainer(PWidget):
         welcome_tab.recent_project_selected.connect(self.command_manager.handle_recent_project)
         welcome_tab.import_data_requested.connect(self.command_manager.handle_import_data)
         welcome_tab.example_project_selected.connect(self.command_manager.handle_example_project)
+        welcome_tab.create_dataset_requested.connect(self.command_manager.handle_create_dataset)
 
         target_pane.addTab(welcome_tab, welcome_tab.get_tab_title())
         return welcome_tab

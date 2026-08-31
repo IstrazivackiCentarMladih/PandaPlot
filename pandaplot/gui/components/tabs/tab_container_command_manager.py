@@ -10,6 +10,7 @@ import logging
 from typing import Optional
 
 from pandaplot.commands.project.chart import CreateChartFromWizardCommand
+from pandaplot.commands.project.dataset.create_empty_dataset_command import CreateEmptyDatasetCommand
 from pandaplot.commands.project.project import LoadProjectCommand, NewProjectCommand, OpenProjectCommand
 from pandaplot.models.state.app_context import AppContext
 
@@ -51,6 +52,15 @@ class TabContainerCommandManager:
             ImportDataCommand,
         )
         command = ImportDataCommand(self.app_context)
+        self.app_context.get_command_executor().execute_command(command)
+
+    def handle_create_dataset(self):
+        """Handle create-dataset request from the welcome tab's Explore Data dialog."""
+        # Creating a dataset requires a project to be loaded first
+        if not self.app_context.get_app_state().has_project:
+            self.handle_new_project()
+
+        command = CreateEmptyDatasetCommand(self.app_context)
         self.app_context.get_command_executor().execute_command(command)
 
     def create_chart_from_dataset(self, dataset_id: str, preselected_column_ids: Optional[list[str]] = None):

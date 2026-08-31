@@ -22,6 +22,7 @@ from pandaplot.gui.dialogs.create_or_open_project_dialog import (
     CreateOrOpenProjectDialog,
 )
 from pandaplot.gui.dialogs.examples_dialog import ExamplesDialog
+from pandaplot.gui.dialogs.explore_data_dialog import ExploreDataDialog
 from pandaplot.gui.dialogs.getting_started_step_dialog import GettingStartedStepDialog
 from pandaplot.models.events.event_types import ConfigEvents
 from pandaplot.models.state.app_context import AppContext
@@ -40,6 +41,7 @@ class WelcomeTab(PWidget):
     recent_project_selected = Signal(str)  # project file path
     import_data_requested = Signal()  # importing data
     example_project_selected = Signal(str)  # example project file path
+    create_dataset_requested = Signal()  # creating a blank dataset
 
     def __init__(self, app_context:AppContext, parent:QWidget):
         super().__init__(app_context=app_context, parent=parent)
@@ -350,17 +352,7 @@ class WelcomeTab(PWidget):
             (
                 "3. Explore Data",
                 "Use the data view to examine and understand your dataset",
-                lambda: self.show_step_info(
-                    "📈",
-                    "Explore Data",
-                    "Once your data is imported, open the dataset from the project "
-                    "tree to view it in the data view.",
-                    [
-                        "Sort and filter columns to focus on the rows you care about.",
-                        "Right-click a column header to add computed or derived columns.",
-                        "Use the cell/column context menus to transform values in place.",
-                    ],
-                ),
+                self.show_explore_data_dialog,
             ),
             (
                 "4. Create Visualizations",
@@ -414,6 +406,17 @@ class WelcomeTab(PWidget):
             self.open_project_requested.emit()
         elif action == ACTION_BROWSE_EXAMPLES:
             self.show_examples_dialog()
+
+    def show_explore_data_dialog(self):
+        """Show step 3's dialog: jump to an existing dataset, or offer to
+        import/create one when the open project (if any) has none yet."""
+        dialog = ExploreDataDialog(
+            self.app_context,
+            on_import_data=self.import_data_requested.emit,
+            on_create_dataset=self.create_dataset_requested.emit,
+            parent=self,
+        )
+        dialog.exec()
 
     def show_step_info(self, icon: str, title: str, intro: str, tips: list[str]):
         """Show a richer informational dialog for a getting-started step."""

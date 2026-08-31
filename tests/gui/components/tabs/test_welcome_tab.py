@@ -103,6 +103,27 @@ def test_show_step_info_builds_and_shows_dialog():
     dialog.exec.assert_called_once()
 
 
+def test_show_explore_data_dialog_builds_and_shows_dialog_with_callbacks():
+    tab = _make_welcome_tab()
+    dialog = Mock()
+    dialog_cls = Mock(return_value=dialog)
+
+    import pandaplot.gui.components.tabs.welcome_tab as welcome_tab_module
+    original = welcome_tab_module.ExploreDataDialog
+    welcome_tab_module.ExploreDataDialog = dialog_cls
+    try:
+        tab.show_explore_data_dialog()
+    finally:
+        welcome_tab_module.ExploreDataDialog = original
+
+    _, kwargs = dialog_cls.call_args
+    assert dialog_cls.call_args[0][0] is tab.app_context
+    assert kwargs["on_import_data"] == tab.import_data_requested.emit
+    assert kwargs["on_create_dataset"] == tab.create_dataset_requested.emit
+    assert kwargs["parent"] is tab
+    dialog.exec.assert_called_once()
+
+
 def test_confirm_replace_current_project_skips_prompt_when_no_project_open():
     tab = _make_welcome_tab()
     tab.app_context.get_app_state.return_value.has_project = False

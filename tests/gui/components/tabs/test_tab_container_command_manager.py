@@ -91,6 +91,35 @@ def test_handle_import_data_skips_new_project_when_one_is_already_loaded():
     manager.handle_new_project.assert_not_called()
 
 
+@patch("pandaplot.gui.components.tabs.tab_container_command_manager.CreateEmptyDatasetCommand")
+def test_handle_create_dataset_creates_a_project_first_when_none_is_loaded(mock_command_cls):
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = False
+    manager = _manager(app_context)
+    manager.handle_new_project = Mock()
+
+    manager.handle_create_dataset()
+
+    manager.handle_new_project.assert_called_once()
+    mock_command_cls.assert_called_once_with(app_context)
+    app_context.get_command_executor.return_value.execute_command.assert_called_once_with(
+        mock_command_cls.return_value
+    )
+
+
+@patch("pandaplot.gui.components.tabs.tab_container_command_manager.CreateEmptyDatasetCommand")
+def test_handle_create_dataset_skips_new_project_when_one_is_already_loaded(mock_command_cls):
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = True
+    manager = _manager(app_context)
+    manager.handle_new_project = Mock()
+
+    manager.handle_create_dataset()
+
+    manager.handle_new_project.assert_not_called()
+    mock_command_cls.assert_called_once_with(app_context)
+
+
 @patch("pandaplot.gui.components.tabs.tab_container_command_manager.CreateChartFromWizardCommand")
 def test_create_chart_from_dataset_builds_the_wizard_command(mock_command_cls):
     dataset_item = Mock()
