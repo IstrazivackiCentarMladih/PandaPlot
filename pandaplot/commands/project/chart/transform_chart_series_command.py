@@ -110,7 +110,16 @@ class TransformChartSeriesCommand(Command):
                 f"Expression returned {len(result)} values but the series has {len(target_series)} points."
             )
 
+        untouched_label = y_label if self.target == "x" else x_label
         transformed_label = f"{x_label if self.target == 'x' else y_label} (transformed)"
+        if transformed_label == untouched_label:
+            # A collision here means the resulting DataFrame({...}) dict
+            # literal would silently keep only one of the two columns
+            # (Python dicts can't have duplicate keys) -- results_df would
+            # end up with a single column, and execute()'s later
+            # results_df.columns[1] lookup would then raise after the
+            # dataset was already created, leaving an orphaned dataset.
+            transformed_label = f"{transformed_label} (2)"
         if self.target == "x":
             results_df = pd.DataFrame({
                 transformed_label: result.reset_index(drop=True),
@@ -123,6 +132,31 @@ class TransformChartSeriesCommand(Command):
             })
         default_name = f"{y_label} ({self.target} transformed)"
         return results_df, default_name
+
+    @staticmethod
+    def _copied_style_without_stale_error_columns(style):
+        """Deep-copy `style`, clearing any error-bar column bindings.
+
+        The result dataset only ever has the two axis columns -- an
+        error-bar column id/name copied verbatim from the source series
+        would point at a column that doesn't exist in it (or, worse,
+        accidentally resolve against a same-named axis column that means
+        something else entirely). The rest of the error-bar config (color,
+        symmetry, cap size) is pure visual styling, not a data binding, and
+        is kept.
+        """
+        new_style = copy.deepcopy(style)
+        error_bars = getattr(new_style, "error_bars", None)
+        if error_bars is not None:
+            error_bars.x_error_column_id = ""
+            error_bars.y_error_column_id = ""
+            error_bars.x_error_minus_column_id = ""
+            error_bars.y_error_minus_column_id = ""
+            error_bars.x_error_column = ""
+            error_bars.y_error_column = ""
+            error_bars.x_error_minus_column = ""
+            error_bars.y_error_minus_column = ""
+        return new_style
 
     def _unique_dataset_name(self, project, name: str) -> str:
         """Return `name`, or `name (N)` for the smallest N >= 2 not already
@@ -200,7 +234,7 @@ class TransformChartSeriesCommand(Command):
                 source_series = chart.data_series[self.source_index]
                 style_kwargs = {
                     "series_type": source_series.series_type,
-                    "style": copy.deepcopy(source_series.style),
+                    "style": self._copied_style_without_stale_error_columns(source_series.style),
                     "alpha": source_series.alpha,
                 }
             chart.add_data_series(

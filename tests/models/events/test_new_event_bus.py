@@ -161,6 +161,19 @@ class TestNewEventBus:
 
         project_changed_callback.assert_called_once()
 
+    def test_dataset_deleted_does_not_bubble_to_project_item_removed(self):
+        """dataset.deleted emitters carry "dataset_id", not the generic
+        "item_id" PROJECT_ITEM_REMOVED subscribers expect (e.g.
+        TabContainer's tab-closer reads event_data["item_id"]) -- bubbling
+        there too would call those subscribers with no usable id."""
+        event_bus = EventBus()
+        item_removed_callback = Mock()
+        event_bus.subscribe("project.item_removed", item_removed_callback)
+
+        event_bus.emit("dataset.deleted", {"dataset_id": "ds-1"})
+
+        item_removed_callback.assert_not_called()
+
     def test_callback_exception_handling(self):
         """Test that exceptions in callbacks don't break the event bus."""
         event_bus = EventBus()

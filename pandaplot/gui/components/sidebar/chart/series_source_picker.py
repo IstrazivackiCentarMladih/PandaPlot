@@ -42,9 +42,11 @@ def series_source_hint(*, has_sources: bool, any_series_excluded: bool) -> str:
     """Hint label text for the outcome of populate_series_fit_sources()."""
     if not has_sources:
         if any_series_excluded:
+            # Operation-neutral wording: shared by ChartAnalysisPanel and
+            # ChartTransformPanel, so it can't say "analysis" specifically.
             return (
                 "This chart's series (bar/hist/vector/colormap/heatmap/3-D) "
-                "don't support this analysis -- add a line, scatter, or fit."
+                "aren't supported here -- add a line, scatter, or fit."
             )
         return "This chart has no data series or fits yet."
     if any_series_excluded:

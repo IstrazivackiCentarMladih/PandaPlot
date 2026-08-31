@@ -43,9 +43,12 @@ def resolve_series_xy(
         raise ValueError("Selected series no longer exists.")
     series = chart.data_series[source_index]
     if not SERIES_TYPE_SPECS[series.series_type].supports_curve_analysis:
+        # Operation-neutral wording: this resolver backs both analysis
+        # (AnalyzeChartSeriesCommand) and transform (TransformChartSeriesCommand)
+        # requests, so it can't say "analysis" without being wrong half the time.
         raise ValueError(
-            f"'{series.series_type.value}' series don't support this analysis "
-            "(only line, scatter, and fitted curves do)."
+            f"'{series.series_type.value}' series aren't supported here "
+            "(only line, scatter, and fitted curves have an ordered (x, y) curve)."
         )
     dataset = app_state.current_project.find_item(series.dataset_id)
     if not isinstance(dataset, Dataset) or dataset.data is None:

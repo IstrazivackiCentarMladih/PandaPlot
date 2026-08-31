@@ -74,6 +74,23 @@ class TestTransformChartSeriesCommand:
         assert transformed_col == "t (transformed)"
         assert result.data[transformed_col].iloc[0] == pytest.approx(1.0)
 
+    def test_transformed_column_name_disambiguates_from_a_colliding_untouched_label(self, ctx):
+        """If the source series' label (used as the y column name) happens
+        to equal what the transformed x column would be named, the two
+        DataFrame({...}) keys would otherwise collide and pandas would
+        silently keep only one of the two columns."""
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        chart.data_series[0].label = "t (transformed)"  # collides with x_label + " (transformed)"
+
+        command = _cmd(ctx, target="x", expression="x + 1")
+        assert command.execute() is CommandResult.SUCCESS
+
+        result = project.find_item(command.result_dataset_id)
+        assert len(result.data.columns) == 2
+        assert "t (transformed)" in result.data.columns
+        assert "t (transformed) (2)" in result.data.columns
+
     def test_transform_on_fit_series(self, ctx):
         _, project = ctx
         command = _cmd(ctx, source_kind="fit", target="y", expression="np.sqrt(y)")
@@ -175,6 +192,29 @@ class TestTransformChartSeriesCommand:
         assert new_series.alpha == 0.4
         # A copy, not the same object -- editing one must not edit the other.
         assert new_series.style is not source_series.style
+
+    def test_new_series_does_not_copy_stale_error_bar_column_bindings(self, ctx):
+        """The source series' error-bar column ids/names point at columns of
+        its OWN dataset, which the result dataset (only the two axis
+        columns) doesn't have -- copying them verbatim would leave a
+        reference to a nonexistent column, or worse, silently resolve
+        against a same-named column that means something else entirely."""
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        source_series = chart.data_series[0]
+        source_series.style.error_bars.y_error_column_id = "err-col-id"
+        source_series.style.error_bars.y_error_column = "sq_err"
+        source_series.style.error_bars.error_color = "#00ff00"  # pure styling, should survive
+
+        command = _cmd(ctx, source_kind="series", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.style.error_bars.y_error_column_id == ""
+        assert new_series.style.error_bars.y_error_column == ""
+        assert new_series.style.error_bars.error_color == "#00ff00"
+        # The source series' own bindings must be untouched too.
+        assert source_series.style.error_bars.y_error_column_id == "err-col-id"
 
     def test_new_series_from_a_fit_source_uses_default_style(self, ctx):
         _, project = ctx

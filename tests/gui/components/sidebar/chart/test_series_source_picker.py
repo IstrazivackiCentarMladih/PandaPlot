@@ -75,7 +75,7 @@ class TestSeriesSourceHint:
         )
 
     def test_no_sources_with_exclusion(self):
-        assert "don't support this analysis" in series_source_hint(
+        assert "aren't supported here" in series_source_hint(
             has_sources=False, any_series_excluded=True
         )
 
