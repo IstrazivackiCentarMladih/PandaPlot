@@ -11,6 +11,7 @@ from pandaplot.commands.project.chart.transform_chart_series_command import (
     TransformChartSeriesCommand,
 )
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
@@ -155,6 +156,31 @@ class TestTransformChartSeriesCommand:
         assert len(df) == 11
         assert isinstance(name, str)
         assert command.result_dataset_id is None
+
+    def test_new_series_copies_the_source_series_type_and_style(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        source_series = chart.data_series[0]
+        source_series.series_type = SeriesType.SCATTER
+        source_series.style = SERIES_TYPE_SPECS[SeriesType.SCATTER].style_cls()
+        source_series.style.marker.marker_color = "#ff00ff"
+
+        command = _cmd(ctx, source_kind="series", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.series_type == SeriesType.SCATTER
+        assert new_series.style.marker.marker_color == "#ff00ff"
+        # A copy, not the same object -- editing one must not edit the other.
+        assert new_series.style is not source_series.style
+
+    def test_new_series_from_a_fit_source_uses_default_style(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        command = _cmd(ctx, source_kind="fit", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.series_type == SeriesType.LINE
 
     def test_execute_adds_a_new_series_to_the_chart(self, ctx):
         _, project = ctx

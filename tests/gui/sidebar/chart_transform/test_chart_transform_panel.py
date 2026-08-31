@@ -98,6 +98,33 @@ class TestChartTransformPanelTarget:
         assert "y stays as-is" in panel.target_hint.text()
 
 
+class TestChartTransformPanelInsertFunctionCode:
+    """Inserted template code (shared with the dataset Transform panel,
+    always written in terms of 'x') should be rewritten to whichever axis
+    is the current Target -- inserting "x * 2" while replacing Y is not
+    the expression the user asked for."""
+
+    def test_inserts_unchanged_when_target_is_x(self, panel):
+        panel.target_combo.setCurrentIndex(1)  # X
+        panel._insert_function_code("x * 2")
+        assert panel.expression_text.toPlainText() == "x * 2"
+
+    def test_rewrites_x_to_y_when_target_is_y(self, panel):
+        assert panel.target_combo.currentData() == "y"
+        panel._insert_function_code("x * 2")
+        assert panel.expression_text.toPlainText() == "y * 2"
+
+    def test_does_not_corrupt_identifiers_that_merely_contain_an_x(self, panel):
+        panel._insert_function_code("np.exp(x)")
+        assert panel.expression_text.toPlainText() == "np.exp(y)"
+
+    def test_inserts_into_existing_text_rather_than_overwriting_it(self, panel):
+        panel.expression_text.setPlainText("1 + 1")
+        panel._insert_function_code("x * 2")
+        assert "y * 2" in panel.expression_text.toPlainText()
+        assert "1 + 1" in panel.expression_text.toPlainText()
+
+
 class TestChartTransformPanelApply:
     def test_apply_with_no_expression_shows_error(self, panel):
         panel.apply()

@@ -9,9 +9,13 @@ project item, the same way AnalyzeChartSeriesCommand does for analysis
 results (#268). It then also adds a new data series to the chart pointing at
 that dataset, so the transform's effect is visible on the chart immediately
 -- from there it's an ordinary series like any other (restylable, removable,
-independently re-pointed at a different column via the Data tab).
+independently re-pointed at a different column via the Data tab). When the
+source is a data series (not a fit), the new series copies its type and
+style, so a transformed line/scatter/etc. looks the same as what it was
+derived from instead of falling back to the chart's default styling.
 """
 
+import copy
 import uuid
 from typing import Literal, Optional, override
 
@@ -184,6 +188,19 @@ class TransformChartSeriesCommand(Command):
             # in that order, regardless of which one was the transform target
             # -- see run_transform()'s two branches.
             x_column, y_column = results_df.columns[0], results_df.columns[1]
+            style_kwargs = {}
+            if self.source_kind == "series":
+                # Copy the source series' look (and the series_type its style
+                # is bound to -- DataSeries rejects a style/series_type pair
+                # from different series types) so the transformed series
+                # doesn't revert to the chart's default styling. Fits carry a
+                # FitStyle, not a SeriesStyleBase, so there's nothing
+                # compatible to copy from a fit source.
+                source_series = chart.data_series[self.source_index]
+                style_kwargs = {
+                    "series_type": source_series.series_type,
+                    "style": copy.deepcopy(source_series.style),
+                }
             chart.add_data_series(
                 dataset_id=self.result_dataset_id,
                 x_column_id=dataset.column_id(x_column) or "",
@@ -191,6 +208,7 @@ class TransformChartSeriesCommand(Command):
                 x_column=x_column,
                 y_column=y_column,
                 label=name,
+                **style_kwargs,
             )
             # add_data_series() always appends, so the new series is the last
             # element -- found this way (not list.index(new_series)) since

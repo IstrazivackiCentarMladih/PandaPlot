@@ -7,6 +7,7 @@ Analysis, powered by the transform expression engine instead of the
 analysis engine (#268).
 """
 
+import re
 from typing import Optional, override
 
 from PySide6.QtCore import Qt
@@ -177,6 +178,18 @@ class ChartTransformPanel(PWidget):
         return menu
 
     def _insert_function_code(self, code: str):
+        """Insert a template's code, rewritten to the current Target axis.
+
+        The templates (shared with the dataset Transform panel) are all
+        written in terms of ``x``, e.g. ``"x * 2"``. Here that's a stand-in
+        for "whichever axis you're replacing" -- so when Target is Y, insert
+        ``"y * 2"`` instead, matching what the user is actually about to
+        produce. \\b word-boundaries keep this from corrupting an
+        identifier that merely contains an "x", e.g. ``np.exp(x)``.
+        """
+        target = self.target_combo.currentData() or "y"
+        if target != "x":
+            code = re.sub(r"\bx\b", target, code)
         if not self.expression_text.toPlainText().strip():
             self.expression_text.setPlainText(code)
         else:
