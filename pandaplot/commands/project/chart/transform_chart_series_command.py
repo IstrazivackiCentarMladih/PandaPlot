@@ -99,6 +99,11 @@ class TransformChartSeriesCommand(Command):
             else:
                 result = pd.Series(result, index=target_series.index)
 
+        if len(result) != len(target_series):
+            raise ValueError(
+                f"Expression returned {len(result)} values but the series has {len(target_series)} points."
+            )
+
         transformed_label = f"{x_label if self.target == 'x' else y_label} (transformed)"
         if self.target == "x":
             results_df = pd.DataFrame({

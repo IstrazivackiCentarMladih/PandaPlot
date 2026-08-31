@@ -248,7 +248,7 @@ class ChartTransformPanel(PWidget):
                 df.head(5).to_string(index=False),
             ]
             self.preview_text.setText("\n".join(lines))
-        except ValueError as e:
+        except Exception as e:
             self.preview_text.setText(f"❌ Preview error: {e}")
 
     def apply(self):
@@ -283,7 +283,9 @@ class ChartTransformPanel(PWidget):
         has_sources, any_series_excluded = populate_series_fit_sources(self.source_combo, self.current_chart)
         self.apply_btn.setEnabled(has_sources)
         self.preview_btn.setEnabled(has_sources)
-        self.source_hint.setText(series_source_hint(has_sources, any_series_excluded))
+        self.source_hint.setText(
+            series_source_hint(has_sources=has_sources, any_series_excluded=any_series_excluded)
+        )
         self._auto_name()
 
     @override

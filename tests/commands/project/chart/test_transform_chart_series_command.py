@@ -125,6 +125,12 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
+    def test_expression_that_changes_result_length_fails(self, ctx):
+        app_context, _ = ctx
+        command = _cmd(ctx, expression="y[y > 5]")
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
     def test_series_type_that_does_not_support_transform_fails(self, ctx):
         app_context, project = ctx
         chart = project.find_item("chart-1")

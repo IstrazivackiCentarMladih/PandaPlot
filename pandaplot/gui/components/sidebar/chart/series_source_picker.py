@@ -38,7 +38,7 @@ def populate_series_fit_sources(combo: QComboBox, chart: Optional[Chart]) -> tup
     return combo.count() > 0, any_series_excluded
 
 
-def series_source_hint(has_sources: bool, any_series_excluded: bool) -> str:
+def series_source_hint(*, has_sources: bool, any_series_excluded: bool) -> str:
     """Hint label text for the outcome of populate_series_fit_sources()."""
     if not has_sources:
         if any_series_excluded:

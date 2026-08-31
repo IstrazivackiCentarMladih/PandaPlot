@@ -402,7 +402,9 @@ class ChartAnalysisPanel(PWidget):
         has_sources, any_series_excluded = populate_series_fit_sources(self.source_combo, self.current_chart)
         self.apply_btn.setEnabled(has_sources)
         self.preview_btn.setEnabled(has_sources)
-        self.source_hint.setText(series_source_hint(has_sources, any_series_excluded))
+        self.source_hint.setText(
+            series_source_hint(has_sources=has_sources, any_series_excluded=any_series_excluded)
+        )
         self._on_source_changed()
 
     @override

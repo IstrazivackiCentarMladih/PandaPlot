@@ -69,13 +69,21 @@ class TestPopulateSeriesFitSources:
 
 class TestSeriesSourceHint:
     def test_no_sources_no_exclusion(self):
-        assert series_source_hint(False, False) == "This chart has no data series or fits yet."
+        assert (
+            series_source_hint(has_sources=False, any_series_excluded=False)
+            == "This chart has no data series or fits yet."
+        )
 
     def test_no_sources_with_exclusion(self):
-        assert "don't support this analysis" in series_source_hint(False, True)
+        assert "don't support this analysis" in series_source_hint(
+            has_sources=False, any_series_excluded=True
+        )
 
     def test_has_sources_no_exclusion(self):
-        assert series_source_hint(True, False) == "Data series and fitted curves of this chart."
+        assert (
+            series_source_hint(has_sources=True, any_series_excluded=False)
+            == "Data series and fitted curves of this chart."
+        )
 
     def test_has_sources_with_exclusion(self):
-        assert "aren't shown" in series_source_hint(True, True)
+        assert "aren't shown" in series_source_hint(has_sources=True, any_series_excluded=True)
