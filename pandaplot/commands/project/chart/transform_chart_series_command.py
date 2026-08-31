@@ -119,6 +119,24 @@ class TransformChartSeriesCommand(Command):
         default_name = f"{y_label} ({self.target} transformed)"
         return results_df, default_name
 
+    def _unique_dataset_name(self, project, name: str) -> str:
+        """Return `name`, or `name (N)` for the smallest N >= 2 not already
+        used by a sibling in the target folder -- so re-running the same
+        transform (or two transforms that land on the same default name)
+        doesn't produce two indistinguishable "Y (y transformed)" datasets
+        sitting side by side in the project explorer."""
+        parent = project.find_item(self.folder_id) if self.folder_id else None
+        siblings = parent.get_items() if parent is not None else project.get_root_items()
+        existing_names = {item.name for item in siblings}
+        if name not in existing_names:
+            return name
+        counter = 2
+        candidate = f"{name} ({counter})"
+        while candidate in existing_names:
+            counter += 1
+            candidate = f"{name} ({counter})"
+        return candidate
+
     @override
     def execute(self) -> CommandResult:
         try:
@@ -137,7 +155,7 @@ class TransformChartSeriesCommand(Command):
 
             project = self.app_state.current_project
             results_df, default_name = self.run_transform()
-            name = self.result_name or default_name
+            name = self._unique_dataset_name(project, self.result_name or default_name)
 
             self.result_dataset_id = str(uuid.uuid4())
             dataset = Dataset(

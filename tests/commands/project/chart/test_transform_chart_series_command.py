@@ -239,3 +239,39 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.SUCCESS
         new_dataset = project.find_item(command.result_dataset_id)
         assert new_dataset.parent_id == "folder-1"
+
+    def test_dataset_name_gets_a_counter_suffix_when_it_collides(self, ctx):
+        """Re-running the same transform twice (e.g. re-applying the panel
+        with unchanged inputs) must not produce two indistinguishable
+        datasets with the exact same name in the project explorer."""
+        _, project = ctx
+        first = _cmd(ctx, result_name="Doubled")
+        assert first.execute() is CommandResult.SUCCESS
+        second = _cmd(ctx, result_name="Doubled")
+        assert second.execute() is CommandResult.SUCCESS
+
+        first_dataset = project.find_item(first.result_dataset_id)
+        second_dataset = project.find_item(second.result_dataset_id)
+        assert first_dataset.name == "Doubled"
+        assert second_dataset.name == "Doubled (2)"
+
+    def test_dataset_name_counter_skips_names_already_taken(self, ctx):
+        _, project = ctx
+        project.add_item(Dataset(id="pre-existing-1", name="Doubled", data=pd.DataFrame({"a": [1]})))
+        project.add_item(Dataset(id="pre-existing-2", name="Doubled (2)", data=pd.DataFrame({"a": [1]})))
+        command = _cmd(ctx, result_name="Doubled")
+        assert command.execute() is CommandResult.SUCCESS
+        new_dataset = project.find_item(command.result_dataset_id)
+        assert new_dataset.name == "Doubled (3)"
+
+    def test_dataset_name_uniqueness_is_scoped_to_the_target_folder(self, ctx):
+        """A same-named dataset in a *different* folder isn't a collision --
+        only siblings of the newly created dataset are checked."""
+        _, project = ctx
+        folder = Folder(id="folder-1", name="Other Folder")
+        project.add_item(folder)
+        project.add_item(Dataset(id="elsewhere", name="Doubled", data=pd.DataFrame({"a": [1]})), parent_id="folder-1")
+        command = _cmd(ctx, result_name="Doubled")
+        assert command.execute() is CommandResult.SUCCESS
+        new_dataset = project.find_item(command.result_dataset_id)
+        assert new_dataset.name == "Doubled"
