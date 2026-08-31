@@ -156,7 +156,7 @@ class MainMenu(PMenuBar):
         help_menu.addAction(about_action)
 
     def _create_file_menu(self) -> QMenu:
-        file_menu = QMenu("Project", self)
+        file_menu = QMenu("File", self)
         new_action = QAction("New", self)
         new_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(NewProjectCommand(self.app_context)))
@@ -168,6 +168,7 @@ class MainMenu(PMenuBar):
         file_menu.addAction(open_action)
 
         self.recent_menu = QMenu("Recent", self)
+        self.recent_menu.setToolTipsVisible(True)
         self._update_recent_menu()
         file_menu.addMenu(self.recent_menu)
 
@@ -215,10 +216,28 @@ class MainMenu(PMenuBar):
             action = QAction(project_info.get("name", "Untitled Project"), self)
             action.setToolTip(path)
             action.triggered.connect(
-                lambda _checked=False, p=path: self.app_context.get_command_executor(
-                ).execute_command(LoadProjectCommand(self.app_context, p))
+                lambda _checked=False, p=path: self._load_recent_project(p)
             )
             self.recent_menu.addAction(action)
+
+    def _load_recent_project(self, project_path: str):
+        """Load a project chosen from File > Recent.
+
+        Mirrors show_examples_dialog's confirmation: only ask when there's a
+        currently open project to lose, since with none open there's nothing
+        to override.
+        """
+        if self.app_context.get_app_state().has_project:
+            should_continue = self.app_context.get_ui_controller().show_question(
+                "Open Recent Project",
+                "Opening this recent project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
+            )
+            if not should_continue:
+                return
+
+        self.app_context.get_command_executor().execute_command(
+            LoadProjectCommand(self.app_context, project_path)
+        )
 
     def _create_edit_menu(self) -> QMenu:
         edit_menu = QMenu("Edit", self)
