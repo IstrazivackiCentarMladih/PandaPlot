@@ -15,21 +15,18 @@ analysis operations regardless of which kind of series the user picked.
 """
 
 import uuid
-from typing import Literal, Optional, override
+from typing import Optional, override
 
-import numpy as np
 import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
 from pandaplot.gui.controllers.ui_controller import UIController
-from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import Chart, resolve_series_column
+from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext, AppState
-
-SourceKind = Literal["series", "fit"]
 
 
 class AnalyzeChartSeriesCommand(Command):
@@ -78,55 +75,7 @@ class AnalyzeChartSeriesCommand(Command):
 
     def _resolve_xy(self, chart: Chart) -> tuple[pd.Series, pd.Series, str, str]:
         """Return (x, y, x_label, y_label) for the selected chart series."""
-        if self.source_kind == "fit":
-            if not (0 <= self.source_index < len(chart.fit_data)):
-                raise ValueError("Selected fit no longer exists.")
-            fit = chart.fit_data[self.source_index]
-            dataset = self.app_state.current_project.find_item(fit.source_dataset_id)
-            if not isinstance(dataset, Dataset):
-                dataset = None
-            x_label = resolve_series_column(dataset, fit.source_x_column_id, fit.source_x_column) or "x"
-            x = pd.Series(np.asarray(fit.x_data), dtype="float64")
-            y = pd.Series(np.asarray(fit.y_data), dtype="float64")
-            return x, y, x_label, fit.label
-
-        if not (0 <= self.source_index < len(chart.data_series)):
-            raise ValueError("Selected series no longer exists.")
-        series = chart.data_series[self.source_index]
-        if not SERIES_TYPE_SPECS[series.series_type].supports_curve_analysis:
-            # Belt-and-braces (#202): ChartAnalysisPanel's source picker
-            # already excludes these, but this command can in principle be
-            # invoked directly, and a bar/hist/vector/colormap/heatmap/3-D
-            # series has no meaningful ordered (x, y) curve to analyze.
-            raise ValueError(
-                f"'{series.series_type.value}' series don't support this analysis "
-                "(only line, scatter, and fitted curves do)."
-            )
-        dataset = self.app_state.current_project.find_item(series.dataset_id)
-        if not isinstance(dataset, Dataset) or dataset.data is None:
-            raise ValueError("Series dataset is not available.")
-
-        x_name = resolve_series_column(dataset, series.x_column_id, series.x_column)
-        y_name = resolve_series_column(dataset, series.y_column_id, series.y_column)
-        df = dataset.data
-        if y_name is None or y_name not in df.columns:
-            raise ValueError("Series y column not found.")
-
-        if x_name and x_name in df.columns:
-            x_full = df[x_name]
-            x_label = x_name
-        else:
-            # No x column configured: analyze against the row index.
-            x_full = pd.Series(np.arange(len(df)), index=df.index)
-            x_label = "index"
-        y_full = df[y_name]
-
-        # Drop rows where either coordinate is missing so the maths is clean.
-        mask = ~(pd.isna(x_full) | pd.isna(y_full))
-        x = pd.to_numeric(x_full[mask], errors="coerce").reset_index(drop=True)
-        y = pd.to_numeric(y_full[mask], errors="coerce").reset_index(drop=True)
-        label = series.label or y_name
-        return x, y, x_label, label
+        return resolve_series_xy(self.app_state, chart, self.source_kind, self.source_index)
 
     def _resolve_xy_cached(self, chart: Chart) -> tuple[pd.Series, pd.Series, str, str]:
         """``_resolve_xy``, memoized for the lifetime of this command.
