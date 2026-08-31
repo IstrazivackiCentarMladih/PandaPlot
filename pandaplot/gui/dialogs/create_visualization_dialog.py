@@ -116,11 +116,16 @@ class CreateVisualizationDialog(PDialog):
 
     def _create_chart_item(self, chart: Chart) -> QPushButton:
         series_count = len(chart.data_series)
+        detail_text = f"{chart.chart_type.value.capitalize()} chart · {series_count} series"
         button = QPushButton()
         button.setObjectName("ChartItemButton")
         button.setMinimumHeight(56)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Visible text lives in child QLabels (for independent name/detail
+        # styling), which leaves the button itself unnamed for assistive tech.
+        button.setAccessibleName(chart.name)
+        button.setAccessibleDescription(detail_text)
 
         item_layout = QVBoxLayout(button)
         item_layout.setContentsMargins(14, 8, 14, 8)
@@ -134,7 +139,7 @@ class CreateVisualizationDialog(PDialog):
         name_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         item_layout.addWidget(name_label)
 
-        detail_label = QLabel(f"{chart.chart_type.value.capitalize()} chart · {series_count} series")
+        detail_label = QLabel(detail_text)
         detail_label.setProperty("secondary", True)  # noqa: FBT003 - Qt method, no keyword args
         detail_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         detail_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)

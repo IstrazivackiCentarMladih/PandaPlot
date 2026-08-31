@@ -83,6 +83,10 @@ class CreateOrOpenProjectDialog(PDialog):
         button.setMinimumHeight(60)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Visible text lives in child QLabels (for independent title/description
+        # styling), which leaves the button itself unnamed for assistive tech.
+        button.setAccessibleName(title)
+        button.setAccessibleDescription(description)
 
         item_layout = QVBoxLayout(button)
         item_layout.setContentsMargins(14, 10, 14, 10)

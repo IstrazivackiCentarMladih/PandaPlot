@@ -4,7 +4,6 @@ that only make sense inside an already-open project)."""
 
 from typing import Sequence, override
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout
 
 from pandaplot.gui.core.widget_extension import PDialog

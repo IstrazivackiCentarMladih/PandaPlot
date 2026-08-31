@@ -117,6 +117,10 @@ class ExploreDataDialog(PDialog):
         button.setMinimumHeight(56)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Visible text lives in child QLabels (for independent name/shape
+        # styling), which leaves the button itself unnamed for assistive tech.
+        button.setAccessibleName(dataset.name)
+        button.setAccessibleDescription(f"{rows} rows × {cols} columns")
 
         item_layout = QVBoxLayout(button)
         item_layout.setContentsMargins(14, 8, 14, 8)

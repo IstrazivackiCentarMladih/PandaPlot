@@ -12,12 +12,12 @@ from unittest.mock import Mock
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
 from pandaplot.gui.dialogs.create_or_open_project_dialog import (
     ACTION_BROWSE_EXAMPLES,
     ACTION_NEW_PROJECT,
     ACTION_OPEN_PROJECT,
 )
-from pandaplot.gui.components.tabs.welcome_tab import WelcomeTab
 
 
 @pytest.fixture(scope="module", autouse=True)
