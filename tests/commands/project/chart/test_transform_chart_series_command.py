@@ -1,0 +1,149 @@
+"""Tests for TransformChartSeriesCommand (expression transform on chart series)."""
+
+from unittest.mock import Mock
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from pandaplot.commands.base_command import CommandResult
+from pandaplot.commands.project.chart.transform_chart_series_command import (
+    TransformChartSeriesCommand,
+)
+from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.project.items.dataset import Dataset
+from pandaplot.models.project.project import Project
+from pandaplot.models.state import AppContext, AppState
+
+
+@pytest.fixture
+def ctx():
+    project = Project(name="P")
+    t = np.linspace(0.0, 10.0, 11)
+    dataset = Dataset(id="ds-1", name="Data", data=pd.DataFrame({"t": t, "sq": t ** 2}))
+    project.add_item(dataset)
+
+    chart = Chart(id="chart-1", name="C")
+    x_id = dataset.column_id("t")
+    y_id = dataset.column_id("sq")
+    chart.add_data_series(dataset_id="ds-1", x_column_id=x_id, y_column_id=y_id,
+                          x_column="t", y_column="sq", label="Squared")
+    chart.add_fit_data(source_dataset_id="ds-1", fit_type="quadratic",
+                       x_data=t, y_data=t ** 2, label="Quadratic Fit", source_x_column="t")
+    project.add_item(chart)
+
+    app_context = Mock(spec=AppContext)
+    app_state = Mock(spec=AppState)
+    app_state.has_project = True
+    app_state.current_project = project
+    app_state.event_bus = Mock()
+    app_context.get_app_state.return_value = app_state
+    return app_context, project
+
+
+def _cmd(ctx, **kw):
+    app_context, _ = ctx
+    kw.setdefault("source_kind", "series")
+    kw.setdefault("source_index", 0)
+    kw.setdefault("target", "y")
+    kw.setdefault("expression", "y * 2")
+    return TransformChartSeriesCommand(app_context, "chart-1", **kw)
+
+
+class TestTransformChartSeriesCommand:
+    def test_transform_y_on_data_series(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx, target="y", expression="y * 2")
+        assert command.execute() is CommandResult.SUCCESS
+        result = project.find_item(command.result_dataset_id)
+        assert "t" in result.data.columns
+        transformed_col = [c for c in result.data.columns if c != "t"][0]
+        assert result.data[transformed_col].tolist() == pytest.approx((result.data["t"] ** 2 * 2).tolist())
+
+    def test_transform_x_on_data_series(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx, target="x", expression="x + 1")
+        assert command.execute() is CommandResult.SUCCESS
+        result = project.find_item(command.result_dataset_id)
+        assert "Squared" in result.data.columns
+        transformed_col = [c for c in result.data.columns if c != "Squared"][0]
+        assert transformed_col == "t (transformed)"
+        assert result.data[transformed_col].iloc[0] == pytest.approx(1.0)
+
+    def test_transform_on_fit_series(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx, source_kind="fit", target="y", expression="np.sqrt(y)")
+        assert command.execute() is CommandResult.SUCCESS
+        result = project.find_item(command.result_dataset_id)
+        transformed_col = [c for c in result.data.columns if c != "t"][0]
+        assert result.data[transformed_col].iloc[-1] == pytest.approx(10.0)
+
+    def test_custom_result_name(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx, result_name="My Transform")
+        assert command.execute() is CommandResult.SUCCESS
+        assert project.find_item(command.result_dataset_id).name == "My Transform"
+
+    def test_undo_removes_dataset(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        new_id = command.result_dataset_id
+        assert project.find_item(new_id) is not None
+        assert command.undo() is CommandResult.SUCCESS
+        assert project.find_item(new_id) is None
+
+    def test_redo_recreates_the_dataset(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        command.undo()
+        assert command.redo() is CommandResult.SUCCESS
+        assert project.find_item(command.result_dataset_id) is not None
+
+    def test_invalid_source_index_fails(self, ctx):
+        app_context, _ = ctx
+        command = _cmd(ctx, source_kind="fit", source_index=9)
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+    def test_unsafe_expression_fails(self, ctx):
+        app_context, _ = ctx
+        command = _cmd(ctx, expression="__import__('os')")
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+    def test_empty_expression_fails(self, ctx):
+        app_context, _ = ctx
+        command = _cmd(ctx, expression="")
+        assert command.execute() is CommandResult.FAILURE
+
+    def test_expression_referencing_unknown_name_fails(self, ctx):
+        app_context, _ = ctx
+        command = _cmd(ctx, expression="not_a_real_variable")
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+    def test_series_type_that_does_not_support_transform_fails(self, ctx):
+        app_context, project = ctx
+        chart = project.find_item("chart-1")
+        chart.data_series[0].series_type = SeriesType.BAR
+        command = _cmd(ctx, source_kind="series", source_index=0)
+        assert command.execute() is CommandResult.FAILURE
+
+    def test_execute_surfaces_no_project_loaded_to_the_user(self, ctx):
+        app_context, _ = ctx
+        app_context.get_app_state.return_value.has_project = False
+        app_context.get_app_state.return_value.current_project = None
+        command = _cmd(ctx)
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+    def test_run_transform_does_not_touch_the_project(self, ctx):
+        _, project = ctx
+        command = _cmd(ctx)
+        df, name = command.run_transform()
+        assert len(df) == 11
+        assert isinstance(name, str)
+        assert command.result_dataset_id is None
