@@ -206,14 +206,14 @@ class MainMenu(PMenuBar):
 
         recent_projects = get_recent_projects(self.app_context)
         if not recent_projects:
-            placeholder = QAction("No Recent Projects", self)
+            placeholder = QAction("No Recent Projects", self.recent_menu)
             placeholder.setEnabled(False)
             self.recent_menu.addAction(placeholder)
             return
 
         for project_info in recent_projects:
             path = project_info.get("path", "")
-            action = QAction(project_info.get("name", "Untitled Project"), self)
+            action = QAction(project_info.get("name", "Untitled Project"), self.recent_menu)
             action.setToolTip(path)
             action.triggered.connect(
                 lambda _checked=False, p=path: self._load_recent_project(p)

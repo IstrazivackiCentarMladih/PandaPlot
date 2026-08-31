@@ -303,6 +303,21 @@ class TestMainMenuRecentSubmenu:
 
         assert [a.text() for a in menu.recent_menu.actions()] == ["Project A"]
 
+    def test_repeated_rebuilds_do_not_accumulate_stale_actions(self, app_context):
+        """Regression: actions must be parented to recent_menu (not self), so
+        QMenu.clear() actually deletes the previous refresh's QActions rather
+        than merely detaching them while MainMenu keeps them alive forever."""
+        recent = [{"name": "Project A", "path": "/a/Project A.pplot", "last_opened": "2026-08-31 10:00"}]
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=recent):
+            menu = MainMenu(parent=None, app_context=app_context)
+            menu._update_recent_menu({})
+            menu._update_recent_menu({})
+            menu._update_recent_menu({})
+
+        # findChildren also picks up QMenu's own internal menuAction(); exclude it.
+        child_actions = set(menu.recent_menu.findChildren(QAction)) - {menu.recent_menu.menuAction()}
+        assert len(child_actions) == 1
+
     def test_subscribes_to_config_updated_event(self, app_context):
         from pandaplot.models.events.event_types import ConfigEvents
 
