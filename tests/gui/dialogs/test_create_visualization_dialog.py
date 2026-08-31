@@ -5,10 +5,12 @@ offered regardless of branch, unlike ExploreDataDialog's either/or.
 from unittest.mock import Mock
 
 import pytest
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from pandaplot.gui.dialogs.create_visualization_dialog import CreateVisualizationDialog
+from pandaplot.models.project import Project
 from pandaplot.models.project.items import Chart
+from pandaplot.models.project.items.folder import Folder
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -100,6 +102,31 @@ def test_open_chart_emits_tab_open_requested_and_accepts():
         UIEvents.TAB_OPEN_REQUESTED, {"item_id": "chart-1", "item_name": "Sales Trend"}
     )
     assert dialog.result() == QDialog.DialogCode.Accepted
+
+
+def test_chart_list_disambiguates_duplicate_chart_names():
+    # Uses a real Project (not a Mock) so chart_display_options' folder-path
+    # lookup (project.get_folder_path) has something real to resolve --
+    # this is what a project full of wizard-created "New Chart"s looks like.
+    project = Project(name="Test Project")
+    runs = Folder(name="Runs")
+    project.add_item(runs)
+
+    root_chart = Chart(name="New Chart")
+    nested_chart = Chart(name="New Chart")
+    project.add_item(root_chart)
+    project.add_item(nested_chart, runs.id)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value.has_project = True
+    app_context.get_app_state.return_value.current_project = project
+
+    dialog = _make_dialog(app_context)
+
+    buttons = dialog.findChildren(QPushButton, "ChartItemButton")
+    names = {button.accessibleName() for button in buttons}
+    assert names == {"New Chart  (project root)", "New Chart  (Runs)"}
+    assert len(buttons) == 2
 
 
 def test_handle_create_chart_invokes_callback_and_accepts():

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.project.items import Chart
 from pandaplot.services.theme.theme_manager import ThemeManager
+from pandaplot.utils.item_display_options import chart_display_options
 
 
 class CreateVisualizationDialog(PDialog):
@@ -33,9 +34,12 @@ class CreateVisualizationDialog(PDialog):
         self._on_create_chart = on_create_chart
         self._initialize()
 
-    def _get_charts(self) -> list[Chart]:
+    def _get_project(self):
         app_state = self.app_context.get_app_state()
-        project = app_state.current_project if app_state.has_project else None
+        return app_state.current_project if app_state.has_project else None
+
+    def _get_charts(self) -> list[Chart]:
+        project = self._get_project()
         if project is None:
             return []
         return [item for item in project.get_all_items() if isinstance(item, Chart)]
@@ -72,7 +76,8 @@ class CreateVisualizationDialog(PDialog):
             self.subtitle_label = QLabel("Select a chart to open it, or create a new one.")
             self.subtitle_label.setWordWrap(True)
             layout.addWidget(self.subtitle_label)
-            self._build_chart_list(layout, charts)
+            display_names = dict(chart_display_options(self._get_project()))
+            self._build_chart_list(layout, charts, display_names)
         else:
             self.subtitle_label = QLabel(
                 "You don't have any charts yet. Create one to turn your data into a visualization."
@@ -93,7 +98,7 @@ class CreateVisualizationDialog(PDialog):
         button_layout.addWidget(self.close_btn)
         layout.addLayout(button_layout)
 
-    def _build_chart_list(self, layout: QVBoxLayout, charts: list[Chart]):
+    def _build_chart_list(self, layout: QVBoxLayout, charts: list[Chart], display_names: dict[str, str]):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -108,13 +113,14 @@ class CreateVisualizationDialog(PDialog):
         list_layout.setContentsMargins(0, 0, 0, 0)
         list_layout.setSpacing(8)
         for chart in charts:
-            list_layout.addWidget(self._create_chart_item(chart))
+            display_name = display_names.get(chart.id, chart.name)
+            list_layout.addWidget(self._create_chart_item(chart, display_name))
         list_layout.addStretch()
 
         scroll_area.setWidget(list_widget)
         layout.addWidget(scroll_area)
 
-    def _create_chart_item(self, chart: Chart) -> QPushButton:
+    def _create_chart_item(self, chart: Chart, display_name: str) -> QPushButton:
         series_count = len(chart.data_series)
         detail_text = f"{chart.chart_type.value.capitalize()} chart · {series_count} series"
         button = QPushButton()
@@ -124,14 +130,16 @@ class CreateVisualizationDialog(PDialog):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Visible text lives in child QLabels (for independent name/detail
         # styling), which leaves the button itself unnamed for assistive tech.
-        button.setAccessibleName(chart.name)
+        # display_name (not chart.name) is used here since two charts can
+        # share a plain name -- see chart_display_options.
+        button.setAccessibleName(display_name)
         button.setAccessibleDescription(detail_text)
 
         item_layout = QVBoxLayout(button)
         item_layout.setContentsMargins(14, 8, 14, 8)
         item_layout.setSpacing(2)
 
-        name_label = QLabel(chart.name)
+        name_label = QLabel(display_name)
         name_font = name_label.font()
         name_font.setBold(True)
         name_label.setFont(name_font)
