@@ -144,6 +144,23 @@ class TestNewEventBus:
         # The generic callback should be called if hierarchy mapping exists
         # (This depends on EventHierarchy.HIERARCHY_MAP configuration)
     
+    def test_dataset_deleted_bubbles_to_project_changed(self):
+        """Regression: a dataset removal (e.g. undoing a command that created
+        one, like TransformChartSeriesCommand/AnalyzeChartSeriesCommand) must
+        refresh the project explorer tree the same way dataset creation
+        already does -- ProjectViewPanel only listens for
+        ProjectEvents.PROJECT_CHANGED, and dataset.deleted was missing from
+        EventHierarchy.HIERARCHY_MAP, so an undo that deleted a dataset
+        never told the tree to refresh even though the project model was
+        already correct."""
+        event_bus = EventBus()
+        project_changed_callback = Mock()
+        event_bus.subscribe("project.changed", project_changed_callback)
+
+        event_bus.emit("dataset.deleted", {"dataset_id": "ds-1"})
+
+        project_changed_callback.assert_called_once()
+
     def test_callback_exception_handling(self):
         """Test that exceptions in callbacks don't break the event bus."""
         event_bus = EventBus()

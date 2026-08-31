@@ -160,7 +160,7 @@ class TransformChartSeriesCommand(Command):
             # in that order, regardless of which one was the transform target
             # -- see run_transform()'s two branches.
             x_column, y_column = results_df.columns[0], results_df.columns[1]
-            new_series = chart.add_data_series(
+            chart.add_data_series(
                 dataset_id=self.result_dataset_id,
                 x_column_id=dataset.column_id(x_column) or "",
                 y_column_id=dataset.column_id(y_column) or "",
@@ -168,7 +168,12 @@ class TransformChartSeriesCommand(Command):
                 y_column=y_column,
                 label=name,
             )
-            self.added_series_index = chart.data_series.index(new_series)
+            # add_data_series() always appends, so the new series is the last
+            # element -- found this way (not list.index(new_series)) since
+            # DataSeries is a plain dataclass: two field-identical series
+            # (possible if this command runs twice with the same inputs)
+            # would make index() return the earlier, wrong one.
+            self.added_series_index = len(chart.data_series) - 1
 
             self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
                 "chart_id": self.chart_id,

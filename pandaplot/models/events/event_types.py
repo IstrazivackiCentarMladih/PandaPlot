@@ -181,6 +181,7 @@ class EventHierarchy:
         "dataset.imported": ["dataset.imported", "dataset.changed"],
         "dataset.exported": ["dataset.exported"],
         "dataset.created": ["dataset.created", "project.item_added", "project.changed"],
+        "dataset.deleted": ["dataset.deleted", "project.item_removed", "project.changed"],
         
         # Analysis events
         "analysis.completed": ["analysis.completed", "dataset.column_added", "dataset.structure_changed", "dataset.changed"],
