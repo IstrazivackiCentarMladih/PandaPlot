@@ -24,6 +24,7 @@ from pandaplot.commands.project.project import (
 from pandaplot.gui.core.widget_extension import PMenuBar
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.session.recent_projects import get_recent_projects
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 
@@ -166,6 +167,10 @@ class MainMenu(PMenuBar):
         ).execute_command(OpenProjectCommand(self.app_context)))
         file_menu.addAction(open_action)
 
+        self.recent_menu = QMenu("Recent", self)
+        self._update_recent_menu()
+        file_menu.addMenu(self.recent_menu)
+
         close_action = QAction("Close", self)
         close_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(CloseProjectCommand(self.app_context)))
@@ -192,7 +197,29 @@ class MainMenu(PMenuBar):
         file_menu.addAction(exit_action)
 
         return file_menu
-    
+
+    def _update_recent_menu(self, _event_data: dict | None = None):
+        """Rebuild the File > Recent submenu from the shared recent-projects
+        lookup -- mirrors WelcomeTab's own CONFIG_UPDATED-triggered refresh."""
+        self.recent_menu.clear()
+
+        recent_projects = get_recent_projects(self.app_context)
+        if not recent_projects:
+            placeholder = QAction("No Recent Projects", self)
+            placeholder.setEnabled(False)
+            self.recent_menu.addAction(placeholder)
+            return
+
+        for project_info in recent_projects:
+            path = project_info.get("path", "")
+            action = QAction(project_info.get("name", "Untitled Project"), self)
+            action.setToolTip(path)
+            action.triggered.connect(
+                lambda _checked=False, p=path: self.app_context.get_command_executor(
+                ).execute_command(LoadProjectCommand(self.app_context, p))
+            )
+            self.recent_menu.addAction(action)
+
     def _create_edit_menu(self) -> QMenu:
         edit_menu = QMenu("Edit", self)
 
@@ -323,13 +350,14 @@ class MainMenu(PMenuBar):
     @override
     def setup_event_subscriptions(self):
         from pandaplot.models.events import ProjectEvents, UIEvents
-        from pandaplot.models.events.event_types import AppEvents
+        from pandaplot.models.events.event_types import AppEvents, ConfigEvents
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, lambda _data: self._update_dataset_dependent_actions())
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, lambda _data: self._update_dataset_dependent_actions())
         self.subscribe_to_event(ProjectEvents.PROJECT_LOADED, lambda _data: self._update_dataset_dependent_actions())
         self.subscribe_to_event(ProjectEvents.PROJECT_CLOSED, lambda _data: self._update_dataset_dependent_actions())
         self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
         self.subscribe_to_event(AppEvents.HISTORY_CHANGED, self._update_undo_redo_actions)
+        self.subscribe_to_event(ConfigEvents.CONFIG_UPDATED, self._update_recent_menu)
 
     def show_settings_dialog(self):
         """Show the settings dialog."""

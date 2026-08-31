@@ -200,3 +200,61 @@ class TestMainMenuUndoRedoActions:
         menu.redo_action.trigger()
 
         command_executor.redo.assert_called_once()
+
+
+class TestMainMenuRecentSubmenu:
+    """File > Recent (#221 items 3/4): reuses the same shared
+    get_recent_projects lookup WelcomeTab uses for its recent-projects cards."""
+
+    def test_shows_placeholder_when_no_recent_projects(self, app_context):
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=[]):
+            menu = MainMenu(parent=None, app_context=app_context)
+
+        actions = menu.recent_menu.actions()
+        assert len(actions) == 1
+        assert actions[0].text() == "No Recent Projects"
+        assert actions[0].isEnabled() is False
+
+    def test_lists_one_action_per_recent_project(self, app_context):
+        recent = [
+            {"name": "Project A", "path": "/a/Project A.pplot", "last_opened": "2026-08-31 10:00"},
+            {"name": "Project B", "path": "/b/Project B.pplot", "last_opened": "2026-08-30 10:00"},
+        ]
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=recent):
+            menu = MainMenu(parent=None, app_context=app_context)
+
+        actions = menu.recent_menu.actions()
+        assert [a.text() for a in actions] == ["Project A", "Project B"]
+        assert [a.toolTip() for a in actions] == ["/a/Project A.pplot", "/b/Project B.pplot"]
+
+    def test_triggering_recent_action_loads_that_project(self, app_context):
+        recent = [{"name": "Project A", "path": "/a/Project A.pplot", "last_opened": "2026-08-31 10:00"}]
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=recent):
+            menu = MainMenu(parent=None, app_context=app_context)
+
+        command_executor = Mock()
+        app_context.get_command_executor.return_value = command_executor
+
+        menu.recent_menu.actions()[0].trigger()
+
+        command_executor.execute_command.assert_called_once()
+        executed_command = command_executor.execute_command.call_args[0][0]
+        assert executed_command.file_path == "/a/Project A.pplot"
+
+    def test_rebuilds_on_config_updated_event(self, app_context):
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=[]):
+            menu = MainMenu(parent=None, app_context=app_context)
+
+        recent = [{"name": "Project A", "path": "/a/Project A.pplot", "last_opened": "2026-08-31 10:00"}]
+        with patch("pandaplot.gui.components.main_menu.main_menu.get_recent_projects", return_value=recent):
+            menu._update_recent_menu({})
+
+        assert [a.text() for a in menu.recent_menu.actions()] == ["Project A"]
+
+    def test_subscribes_to_config_updated_event(self, app_context):
+        from pandaplot.models.events.event_types import ConfigEvents
+
+        menu = MainMenu(parent=None, app_context=app_context)
+
+        subscribed_events = [event_type for event_type, _handler in menu._subscriptions]
+        assert ConfigEvents.CONFIG_UPDATED in subscribed_events
