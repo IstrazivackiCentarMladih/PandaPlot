@@ -14,6 +14,7 @@ from pandaplot.gui.components.sidebar.chart_transform.chart_transform_panel impo
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
+from pandaplot.models.project.items.folder import Folder
 from pandaplot.models.project.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
@@ -87,6 +88,15 @@ class TestChartTransformPanelTarget:
         panel.target_combo.setCurrentIndex(1)
         assert panel.target_combo.currentData() == "x"
 
+    def test_target_hint_names_y_as_the_replaced_axis_by_default(self, panel):
+        assert "new Y values" in panel.target_hint.text()
+        assert "x stays as-is" in panel.target_hint.text()
+
+    def test_target_hint_updates_when_target_changes_to_x(self, panel):
+        panel.target_combo.setCurrentIndex(1)
+        assert "new X values" in panel.target_hint.text()
+        assert "y stays as-is" in panel.target_hint.text()
+
 
 class TestChartTransformPanelApply:
     def test_apply_with_no_expression_shows_error(self, panel):
@@ -103,12 +113,35 @@ class TestChartTransformPanelApply:
         panel.preview()
         assert "Preview error" in panel.preview_text.toPlainText()
 
-    def test_apply_creates_a_new_dataset(self, panel, project):
+    def test_apply_creates_a_new_dataset_and_adds_it_as_a_series(self, panel, project):
+        chart = project.find_item("chart-1")
+        series_count_before = len(chart.data_series)
         panel.expression_text.setPlainText("y * 2")
         panel.apply()
         assert "Created a new dataset" in panel.preview_text.toPlainText()
+        assert "added it to the chart as a series" in panel.preview_text.toPlainText()
         datasets = [item for item in project.get_all_items() if isinstance(item, Dataset)]
         assert len(datasets) == 2
+        assert len(chart.data_series) == series_count_before + 1
+
+    def test_apply_places_the_new_dataset_in_the_charts_folder(self, app_context, project):
+        folder = Folder(id="folder-1", name="Charts")
+        project.add_item(folder)
+        chart = project.find_item("chart-1")
+        project.remove_item(chart)
+        chart.parent_id = None
+        project.add_item(chart, parent_id="folder-1")
+
+        panel = ChartTransformPanel(app_context)
+        panel.current_chart = chart
+        panel.current_chart_id = "chart-1"
+        panel._populate_sources()
+        panel.expression_text.setPlainText("y * 2")
+        panel.apply()
+
+        datasets = [item for item in project.get_all_items() if isinstance(item, Dataset) and item.id != "ds-1"]
+        assert len(datasets) == 1
+        assert datasets[0].parent_id == "folder-1"
 
     def test_clear_inputs_resets_the_form(self, panel):
         panel.expression_text.setPlainText("y * 2")
@@ -116,3 +149,17 @@ class TestChartTransformPanelApply:
         panel.clear_inputs()
         assert panel.expression_text.toPlainText() == ""
         assert panel.result_name.text() == ""
+
+
+class TestChartTransformPanelButtons:
+    def test_apply_button_is_primary_and_simply_labeled(self, panel):
+        assert panel.apply_btn.text() == "Apply"
+        assert panel.apply_btn.property("primary") is True
+
+    def test_clear_button_is_secondary_and_simply_labeled(self, panel):
+        assert panel.clear_btn.text() == "Clear"
+        assert panel.clear_btn.property("secondary") is True
+
+    def test_preview_button_is_secondary_and_simply_labeled(self, panel):
+        assert panel.preview_btn.text() == "Preview"
+        assert panel.preview_btn.property("secondary") is True

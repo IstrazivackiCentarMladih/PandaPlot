@@ -6,8 +6,10 @@ This command evaluates a transform expression -- the same expression syntax
 the dataset Transform panel uses -- against one of a series' resolved axes,
 and writes the result, alongside the untouched axis, to a new Dataset
 project item, the same way AnalyzeChartSeriesCommand does for analysis
-results (#268). Once created, the new dataset is an ordinary dataset: the
-user points a chart series at it via the Data tab, like any other series.
+results (#268). It then also adds a new data series to the chart pointing at
+that dataset, so the transform's effect is visible on the chart immediately
+-- from there it's an ordinary series like any other (restylable, removable,
+independently re-pointed at a different column via the Data tab).
 """
 
 import uuid
@@ -18,6 +20,7 @@ import pandas as pd
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import DatasetEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
@@ -56,6 +59,7 @@ class TransformChartSeriesCommand(Command):
 
         # State for undo/redo.
         self.result_dataset_id: Optional[str] = None
+        self.added_series_index: Optional[int] = None
 
     def _get_chart(self) -> Optional[Chart]:
         project = self.app_state.current_project
@@ -84,10 +88,7 @@ class TransformChartSeriesCommand(Command):
             raise ValueError(error_msg)
 
         target_series = x if self.target == "x" else y
-        local_vars = {
-            "x": x, "y": y,
-            "value": target_series, "column": target_series, "data": target_series,
-        }
+        local_vars = {"x": x, "y": y}
         try:
             result = expression_engine.evaluate_expression(self.expression, local_vars)
         except Exception as e:
@@ -127,6 +128,13 @@ class TransformChartSeriesCommand(Command):
                 self.ui_controller.show_error_message("Chart Transform Error", message)
                 return CommandResult.FAILURE
 
+            chart = self._get_chart()
+            if chart is None:
+                message = "Chart is not available."
+                self.logger.warning(message)
+                self.ui_controller.show_error_message("Chart Transform Error", message)
+                return CommandResult.FAILURE
+
             project = self.app_state.current_project
             results_df, default_name = self.run_transform()
             name = self.result_name or default_name
@@ -147,7 +155,31 @@ class TransformChartSeriesCommand(Command):
                 "folder_id": self.folder_id,
                 "dataset_data": dataset.data,
             })
-            self.logger.info("Created chart-transform dataset '%s' (%s)", name, self.result_dataset_id)
+
+            # The result dataframe's columns are always (x column, y column),
+            # in that order, regardless of which one was the transform target
+            # -- see run_transform()'s two branches.
+            x_column, y_column = results_df.columns[0], results_df.columns[1]
+            new_series = chart.add_data_series(
+                dataset_id=self.result_dataset_id,
+                x_column_id=dataset.column_id(x_column) or "",
+                y_column_id=dataset.column_id(y_column) or "",
+                x_column=x_column,
+                y_column=y_column,
+                label=name,
+            )
+            self.added_series_index = chart.data_series.index(new_series)
+
+            self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
+                "chart_id": self.chart_id,
+                "update_type": "series_added",
+                "chart": chart,
+            })
+
+            self.logger.info(
+                "Created chart-transform dataset '%s' (%s) and added it as a series to chart '%s'",
+                name, self.result_dataset_id, self.chart_id,
+            )
             return CommandResult.SUCCESS
 
         except ValueError as e:
@@ -165,6 +197,16 @@ class TransformChartSeriesCommand(Command):
             if not self.result_dataset_id or not self.app_state.current_project:
                 return CommandResult.FAILURE
             project = self.app_state.current_project
+
+            chart = self._get_chart()
+            if chart is not None and self.added_series_index is not None:
+                chart.remove_data_series(self.added_series_index)
+                self.app_state.event_bus.emit(ChartEvents.CHART_UPDATED, {
+                    "chart_id": self.chart_id,
+                    "update_type": "series_removed",
+                    "chart": chart,
+                })
+
             dataset = project.find_item(self.result_dataset_id)
             if dataset:
                 project.remove_item(dataset)

@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QPushButton,
     QScrollArea,
     QTextEdit,
     QToolButton,
@@ -29,6 +28,7 @@ from PySide6.QtWidgets import (
 from pandaplot.commands.project.chart.transform_chart_series_command import (
     TransformChartSeriesCommand,
 )
+from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.chart.series_source_picker import (
     populate_series_fit_sources,
     series_source_hint,
@@ -42,8 +42,7 @@ from pandaplot.services.transform import expression_engine
 
 _EXPRESSION_REFERENCE_HTML = (
     "<b>Variables</b>: <code>x</code> and <code>y</code> are the series' full "
-    "resolved axes; <code>value</code>/<code>column</code>/<code>data</code> "
-    "are aliases for whichever one is the transform Target.<br>"
+    "current axes -- both are always available, whichever one is the Target.<br>"
     "<b>Math</b>: <code>np.sqrt</code>, <code>np.log</code>, <code>np.log10</code>, "
     "<code>np.exp</code>, <code>np.abs</code>, <code>np.sin/cos/tan</code>, "
     "<code>np.sign</code>.<br>"
@@ -62,6 +61,7 @@ class ChartTransformPanel(PWidget):
 
         self._initialize()
         self._connect_signals()
+        self._update_target_hint()
 
     @override
     def _init_ui(self):
@@ -109,8 +109,23 @@ class ChartTransformPanel(PWidget):
         self.target_combo = QComboBox()
         self.target_combo.addItem("Y", "y")
         self.target_combo.addItem("X", "x")
-        form.addRow("Axis:", self.target_combo)
+        form.addRow("Replace:", self.target_combo)
+        self.target_hint = QLabel()
+        self.target_hint.setWordWrap(True)
+        form.addRow(self.target_hint)
         layout.addWidget(group)
+
+    def _update_target_hint(self):
+        """Spell out, in the UI, which axis the expression's result replaces
+        -- both x and y stay available in the expression regardless of which
+        one is the Target, so this is the only place that says which one
+        actually changes (#268 follow-up: this was reported as unclear)."""
+        target = self.target_combo.currentData() or "y"
+        other = "x" if target == "y" else "y"
+        self.target_hint.setText(
+            f"The expression's result becomes the series' new {target.upper()} values "
+            f"-- {other} stays as-is. Write the expression in terms of x and/or y."
+        )
 
     def _create_expression_section(self, layout):
         group = QGroupBox("Transform Expression")
@@ -133,7 +148,7 @@ class ChartTransformPanel(PWidget):
         self.expression_text = QTextEdit()
         self.expression_text.setMaximumHeight(100)
         self.expression_text.setPlaceholderText(
-            "Use 'x'/'y' for the series' full axes -- e.g.\n"
+            "x and y are the series' current axes -- e.g.\n"
             "  y * 2                (double the plotted values)\n"
             "  np.sqrt(y)           (square root)\n"
             "  (x - x.min()) / (x.max() - x.min())   (normalize x to 0-1)"
@@ -182,8 +197,7 @@ class ChartTransformPanel(PWidget):
     def _create_preview_section(self, layout):
         group = QGroupBox("Preview")
         vbox = QVBoxLayout(group)
-        self.preview_btn = QPushButton("🔍 Preview")
-        self.preview_btn.clicked.connect(self.preview)
+        self.preview_btn = PButton("Preview", role="secondary", on_click=self.preview)
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
         self.preview_text.setMaximumHeight(140)
@@ -194,10 +208,8 @@ class ChartTransformPanel(PWidget):
 
     def _create_action_buttons(self, layout):
         row = QHBoxLayout()
-        self.apply_btn = QPushButton("✅ Transform → New Dataset")
-        self.apply_btn.clicked.connect(self.apply)
-        self.clear_btn = QPushButton("🔄 Clear")
-        self.clear_btn.clicked.connect(self.clear_inputs)
+        self.apply_btn = PButton("Apply", role="primary", on_click=self.apply)
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear_inputs)
         row.addWidget(self.apply_btn)
         row.addWidget(self.clear_btn)
         layout.addLayout(row)
@@ -205,6 +217,7 @@ class ChartTransformPanel(PWidget):
     def _connect_signals(self):
         self.source_combo.currentIndexChanged.connect(self._auto_name)
         self.target_combo.currentIndexChanged.connect(self._auto_name)
+        self.target_combo.currentIndexChanged.connect(self._update_target_hint)
 
     # -- config -------------------------------------------------------
 
@@ -220,6 +233,7 @@ class ChartTransformPanel(PWidget):
         if not expression:
             return None
         name = self.result_name.text().strip() or None
+        folder_id = self.current_chart.parent_id if self.current_chart else None
         return TransformChartSeriesCommand(
             self.app_context,
             chart_id=self.current_chart_id,
@@ -228,6 +242,7 @@ class ChartTransformPanel(PWidget):
             target=self.target_combo.currentData(),
             expression=expression,
             result_name=name,
+            folder_id=folder_id,
         )
 
     # -- actions -------------------------------------------------------
@@ -258,7 +273,7 @@ class ChartTransformPanel(PWidget):
             return
         if self.app_context.get_command_executor().execute_command(command):
             self.preview_text.setText(
-                "✅ Created a new dataset from the transform. Find it in the project explorer."
+                "✅ Created a new dataset and added it to the chart as a series."
             )
         else:
             self.preview_text.setText(
@@ -323,8 +338,6 @@ class ChartTransformPanel(PWidget):
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#666666")
-        accent = palette.get("accent", "#4CAF50")
-        card_hover = palette.get("card_hover", "#e5f3ff")
 
         self.setStyleSheet(f"""
             ChartTransformPanel {{
@@ -361,26 +374,6 @@ class ChartTransformPanel(PWidget):
         self.source_hint.setStyleSheet(
             f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
         )
-        self.apply_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {accent};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: {card_hover}; color: {base_fg}; }}
-            QPushButton:disabled {{ background-color: {secondary_fg}; color: #999999; }}
-        """)
-        self.clear_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {secondary_fg};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 10px 16px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #7f8c8d; }}
-        """)
+        self.target_hint.setStyleSheet(
+            f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
+        )

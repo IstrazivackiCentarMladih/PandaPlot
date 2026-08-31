@@ -13,6 +13,7 @@ from pandaplot.commands.project.chart.transform_chart_series_command import (
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
+from pandaplot.models.project.items.folder import Folder
 from pandaplot.models.project.project import Project
 from pandaplot.models.state import AppContext, AppState
 
@@ -153,3 +154,50 @@ class TestTransformChartSeriesCommand:
         assert len(df) == 11
         assert isinstance(name, str)
         assert command.result_dataset_id is None
+
+    def test_execute_adds_a_new_series_to_the_chart(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        series_count_before = len(chart.data_series)
+        command = _cmd(ctx, target="y", expression="y * 2")
+        assert command.execute() is CommandResult.SUCCESS
+        assert len(chart.data_series) == series_count_before + 1
+        assert command.added_series_index == series_count_before
+
+    def test_added_series_points_at_the_new_dataset_and_its_columns(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        command = _cmd(ctx, target="y", expression="y * 2")
+        command.execute()
+        new_series = chart.data_series[command.added_series_index]
+        new_dataset = project.find_item(command.result_dataset_id)
+        assert new_series.dataset_id == command.result_dataset_id
+        assert new_series.x_column_id == new_dataset.column_id(new_series.x_column)
+        assert new_series.y_column_id == new_dataset.column_id(new_series.y_column)
+        assert new_series.label == new_dataset.name
+
+    def test_undo_removes_the_added_series_as_well_as_the_dataset(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        series_count_before = len(chart.data_series)
+        command = _cmd(ctx)
+        command.execute()
+        assert len(chart.data_series) == series_count_before + 1
+        assert command.undo() is CommandResult.SUCCESS
+        assert len(chart.data_series) == series_count_before
+
+    def test_dataset_is_created_in_the_given_folder(self, ctx):
+        app_context, project = ctx
+        folder = Folder(id="folder-1", name="Charts")
+        project.add_item(folder)
+        chart = project.find_item("chart-1")
+        project.remove_item(chart)
+        chart.parent_id = None
+        project.add_item(chart, parent_id="folder-1")
+        command = TransformChartSeriesCommand(
+            app_context, "chart-1", source_kind="series", source_index=0,
+            target="y", expression="y * 2", folder_id="folder-1",
+        )
+        assert command.execute() is CommandResult.SUCCESS
+        new_dataset = project.find_item(command.result_dataset_id)
+        assert new_dataset.parent_id == "folder-1"
