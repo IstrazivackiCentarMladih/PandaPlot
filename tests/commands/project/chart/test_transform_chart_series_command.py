@@ -11,6 +11,7 @@ from pandaplot.commands.project.chart.transform_chart_series_command import (
     TransformChartSeriesCommand,
 )
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.items.folder import Folder
@@ -185,6 +186,43 @@ class TestTransformChartSeriesCommand:
         assert len(chart.data_series) == series_count_before + 1
         assert command.undo() is CommandResult.SUCCESS
         assert len(chart.data_series) == series_count_before
+
+    def test_execute_emits_the_generic_project_item_added_event(self, ctx):
+        """The project explorer tree and other item-type-agnostic listeners
+        (e.g. tab_container's item-removed tab closer) key off the generic
+        ProjectEvents, not the narrower DatasetEvents.DATASET_CREATED/DELETED
+        -- see import_data_command.py's TODO(#219) migration note."""
+        app_context, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        new_dataset = project.find_item(command.result_dataset_id)
+        app_context.get_app_state.return_value.event_bus.emit.assert_any_call(
+            ProjectEvents.PROJECT_ITEM_ADDED,
+            {
+                "project": project,
+                "item_id": command.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": new_dataset.name,
+                "item": new_dataset,
+                "folder_id": None,
+            },
+        )
+
+    def test_undo_emits_the_generic_project_item_removed_event(self, ctx):
+        app_context, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        dataset_name = project.find_item(command.result_dataset_id).name
+        command.undo()
+        app_context.get_app_state.return_value.event_bus.emit.assert_any_call(
+            ProjectEvents.PROJECT_ITEM_REMOVED,
+            {
+                "project": project,
+                "item_id": command.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": dataset_name,
+            },
+        )
 
     def test_dataset_is_created_in_the_given_folder(self, ctx):
         app_context, project = ctx

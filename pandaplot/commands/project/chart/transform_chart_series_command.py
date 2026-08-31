@@ -21,7 +21,7 @@ from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.events.event_types import DatasetEvents
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext, AppState
@@ -148,12 +148,18 @@ class TransformChartSeriesCommand(Command):
             )
             project.add_item(dataset, parent_id=self.folder_id)
 
-            self.app_state.event_bus.emit(DatasetEvents.DATASET_CREATED, {
+            # The generic item-added/item-removed events (not the narrower,
+            # legacy DatasetEvents.DATASET_CREATED/DELETED -- see
+            # import_data_command.py's TODO(#219)) are what the project
+            # explorer tree and other item-type-agnostic listeners actually
+            # refresh on.
+            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_ADDED, {
                 "project": project,
-                "dataset_id": self.result_dataset_id,
-                "dataset_name": name,
+                "item_id": self.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": name,
+                "item": dataset,
                 "folder_id": self.folder_id,
-                "dataset_data": dataset.data,
             })
 
             # The result dataframe's columns are always (x column, y column),
@@ -214,11 +220,13 @@ class TransformChartSeriesCommand(Command):
 
             dataset = project.find_item(self.result_dataset_id)
             if dataset:
+                dataset_name = dataset.name
                 project.remove_item(dataset)
-                self.app_state.event_bus.emit(DatasetEvents.DATASET_DELETED, {
+                self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
                     "project": project,
-                    "dataset_id": self.result_dataset_id,
-                    "dataset_name": dataset.name,
+                    "item_id": self.result_dataset_id,
+                    "item_type": "dataset",
+                    "item_name": dataset_name,
                 })
             return CommandResult.SUCCESS
         except Exception as e:
