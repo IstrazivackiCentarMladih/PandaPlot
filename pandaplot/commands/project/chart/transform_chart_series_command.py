@@ -11,9 +11,12 @@ that dataset, so the transform's effect is visible on the chart immediately
 -- from there it's an ordinary series like any other (restylable, removable,
 independently re-pointed at a different column via the Data tab). When the
 source is a data series (not a fit), the new series copies its type,
-style, and opacity, so a transformed line/scatter/etc. looks the same as
-what it was derived from instead of falling back to the chart's default
-styling.
+style, opacity, and y-axis assignment, so a transformed line/scatter/etc.
+looks and plots the same as what it was derived from instead of falling
+back to the chart's defaults. A fit source has no series to copy from, so
+it's always given SeriesType.LINE -- never the chart's own default type,
+which can require columns (e.g. a vector chart's U/V) this command's
+plain two-column result dataset doesn't have.
 """
 
 import copy
@@ -25,6 +28,7 @@ import pandas as pd
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Dataset
@@ -223,20 +227,31 @@ class TransformChartSeriesCommand(Command):
             # in that order, regardless of which one was the transform target
             # -- see run_transform()'s two branches.
             x_column, y_column = results_df.columns[0], results_df.columns[1]
-            style_kwargs = {}
             if self.source_kind == "series":
-                # Copy the source series' look (style, opacity, and the
-                # series_type the style is bound to -- DataSeries rejects a
-                # style/series_type pair from different series types) so the
-                # transformed series doesn't revert to the chart's default
-                # styling. Fits carry a FitStyle, not a SeriesStyleBase, so
-                # there's nothing compatible to copy from a fit source.
+                # Copy the source series' look (style, opacity, y-axis, and
+                # the series_type the style is bound to -- DataSeries rejects
+                # a style/series_type pair from different series types) so
+                # the transformed series doesn't revert to the chart's
+                # default styling or silently jump back to the primary axis.
+                # A source series eligible for transform is always LINE or
+                # SCATTER (resolve_series_xy's supports_curve_analysis check),
+                # both of which render fine from a plain two-column dataset.
                 source_series = chart.data_series[self.source_index]
                 style_kwargs = {
                     "series_type": source_series.series_type,
                     "style": self._copied_style_without_stale_error_columns(source_series.style),
                     "alpha": source_series.alpha,
+                    "y_axis": source_series.y_axis,
                 }
+            else:
+                # Fit source: there's no source series to copy a type from,
+                # and letting add_data_series() default to the chart's own
+                # type is unsafe for chart types whose default series needs
+                # more than x/y -- e.g. a vector chart's default SeriesType.
+                # VECTOR needs U/V columns this two-column result dataset
+                # doesn't have. LINE always renders from a plain (x, y) pair
+                # regardless of the chart type.
+                style_kwargs = {"series_type": SeriesType.LINE}
             chart.add_data_series(
                 dataset_id=self.result_dataset_id,
                 x_column_id=dataset.column_id(x_column) or "",

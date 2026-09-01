@@ -10,10 +10,11 @@ from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.transform_chart_series_command import (
     TransformChartSeriesCommand,
 )
+from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.project.items.chart import Chart, YAxis
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.items.folder import Folder
 from pandaplot.models.project.project import Project
@@ -223,6 +224,28 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.SUCCESS
         new_series = chart.data_series[command.added_series_index]
         assert new_series.series_type == SeriesType.LINE
+
+    def test_fit_source_uses_line_type_even_on_a_chart_whose_default_needs_more_columns(self, ctx):
+        """A vector chart's own default series_type (SeriesType.VECTOR)
+        needs U/V columns this command's plain two-column result dataset
+        doesn't have -- a fit-derived series must not default to it just
+        because it happens to be the chart's type."""
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        chart.chart_type = ChartType.VECTOR
+        command = _cmd(ctx, source_kind="fit", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.series_type == SeriesType.LINE
+
+    def test_new_series_preserves_the_source_series_y_axis(self, ctx):
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        chart.data_series[0].y_axis = YAxis.SECONDARY
+        command = _cmd(ctx, source_kind="series", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.y_axis == YAxis.SECONDARY
 
     def test_execute_adds_a_new_series_to_the_chart(self, ctx):
         _, project = ctx
