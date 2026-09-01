@@ -623,6 +623,7 @@ class FitPanel(SidebarPanel):
                 dataset,
                 series.y_column_id,
                 series.y_column) or "",
+            fixed_parameters=self.fit_fixed_parameters,
         )
 
         executor = self.app_context.get_command_executor()
