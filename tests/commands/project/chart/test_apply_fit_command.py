@@ -125,6 +125,28 @@ def test_execute_creates_report_note_and_dataset(app_context_with_chart, fit_res
     assert list(dataset.data["y"]) == [2.0, 4.0, 6.0]
 
 
+def test_execute_includes_confidence_bounds_in_fit_data_when_present(app_context_with_chart, fit_results):
+    app_context, project, chart, source = app_context_with_chart
+    fit_results.confidence_lower = np.array([1.5, 3.5, 5.5])
+    fit_results.confidence_upper = np.array([2.5, 4.5, 6.5])
+
+    command = ApplyFitCommand(
+        app_context=app_context,
+        chart_id=chart.id,
+        fit_results=fit_results,
+        source_dataset_id=source.id,
+        source_x_column_id="x_id",
+        source_y_column_id="y_id",
+    )
+
+    assert command.execute() is CommandResult.SUCCESS
+
+    dataset = project.find_item(command.result_dataset_id)
+
+    assert list(dataset.data["y_lower"]) == [1.5, 3.5, 5.5]
+    assert list(dataset.data["y_upper"]) == [2.5, 4.5, 6.5]
+
+
 def test_execute_logs_a_warning_when_chart_not_found(fit_results, caplog):
     project = Mock()
     project.find_item.return_value = None
