@@ -17,9 +17,10 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.gui.components.common.p_button import PButton
-from pandaplot.gui.components.sidebar.fit.fit_panel import FitPanel
+from pandaplot.gui.components.sidebar.fit.fit_panel import CUSTOM_SERIES_SENTINEL, FitPanel
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
+from pandaplot.models.project.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.fit.fit_service import FitResult
 
@@ -324,7 +325,8 @@ def test_on_tab_changed_resyncs_when_panel_becomes_visible(app_context):
 
     assert panel.current_chart is not None
     assert panel.current_chart.id == chart.id
-    assert panel.series_combo.count() == len(chart.data_series)
+    # +1 for the trailing "Custom..." sentinel entry.
+    assert panel.series_combo.count() == len(chart.data_series) + 1
 
     panel.close()
 
@@ -409,12 +411,12 @@ def test_chart_updated_while_hidden_refreshes_chart_on_show(app_context):
     chart.add_data_series(dataset_id=dataset.id, x_column_id=x_id, y_column_id=y_id, label="second series")
 
     panel._on_chart_updated({"chart": chart})
-    assert panel.series_combo.count() == 1  # not yet refreshed while hidden
+    assert panel.series_combo.count() == 2  # not yet refreshed while hidden (1 series + "Custom...")
 
     panel.show()
     QApplication.processEvents()
 
-    assert panel.series_combo.count() == 2
+    assert panel.series_combo.count() == 3  # 2 series + "Custom..."
 
     panel.close()
 
@@ -822,6 +824,186 @@ def test_unchecking_auto_with_no_valid_data_points_does_not_crash(app_context):
 
     assert panel.range_min_spin.isHidden() is False
     assert panel.range_max_spin.isHidden() is False
+
+
+def _make_project_with_two_datasets_and_series_on_first():
+    """A real Project with two datasets: `chart`'s only real series sources
+    from `dataset_a`; `dataset_b` is never referenced by any series, so it
+    only shows up in the Custom picker if that picker lists every dataset
+    in the project (not just ones already on the chart -- see issue #274).
+    """
+    project = Project(name="Custom Source Project")
+
+    df_a = pd.DataFrame({"time": [1, 2, 3, 4], "value": [10, 20, 30, 40]})
+    dataset_a = Dataset(name="dataset-a", data=df_a)
+    project.add_item(dataset_a)
+
+    df_b = pd.DataFrame({"t2": [5, 6, 7, 8], "v2": [1.0, 2.0, 3.0, 4.0]})
+    dataset_b = Dataset(name="dataset-b", data=df_b)
+    project.add_item(dataset_b)
+
+    chart = Chart(id="chart-1", name="chart")
+    chart.add_data_series(
+        dataset_id=dataset_a.id,
+        x_column_id=dataset_a.column_id("time"),
+        y_column_id=dataset_a.column_id("value"),
+    )
+    project.add_item(chart)
+
+    return project, dataset_a, dataset_b, chart
+
+
+def _select_custom_source(panel, dataset, x_column, y_column):
+    """Select "Custom..." and configure its dataset/X/Y combos."""
+    custom_index = panel.series_combo.findData(CUSTOM_SERIES_SENTINEL)
+    panel.series_combo.setCurrentIndex(custom_index)
+
+    dataset_index = panel.custom_dataset_combo.findData(dataset.id)
+    panel.custom_dataset_combo.setCurrentIndex(dataset_index)
+
+    x_index = panel.custom_x_column_combo.findData(dataset.column_id(x_column))
+    panel.custom_x_column_combo.setCurrentIndex(x_index)
+
+    y_index = panel.custom_y_column_combo.findData(dataset.column_id(y_column))
+    panel.custom_y_column_combo.setCurrentIndex(y_index)
+
+
+def test_series_combo_gets_custom_sentinel_entry_when_chart_loaded(app_context):
+    project, _dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    last_index = panel.series_combo.count() - 1
+    assert panel.series_combo.itemData(last_index) == CUSTOM_SERIES_SENTINEL
+    assert panel.series_combo.itemText(last_index) == "Custom..."
+
+
+def test_no_chart_leaves_series_combo_empty(app_context):
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = None
+    panel.load_chart_object(None)
+
+    assert panel.series_combo.count() == 0
+
+
+def test_custom_source_widget_hidden_until_custom_selected(app_context):
+    project, dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    assert panel.custom_source_widget.isHidden() is True
+
+    _select_custom_source(panel, dataset_a, "time", "value")
+
+    assert panel.custom_source_widget.isHidden() is False
+
+
+def test_selecting_custom_populates_dataset_combo_with_every_project_dataset(app_context):
+    project, dataset_a, dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    custom_index = panel.series_combo.findData(CUSTOM_SERIES_SENTINEL)
+    panel.series_combo.setCurrentIndex(custom_index)
+
+    dataset_ids = {
+        panel.custom_dataset_combo.itemData(i)
+        for i in range(panel.custom_dataset_combo.count())
+    }
+    assert dataset_ids == {dataset_a.id, dataset_b.id}
+
+
+def test_get_current_data_uses_custom_source_when_selected(app_context):
+    project, _dataset_a, dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    _select_custom_source(panel, dataset_b, "t2", "v2")
+
+    result = panel.get_current_data()
+
+    assert result is not None
+    df, mask, x_data, y_data, series = result
+    assert series.dataset_id == dataset_b.id
+    assert list(x_data) == [5, 6, 7, 8]
+    assert list(y_data) == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_resolve_selected_series_returns_none_when_custom_selection_incomplete(app_context):
+    project, dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    custom_index = panel.series_combo.findData(CUSTOM_SERIES_SENTINEL)
+    panel.series_combo.setCurrentIndex(custom_index)
+    # Dataset gets auto-selected by _populate_custom_dataset_combo, but X/Y
+    # default to whatever _populate_custom_column_combos seeds (dataset_a's
+    # own first two columns) -- clear them to simulate an incomplete pick.
+    panel.custom_x_column_combo.setCurrentIndex(-1)
+    panel.custom_y_column_combo.setCurrentIndex(-1)
+
+    assert panel.get_current_data() is None
+
+
+def test_apply_fit_uses_custom_source_dataset_and_columns(app_context):
+    project, _dataset_a, dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    _select_custom_source(panel, dataset_b, "t2", "v2")
+
+    panel.fit_results = _make_fake_fit_result()
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    panel._apply_fit()
+
+    command = executed["command"]
+    assert isinstance(command, ApplyFitCommand)
+    assert command.source_dataset_id == dataset_b.id
+    assert command.source_x_column == "t2"
+    assert command.source_y_column == "v2"
+
+
+def test_switching_back_to_real_series_hides_custom_widget(app_context):
+    project, dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    _select_custom_source(panel, dataset_a, "time", "value")
+    assert panel.custom_source_widget.isHidden() is False
+
+    panel.series_combo.setCurrentIndex(0)
+
+    assert panel.custom_source_widget.isHidden() is True
 
 
 def test_range_labels_show_placeholder_when_no_valid_data_points(app_context):
