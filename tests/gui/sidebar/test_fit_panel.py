@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.fit.fit_panel import FitPanel
@@ -822,6 +823,105 @@ def test_unchecking_auto_with_no_valid_data_points_does_not_crash(app_context):
 
     assert panel.range_min_spin.isHidden() is False
     assert panel.range_max_spin.isHidden() is False
+
+
+def _build_panel_ready_to_fit(app_context):
+    """Build a FitPanel loaded with a chart/series that has enough data
+    points and a mocked `execute_command` that captures the dispatched
+    `PerformFitCommand` and returns True (simulating a successful async
+    dispatch)."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    return panel, executed
+
+
+def test_perform_fit_success_path_populates_results_and_stops_spinner(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert panel.busy_spinner.is_running is True
+    assert panel.fit_button.isEnabled() is False
+
+    command.result = _make_fake_fit_result()
+    command.fixed_parameters = None
+    command.on_complete(CommandResult.SUCCESS)
+
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel.apply_button.isEnabled() is True
+    assert panel.fit_results is command.result
+    assert panel.equation_label.text() == (command.result.equation or "No equation")
+    assert "Fit Type: Linear" in panel.results_text.toPlainText()
+
+
+def test_perform_fit_failure_path_shows_error_and_stops_spinner(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    command.error_message = "Fit did not converge"
+    command.on_complete(CommandResult.FAILURE)
+
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel.apply_button.isEnabled() is False
+    assert panel.fit_results is None
+    assert panel.results_text.toPlainText() == "Fit did not converge"
+    assert panel.results_text.styleSheet() == "color: red;"
+
+
+def test_perform_fit_sync_dispatch_failure_stops_spinner_without_on_complete(app_context):
+    """When execute_command() returns False (e.g. a fit already in
+    progress), on_complete never fires -- _perform_fit itself must undo the
+    spinner/button state it set before dispatching."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return False
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel._pending_fit_command is None
+    # on_complete's effects (populating fit_results, enabling apply_button)
+    # must not have happened -- it was never invoked.
+    assert panel.fit_results is None
+    assert panel.apply_button.isEnabled() is False
+    assert command.result is None
 
 
 def test_range_labels_show_placeholder_when_no_valid_data_points(app_context):
