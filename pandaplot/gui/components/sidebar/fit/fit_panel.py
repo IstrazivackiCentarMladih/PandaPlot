@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
-from pandaplot.commands.project.fit.create_fit_report_command import CreateFitReportCommand
 from pandaplot.commands.project.fit.perform_fit_command import PerformFitCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
@@ -344,11 +343,6 @@ class FitPanel(SidebarPanel):
         self.apply_button = PButton("Apply", role="secondary", on_click=self._apply_fit, enabled=False)
         button_layout.addWidget(self.apply_button)
 
-        self.report_button = PButton(
-            "Generate Report", role="secondary", on_click=self._generate_report, enabled=False
-        )
-        button_layout.addWidget(self.report_button)
-
         self.clear_button = PButton("Clear Results", role="secondary", on_click=self._clear_results)
         button_layout.addWidget(self.clear_button)
         
@@ -629,6 +623,7 @@ class FitPanel(SidebarPanel):
                 dataset,
                 series.y_column_id,
                 series.y_column) or "",
+            fixed_parameters=self.fit_fixed_parameters,
         )
 
         executor = self.app_context.get_command_executor()
@@ -639,47 +634,6 @@ class FitPanel(SidebarPanel):
 
         self.logger.info("Fit applied to chart %s", self.current_chart.id)
 
-    def _generate_report(self):
-        """Create a standalone report note and fit-data dataset for the current fit."""
-        if self.fit_results is None:
-            self.logger.warning("No fit results available to generate a report")
-            return
-
-        series = self.series_combo.currentData()
-
-        if series is None:
-            self.logger.warning("No selected series for generating fit report")
-            return
-
-        dataset = self.current_project.find_item(series.dataset_id) if self.current_project else None
-
-        if not isinstance(dataset, Dataset):
-            self.logger.warning("Dataset not found: %s", series.dataset_id)
-            return
-
-        command = CreateFitReportCommand(
-            app_context=self.app_context,
-            fit_results=self.fit_results,
-            source_dataset_id=series.dataset_id,
-            source_x_column=resolve_series_column(
-                dataset,
-                series.x_column_id,
-                series.x_column) or "",
-            source_y_column=resolve_series_column(
-                dataset,
-                series.y_column_id,
-                series.y_column) or "",
-            fixed_parameters=self.fit_fixed_parameters,
-        )
-
-        executor = self.app_context.get_command_executor()
-
-        if not executor.execute_command(command):
-            self.logger.error("CreateFitReportCommand failed")
-            return
-
-        self.logger.info("Fit report generated for series %s", series.dataset_id)
-
     def _clear_results(self):
         """Clear the fit results."""
         self.fit_results = None
@@ -688,7 +642,6 @@ class FitPanel(SidebarPanel):
         self.results_text.setStyleSheet("")
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
-        self.report_button.setEnabled(False)
 
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
@@ -866,5 +819,4 @@ class FitPanel(SidebarPanel):
         self.fit_fixed_parameters = command.fixed_parameters
         self.display_results()
         self.apply_button.setEnabled(self.fit_results is not None)
-        self.report_button.setEnabled(self.fit_results is not None)
 
