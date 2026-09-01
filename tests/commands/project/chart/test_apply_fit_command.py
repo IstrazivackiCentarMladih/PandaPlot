@@ -8,6 +8,7 @@ import pytest
 
 from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.items.folder import Folder
@@ -219,6 +220,68 @@ def test_redo_adds_fit_and_report_again(app_context_with_chart, fit_results):
 
     assert project.find_item(command.report_note_id) is not None
     assert project.find_item(command.result_dataset_id) is not None
+
+
+def test_redo_preserves_report_item_identities(app_context_with_chart, fit_results):
+    """A redo must re-add the same Note/Dataset objects (and ids) rather
+    than minting new ones, so anything that recorded the original ids
+    across the undo (e.g. a subsequent edit-note command) still resolves."""
+    app_context, project, chart, source = app_context_with_chart
+
+    command = ApplyFitCommand(
+        app_context=app_context,
+        chart_id=chart.id,
+        fit_results=fit_results,
+        source_dataset_id=source.id,
+        source_x_column_id="x_id",
+        source_y_column_id="y_id",
+    )
+
+    command.execute()
+    original_note_id = command.report_note_id
+    original_dataset_id = command.result_dataset_id
+    original_note = project.find_item(original_note_id)
+    original_dataset = project.find_item(original_dataset_id)
+
+    command.undo()
+    command.redo()
+
+    assert command.report_note_id == original_note_id
+    assert command.result_dataset_id == original_dataset_id
+    assert project.find_item(original_note_id) is original_note
+    assert project.find_item(original_dataset_id) is original_dataset
+
+
+def test_undo_emits_item_removed_with_item_id_for_note_and_dataset(app_context_with_chart, fit_results):
+    """TabContainer closes an open tab via PROJECT_ITEM_REMOVED's "item_id"
+    key; both the report note and the (otherwise non-bubbling)
+    DATASET_DELETED removal must carry it so an open tab actually closes."""
+    app_context, project, chart, source = app_context_with_chart
+
+    command = ApplyFitCommand(
+        app_context=app_context,
+        chart_id=chart.id,
+        fit_results=fit_results,
+        source_dataset_id=source.id,
+        source_x_column_id="x_id",
+        source_y_column_id="y_id",
+    )
+
+    command.execute()
+    note_id = command.report_note_id
+    dataset_id = command.result_dataset_id
+    app_context.event_bus.reset_mock()
+
+    command.undo()
+
+    item_removed_calls = [
+        call for call in app_context.event_bus.emit.call_args_list
+        if call.args[0] == ProjectEvents.PROJECT_ITEM_REMOVED
+    ]
+    removed_item_ids = {call.args[1]["item_id"] for call in item_removed_calls}
+
+    assert note_id in removed_item_ids
+    assert dataset_id in removed_item_ids
 
 
 def test_cleanup_releases_the_added_index_and_report_ids(app_context_with_chart, fit_results):

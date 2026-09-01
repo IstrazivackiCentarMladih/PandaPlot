@@ -71,9 +71,15 @@ class ApplyFitCommand(Command):
 
         self.added_index: Optional[int] = None
 
-        # State for undo/redo of the report items.
+        # State for undo/redo of the report items. The Note/Dataset objects
+        # (and their ids) are created once on the first execute() and then
+        # re-added as-is on redo(), so a redo doesn't mint new identities
+        # that later commands (e.g. an edit to the generated note) can't
+        # find by their originally-recorded id -- see CreateNoteCommand.redo().
         self.report_note_id: Optional[str] = None
         self.result_dataset_id: Optional[str] = None
+        self._report_note: Optional[Note] = None
+        self._result_dataset: Optional[Dataset] = None
 
     def _find_chart(self) -> Optional[Chart]:
         app_state = self.app_context.get_app_state()
@@ -166,36 +172,47 @@ class ApplyFitCommand(Command):
         return pd.DataFrame(data)
 
     def _create_report(self, project, folder_id: Optional[str], short_fit_name: str) -> None:
-        """Create the report Note and fit-data Dataset alongside the source dataset."""
-        dataset_name = f"{short_fit_name} Fit Data"
-        self.result_dataset_id = str(uuid.uuid4())
-        dataset = Dataset(
-            id=self.result_dataset_id,
-            name=dataset_name,
-            data=self._fit_dataframe(),
-            source_file=None,
-        )
+        """Add the report Note and fit-data Dataset alongside the source dataset.
+
+        The objects are built once (first execute()) and cached; a later
+        redo() re-adds the very same objects instead of minting fresh ids,
+        so anything that recorded the original ids (e.g. an edit to the
+        note) keeps working after an undo/redo round-trip.
+        """
+        if self._result_dataset is None:
+            self.result_dataset_id = str(uuid.uuid4())
+            self._result_dataset = Dataset(
+                id=self.result_dataset_id,
+                name=f"{short_fit_name} Fit Data",
+                data=self._fit_dataframe(),
+                source_file=None,
+            )
+        dataset = self._result_dataset
+
         project.add_item(dataset, parent_id=folder_id)
         self.app_context.event_bus.emit(DatasetEvents.DATASET_CREATED, {
             "project": project,
             "dataset_id": self.result_dataset_id,
-            "dataset_name": dataset_name,
+            "dataset_name": dataset.name,
             "folder_id": folder_id,
             "dataset_data": dataset.data,
         })
 
-        report_name = f"{short_fit_name} Fit Report"
-        self.report_note_id = str(uuid.uuid4())
-        note = Note(
-            id=self.report_note_id,
-            name=report_name,
-            content=self._report_text(),
-        )
+        if self._report_note is None:
+            self.report_note_id = str(uuid.uuid4())
+            self._report_note = Note(
+                id=self.report_note_id,
+                name=f"{short_fit_name} Fit Report",
+                content=self._report_text(),
+            )
+        note = self._report_note
+
         project.add_item(note, parent_id=folder_id)
         self.app_context.event_bus.emit(ProjectEvents.PROJECT_ITEM_ADDED, {
             "project": project,
+            "item_id": self.report_note_id,
             "note_id": self.report_note_id,
-            "note_name": report_name,
+            "note_name": note.name,
             "folder_id": folder_id,
             "note": note,
         })
@@ -207,6 +224,7 @@ class ApplyFitCommand(Command):
                 project.remove_item(note)
                 self.app_context.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
                     "project": project,
+                    "item_id": self.report_note_id,
                     "note_id": self.report_note_id,
                     "note": note,
                 })
@@ -219,6 +237,15 @@ class ApplyFitCommand(Command):
                     "project": project,
                     "dataset_id": self.result_dataset_id,
                     "dataset_name": dataset.name,
+                })
+                # DATASET_DELETED deliberately doesn't bubble to
+                # project.item_removed (its payload has no generic
+                # "item_id"), so an open tab for this dataset wouldn't
+                # otherwise close -- publish that explicitly too.
+                self.app_context.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
+                    "project": project,
+                    "item_id": self.result_dataset_id,
+                    "dataset_id": self.result_dataset_id,
                 })
 
     @override
@@ -319,3 +346,5 @@ class ApplyFitCommand(Command):
         self.added_index = None
         self.report_note_id = None
         self.result_dataset_id = None
+        self._report_note = None
+        self._result_dataset = None
