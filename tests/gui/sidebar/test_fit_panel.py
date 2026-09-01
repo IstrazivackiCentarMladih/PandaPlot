@@ -477,3 +477,111 @@ def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_contex
 
     assert panel.fit_results is None
     assert panel.apply_button.isEnabled() is False
+
+
+def test_range_controls_start_in_auto_mode(fit_panel):
+    assert fit_panel.range_auto_check.isChecked() is True
+    assert fit_panel.range_min_spin.isEnabled() is False
+    assert fit_panel.range_max_spin.isEnabled() is False
+
+
+def test_unchecking_auto_enables_range_spinboxes_and_seeds_data_range(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.range_auto_check.setChecked(False)
+
+    assert panel.range_min_spin.isEnabled() is True
+    assert panel.range_max_spin.isEnabled() is True
+    assert panel.range_min_spin.value() == 1.0  # min of the "time" column [1, 2, 3, 4]
+    assert panel.range_max_spin.value() == 4.0  # max of the "time" column
+
+
+def test_invalid_range_disables_fit_button_and_shows_warning(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    # isVisible() only reflects the widget's own setVisible() flag once the
+    # panel itself has actually been shown (Qt reports False for any
+    # descendant of a never-shown top-level regardless of its own flag).
+    panel.show()
+    QApplication.processEvents()
+
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(10.0)
+    panel.range_max_spin.setValue(5.0)
+
+    assert panel.fit_button.isEnabled() is False
+    assert panel.range_warning_label.isVisible() is True
+
+    panel.close()
+
+
+def test_perform_fit_passes_custom_range_to_command(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(-5.0)
+    panel.range_max_spin.setValue(10.0)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert command.x_min == -5.0
+    assert command.x_max == 10.0
+
+
+def test_perform_fit_passes_none_range_when_auto(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert command.x_min is None
+    assert command.x_max is None

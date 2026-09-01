@@ -7,6 +7,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -269,8 +270,37 @@ class FitPanel(SidebarPanel):
         options_layout.addWidget(self.r_squared_check, 2, 0, 1, 2)
         
         fit_layout.addLayout(options_layout)
+
+        # Fit range (plot the fitted curve outside the source data's own range)
+        range_layout = QGridLayout()
+        self.range_auto_check = QCheckBox("Auto")
+        self.range_auto_check.setChecked(True)
+        range_layout.addWidget(QLabel("Fit Range:"), 0, 0)
+        range_layout.addWidget(self.range_auto_check, 0, 1)
+
+        self.range_min_spin = QDoubleSpinBox()
+        self.range_min_spin.setRange(-1e9, 1e9)
+        self.range_min_spin.setDecimals(6)
+        self.range_min_spin.setEnabled(False)
+        range_layout.addWidget(QLabel("Min:"), 1, 0)
+        range_layout.addWidget(self.range_min_spin, 1, 1)
+
+        self.range_max_spin = QDoubleSpinBox()
+        self.range_max_spin.setRange(-1e9, 1e9)
+        self.range_max_spin.setDecimals(6)
+        self.range_max_spin.setValue(1.0)
+        self.range_max_spin.setEnabled(False)
+        range_layout.addWidget(QLabel("Max:"), 2, 0)
+        range_layout.addWidget(self.range_max_spin, 2, 1)
+
+        self.range_warning_label = QLabel("Max must be greater than Min.")
+        self.range_warning_label.setStyleSheet("color: red;")
+        self.range_warning_label.setVisible(False)
+        range_layout.addWidget(self.range_warning_label, 3, 0, 1, 2)
+
+        fit_layout.addLayout(range_layout)
         layout.addWidget(fit_group)
-    
+
     def _create_results_section(self, layout):
         """Create the results display section."""
         results_group = QGroupBox("Fit Results")
@@ -314,7 +344,10 @@ class FitPanel(SidebarPanel):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
-    
+        self.range_auto_check.toggled.connect(self._on_range_auto_toggled)
+        self.range_min_spin.valueChanged.connect(self.update_data_points_display)
+        self.range_max_spin.valueChanged.connect(self.update_data_points_display)
+
     def setup_event_subscriptions(self):
         """Set up event subscriptions for tab changes."""
         self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
@@ -457,6 +490,9 @@ class FitPanel(SidebarPanel):
         base_fg = palette.get("base_fg", "#333333")
         secondary_fg = palette.get("secondary_fg", "#555555")
 
+        range_valid = self._is_range_valid()
+        self.range_warning_label.setVisible(not range_valid)
+
         current_data = self.get_current_data()
         if current_data is not None:
             df, mask, x_data, y_data, series = current_data
@@ -470,6 +506,12 @@ class FitPanel(SidebarPanel):
                 self.data_points_warning_icon.setVisible(True)
                 self.fit_button.setEnabled(False)
                 self.fit_button.setToolTip(tooltip)
+            elif not range_valid:
+                self.data_points_label.setStyleSheet(f"color: {base_fg};")
+                self.data_points_label.setToolTip("")
+                self.data_points_warning_icon.setVisible(False)
+                self.fit_button.setEnabled(False)
+                self.fit_button.setToolTip("Fit range Max must be greater than Min.")
             else:
                 self.data_points_label.setStyleSheet(f"color: {base_fg};")
                 self.data_points_label.setToolTip("")
@@ -621,6 +663,26 @@ class FitPanel(SidebarPanel):
         self._clear_results()
         self.update_data_points_display()
 
+    def _on_range_auto_toggled(self, checked: bool):
+        """Enable manual range entry when Auto is unchecked, seeding it from
+        the current series' actual data range as a starting point."""
+        self.range_min_spin.setEnabled(not checked)
+        self.range_max_spin.setEnabled(not checked)
+
+        if not checked:
+            current_data = self.get_current_data()
+            if current_data is not None:
+                _, _, x_data, _, _ = current_data
+                self.range_min_spin.setValue(float(x_data.min()))
+                self.range_max_spin.setValue(float(x_data.max()))
+
+        self.update_data_points_display()
+
+    def _is_range_valid(self) -> bool:
+        if self.range_auto_check.isChecked():
+            return True
+        return self.range_max_spin.value() > self.range_min_spin.value()
+
     def _on_chart_updated(self, event_data):
         chart = event_data.get("chart")
 
@@ -705,6 +767,8 @@ class FitPanel(SidebarPanel):
             custom_function=self.custom_function_edit.text() if is_custom else None,
             custom_parameters=self.custom_params_edit.text() if is_custom else None,
             fixed_parameters=self.initial_guess_edit.text() if is_custom else None,
+            x_min=None if self.range_auto_check.isChecked() else self.range_min_spin.value(),
+            x_max=None if self.range_auto_check.isChecked() else self.range_max_spin.value(),
         )
 
         executor = self.app_context.get_command_executor()
