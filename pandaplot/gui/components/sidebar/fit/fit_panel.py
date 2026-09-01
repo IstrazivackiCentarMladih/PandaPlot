@@ -720,6 +720,7 @@ class FitPanel(SidebarPanel):
 
         if chart is None:
             self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.custom_source_widget.setVisible(False)
             self.update_data_points_display()
             return
 

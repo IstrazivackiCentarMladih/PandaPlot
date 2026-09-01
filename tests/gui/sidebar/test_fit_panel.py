@@ -890,6 +890,27 @@ def test_no_chart_leaves_series_combo_empty(app_context):
     assert panel.series_combo.count() == 0
 
 
+def test_clearing_chart_after_custom_selected_hides_custom_widget(app_context):
+    """Regression test (PR review): load_chart_object(None) clears the
+    combo and returns early, before _on_series_changed() would normally run
+    to hide custom_source_widget -- it must hide the widget itself instead,
+    otherwise switching away from a chart tab with "Custom..." selected
+    left the picker visible with no chart (or selection) backing it."""
+    project, dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    _select_custom_source(panel, dataset_a, "time", "value")
+    assert panel.custom_source_widget.isHidden() is False
+
+    panel.load_chart_object(None)
+
+    assert panel.custom_source_widget.isHidden() is True
+
+
 def test_custom_source_widget_hidden_until_custom_selected(app_context):
     project, dataset_a, _dataset_b, chart = _make_project_with_two_datasets_and_series_on_first()
 
