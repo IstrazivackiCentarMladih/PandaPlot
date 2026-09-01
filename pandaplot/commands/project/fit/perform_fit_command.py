@@ -20,7 +20,9 @@ class PerformFitCommand(Command):
         sigma_y=None,
         custom_function: str | None = None,
         custom_parameters: str | None = None,
-        fixed_parameters: str | None = None):
+        fixed_parameters: str | None = None,
+        x_min: float | None = None,
+        x_max: float | None = None):
         super().__init__()
 
         self.fit_service = fit_service
@@ -36,6 +38,8 @@ class PerformFitCommand(Command):
         self.custom_function = custom_function
         self.custom_parameters = custom_parameters
         self.fixed_parameters = fixed_parameters
+        self.x_min = x_min
+        self.x_max = x_max
 
         self.result: Optional[FitResult] = None
         self.error_message: Optional[str] = None
@@ -55,7 +59,9 @@ class PerformFitCommand(Command):
                 sigma_y=self.sigma_y,
                 custom_function=self.custom_function,
                 custom_parameters=self.custom_parameters,
-                fixed_parameters=self.fixed_parameters)
+                fixed_parameters=self.fixed_parameters,
+                x_min=self.x_min,
+                x_max=self.x_max)
 
             if self.result is None:
                 self.logger.warning(
