@@ -26,10 +26,15 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, UIEvents
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import resolve_series_column
+from pandaplot.models.project.items.chart import DataSeries, resolve_series_column
 from pandaplot.models.state import AppContext
 from pandaplot.services.fit.fit_service import MIN_FIT_POINTS, FitService
 from pandaplot.services.theme import ThemeManager
+from pandaplot.utils.item_display_options import dataset_display_options
+
+# Sentinel itemData for the series_combo's "Custom..." entry, distinguishing
+# it from a real DataSeries (itemData) and from "nothing selected" (None).
+CUSTOM_SERIES_SENTINEL = "__custom__"
 
 
 class FitPanel(SidebarPanel):
@@ -176,7 +181,30 @@ class FitPanel(SidebarPanel):
         self.series_combo = QComboBox()
         data_layout.addWidget(self.series_combo, 0, 1)
 
-        data_layout.addWidget(QLabel("Data Points:"), 1, 0)
+        # Dataset/X/Y column pickers for the "Custom..." data source, only
+        # shown when that sentinel entry is selected in series_combo (see
+        # _on_series_changed). Populated from every dataset in the project,
+        # not just ones already on the chart.
+        self.custom_source_widget = QWidget()
+        custom_source_layout = QGridLayout(self.custom_source_widget)
+        custom_source_layout.setContentsMargins(0, 0, 0, 0)
+
+        custom_source_layout.addWidget(QLabel("Dataset:"), 0, 0)
+        self.custom_dataset_combo = QComboBox()
+        custom_source_layout.addWidget(self.custom_dataset_combo, 0, 1)
+
+        custom_source_layout.addWidget(QLabel("X Column:"), 1, 0)
+        self.custom_x_column_combo = QComboBox()
+        custom_source_layout.addWidget(self.custom_x_column_combo, 1, 1)
+
+        custom_source_layout.addWidget(QLabel("Y Column:"), 2, 0)
+        self.custom_y_column_combo = QComboBox()
+        custom_source_layout.addWidget(self.custom_y_column_combo, 2, 1)
+
+        self.custom_source_widget.setVisible(False)
+        data_layout.addWidget(self.custom_source_widget, 1, 0, 1, 2)
+
+        data_layout.addWidget(QLabel("Data Points:"), 2, 0)
 
         points_layout = QHBoxLayout()
         self.data_points_label = QLabel("No data selected")
@@ -188,7 +216,7 @@ class FitPanel(SidebarPanel):
         points_layout.addWidget(self.data_points_warning_icon)
         points_layout.addStretch()
 
-        data_layout.addLayout(points_layout, 1, 1)
+        data_layout.addLayout(points_layout, 2, 1)
 
         layout.addWidget(data_group)
 
@@ -352,6 +380,9 @@ class FitPanel(SidebarPanel):
         """Connect widget signals."""
         self.fit_type_combo.currentTextChanged.connect(self._on_fit_type_changed)
         self.series_combo.currentIndexChanged.connect(self._on_series_changed)
+        self.custom_dataset_combo.currentIndexChanged.connect(self._on_custom_dataset_changed)
+        self.custom_x_column_combo.currentIndexChanged.connect(self._on_custom_column_changed)
+        self.custom_y_column_combo.currentIndexChanged.connect(self._on_custom_column_changed)
         self.range_auto_check.toggled.connect(self._on_range_auto_toggled)
         self.range_min_spin.valueChanged.connect(self.update_data_points_display)
         self.range_max_spin.valueChanged.connect(self.update_data_points_display)
@@ -384,13 +415,45 @@ class FitPanel(SidebarPanel):
             return None
         return app_state.current_project
 
+    def _resolve_selected_series(self) -> Optional[DataSeries]:
+        """Resolve series_combo's current selection to a DataSeries.
+
+        A real chart series is returned unchanged. The "Custom..." sentinel
+        instead builds a transient DataSeries from the dataset/X/Y column
+        combos below it -- never added to the chart, it only exists to
+        satisfy the `series.dataset_id`/`x_column_id`/`y_column_id` reads
+        that PerformFitCommand/ApplyFitCommand and get_current_data() rely
+        on. Returns None if dataset/X/Y aren't all chosen yet, matching the
+        "no selection" gating already in place for a real series.
+        """
+        selected = self.series_combo.currentData()
+
+        if isinstance(selected, DataSeries):
+            return selected
+
+        if selected != CUSTOM_SERIES_SENTINEL:
+            return None
+
+        dataset_id = self.custom_dataset_combo.currentData()
+        x_column_id = self.custom_x_column_combo.currentData()
+        y_column_id = self.custom_y_column_combo.currentData()
+
+        if not dataset_id or not x_column_id or not y_column_id:
+            return None
+
+        return DataSeries(
+            dataset_id=dataset_id,
+            x_column_id=x_column_id,
+            y_column_id=y_column_id,
+        )
+
     def get_current_data(self):
         """Get data from selected chart series."""
         if not self.current_project:
             self.logger.warning("No current project in FitPanel")
             return None
 
-        series = self.series_combo.currentData()
+        series = self._resolve_selected_series()
 
         self.logger.info("get_current_data: current_project=%r, series=%r, combo_count=%d",
             self.current_project, series, self.series_combo.count())
@@ -592,7 +655,7 @@ class FitPanel(SidebarPanel):
             self.logger.warning("No fit results available to apply")
             return
 
-        series = self.series_combo.currentData()
+        series = self._resolve_selected_series()
 
         if series is None:
             self.logger.warning("No selected series for applying fit")
@@ -657,6 +720,7 @@ class FitPanel(SidebarPanel):
 
         if chart is None:
             self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.custom_source_widget.setVisible(False)
             self.update_data_points_display()
             return
 
@@ -673,6 +737,8 @@ class FitPanel(SidebarPanel):
                 label = f"{y_name} vs {x_name}"
             self.series_combo.addItem(label, series)
 
+        self.series_combo.addItem("Custom...", CUSTOM_SERIES_SENTINEL)
+
         if self.series_combo.count() > 0:
             self.series_combo.setCurrentIndex(0)
         self.series_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
@@ -680,6 +746,66 @@ class FitPanel(SidebarPanel):
         self._on_series_changed()
 
     def _on_series_changed(self):
+        self._clear_results()
+        self.range_auto_check.setChecked(True)
+        is_custom = self.series_combo.currentData() == CUSTOM_SERIES_SENTINEL
+        self.custom_source_widget.setVisible(is_custom)
+        if is_custom:
+            self._populate_custom_dataset_combo()
+        self.update_data_points_display()
+
+    def _populate_custom_dataset_combo(self):
+        """Fill custom_dataset_combo with every dataset in the project,
+        mirroring data_tab.py's own dataset combo population pattern."""
+        previously_selected_id = (
+            self.custom_dataset_combo.currentData() if self.custom_dataset_combo.count() > 0 else None
+        )
+        self.custom_dataset_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+        try:
+            self.custom_dataset_combo.clear()
+            if self.current_project:
+                display_names = dict(dataset_display_options(self.current_project))
+                for item in self.current_project.get_all_items():
+                    if isinstance(item, Dataset):
+                        self.custom_dataset_combo.addItem(display_names[item.id], item.id)
+
+            if previously_selected_id is not None:
+                restored_index = self.custom_dataset_combo.findData(previously_selected_id)
+                if restored_index >= 0:
+                    self.custom_dataset_combo.setCurrentIndex(restored_index)
+        finally:
+            self.custom_dataset_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+        self._populate_custom_column_combos(self.custom_dataset_combo.currentData())
+
+    def _populate_custom_column_combos(self, dataset_id):
+        """Fill custom_x_column_combo/custom_y_column_combo with the columns
+        of `dataset_id`, mirroring data_tab.py's _populate_column_combos."""
+        self.custom_x_column_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+        self.custom_y_column_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+        try:
+            self.custom_x_column_combo.clear()
+            self.custom_y_column_combo.clear()
+
+            dataset = self.current_project.find_item(dataset_id) if dataset_id and self.current_project else None
+            if isinstance(dataset, Dataset) and dataset.data is not None:
+                for column in dataset.data.columns:
+                    column_id = dataset.column_id(column) or ""
+                    self.custom_x_column_combo.addItem(column, column_id)
+                    self.custom_y_column_combo.addItem(column, column_id)
+                if self.custom_y_column_combo.count() >= 2:
+                    self.custom_y_column_combo.setCurrentIndex(1)
+        finally:
+            self.custom_x_column_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.custom_y_column_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+    def _on_custom_dataset_changed(self):
+        self._populate_custom_column_combos(self.custom_dataset_combo.currentData())
+        self._clear_results()
+        self.range_auto_check.setChecked(True)
+        self.update_data_points_display()
+
+    def _on_custom_column_changed(self):
         self._clear_results()
         self.range_auto_check.setChecked(True)
         self.update_data_points_display()
