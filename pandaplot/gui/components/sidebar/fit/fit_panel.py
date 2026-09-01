@@ -506,8 +506,12 @@ class FitPanel(SidebarPanel):
         current_data = self.get_current_data()
         if current_data is not None:
             df, mask, x_data, y_data, series = current_data
-            self.range_min_value_label.setText(f"{x_data.min():.6g}")
-            self.range_max_value_label.setText(f"{x_data.max():.6g}")
+            if len(x_data) > 0:
+                self.range_min_value_label.setText(f"{x_data.min():.6g}")
+                self.range_max_value_label.setText(f"{x_data.max():.6g}")
+            else:
+                self.range_min_value_label.setText("—")
+                self.range_max_value_label.setText("—")
             self.data_points_label.setText(f"{len(x_data)} points")
 
             if len(x_data) < MIN_FIT_POINTS:
@@ -692,8 +696,9 @@ class FitPanel(SidebarPanel):
             current_data = self.get_current_data()
             if current_data is not None:
                 _, _, x_data, _, _ = current_data
-                self.range_min_spin.setValue(float(x_data.min()))
-                self.range_max_spin.setValue(float(x_data.max()))
+                if len(x_data) > 0:
+                    self.range_min_spin.setValue(float(x_data.min()))
+                    self.range_max_spin.setValue(float(x_data.max()))
 
         self.update_data_points_display()
 

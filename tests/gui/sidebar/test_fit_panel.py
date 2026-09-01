@@ -787,3 +787,56 @@ def test_auto_range_label_resets_after_applying_fit(app_context):
     assert panel.range_auto_check.isChecked() is True
     assert panel.range_min_value_label.text() == "1"
     assert panel.range_max_value_label.text() == "4"
+
+
+def _make_dataset_and_chart_with_all_nan_y():
+    """Build a Dataset + Chart whose y column is entirely NaN, so
+    get_current_data()'s NaN mask filters out every row -- x_data/y_data
+    both come back empty (len 0)."""
+    df = pd.DataFrame({"time": [1, 2, 3, 4], "value": [float("nan")] * 4})
+    dataset = Dataset(id="ds-nan", name="dataset", data=df)
+    x_id = dataset.column_id("time")
+    y_id = dataset.column_id("value")
+
+    chart = Chart(id="chart-nan", name="chart")
+    chart.add_data_series(dataset_id=dataset.id, x_column_id=x_id, y_column_id=y_id)
+    return dataset, chart
+
+
+def test_unchecking_auto_with_no_valid_data_points_does_not_crash(app_context):
+    """Regression test: get_current_data() can return an empty x_data array
+    when every row is NaN-masked out. Unchecking Auto used to call
+    x_data.min()/max() unconditionally, which raises ValueError on an empty
+    numpy array and would crash the panel."""
+    dataset, chart = _make_dataset_and_chart_with_all_nan_y()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.range_auto_check.setChecked(False)  # must not raise
+
+    assert panel.range_min_spin.isHidden() is False
+    assert panel.range_max_spin.isHidden() is False
+
+
+def test_range_labels_show_placeholder_when_no_valid_data_points(app_context):
+    """Regression test: the Auto-mode range labels must not crash (and
+    should fall back to a placeholder) when the current series has no valid
+    (x, y) points left after NaN masking."""
+    dataset, chart = _make_dataset_and_chart_with_all_nan_y()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)  # must not raise
+
+    assert panel.range_min_value_label.text() == "—"
+    assert panel.range_max_value_label.text() == "—"
