@@ -480,9 +480,14 @@ def test_on_series_changed_clears_stale_fit_results_within_same_chart(app_contex
 
 
 def test_range_controls_start_in_auto_mode(fit_panel):
+    # isHidden() reflects each widget's own explicit hide state, unlike
+    # isVisible() which is always False for a widget whose top-level
+    # ancestor has never been shown -- so this works without panel.show().
     assert fit_panel.range_auto_check.isChecked() is True
-    assert fit_panel.range_min_spin.isEnabled() is False
-    assert fit_panel.range_max_spin.isEnabled() is False
+    assert fit_panel.range_min_spin.isHidden() is True
+    assert fit_panel.range_max_spin.isHidden() is True
+    assert fit_panel.range_min_value_label.isHidden() is False
+    assert fit_panel.range_max_value_label.isHidden() is False
 
 
 def test_unchecking_auto_enables_range_spinboxes_and_seeds_data_range(app_context):
@@ -498,8 +503,10 @@ def test_unchecking_auto_enables_range_spinboxes_and_seeds_data_range(app_contex
 
     panel.range_auto_check.setChecked(False)
 
-    assert panel.range_min_spin.isEnabled() is True
-    assert panel.range_max_spin.isEnabled() is True
+    assert panel.range_min_spin.isHidden() is False
+    assert panel.range_max_spin.isHidden() is False
+    assert panel.range_min_value_label.isHidden() is True
+    assert panel.range_max_value_label.isHidden() is True
     assert panel.range_min_spin.value() == 1.0  # min of the "time" column [1, 2, 3, 4]
     assert panel.range_max_spin.value() == 4.0  # max of the "time" column
 
@@ -525,8 +532,8 @@ def test_changing_series_resets_range_to_auto(app_context):
     panel.series_combo.setCurrentIndex(1)
 
     assert panel.range_auto_check.isChecked() is True
-    assert panel.range_min_spin.isEnabled() is False
-    assert panel.range_max_spin.isEnabled() is False
+    assert panel.range_min_spin.isHidden() is True
+    assert panel.range_max_spin.isHidden() is True
 
 
 def test_loading_a_new_chart_resets_range_to_auto(app_context):
@@ -549,8 +556,8 @@ def test_loading_a_new_chart_resets_range_to_auto(app_context):
     panel.load_chart_object(chart_b)
 
     assert panel.range_auto_check.isChecked() is True
-    assert panel.range_min_spin.isEnabled() is False
-    assert panel.range_max_spin.isEnabled() is False
+    assert panel.range_min_spin.isHidden() is True
+    assert panel.range_max_spin.isHidden() is True
 
 
 def test_non_positive_min_invalid_for_logarithmic_fit(app_context):
@@ -679,3 +686,104 @@ def test_perform_fit_passes_none_range_when_auto(app_context):
     command = executed["command"]
     assert command.x_min is None
     assert command.x_max is None
+
+
+def test_auto_range_labels_show_current_series_data_range(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    assert panel.range_min_value_label.text() == "1"  # min of the "time" column [1, 2, 3, 4]
+    assert panel.range_max_value_label.text() == "4"  # max of the "time" column
+
+
+def test_auto_range_labels_refresh_on_series_change(app_context):
+    """Regression test: the disabled spinboxes used before this feature's
+    labels never refreshed once Auto was re-enabled (e.g. after applying a
+    fit, or on a tab/series change) -- they just kept showing whatever
+    value was last typed. The read-only labels must always reflect the
+    currently selected series' real data range instead."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    x_id = dataset.column_id("time")
+    y_id = dataset.column_id("value")
+    dataset.set_data(dataset.data.assign(time2=[100, 200, 300, 400]))
+    chart.add_data_series(dataset_id=dataset.id, x_column_id=dataset.column_id("time2"), y_column_id=y_id, label="second series")
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    assert panel.range_min_value_label.text() == "1"
+    assert panel.range_max_value_label.text() == "4"
+
+    panel.series_combo.setCurrentIndex(1)
+
+    assert panel.range_min_value_label.text() == "100"
+    assert panel.range_max_value_label.text() == "400"
+
+
+def test_auto_range_labels_refresh_after_reapplying_tab_change(app_context):
+    """Regression test: switching chart tabs (via _apply_tab_change ->
+    load_chart_object) must refresh the Auto-mode range labels to the new
+    chart's data, not leave the previous chart's range on screen."""
+    dataset, chart_a = _make_dataset_and_chart_with_id_only_series()
+    dataset.set_data(dataset.data.assign(time2=[100, 200, 300, 400]))
+    y_id = dataset.column_id("value")
+    chart_b = Chart(id="chart-2", name="chart-b")
+    chart_b.add_data_series(dataset_id=dataset.id, x_column_id=dataset.column_id("time2"), y_column_id=y_id)
+
+    project = Mock()
+    project.find_item = Mock(side_effect=lambda item_id: {
+        "chart-1": chart_a, "chart-2": chart_b,
+    }.get(item_id, dataset))
+    chart_a.id = "chart-1"
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+
+    panel._apply_tab_change({"tab_type": "chart", "tab_id": "chart-1"})
+    assert panel.range_min_value_label.text() == "1"
+    assert panel.range_max_value_label.text() == "4"
+
+    panel._apply_tab_change({"tab_type": "chart", "tab_id": "chart-2"})
+    assert panel.range_min_value_label.text() == "100"
+    assert panel.range_max_value_label.text() == "400"
+
+
+def test_auto_range_label_resets_after_applying_fit(app_context):
+    """Regression test: ApplyFitCommand emits CHART_UPDATED, which reloads
+    the chart into the panel (resetting Auto per _on_series_changed). The
+    Auto-mode labels must reflect the (possibly changed) data at that point
+    too, not a stale value left over from before the reload."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(-5.0)
+    panel.range_max_spin.setValue(10.0)
+
+    # Simulate what ApplyFitCommand's CHART_UPDATED handler does: reload the
+    # same chart object fresh, as _on_chart_updated -> load_chart_object would.
+    panel.load_chart_object(chart)
+
+    assert panel.range_auto_check.isChecked() is True
+    assert panel.range_min_value_label.text() == "1"
+    assert panel.range_max_value_label.text() == "4"
