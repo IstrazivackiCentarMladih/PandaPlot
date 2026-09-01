@@ -43,6 +43,8 @@ def test_execute_performs_fit(fit_service, fit_result):
         custom_function=None,
         custom_parameters=None,
         fixed_parameters=None,
+        x_min=None,
+        x_max=None,
     )
 
 
@@ -59,6 +61,25 @@ def test_execute_logs_a_warning_when_fit_service_returns_no_result(fit_service, 
     with caplog.at_level(logging.WARNING):
         assert command.execute() is CommandResult.FAILURE
     assert "linear" in caplog.text
+
+
+def test_execute_forwards_custom_range_to_fit_service(fit_service, fit_result):
+    fit_service.perform_fit.return_value = fit_result
+
+    command = PerformFitCommand(
+        fit_service=fit_service,
+        fit_type="linear",
+        x_data=[1, 2, 3],
+        y_data=[2, 4, 6],
+        x_min=-10.0,
+        x_max=20.0,
+    )
+
+    assert command.execute() is CommandResult.SUCCESS
+
+    _, kwargs = fit_service.perform_fit.call_args
+    assert kwargs["x_min"] == -10.0
+    assert kwargs["x_max"] == 20.0
 
 
 def test_cleanup_clears_fit_result(fit_service, fit_result):
