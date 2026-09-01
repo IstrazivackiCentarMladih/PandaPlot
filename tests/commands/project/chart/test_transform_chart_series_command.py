@@ -144,6 +144,29 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
+    def test_invalid_series_source_index_fails_with_the_friendly_message(self, ctx):
+        """Regression: _resolve_result_series_type used to index
+        chart.data_series[source_index] directly, before run_transform()'s
+        own bounds check ran -- an out-of-range series index raised a raw
+        IndexError instead of this same friendly message."""
+        app_context, _ = ctx
+        command = _cmd(ctx, source_kind="series", source_index=9)
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+        _title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
+        assert "no longer exists" in message
+
+    def test_expression_returning_a_wrong_length_array_fails_with_the_friendly_message(self, ctx):
+        """A raw array/list result (not a pd.Series) of the wrong length
+        used to hit pandas' own construction error (assigning a mismatched
+        index) before the code's own length check got a chance to produce
+        this message."""
+        app_context, _ = ctx
+        command = _cmd(ctx, expression="np.array([1.0, 2.0, 3.0])")
+        assert command.execute() is CommandResult.FAILURE
+        _title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
+        assert "Expression returned 3 values" in message
+
     def test_unsafe_expression_fails(self, ctx):
         app_context, _ = ctx
         command = _cmd(ctx, expression="__import__('os')")
@@ -375,6 +398,32 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.SUCCESS
         new_dataset = project.find_item(command.result_dataset_id)
         assert new_dataset.parent_id == "folder-1"
+
+    def test_emitted_folder_id_falls_back_to_none_when_the_requested_folder_is_gone(self, ctx):
+        """project.add_item() silently places the dataset at the project
+        root if folder_id no longer resolves to a real folder (e.g. the
+        folder was deleted between an undo and a redo) -- the emitted
+        event must report that as folder_id=None (the "no folder"
+        convention), not the stale, now-nonexistent folder id."""
+        app_context, project = ctx
+        command = TransformChartSeriesCommand(
+            app_context, "chart-1", source_kind="series", source_index=0,
+            target="y", expression="y * 2", folder_id="no-such-folder",
+        )
+        assert command.execute() is CommandResult.SUCCESS
+        new_dataset = project.find_item(command.result_dataset_id)
+        assert new_dataset.parent_id != "no-such-folder"
+        app_context.get_app_state.return_value.event_bus.emit.assert_any_call(
+            ProjectEvents.PROJECT_ITEM_ADDED,
+            {
+                "project": project,
+                "item_id": command.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": new_dataset.name,
+                "item": new_dataset,
+                "folder_id": None,
+            },
+        )
 
     def test_dataset_name_gets_a_counter_suffix_when_it_collides(self, ctx):
         """Re-running the same transform twice (e.g. re-applying the panel

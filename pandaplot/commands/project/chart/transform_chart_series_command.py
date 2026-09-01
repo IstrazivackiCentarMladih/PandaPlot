@@ -22,19 +22,22 @@ chart type allows neither (e.g. a pure histogram chart).
 """
 
 import copy
-import uuid
 from typing import Literal, Optional, override
 
 import pandas as pd
 
 from pandaplot.commands.base_command import Command, CommandResult
-from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
+from pandaplot.commands.project.chart.series_xy import (
+    SourceKind,
+    create_result_dataset,
+    remove_result_dataset,
+    resolve_series_xy,
+)
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.events import ChartEvents
-from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.transform import expression_engine
@@ -112,7 +115,14 @@ class TransformChartSeriesCommand(Command):
             if pd.api.types.is_scalar(result):
                 result = pd.Series([result] * len(target_series), index=target_series.index)
             else:
-                result = pd.Series(result, index=target_series.index)
+                # No index yet: assigning target_series.index here would raise
+                # pandas' own length-mismatch error before the check below
+                # gets a chance to produce the friendlier message. Both `x`
+                # and `y` already carry a plain reset (0..n-1) index (see
+                # series_xy.resolve_series_xy), and results_df is built from
+                # result.reset_index(drop=True) below regardless, so a
+                # correctly-sized result still lines up positionally.
+                result = pd.Series(result)
 
         if len(result) != len(target_series):
             raise ValueError(
@@ -150,21 +160,14 @@ class TransformChartSeriesCommand(Command):
         error-bar column id/name copied verbatim from the source series
         would point at a column that doesn't exist in it (or, worse,
         accidentally resolve against a same-named axis column that means
-        something else entirely). The rest of the error-bar config (color,
-        symmetry, cap size) is pure visual styling, not a data binding, and
-        is kept.
+        something else entirely). ErrorBarConfig.without_column_bindings()
+        keeps the rest of the error-bar config (color, symmetry, cap size),
+        which is pure visual styling, not a data binding.
         """
         new_style = copy.deepcopy(style)
         error_bars = getattr(new_style, "error_bars", None)
         if error_bars is not None:
-            error_bars.x_error_column_id = ""
-            error_bars.y_error_column_id = ""
-            error_bars.x_error_minus_column_id = ""
-            error_bars.y_error_minus_column_id = ""
-            error_bars.x_error_column = ""
-            error_bars.y_error_column = ""
-            error_bars.x_error_minus_column = ""
-            error_bars.y_error_minus_column = ""
+            new_style.error_bars = error_bars.without_column_bindings()
         return new_style
 
     def _resolve_result_series_type(self, chart: Chart) -> SeriesType:
@@ -173,44 +176,31 @@ class TransformChartSeriesCommand(Command):
         anything.
 
         A data-series source keeps its own type: resolve_series_xy's
-        supports_curve_analysis check already guarantees it's LINE or
-        SCATTER, both of which render fine from a plain (x, y) result and
-        are necessarily allowed on this chart (it's already one of the
-        chart's own series). A fit source has no series to inherit a type
-        from, and the chart's own default type can require columns this
-        two-column result doesn't have (a vector chart's default
-        SeriesType.VECTOR needs U/V; a histogram chart's only allowed
-        type, SeriesType.HIST, isn't an (x, y) pair type at all) -- so
-        pick the first of LINE/SCATTER this chart type actually allows,
-        and raise if neither is allowed (e.g. a pure histogram chart).
+        supports_curve_analysis check already guarantees it's a type that
+        renders fine from a plain (x, y) result and is necessarily allowed
+        on this chart (it's already one of the chart's own series) -- but
+        that check runs later, inside run_transform(), so an out-of-range
+        source_index is caught here explicitly rather than raising a raw
+        IndexError. A fit source has no series to inherit a type from, and
+        the chart's own default type can require columns this two-column
+        result doesn't have (a vector chart's default SeriesType.VECTOR
+        needs U/V; a histogram chart's only allowed type, SeriesType.HIST,
+        isn't an (x, y) pair type at all) -- so pick the first
+        curve-capable type (per SERIES_TYPE_SPECS, the same registry
+        resolve_series_xy consults) this chart type actually allows, and
+        raise if none is allowed (e.g. a pure histogram chart).
         """
         if self.source_kind == "series":
+            if not (0 <= self.source_index < len(chart.data_series)):
+                raise ValueError("Selected series no longer exists.")
             return chart.data_series[self.source_index].series_type
         allowed = CHART_TYPE_SPECS[chart.chart_type].allowed_series_types
-        for candidate in (SeriesType.LINE, SeriesType.SCATTER):
-            if candidate in allowed:
+        for candidate in SeriesType:
+            if candidate in allowed and SERIES_TYPE_SPECS[candidate].supports_curve_analysis:
                 return candidate
         raise ValueError(
             f"'{chart.chart_type.value}' charts can't take a new series from a fit-derived transform."
         )
-
-    def _unique_dataset_name(self, project, name: str) -> str:
-        """Return `name`, or `name (N)` for the smallest N >= 2 not already
-        used by a sibling in the target folder -- so re-running the same
-        transform (or two transforms that land on the same default name)
-        doesn't produce two indistinguishable "Y (y transformed)" datasets
-        sitting side by side in the project explorer."""
-        parent = project.find_item(self.folder_id) if self.folder_id else None
-        siblings = parent.get_items() if parent is not None else project.get_root_items()
-        existing_names = {item.name for item in siblings}
-        if name not in existing_names:
-            return name
-        counter = 2
-        candidate = f"{name} ({counter})"
-        while candidate in existing_names:
-            counter += 1
-            candidate = f"{name} ({counter})"
-        return candidate
 
     @override
     def execute(self) -> CommandResult:
@@ -234,32 +224,12 @@ class TransformChartSeriesCommand(Command):
             # created, not after.
             result_series_type = self._resolve_result_series_type(chart)
 
-            project = self.app_state.current_project
             results_df, default_name = self.run_transform()
-            name = self._unique_dataset_name(project, self.result_name or default_name)
-
-            self.result_dataset_id = str(uuid.uuid4())
-            dataset = Dataset(
-                id=self.result_dataset_id,
-                name=name,
-                data=results_df,
-                source_file=None,
+            dataset = create_result_dataset(
+                self.app_state, self.folder_id, self.result_name or default_name, results_df,
             )
-            project.add_item(dataset, parent_id=self.folder_id)
-
-            # The generic item-added/item-removed events (not the narrower,
-            # legacy DatasetEvents.DATASET_CREATED/DELETED -- see
-            # import_data_command.py's TODO(#219)) are what the project
-            # explorer tree and other item-type-agnostic listeners actually
-            # refresh on.
-            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_ADDED, {
-                "project": project,
-                "item_id": self.result_dataset_id,
-                "item_type": "dataset",
-                "item_name": name,
-                "item": dataset,
-                "folder_id": self.folder_id,
-            })
+            self.result_dataset_id = dataset.id
+            name = dataset.name
 
             # The result dataframe's columns are always (x column, y column),
             # in that order, regardless of which one was the transform target
@@ -322,7 +292,6 @@ class TransformChartSeriesCommand(Command):
         try:
             if not self.result_dataset_id or not self.app_state.current_project:
                 return CommandResult.FAILURE
-            project = self.app_state.current_project
 
             chart = self._get_chart()
             if chart is not None and self.added_series_index is not None:
@@ -333,16 +302,7 @@ class TransformChartSeriesCommand(Command):
                     "chart": chart,
                 })
 
-            dataset = project.find_item(self.result_dataset_id)
-            if dataset:
-                dataset_name = dataset.name
-                project.remove_item(dataset)
-                self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_REMOVED, {
-                    "project": project,
-                    "item_id": self.result_dataset_id,
-                    "item_type": "dataset",
-                    "item_name": dataset_name,
-                })
+            remove_result_dataset(self.app_state, self.result_dataset_id)
             return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("Failed to undo transform-chart-series: %s", e, exc_info=True)

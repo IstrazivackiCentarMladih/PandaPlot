@@ -14,17 +14,19 @@ This command unifies both so the Chart Analysis panel can offer the full set of
 analysis operations regardless of which kind of series the user picked.
 """
 
-import uuid
 from typing import Optional, override
 
 import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command, CommandResult
-from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
+from pandaplot.commands.project.chart.series_xy import (
+    SourceKind,
+    create_result_dataset,
+    remove_result_dataset,
+    resolve_series_xy,
+)
 from pandaplot.gui.controllers.ui_controller import UIController
-from pandaplot.models.events.event_types import DatasetEvents
-from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext, AppState
 
@@ -195,27 +197,13 @@ class AnalyzeChartSeriesCommand(Command):
                 self.ui_controller.show_error_message("Chart Analysis Error", message)
                 return CommandResult.FAILURE
 
-            project = self.app_state.current_project
             results_df, default_name = self.run_analysis()
-            name = self.result_name or default_name
-
-            self.result_dataset_id = str(uuid.uuid4())
-            dataset = Dataset(
-                id=self.result_dataset_id,
-                name=name,
-                data=results_df,
-                source_file=None,
+            dataset = create_result_dataset(
+                self.app_state, self.folder_id, self.result_name or default_name, results_df,
             )
-            project.add_item(dataset, parent_id=self.folder_id)
+            self.result_dataset_id = dataset.id
 
-            self.app_state.event_bus.emit(DatasetEvents.DATASET_CREATED, {
-                "project": project,
-                "dataset_id": self.result_dataset_id,
-                "dataset_name": name,
-                "folder_id": self.folder_id,
-                "dataset_data": dataset.data,
-            })
-            self.logger.info("Created chart-analysis dataset '%s' (%s)", name, self.result_dataset_id)
+            self.logger.info("Created chart-analysis dataset '%s' (%s)", dataset.name, self.result_dataset_id)
             return CommandResult.SUCCESS
 
         except Exception as e:
@@ -228,15 +216,7 @@ class AnalyzeChartSeriesCommand(Command):
         try:
             if not self.result_dataset_id or not self.app_state.current_project:
                 return CommandResult.FAILURE
-            project = self.app_state.current_project
-            dataset = project.find_item(self.result_dataset_id)
-            if dataset:
-                project.remove_item(dataset)
-                self.app_state.event_bus.emit(DatasetEvents.DATASET_DELETED, {
-                    "project": project,
-                    "dataset_id": self.result_dataset_id,
-                    "dataset_name": dataset.name,
-                })
+            remove_result_dataset(self.app_state, self.result_dataset_id)
             return CommandResult.SUCCESS
         except Exception as e:
             self.logger.error("Failed to undo analyze-chart-series: %s", e, exc_info=True)
