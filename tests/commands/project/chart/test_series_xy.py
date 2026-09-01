@@ -65,3 +65,28 @@ class TestResolveSeriesXY:
         chart.data_series[0].series_type = SeriesType.BAR
         with pytest.raises(ValueError, match="bar"):
             resolve_series_xy(state, chart, "series", 0)
+
+    def test_coerce_numeric_defaults_to_true(self, app_state):
+        """AnalyzeChartSeriesCommand relies on the default -- a non-numeric
+        axis is meaningless for derivative/integral/etc."""
+        state, chart = app_state
+        dataset = state.current_project.find_item("ds-1")
+        dataset.data["t"] = dataset.data["t"].astype(str)
+
+        x, _y, _x_label, _y_label = resolve_series_xy(state, chart, "series", 0)
+
+        assert pd.api.types.is_numeric_dtype(x)
+
+    def test_coerce_numeric_false_preserves_the_untouched_axis_dtype(self, app_state):
+        """TransformChartSeriesCommand passes coerce_numeric=False so a
+        categorical/string/datetime axis round-trips unchanged instead of
+        being rewritten to NaN, and a string axis stays visible to a
+        transform expression like x.str.upper()."""
+        state, chart = app_state
+        dataset = state.current_project.find_item("ds-1")
+        dataset.data["t"] = ["cat", "dog", "bird", "fish", "ant", "bee", "cow", "pig", "rat", "owl", "fox"]
+
+        x, y, _x_label, _y_label = resolve_series_xy(state, chart, "series", 0, coerce_numeric=False)
+
+        assert list(x) == ["cat", "dog", "bird", "fish", "ant", "bee", "cow", "pig", "rat", "owl", "fox"]
+        assert pd.api.types.is_numeric_dtype(y)

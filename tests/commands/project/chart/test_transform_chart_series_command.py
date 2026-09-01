@@ -65,6 +65,21 @@ class TestTransformChartSeriesCommand:
         transformed_col = [c for c in result.data.columns if c != "t"][0]
         assert result.data[transformed_col].tolist() == pytest.approx((result.data["t"] ** 2 * 2).tolist())
 
+    def test_untouched_non_numeric_axis_round_trips_unchanged(self, ctx):
+        """Transforming Y on a series whose X column holds categorical
+        strings must leave those strings alone in the result dataset --
+        not rewrite them to NaN via numeric coercion."""
+        _, project = ctx
+        dataset = project.find_item("ds-1")
+        labels = ["cat", "dog", "bird", "fish", "ant", "bee", "cow", "pig", "rat", "owl", "fox"]
+        dataset.data["t"] = labels
+
+        command = _cmd(ctx, target="y", expression="y * 2")
+        assert command.execute() is CommandResult.SUCCESS
+
+        result = project.find_item(command.result_dataset_id)
+        assert result.data["t"].tolist() == labels
+
     def test_transform_x_on_data_series(self, ctx):
         _, project = ctx
         command = _cmd(ctx, target="x", expression="x + 1")
@@ -237,6 +252,36 @@ class TestTransformChartSeriesCommand:
         assert command.execute() is CommandResult.SUCCESS
         new_series = chart.data_series[command.added_series_index]
         assert new_series.series_type == SeriesType.LINE
+
+    def test_fit_source_uses_scatter_type_on_a_chart_that_does_not_allow_line(self, ctx):
+        """A bar chart allows BAR/SCATTER but not LINE -- the fit-derived
+        series must fall through to the next chart-compatible type
+        instead of defaulting to LINE unconditionally."""
+        _, project = ctx
+        chart = project.find_item("chart-1")
+        chart.chart_type = ChartType.BAR
+        command = _cmd(ctx, source_kind="fit", source_index=0)
+        assert command.execute() is CommandResult.SUCCESS
+        new_series = chart.data_series[command.added_series_index]
+        assert new_series.series_type == SeriesType.SCATTER
+
+    def test_fit_source_fails_on_a_chart_type_with_no_compatible_series_type(self, ctx):
+        """A histogram chart's only allowed series type (HIST) isn't an
+        (x, y) pair type at all -- the transform must be rejected before
+        anything is created, not fail partway through with an orphaned
+        dataset or an invalid series."""
+        app_context, project = ctx
+        chart = project.find_item("chart-1")
+        chart.chart_type = ChartType.HIST
+        datasets_before = [item for item in project.get_all_items() if isinstance(item, Dataset)]
+        command = _cmd(ctx, source_kind="fit", source_index=0)
+
+        assert command.execute() is CommandResult.FAILURE
+
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+        datasets_after = [item for item in project.get_all_items() if isinstance(item, Dataset)]
+        assert datasets_after == datasets_before
+        assert command.result_dataset_id is None
 
     def test_new_series_preserves_the_source_series_y_axis(self, ctx):
         _, project = ctx

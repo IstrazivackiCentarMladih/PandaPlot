@@ -20,12 +20,25 @@ SourceKind = Literal["series", "fit"]
 
 def resolve_series_xy(
     app_state: AppState, chart: Chart, source_kind: SourceKind, source_index: int,
+    *, coerce_numeric: bool = True,
 ) -> tuple[pd.Series, pd.Series, str, str]:
     """Return (x, y, x_label, y_label) for chart's source_kind/source_index entry.
 
     Raises ValueError when the series/fit no longer exists, its series type
     has no meaningful ordered (x, y) curve, or its dataset/columns are
     unavailable.
+
+    `coerce_numeric` (default True) converts both axes to numeric, turning
+    anything that doesn't parse into NaN -- appropriate for
+    AnalyzeChartSeriesCommand's inherently numeric operations (derivative,
+    integral, ...), where a non-numeric axis is meaningless anyway. Pass
+    False (TransformChartSeriesCommand does) to keep each axis's original
+    dtype -- a transform may leave one axis untouched (categorical,
+    datetime, zero-padded-string, ...) and must round-trip it unchanged,
+    and a string-valued axis needs to stay a string for an expression like
+    `x.str.upper()` to see actual text rather than NaN. Only the
+    same-length pairwise-missing-value mask is dtype-agnostic and always
+    applied.
     """
     if source_kind == "fit":
         if not (0 <= source_index < len(chart.fit_data)):
@@ -69,7 +82,10 @@ def resolve_series_xy(
     y_full = df[y_name]
 
     mask = ~(pd.isna(x_full) | pd.isna(y_full))
-    x = pd.to_numeric(x_full[mask], errors="coerce").reset_index(drop=True)
-    y = pd.to_numeric(y_full[mask], errors="coerce").reset_index(drop=True)
+    x = x_full[mask].reset_index(drop=True)
+    y = y_full[mask].reset_index(drop=True)
+    if coerce_numeric:
+        x = pd.to_numeric(x, errors="coerce")
+        y = pd.to_numeric(y, errors="coerce")
     label = series.label or y_name
     return x, y, x_label, label

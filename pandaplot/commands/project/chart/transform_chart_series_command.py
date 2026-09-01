@@ -14,9 +14,11 @@ source is a data series (not a fit), the new series copies its type,
 style, opacity, and y-axis assignment, so a transformed line/scatter/etc.
 looks and plots the same as what it was derived from instead of falling
 back to the chart's defaults. A fit source has no series to copy from, so
-it's always given SeriesType.LINE -- never the chart's own default type,
-which can require columns (e.g. a vector chart's U/V) this command's
-plain two-column result dataset doesn't have.
+it's given the first of LINE/SCATTER the current chart type actually
+allows -- never the chart's own default type, which can require columns
+(e.g. a vector chart's U/V) this command's plain two-column result
+dataset doesn't have -- and the transform is refused up front if the
+chart type allows neither (e.g. a pure histogram chart).
 """
 
 import copy
@@ -28,6 +30,7 @@ import pandas as pd
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.series_xy import SourceKind, resolve_series_xy
 from pandaplot.gui.controllers.ui_controller import UIController
+from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import ProjectEvents
@@ -88,7 +91,9 @@ class TransformChartSeriesCommand(Command):
         if chart is None:
             raise ValueError("Chart is not available.")
 
-        x, y, x_label, y_label = resolve_series_xy(self.app_state, chart, self.source_kind, self.source_index)
+        x, y, x_label, y_label = resolve_series_xy(
+            self.app_state, chart, self.source_kind, self.source_index, coerce_numeric=False,
+        )
         if len(x) < 1:
             raise ValueError("Series has no points to transform.")
 
@@ -162,6 +167,33 @@ class TransformChartSeriesCommand(Command):
             error_bars.y_error_minus_column = ""
         return new_style
 
+    def _resolve_result_series_type(self, chart: Chart) -> SeriesType:
+        """Series type for the new series -- resolved before any project
+        mutation, so an unsupported chart type fails without creating
+        anything.
+
+        A data-series source keeps its own type: resolve_series_xy's
+        supports_curve_analysis check already guarantees it's LINE or
+        SCATTER, both of which render fine from a plain (x, y) result and
+        are necessarily allowed on this chart (it's already one of the
+        chart's own series). A fit source has no series to inherit a type
+        from, and the chart's own default type can require columns this
+        two-column result doesn't have (a vector chart's default
+        SeriesType.VECTOR needs U/V; a histogram chart's only allowed
+        type, SeriesType.HIST, isn't an (x, y) pair type at all) -- so
+        pick the first of LINE/SCATTER this chart type actually allows,
+        and raise if neither is allowed (e.g. a pure histogram chart).
+        """
+        if self.source_kind == "series":
+            return chart.data_series[self.source_index].series_type
+        allowed = CHART_TYPE_SPECS[chart.chart_type].allowed_series_types
+        for candidate in (SeriesType.LINE, SeriesType.SCATTER):
+            if candidate in allowed:
+                return candidate
+        raise ValueError(
+            f"'{chart.chart_type.value}' charts can't take a new series from a fit-derived transform."
+        )
+
     def _unique_dataset_name(self, project, name: str) -> str:
         """Return `name`, or `name (N)` for the smallest N >= 2 not already
         used by a sibling in the target folder -- so re-running the same
@@ -196,6 +228,12 @@ class TransformChartSeriesCommand(Command):
                 self.ui_controller.show_error_message("Chart Transform Error", message)
                 return CommandResult.FAILURE
 
+            # Resolved before touching the project: a chart type with no
+            # compatible two-column series type for a fit-derived result
+            # (e.g. a pure histogram chart) must fail before anything is
+            # created, not after.
+            result_series_type = self._resolve_result_series_type(chart)
+
             project = self.app_state.current_project
             results_df, default_name = self.run_transform()
             name = self._unique_dataset_name(project, self.result_name or default_name)
@@ -227,31 +265,21 @@ class TransformChartSeriesCommand(Command):
             # in that order, regardless of which one was the transform target
             # -- see run_transform()'s two branches.
             x_column, y_column = results_df.columns[0], results_df.columns[1]
+            style_kwargs: dict = {"series_type": result_series_type}
             if self.source_kind == "series":
-                # Copy the source series' look (style, opacity, y-axis, and
-                # the series_type the style is bound to -- DataSeries rejects
-                # a style/series_type pair from different series types) so
+                # Copy the source series' look (style, opacity, y-axis) so
                 # the transformed series doesn't revert to the chart's
                 # default styling or silently jump back to the primary axis.
-                # A source series eligible for transform is always LINE or
-                # SCATTER (resolve_series_xy's supports_curve_analysis check),
-                # both of which render fine from a plain two-column dataset.
+                # DataSeries rejects a style/series_type pair from different
+                # series types, but result_series_type IS this source
+                # series' own type in this branch (see
+                # _resolve_result_series_type), so the pairing is valid.
                 source_series = chart.data_series[self.source_index]
-                style_kwargs = {
-                    "series_type": source_series.series_type,
+                style_kwargs.update({
                     "style": self._copied_style_without_stale_error_columns(source_series.style),
                     "alpha": source_series.alpha,
                     "y_axis": source_series.y_axis,
-                }
-            else:
-                # Fit source: there's no source series to copy a type from,
-                # and letting add_data_series() default to the chart's own
-                # type is unsafe for chart types whose default series needs
-                # more than x/y -- e.g. a vector chart's default SeriesType.
-                # VECTOR needs U/V columns this two-column result dataset
-                # doesn't have. LINE always renders from a plain (x, y) pair
-                # regardless of the chart type.
-                style_kwargs = {"series_type": SeriesType.LINE}
+                })
             chart.add_data_series(
                 dataset_id=self.result_dataset_id,
                 x_column_id=dataset.column_id(x_column) or "",
