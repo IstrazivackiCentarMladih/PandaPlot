@@ -513,7 +513,7 @@ class FitPanel(SidebarPanel):
                 self.data_points_label.setToolTip("")
                 self.data_points_warning_icon.setVisible(False)
                 self.fit_button.setEnabled(False)
-                self.fit_button.setToolTip("Fit range Max must be greater than Min.")
+                self.fit_button.setToolTip(self._range_invalid_reason())
             else:
                 self.data_points_label.setStyleSheet(f"color: {base_fg};")
                 self.data_points_label.setToolTip("")
