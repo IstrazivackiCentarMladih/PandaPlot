@@ -492,6 +492,8 @@ class FitPanel(SidebarPanel):
 
         range_valid = self._is_range_valid()
         self.range_warning_label.setVisible(not range_valid)
+        if not range_valid:
+            self.range_warning_label.setText(self._range_invalid_reason())
 
         current_data = self.get_current_data()
         if current_data is not None:
@@ -532,6 +534,7 @@ class FitPanel(SidebarPanel):
         """Handle fit type selection change."""
         fit_type = self.fit_type_combo.currentText()
         self.custom_group.setVisible("Custom" in fit_type)
+        self.update_data_points_display()
 
     def display_results(self):
         """Display the fitting results."""
@@ -661,6 +664,7 @@ class FitPanel(SidebarPanel):
 
     def _on_series_changed(self):
         self._clear_results()
+        self.range_auto_check.setChecked(True)
         self.update_data_points_display()
 
     def _on_range_auto_toggled(self, checked: bool):
@@ -681,7 +685,17 @@ class FitPanel(SidebarPanel):
     def _is_range_valid(self) -> bool:
         if self.range_auto_check.isChecked():
             return True
-        return self.range_max_spin.value() > self.range_min_spin.value()
+        if self.range_max_spin.value() <= self.range_min_spin.value():
+            return False
+        fit_name = self.fit_type_combo.currentText().split(" (")[0]
+        if fit_name in ("Logarithmic", "Power") and self.range_min_spin.value() <= 0:
+            return False
+        return True
+
+    def _range_invalid_reason(self) -> str:
+        if self.range_max_spin.value() <= self.range_min_spin.value():
+            return "Max must be greater than Min."
+        return "Min must be greater than 0 for this fit type."
 
     def _on_chart_updated(self, event_data):
         chart = event_data.get("chart")

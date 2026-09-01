@@ -504,6 +504,100 @@ def test_unchecking_auto_enables_range_spinboxes_and_seeds_data_range(app_contex
     assert panel.range_max_spin.value() == 4.0  # max of the "time" column
 
 
+def test_changing_series_resets_range_to_auto(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+    x_id = dataset.column_id("time")
+    y_id = dataset.column_id("value")
+    chart.add_data_series(dataset_id=dataset.id, x_column_id=x_id, y_column_id=y_id, label="second series")
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(-5.0)
+    panel.range_max_spin.setValue(10.0)
+
+    panel.series_combo.setCurrentIndex(1)
+
+    assert panel.range_auto_check.isChecked() is True
+    assert panel.range_min_spin.isEnabled() is False
+    assert panel.range_max_spin.isEnabled() is False
+
+
+def test_loading_a_new_chart_resets_range_to_auto(app_context):
+    dataset, chart_a = _make_dataset_and_chart_with_id_only_series()
+    _, chart_b = _make_dataset_and_chart_with_id_only_series()
+    chart_b.id = "chart-2"
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart_a)
+
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(-5.0)
+    panel.range_max_spin.setValue(10.0)
+
+    panel.load_chart_object(chart_b)
+
+    assert panel.range_auto_check.isChecked() is True
+    assert panel.range_min_spin.isEnabled() is False
+    assert panel.range_max_spin.isEnabled() is False
+
+
+def test_non_positive_min_invalid_for_logarithmic_fit(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.show()
+    QApplication.processEvents()
+
+    panel.fit_type_combo.setCurrentText("Logarithmic (y = a*ln(x) + b)")
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(0.0)
+    panel.range_max_spin.setValue(10.0)
+
+    assert panel.fit_button.isEnabled() is False
+    assert panel.range_warning_label.isVisible() is True
+
+    panel.close()
+
+
+def test_non_positive_min_valid_for_linear_fit(app_context):
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    panel.fit_type_combo.setCurrentText("Linear (y = ax + b)")
+    panel.range_auto_check.setChecked(False)
+    panel.range_min_spin.setValue(-5.0)
+    panel.range_max_spin.setValue(10.0)
+
+    assert panel.fit_button.isEnabled() is True
+    assert panel.range_warning_label.isVisible() is False
+
+
 def test_invalid_range_disables_fit_button_and_shows_warning(app_context):
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
 
