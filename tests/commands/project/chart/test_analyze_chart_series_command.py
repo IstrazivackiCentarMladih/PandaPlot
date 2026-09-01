@@ -12,6 +12,7 @@ from pandaplot.commands.project.chart.analyze_chart_series_command import (
     AnalyzeChartSeriesCommand,
 )
 from pandaplot.models.chart.series_type import SeriesType
+from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
@@ -121,6 +122,55 @@ class TestAnalyzeChartSeriesCommand:
         command = _cmd(ctx, result_name="My Derivative")
         assert command.execute() is CommandResult.SUCCESS
         assert project.find_item(command.result_dataset_id).name == "My Derivative"
+
+    def test_dataset_name_gets_a_counter_suffix_when_it_collides(self, ctx):
+        """Regression: running the same analysis twice used to produce two
+        indistinguishable datasets with the exact same name."""
+        _, project = ctx
+        first = _cmd(ctx, result_name="Derivative")
+        assert first.execute() is CommandResult.SUCCESS
+        second = _cmd(ctx, result_name="Derivative")
+        assert second.execute() is CommandResult.SUCCESS
+
+        assert project.find_item(first.result_dataset_id).name == "Derivative"
+        assert project.find_item(second.result_dataset_id).name == "Derivative (2)"
+
+    def test_execute_emits_the_generic_project_item_added_event(self, ctx):
+        """Regression: this used to emit the narrower, legacy
+        DatasetEvents.DATASET_CREATED, which TabContainer's tab-closer
+        (keyed on the generic PROJECT_ITEM_REMOVED/item_id) never reacts
+        to on undo -- see the matching undo test below."""
+        app_context, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        new_dataset = project.find_item(command.result_dataset_id)
+        app_context.get_app_state.return_value.event_bus.emit.assert_any_call(
+            ProjectEvents.PROJECT_ITEM_ADDED,
+            {
+                "project": project,
+                "item_id": command.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": new_dataset.name,
+                "item": new_dataset,
+                "folder_id": None,
+            },
+        )
+
+    def test_undo_emits_the_generic_project_item_removed_event(self, ctx):
+        app_context, project = ctx
+        command = _cmd(ctx)
+        command.execute()
+        dataset_name = project.find_item(command.result_dataset_id).name
+        command.undo()
+        app_context.get_app_state.return_value.event_bus.emit.assert_any_call(
+            ProjectEvents.PROJECT_ITEM_REMOVED,
+            {
+                "project": project,
+                "item_id": command.result_dataset_id,
+                "item_type": "dataset",
+                "item_name": dataset_name,
+            },
+        )
 
     def test_undo_removes_dataset(self, ctx):
         _, project = ctx
