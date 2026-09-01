@@ -14,7 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
+from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import DatasetOperationEvents, UIEvents
@@ -37,6 +39,7 @@ class SignalPanel(SidebarPanel):
         self.current_dataset_id: Optional[str] = None
 
         self.last_result: Optional[SignalAnalysisResult] = None
+        self._pending_command = None
 
         self._initialize()
 
@@ -104,6 +107,9 @@ class SignalPanel(SidebarPanel):
         self.run_btn = PButton("Run", role="secondary", on_click=self.run_analysis)
 
         results_layout.addWidget(self.run_btn)
+
+        self.busy_spinner = BusySpinner()
+        results_layout.addWidget(self.busy_spinner)
 
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
@@ -381,31 +387,31 @@ class SignalPanel(SidebarPanel):
         )
 
     def run_analysis(self):
-
         command = self._build_command()
-
         if command is None:
             return
 
-        try:
-            result = command.run_analysis()
+        self.run_btn.setEnabled(False)
+        self.add_btn.setEnabled(False)
+        self.busy_spinner.start()
+        self._pending_command = command  # keep alive until on_complete fires
+
+        def _on_complete(result, error):
+            self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
+            self._pending_command = None
+
+            if error is not None:
+                self.last_result = None
+                self.add_btn.setEnabled(False)
+                self.results_text.setText(f"❌ Analysis failed:\n{error}")
+                return
 
             self.last_result = result
-
-            self.results_text.setText(
-                self._format_result(result)
-            )
-
+            self.results_text.setText(self._format_result(result))
             self.add_btn.setEnabled(True)
 
-        except Exception as e:
-
-            self.last_result = None
-            self.add_btn.setEnabled(False)
-
-            self.results_text.setText(
-                f"❌ Analysis failed:\n{e}"
-            )
+        command.run_analysis_async(_on_complete)
 
 
     @staticmethod
@@ -446,23 +452,31 @@ class SignalPanel(SidebarPanel):
         return "\n".join(lines)
 
     def add_results_to_project(self):
-
         command = self._build_command()
-
         if command is None:
             return
 
-        executor = (
-            self.app_context
-            .get_command_executor()
-        )
+        self.add_btn.setEnabled(False)
+        self.busy_spinner.start()
+        self._pending_command = command
 
-        if executor.execute_command(command):
-            self.last_result = command.result
-            self.results_text.append(
-                "\n\n✅ Results added to project"
-            )
-            self.add_btn.setEnabled(False)
+        def _on_complete(result):
+            self.busy_spinner.stop()
+            self._pending_command = None
+
+            if result is CommandResult.SUCCESS:
+                self.last_result = command.result
+                self.results_text.append("\n\n✅ Results added to project")
+            else:
+                self.add_btn.setEnabled(True)  # let the user retry
+
+        command.on_complete = _on_complete
+        executor = self.app_context.get_command_executor()
+        if not executor.execute_command(command):
+            # Synchronous validation failure -- on_complete never fires.
+            self.busy_spinner.stop()
+            self.add_btn.setEnabled(True)
+            self._pending_command = None
 
     def clear(self):
         if hasattr(self, "results_text"):
@@ -471,6 +485,8 @@ class SignalPanel(SidebarPanel):
         self.last_result = None
         if hasattr(self, "add_btn"):
             self.add_btn.setEnabled(False)
+        if hasattr(self, "busy_spinner"):
+            self.busy_spinner.stop()
 
     @override
     def _apply_theme(self):
