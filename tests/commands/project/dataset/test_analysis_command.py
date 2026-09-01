@@ -1,4 +1,5 @@
-"""Tests for AnalysisCommand: segment alignment, existing target, refresh events."""
+"""Tests for AnalysisCommand (dispatch) and ApplyAnalysisResultCommand
+(the actual, undo-tracked mutation)."""
 
 from unittest.mock import Mock
 
@@ -7,11 +8,15 @@ import pandas as pd
 import pytest
 
 from pandaplot.commands.base_command import CommandResult
+from pandaplot.commands.command_executor import CommandExecutor
 from pandaplot.commands.project.dataset.analysis_command import AnalysisCommand
+from pandaplot.commands.project.dataset.apply_analysis_result_command import ApplyAnalysisResultCommand
 from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationEvents
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
 from pandaplot.models.state import AppContext, AppState
+
+from tests.commands.project.conftest import SyncTaskScheduler
 
 
 @pytest.fixture
@@ -27,6 +32,8 @@ def ctx():
     app_state.current_project = project
     app_state.event_bus = Mock()
     app_context.get_app_state.return_value = app_state
+    app_context.get_task_scheduler.return_value = SyncTaskScheduler()
+    app_context.get_command_executor.return_value = CommandExecutor()
     return app_context, project, dataset, app_state.event_bus
 
 
@@ -57,7 +64,6 @@ class TestAnalysisCommand:
 
     def test_segment_result_aligns_to_source_rows(self, ctx):
         app_context, _, dataset, _ = ctx
-        # Integrate only rows 3..7 (inclusive of 3, exclusive of 8).
         command = AnalysisCommand(app_context, "ds-1", {
             "analysis_type": "integral", "x_column": "x", "y_column": "y",
             "new_column_name": "cum", "parameters": {"start_index": 3, "end_index": 8},
@@ -65,11 +71,9 @@ class TestAnalysisCommand:
         assert command.execute() is CommandResult.SUCCESS
 
         col = dataset.data["cum"]
-        # Values land on the segment's own rows, NaN everywhere else.
         assert col.iloc[:3].isna().all()
         assert col.iloc[8:].isna().all()
         assert col.iloc[3:8].notna().all()
-        # Cumulative integral starts at 0 on the first segment row.
         assert col.iloc[3] == pytest.approx(0.0)
 
     def test_replace_existing_emits_data_changed(self, ctx):
@@ -79,11 +83,10 @@ class TestAnalysisCommand:
             "new_column_name": "y", "replace_existing": True,
         })
         assert command.execute() is CommandResult.SUCCESS
-        # 'y' was overwritten in place; no new column.
         assert list(dataset.data.columns) == ["x", "y"]
 
         changed = _emitted(event_bus, DatasetEvents.DATASET_DATA_CHANGED)
-        assert changed and changed[0]["start_index"][1] == 1  # column index of 'y'
+        assert changed and changed[0]["start_index"][1] == 1
         assert not _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_ADDED)
 
     def test_dataset_not_found_is_surfaced_to_the_user(self, ctx):
@@ -114,29 +117,59 @@ class TestAnalysisCommand:
         assert command.execute() is CommandResult.FAILURE
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
-    def test_analysis_engine_failure_is_surfaced_to_the_user(self, ctx, monkeypatch):
+    def test_analysis_engine_failure_is_surfaced_via_on_complete(self, ctx, monkeypatch):
+        """The engine failure now happens on the (synchronous, in tests)
+        background task, so execute() itself still reports SUCCESS -- it only
+        means "dispatched". The failure surfaces through on_complete."""
         app_context, _, _, _ = ctx
         monkeypatch.setattr(
             "pandaplot.commands.project.dataset.analysis_command.AnalysisEngine.calculate_derivative",
             Mock(side_effect=ValueError("boom")),
         )
+        outcomes = []
         command = AnalysisCommand(app_context, "ds-1", {
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
-        })
-        assert command.execute() is CommandResult.FAILURE
+        }, on_complete=outcomes.append)
+
+        assert command.execute() is CommandResult.SUCCESS  # dispatched
+        assert outcomes == [CommandResult.FAILURE]
         app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
         title, message = app_context.get_ui_controller.return_value.show_error_message.call_args.args
         assert "boom" in message
 
-    def test_undo_removes_added_column_and_emits(self, ctx):
-        app_context, _, dataset, event_bus = ctx
+    def test_on_complete_reports_success_once_applied(self, ctx):
+        app_context, _, _, _ = ctx
+        outcomes = []
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        }, on_complete=outcomes.append)
+
+        assert command.execute() is CommandResult.SUCCESS
+        assert outcomes == [CommandResult.SUCCESS]
+
+    def test_occupies_no_undo_slot(self, ctx):
+        app_context, _, _, _ = ctx
         command = AnalysisCommand(app_context, "ds-1", {
             "analysis_type": "derivative", "x_column": "x", "y_column": "y",
             "new_column_name": "dydx",
         })
-        command.execute()
-        assert command.undo() is CommandResult.SUCCESS
+        assert command.occupies_undo_slot() is False
+
+    def test_undo_via_executor_removes_added_column_and_emits(self, ctx):
+        """AnalysisCommand itself never reaches the undo stack; the pushed
+        ApplyAnalysisResultCommand is what CommandExecutor.undo() acts on."""
+        app_context, _, dataset, event_bus = ctx
+        executor: CommandExecutor = app_context.get_command_executor()
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        })
+        assert executor.execute_command(command) is True
+        assert isinstance(executor.undo_stack[-1], ApplyAnalysisResultCommand)
+
+        assert executor.undo() is True
         assert "dydx" not in dataset.data.columns
         assert _emitted(event_bus, DatasetOperationEvents.DATASET_COLUMN_REMOVED)
 
@@ -147,22 +180,72 @@ class TestAnalysisCommand:
             "new_column_name": "arc",
         })
         assert command.execute() is CommandResult.SUCCESS
-        # Arc length is monotonically increasing and starts at 0.
         arc = dataset.data["arc"]
         assert arc.iloc[0] == pytest.approx(0.0)
         assert (arc.diff().dropna() >= 0).all()
 
 
-def test_cleanup_releases_the_original_data_snapshot():
-    app_context = Mock(spec=AppContext)
-    app_context.get_ui_controller.return_value = Mock()
+class TestAnalysisCommandGuards:
+    def test_execute_fails_fast_when_already_running(self, ctx):
+        app_context, _, _, _ = ctx
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        })
+        command._is_running = True
 
+        assert command.execute() is CommandResult.FAILURE
+        app_context.get_ui_controller.return_value.show_info_message.assert_called_once()
+
+    def test_execute_dispatches_via_task_scheduler(self, ctx):
+        app_context, _, _, _ = ctx
+        task_scheduler = Mock()
+        app_context.get_task_scheduler.return_value = task_scheduler
+
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        })
+        assert command.execute() is CommandResult.SUCCESS
+        task_scheduler.run_task.assert_called_once()
+        _, kwargs = task_scheduler.run_task.call_args
+        assert kwargs["task"] == command._compute_analysis_task
+        assert "df" in kwargs["task_arguments"]
+
+
+def test_cleanup_is_a_documented_noop():
+    """AnalysisCommand never occupies an undo slot, so CommandExecutor never
+    calls cleanup() on it; kept as a no-op to satisfy the Command interface."""
+    app_context = Mock(spec=AppContext)
     command = AnalysisCommand(app_context, "ds-1", {
         "analysis_type": "derivative", "x_column": "x", "y_column": "y",
         "new_column_name": "dydx",
     })
-    command.original_data = pd.Series([1, 2, 3])
+    command.cleanup()  # must not raise
 
-    command.cleanup()
 
-    assert command.original_data is None
+class TestApplyAnalysisResultCommand:
+    def test_cleanup_releases_the_original_data_snapshot(self):
+        app_context = Mock(spec=AppContext)
+        app_context.get_ui_controller.return_value = Mock()
+
+        command = ApplyAnalysisResultCommand(
+            app_context, "ds-1", "dydx", pd.Series([1.0, 2.0]), False, None,
+        )
+        command.original_data = pd.Series([1, 2, 3])
+
+        command.cleanup()
+
+        assert command.original_data is None
+
+    def test_execute_fails_when_dataset_missing(self):
+        app_context = Mock(spec=AppContext)
+        app_state = Mock(spec=AppState)
+        app_state.has_project = False
+        app_context.get_app_state.return_value = app_state
+        app_context.get_ui_controller.return_value = Mock()
+
+        command = ApplyAnalysisResultCommand(
+            app_context, "missing-ds", "dydx", pd.Series([1.0, 2.0]), False, None,
+        )
+        assert command.execute() is CommandResult.FAILURE
