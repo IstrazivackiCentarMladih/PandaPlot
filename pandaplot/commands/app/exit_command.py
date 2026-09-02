@@ -27,10 +27,13 @@ class ExitCommand(Command):
         Execute the exit command. Returns CommandResult.NOOP (without closing
         anything) if the user cancels on an unsaved-changes prompt --
         previously this path had no such check at all, so File > Exit could
-        silently discard edits.
+        exit without warning. will_autosave=True since app.launch()'s
+        aboutToQuit handler unconditionally flushes a save for an existing
+        saved project before the process exits (see _flush_save_on_quit) --
+        the prompt must not claim continuing will discard those edits.
         """
         self.logger.info("Executing ExitCommand")
-        if not confirm_discard_unsaved_changes(self.app_context):
+        if not confirm_discard_unsaved_changes(self.app_context, will_autosave=True):
             self.logger.info("Exit cancelled by user (unsaved changes)")
             return CommandResult.NOOP
         self.app_context.event_bus.emit(AppEvents.APP_CLOSING)

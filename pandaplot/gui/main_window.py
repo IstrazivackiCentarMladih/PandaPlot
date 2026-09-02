@@ -163,6 +163,10 @@ class PandaMainWindow(PMainWindow):
         didn't check anything either at the time. Route through the same
         confirm_discard_unsaved_changes guard ExitCommand now uses, and
         ignore the event (cancelling the close) if the user declines.
+        will_autosave=True for the same reason as ExitCommand: this path
+        also ends in app.launch()'s aboutToQuit -> _flush_save_on_quit,
+        which unconditionally saves an existing saved project rather than
+        discarding it.
         """
         if self._is_closing:
             # Already mid-close via ExitCommand -> APP_CLOSING ->
@@ -170,7 +174,7 @@ class PandaMainWindow(PMainWindow):
             # already, so don't ask a second time.
             event.accept()
             return
-        if not confirm_discard_unsaved_changes(self.app_context):
+        if not confirm_discard_unsaved_changes(self.app_context, will_autosave=True):
             event.ignore()
             return
         event.accept()

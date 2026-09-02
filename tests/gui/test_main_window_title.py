@@ -37,11 +37,12 @@ class _FakeCloseEvent:
         self.accepted = False
 
 
-def _make_window(*, has_project, project_name="P", is_modified=False):
+def _make_window(*, has_project, project_name="P", is_modified=False, project_file_path="/p.pplot"):
     app_context = Mock()
     app_context.get_app_state.return_value.has_project = has_project
     app_context.get_app_state.return_value.current_project.name = project_name
     app_context.get_app_state.return_value.is_modified = is_modified
+    app_context.get_app_state.return_value.project_file_path = project_file_path
     return _FakeMainWindow(app_context)
 
 
@@ -95,6 +96,35 @@ def test_close_event_ignores_the_close_when_declined():
     PandaMainWindow.closeEvent(window, event)
 
     assert event.accepted is False
+
+
+def test_close_event_prompt_says_autosave_not_discard_for_an_already_saved_project():
+    """Regression (PR #235 review): app.launch()'s aboutToQuit handler
+    unconditionally flushes a save for an existing saved project before the
+    process exits, so this prompt must not claim continuing will discard
+    those edits."""
+    window = _make_window(has_project=True, is_modified=True, project_file_path="/p.pplot")
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    _, message = window.app_context.get_ui_controller.return_value.show_question.call_args[0]
+    assert "saved automatically" in message
+    assert "discard" not in message
+
+
+def test_close_event_prompt_says_discard_for_a_never_saved_project():
+    """A project with no file path yet has nothing for
+    _flush_save_on_quit to write to, so closing really does discard it."""
+    window = _make_window(has_project=True, is_modified=True, project_file_path=None)
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    _, message = window.app_context.get_ui_controller.return_value.show_question.call_args[0]
+    assert "discard" in message
 
 
 def test_close_event_skips_the_check_when_already_closing_via_exit_command():

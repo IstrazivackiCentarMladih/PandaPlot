@@ -26,6 +26,10 @@ class NewProjectCommand(Command):
         # Store previous state for undo
         self.previous_project = None
         self.previous_file_path = None
+        # Whether the previous project had unsaved changes, so undo() can
+        # restore that dirty state rather than letting load_project() reset
+        # it to "no changes" -- see undo().
+        self.previous_was_modified = False
 
     @override
     def execute(self) -> CommandResult:
@@ -46,6 +50,7 @@ class NewProjectCommand(Command):
             if self.app_state.has_project:
                 self.previous_project = self.app_state.current_project
                 self.previous_file_path = self.app_state.project_file_path
+                self.previous_was_modified = self.app_state.is_modified
 
             name = self.ui_controller.show_new_project_dialog()
             if not name:
@@ -81,8 +86,13 @@ class NewProjectCommand(Command):
         """Undo the new project command by restoring the previous project."""
         try:
             if self.previous_project:
-                # Restore previous project
+                # Restore previous project. load_project() unconditionally
+                # resets is_modified to False (correct for a fresh disk
+                # load), so restore the dirty state it actually had before
+                # this command replaced it.
                 self.app_state.load_project(self.previous_project)
+                if self.previous_was_modified:
+                    self.app_state.mark_modified()
                 self.logger.info(
                     "Restored previous project '%s'", self.previous_project.name
                 )

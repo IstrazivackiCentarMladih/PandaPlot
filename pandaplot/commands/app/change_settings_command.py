@@ -16,6 +16,10 @@ class ChangeSettingsCommand(Command):
     edit.
     """
 
+    # Only touches ConfigManager (app-level settings), never the project
+    # itself, so it must not flag the project as having unsaved changes.
+    marks_project_modified = False
+
     def __init__(
         self,
         app_context: AppContext,

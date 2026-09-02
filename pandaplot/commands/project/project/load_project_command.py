@@ -50,6 +50,10 @@ class LoadProjectCommand(Command):
         self.on_loaded = on_loaded
         self.previous_project: Optional[Project] = None
         self.previous_file_path: Optional[str] = None
+        # Whether the previous project had unsaved changes, so undo() can
+        # restore that dirty state rather than letting load_project() reset
+        # it to "no changes" -- see undo().
+        self.previous_was_modified = False
         self.loaded_project: Optional[Project] = None
 
         # Task state
@@ -91,6 +95,7 @@ class LoadProjectCommand(Command):
             # Store current state for undo
             self.previous_project = self.app_state.current_project
             self.previous_file_path = self.app_state.project_file_path
+            self.previous_was_modified = self.app_state.is_modified
 
             # Show starting message
             self.ui_controller.show_info_message("Load Starting", f"Starting to load project from:\n{self.file_path}")
@@ -277,7 +282,13 @@ class LoadProjectCommand(Command):
     def undo(self) -> CommandResult:
         """Undo the load project command."""
         if self.previous_project is not None:
+            # load_project() unconditionally resets is_modified to False
+            # (correct for a fresh disk load), so restore the dirty state
+            # the previous project actually had before this command
+            # replaced it.
             self.app_state.load_project(self.previous_project)
+            if self.previous_was_modified:
+                self.app_state.mark_modified()
         else:
             self.app_state.close_project()
         return CommandResult.SUCCESS

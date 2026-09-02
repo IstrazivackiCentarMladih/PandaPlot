@@ -55,6 +55,7 @@ def test_on_load_result_invokes_the_on_loaded_callback():
 
     project = Mock()
     project.name = "P"
+    project.failed_item_ids = []
     command._on_load_result({"success": True, "project": project, "file_path": "/p.pplot"})
 
     assert calls == [project]
@@ -163,6 +164,34 @@ def env():
     app_context.get_task_scheduler.return_value = Mock()
     app_context.get_manager.return_value = Mock()
     return app_context
+
+
+def test_undo_restores_the_previous_projects_dirty_state():
+    """Regression (PR #235 review): load_project() (called by undo() to
+    restore the previous project) unconditionally clears is_modified, since
+    it assumes a fresh disk load. Undoing a LoadProjectCommand instead
+    restores a project that may still have had unsaved changes -- those
+    must survive, not be silently reported as saved."""
+    from pandaplot.models.events import EventBus
+    from pandaplot.models.state.app_state import AppState
+
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    previous_project.project_file_path = "/p/current.pplot"
+    app_state.load_project(previous_project)
+    app_state.mark_modified()
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_question.return_value = True
+
+    command = LoadProjectCommand(app_context, "/p/other.pplot")
+    assert command.execute() is CommandResult.SUCCESS
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+    assert app_state.is_modified is True
 
 
 def test_cleanup_releases_the_previous_and_loaded_project_references(env):

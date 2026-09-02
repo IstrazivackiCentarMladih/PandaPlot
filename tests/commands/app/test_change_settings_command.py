@@ -17,6 +17,14 @@ def _config_manager(tmp_path):
     return manager
 
 
+def test_marks_project_modified_is_false():
+    """Regression (PR #235 review): this command only touches ConfigManager
+    (app-level settings), never the project -- CommandExecutor's generic
+    dirty-tracking hook must not flag the project as having unsaved changes
+    for a settings change."""
+    assert ChangeSettingsCommand.marks_project_modified is False
+
+
 def test_execute_applies_mapping_and_undo_restores_prior_values(tmp_path):
     config_manager = _config_manager(tmp_path)
     mapping = {"appearance": {"theme": "dark"}}

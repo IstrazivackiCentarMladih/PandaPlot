@@ -14,6 +14,9 @@ class ExportDatasetCommand(Command):
     Command to export dataset to various file formats supported by pandas.
     """
 
+    # Only writes an external file; the project itself is never mutated.
+    marks_project_modified = False
+
     SUPPORTED_FORMATS = {
         "CSV (Comma Separated Values)": {
             "extension": ".csv",

@@ -296,10 +296,11 @@ class TestExitCommandUnsavedChangesGuard:
     """Regression (PR #235 review): File > Exit previously emitted
     APP_CLOSING unconditionally, with no unsaved-changes check at all."""
 
-    def _make_context(self, has_project, is_modified):
+    def _make_context(self, has_project, is_modified, project_file_path="/p.pplot"):
         app_state = Mock()
         app_state.has_project = has_project
         app_state.is_modified = is_modified
+        app_state.project_file_path = project_file_path
         app_state.current_project.name = "P"
         app_context = Mock(spec=AppContext)
         app_context.get_app_state.return_value = app_state
@@ -339,6 +340,33 @@ class TestExitCommandUnsavedChangesGuard:
 
         assert command.execute() is CommandResult.NOOP
         app_context.event_bus.emit.assert_not_called()
+
+    def test_prompt_says_autosave_not_discard_for_an_already_saved_project(self):
+        """Regression (PR #235 review): app.launch()'s aboutToQuit handler
+        unconditionally flushes a save for an existing saved project before
+        the process exits, so this prompt must not claim continuing will
+        discard those edits."""
+        app_context, _ = self._make_context(has_project=True, is_modified=True, project_file_path="/p.pplot")
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        command = ExitCommand(app_context)
+
+        command.execute()
+
+        _, message = app_context.get_ui_controller.return_value.show_question.call_args[0]
+        assert "saved automatically" in message
+        assert "discard" not in message
+
+    def test_prompt_says_discard_for_a_never_saved_project(self):
+        """A project with no file path yet has nothing for
+        _flush_save_on_quit to write to, so exiting really does discard it."""
+        app_context, _ = self._make_context(has_project=True, is_modified=True, project_file_path=None)
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        command = ExitCommand(app_context)
+
+        command.execute()
+
+        _, message = app_context.get_ui_controller.return_value.show_question.call_args[0]
+        assert "discard" in message
 
 
 def test_marks_project_modified_is_false():

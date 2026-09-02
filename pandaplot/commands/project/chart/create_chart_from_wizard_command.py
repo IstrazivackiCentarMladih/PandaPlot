@@ -35,6 +35,12 @@ _DEFAULT_SERIES_COLORS = [
 class CreateChartFromWizardCommand(Command):
     """Opens `ChartWizard` non-blocking; on acceptance builds a `Chart` from it."""
 
+    # execute() only opens the dialog; the real mutation is CreateChartCommand,
+    # executed separately (and self-tracked via its own default True) once
+    # the wizard finishes (see _on_wizard_finished). A cancelled wizard must
+    # not flag the project as having unsaved changes.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext, dataset_id: Optional[str] = None,
                  preselected_column_ids: Optional[list[str]] = None):
         super().__init__()

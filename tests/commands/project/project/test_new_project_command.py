@@ -6,6 +6,8 @@ import pytest
 
 from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.project.new_project_command import NewProjectCommand
+from pandaplot.models.events import EventBus
+from pandaplot.models.state.app_state import AppState
 
 
 def _make_app_context(*, has_project=False, is_modified=False):
@@ -87,6 +89,30 @@ def test_marks_project_modified_is_false():
     load_project) and must not be double-counted by CommandExecutor's
     generic on_project_modified hook."""
     assert NewProjectCommand.marks_project_modified is False
+
+
+def test_undo_restores_the_previous_projects_dirty_state():
+    """Regression (PR #235 review): load_project() (called by undo() to
+    restore the previous project) unconditionally clears is_modified, since
+    it assumes a fresh disk load. Undoing NewProjectCommand instead restores
+    a project that may still have had unsaved changes -- those must survive,
+    not be silently reported as saved."""
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+    app_state.mark_modified()
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "New"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+    assert app_state.is_modified is True
 
 
 @pytest.fixture
