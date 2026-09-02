@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 from PySide6.QtWidgets import QApplication
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.fit.fit_panel import CUSTOM_SERIES_SENTINEL, FitPanel
@@ -325,7 +326,7 @@ def test_on_tab_changed_resyncs_when_panel_becomes_visible(app_context):
 
     assert panel.current_chart is not None
     assert panel.current_chart.id == chart.id
-    # +1 for the trailing "Custom..." sentinel entry.
+    # +1 for the always-present "Custom..." sentinel entry.
     assert panel.series_combo.count() == len(chart.data_series) + 1
 
     panel.close()
@@ -411,12 +412,13 @@ def test_chart_updated_while_hidden_refreshes_chart_on_show(app_context):
     chart.add_data_series(dataset_id=dataset.id, x_column_id=x_id, y_column_id=y_id, label="second series")
 
     panel._on_chart_updated({"chart": chart})
-    assert panel.series_combo.count() == 2  # not yet refreshed while hidden (1 series + "Custom...")
+    # +1 for the always-present "Custom..." sentinel entry.
+    assert panel.series_combo.count() == 2  # not yet refreshed while hidden
 
     panel.show()
     QApplication.processEvents()
 
-    assert panel.series_combo.count() == 3  # 2 series + "Custom..."
+    assert panel.series_combo.count() == 3
 
     panel.close()
 
@@ -1025,6 +1027,220 @@ def test_switching_back_to_real_series_hides_custom_widget(app_context):
     panel.series_combo.setCurrentIndex(0)
 
     assert panel.custom_source_widget.isHidden() is True
+
+
+def _build_panel_ready_to_fit(app_context):
+    """Build a FitPanel loaded with a chart/series that has enough data
+    points and a mocked `execute_command` that captures the dispatched
+    `PerformFitCommand` and returns True (simulating a successful async
+    dispatch)."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    return panel, executed
+
+
+def test_perform_fit_discards_stale_result_after_chart_switch(app_context):
+    """Regression test (PR review): chart/series navigation stays enabled
+    while a fit computes in the background. If the user switches to a
+    different chart/series before the result comes back, installing it into
+    fit_results/apply_button would silently attach the wrong chart's fit
+    data to whatever is now selected."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    command = executed["command"]
+
+    # Switch to a different chart while the fit is still "running".
+    other_dataset, other_chart = _make_dataset_and_chart_with_id_only_series()
+    other_chart.id = "chart-2"
+    panel.app_context.app_state.current_project.find_item = Mock(return_value=other_dataset)
+    panel.load_chart_object(other_chart)
+
+    command.result = _make_fake_fit_result()
+    command.fixed_parameters = None
+    command.on_complete(CommandResult.SUCCESS)
+
+    # The stale result must not have been installed over the new context.
+    assert panel.fit_results is None
+    assert panel.apply_button.isEnabled() is False
+    # But the panel isn't stuck busy either -- the fit did finish, just for
+    # a context that's no longer current.
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+
+
+def test_perform_fit_success_path_populates_results_and_stops_spinner(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert panel.busy_spinner.is_running is True
+    assert panel.fit_button.isEnabled() is False
+
+    command.result = _make_fake_fit_result()
+    command.fixed_parameters = None
+    command.on_complete(CommandResult.SUCCESS)
+
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel.apply_button.isEnabled() is True
+    assert panel.fit_results is command.result
+    assert panel.equation_label.text() == (command.result.equation or "No equation")
+    assert "Fit Type: Linear" in panel.results_text.toPlainText()
+
+
+def test_perform_fit_is_a_no_op_while_a_fit_is_already_pending(app_context):
+    """Regression test (PR review): update_data_points_display() (fired by
+    unrelated range/series-change signals) re-enables fit_button based only
+    on data validity, not on whether a fit is already running -- so a click
+    reaching _perform_fit() must still be rejected while a fit is pending,
+    even if the button looked clickable."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    first_command = executed["command"]
+    assert panel._pending_fit_command is first_command
+
+    # Simulate the button having been (incorrectly) re-enabled by an
+    # unrelated handler while the first fit is still in flight.
+    panel.fit_button.setEnabled(True)
+
+    second_attempted = {}
+
+    def _capture_second(command):
+        second_attempted["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_second
+    panel._perform_fit()
+
+    assert "command" not in second_attempted  # no second dispatch happened
+    assert panel._pending_fit_command is first_command  # first reference untouched
+
+
+def test_update_data_points_display_keeps_fit_button_disabled_while_pending(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    assert panel._pending_fit_command is not None
+
+    panel.update_data_points_display()
+
+    assert panel.fit_button.isEnabled() is False
+
+
+def test_perform_fit_disables_apply_while_a_refit_is_in_flight(app_context):
+    """Regression test (PR review): Apply must not stay enabled -- bound to
+    the *previous* fit_results -- while a new fit is still computing in the
+    background, or clicking it mid-flight would silently commit stale data."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    # A previous fit already succeeded, so Apply starts out enabled and
+    # fit_results points at the first result.
+    panel._perform_fit()
+    first_command = executed["command"]
+    first_command.result = _make_fake_fit_result()
+    first_command.fixed_parameters = None
+    first_command.on_complete(CommandResult.SUCCESS)
+    assert panel.apply_button.isEnabled() is True
+    first_result = panel.fit_results
+
+    # Trigger a second fit; while it's in flight, Apply must be disabled so
+    # it can't commit `first_result` again under the user's belief they're
+    # applying the fit they just requested.
+    panel._perform_fit()
+
+    assert panel.apply_button.isEnabled() is False
+    assert panel.fit_results is first_result  # unchanged until the new fit completes
+
+
+def test_perform_fit_sync_dispatch_failure_restores_previous_apply_state(app_context):
+    """A dispatch failure (e.g. a fit already in progress) never reaches
+    on_complete, so the previous fit is still valid -- Apply's enabled state
+    must be restored to what it was, not left disabled."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    first_command = executed["command"]
+    first_command.result = _make_fake_fit_result()
+    first_command.fixed_parameters = None
+    first_command.on_complete(CommandResult.SUCCESS)
+    assert panel.apply_button.isEnabled() is True
+
+    panel.app_context.get_command_executor.return_value.execute_command = lambda command: False
+
+    panel._perform_fit()
+
+    assert panel.apply_button.isEnabled() is True
+
+
+def test_perform_fit_failure_path_shows_error_and_stops_spinner(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    command.error_message = "Fit did not converge"
+    command.on_complete(CommandResult.FAILURE)
+
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel.apply_button.isEnabled() is False
+    assert panel.fit_results is None
+    assert panel.results_text.toPlainText() == "Fit did not converge"
+    assert panel.results_text.styleSheet() == "color: red;"
+
+
+def test_perform_fit_sync_dispatch_failure_stops_spinner_without_on_complete(app_context):
+    """When execute_command() returns False (e.g. a fit already in
+    progress), on_complete never fires -- _perform_fit itself must undo the
+    spinner/button state it set before dispatching."""
+    dataset, chart = _make_dataset_and_chart_with_id_only_series()
+
+    project = Mock()
+    project.find_item = Mock(return_value=dataset)
+
+    panel = FitPanel(app_context)
+    panel.app_context.app_state = Mock()
+    panel.app_context.app_state.current_project = project
+    panel.load_chart_object(chart)
+
+    executed = {}
+
+    def _capture_execute(command):
+        executed["command"] = command
+        return False
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_execute
+
+    panel._perform_fit()
+
+    command = executed["command"]
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+    assert panel._pending_fit_command is None
+    # on_complete's effects (populating fit_results, enabling apply_button)
+    # must not have happened -- it was never invoked.
+    assert panel.fit_results is None
+    assert panel.apply_button.isEnabled() is False
+    assert command.result is None
 
 
 def test_range_labels_show_placeholder_when_no_valid_data_points(app_context):

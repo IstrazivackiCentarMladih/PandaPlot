@@ -20,8 +20,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.chart.apply_fit_command import ApplyFitCommand
 from pandaplot.commands.project.fit.perform_fit_command import PerformFitCommand
+from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
 from pandaplot.models.events import ChartEvents, UIEvents
@@ -52,6 +54,7 @@ class FitPanel(SidebarPanel):
         self.current_chart = None
         self.fit_results = None
         self.fit_fixed_parameters: Optional[str] = None
+        self._pending_fit_command = None
         self.datasets = []
         self._pending_tab_event_data: Optional[dict] = None
         self._needs_chart_refresh: bool = False
@@ -373,7 +376,10 @@ class FitPanel(SidebarPanel):
 
         self.clear_button = PButton("Clear Results", role="secondary", on_click=self._clear_results)
         button_layout.addWidget(self.clear_button)
-        
+
+        self.busy_spinner = BusySpinner()
+        button_layout.addWidget(self.busy_spinner)
+
         layout.addLayout(button_layout)
     
     def _connect_signals(self):
@@ -595,7 +601,10 @@ class FitPanel(SidebarPanel):
                 self.data_points_label.setStyleSheet(f"color: {base_fg};")
                 self.data_points_label.setToolTip("")
                 self.data_points_warning_icon.setVisible(False)
-                self.fit_button.setEnabled(self.scipy_available)
+                # Don't re-enable while a fit is already in flight -- this
+                # runs from unrelated range/series-change signals that know
+                # nothing about that state.
+                self.fit_button.setEnabled(self.scipy_available and self._pending_fit_command is None)
                 self.fit_button.setToolTip("")
         else:
             tooltip = "Select a chart series with valid data to perform a fit."
@@ -705,6 +714,8 @@ class FitPanel(SidebarPanel):
         self.results_text.setStyleSheet("")
         self.equation_label.setText("No fit performed")
         self.apply_button.setEnabled(False)
+        if hasattr(self, "busy_spinner"):
+            self.busy_spinner.stop()
 
     def load_chart_object(self, chart):
         """Load a Chart object for fitting analysis."""
@@ -900,6 +911,14 @@ class FitPanel(SidebarPanel):
 
     def _perform_fit(self):
         """Create and execute a curve fitting command."""
+        # update_data_points_display() (fired by unrelated range/series
+        # changes while a fit is in flight) re-enables fit_button based only
+        # on data validity, not on whether a fit is already running -- so a
+        # click can still reach here mid-flight. Guard on the pending
+        # command itself rather than trusting the button's enabled state.
+        if self._pending_fit_command is not None:
+            return
+
         current_data = self.get_current_data()
 
         if current_data is None:
@@ -910,6 +929,49 @@ class FitPanel(SidebarPanel):
 
         fit_type = self.fit_type_combo.currentText()
         is_custom = fit_type.split(" (")[0] == "Custom Function"
+
+        # Chart/series navigation stays enabled while a fit computes in the
+        # background, so capture what the fit was actually requested for and
+        # compare against the panel's context once the result is back --
+        # applying a stale fit to whatever chart/series happens to be
+        # selected when the background thread finishes would silently
+        # attach the wrong data. Content-based (not object identity): a
+        # "Custom..." selection builds a fresh transient DataSeries on every
+        # _resolve_selected_series() call, so identity would always differ.
+        dispatch_context = (
+            self.current_chart.id if self.current_chart else None,
+            series.dataset_id, series.x_column_id, series.y_column_id,
+        )
+
+        def _on_complete(result):
+            self.busy_spinner.stop()
+            self.fit_button.setEnabled(self.scipy_available)
+            self._pending_fit_command = None
+
+            current_series = self._resolve_selected_series()
+            current_context = (
+                self.current_chart.id if self.current_chart else None,
+                current_series.dataset_id if current_series else None,
+                current_series.x_column_id if current_series else None,
+                current_series.y_column_id if current_series else None,
+            )
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Discarding stale fit result: chart/series changed while fitting."
+                )
+                return
+
+            if result is not CommandResult.SUCCESS:
+                self.logger.error("PerformFitCommand failed: %s", command.error_message)
+                self._clear_results()
+                self.results_text.setPlainText(command.error_message or "Fit failed.")
+                self.results_text.setStyleSheet("color: red;")
+                return
+
+            self.fit_results = command.result
+            self.fit_fixed_parameters = command.fixed_parameters
+            self.display_results()
+            self.apply_button.setEnabled(self.fit_results is not None)
 
         command = PerformFitCommand(
             fit_service=self.fit_service,
@@ -930,19 +992,25 @@ class FitPanel(SidebarPanel):
             fixed_parameters=self.initial_guess_edit.text() if is_custom else None,
             x_min=None if self.range_auto_check.isChecked() else self.range_min_spin.value(),
             x_max=None if self.range_auto_check.isChecked() else self.range_max_spin.value(),
+            task_scheduler=self.app_context.get_task_scheduler(),
+            on_complete=_on_complete,
         )
+        self._pending_fit_command = command  # keep alive until on_complete fires
+
+        # Disable Apply too: it's bound to the *previous* self.fit_results,
+        # which must not be committable while a new fit is still computing.
+        apply_was_enabled = self.apply_button.isEnabled()
+        self.fit_button.setEnabled(False)
+        self.apply_button.setEnabled(False)
+        self.busy_spinner.start()
 
         executor = self.app_context.get_command_executor()
-
         if not executor.execute_command(command):
-            self.logger.error("PerformFitCommand failed: %s", command.error_message)
-            self._clear_results()
-            self.results_text.setPlainText(command.error_message or "Fit failed.")
-            self.results_text.setStyleSheet("color: red;")
-            return
-
-        self.fit_results = command.result
-        self.fit_fixed_parameters = command.fixed_parameters
-        self.display_results()
-        self.apply_button.setEnabled(self.fit_results is not None)
+            # Synchronous dispatch failure (e.g. a fit already in progress) --
+            # on_complete never fires, so the previous result is still valid
+            # and Apply's enabled state must be restored, not left disabled.
+            self.busy_spinner.stop()
+            self.fit_button.setEnabled(self.scipy_available)
+            self.apply_button.setEnabled(apply_was_enabled)
+            self._pending_fit_command = None
 
