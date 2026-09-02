@@ -19,9 +19,9 @@ from pandaplot.models.chart.error_bar_config import ErrorBarConfig
 from pandaplot.models.chart.series_style_builder import build_series_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.project.items import Chart, Dataset
-from pandaplot.models.project.items.dataset import dataset_display_options
 from pandaplot.models.state import AppContext, AppState
 from pandaplot.services.config.config_manager import ConfigManager
+from pandaplot.utils.item_display_options import dataset_display_options
 
 # Same default palette data_tab.py's "+Add series" cycles through -- keeps
 # wizard-created series visually distinguishable instead of all landing on

@@ -6,9 +6,9 @@ from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
+from pandaplot.services.data_managers.project_manager import ProjectManager
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.session import SessionPersistenceManager
-from pandaplot.storage.project_data_manager import ProjectDataManager
 
 
 def _same_path(a: Optional[str], b: Optional[str]) -> bool:
@@ -43,7 +43,7 @@ class LoadProjectCommand(Command):
         self.app_state: AppState = app_context.get_app_state()
         self.ui_controller: UIController = app_context.get_ui_controller()
         self.task_scheduler: TaskScheduler = app_context.get_task_scheduler()
-        self.project_data_manager = app_context.get_manager(ProjectDataManager)
+        self.project_manager = app_context.get_manager(ProjectManager)
         self.file_path = file_path
         # Called after the project has been loaded into app state (e.g. so the
         # caller can restore session tabs once the project is actually ready).
@@ -146,7 +146,7 @@ class LoadProjectCommand(Command):
                 progress_callback(0.3)  # Event emitted
 
             # Load the project using the data manager
-            loaded_project = self.project_data_manager.load(self.file_path)
+            loaded_project = self.project_manager.load_project(self.file_path)
 
             if progress_callback:
                 progress_callback(0.7)  # Project loaded from file
@@ -202,6 +202,24 @@ class LoadProjectCommand(Command):
                         self.logger.warning("Failed to persist last_project_path: %s", e)
 
                     self.logger.info(f"Project '{project.name}' loaded successfully from '{file_path}'")
+
+                    # Items that failed to deserialize are silently dropped from the
+                    # hierarchy by ProjectDataManager.load() -- warn instead of letting
+                    # the project just open with fewer items than its manifest lists.
+                    failed_item_ids = getattr(project, "failed_item_ids", [])
+                    if failed_item_ids:
+                        self.logger.warning(
+                            "Project '%s' loaded with %d item(s) missing: %s",
+                            project.name, len(failed_item_ids), failed_item_ids,
+                        )
+                        self.ui_controller.show_warning_message(
+                            "Some Items Failed to Load",
+                            f"Project '{project.name}' loaded, but {len(failed_item_ids)} "
+                            "item(s) could not be read and are missing from the project:\n\n"
+                            + "\n".join(failed_item_ids)
+                            + "\n\nSee the log for details. Saving the project now will "
+                            "remove these items permanently.",
+                        )
 
                     if self.on_loaded:
                         try:

@@ -70,9 +70,7 @@ class CommandExecutor:
                 undo stack regardless of the command class's own
                 occupies_undo_slot() default -- use for an automated/background
                 trigger of a command that IS normally undo-tracked from other
-                call sites (e.g. an autosave tick invoking SaveProjectCommand,
-                which must still occupy an undo slot for the manual Save menu
-                action).
+                call sites.
 
         Returns:
             bool: True if command executed successfully
