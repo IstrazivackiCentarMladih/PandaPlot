@@ -895,25 +895,41 @@ class DataTab(QWidget):
         rather than resolved at render time. Only reached for a
         manually-converted fit (fit.is_manual) -- see
         _on_series_config_changed.
+
+        Applied atomically: X and Y must BOTH resolve to real data before
+        any of source_dataset_id/source_x_column_id/source_y_column_id are
+        written, and before x_data/y_data are replaced. Committing the
+        source ids while leaving stale x_data/y_data in place (or vice
+        versa) would let the combos show a new source while the chart
+        still plots the old data with no indication anything is wrong --
+        an edit that can't be fully resolved is rejected as a whole, and
+        the controls are reloaded to reflect the fit's actual, unchanged
+        state instead.
         """
         dataset_id = self.dataset_combo.currentData() or fit.source_dataset_id
-        fit.source_dataset_id = dataset_id
-        fit.source_x_column_id = self.x_column_combo.currentData() or ""
-        fit.source_y_column_id = self.y_column_combo.currentData() or ""
-        fit.confidence_lower_column_id = self.confidence_lower_column_combo.currentData() or ""
-        fit.confidence_upper_column_id = self.confidence_upper_column_combo.currentData() or ""
+        x_column_id = self.x_column_combo.currentData() or ""
+        y_column_id = self.y_column_combo.currentData() or ""
+        confidence_lower_column_id = self.confidence_lower_column_combo.currentData() or ""
+        confidence_upper_column_id = self.confidence_upper_column_combo.currentData() or ""
 
         dataset = self.current_project.find_item(dataset_id) if self.current_project else None
         dataset = dataset if isinstance(dataset, Dataset) else None
 
-        new_x = resolve_numeric_column(dataset, fit.source_x_column_id)
-        if new_x is not None:
-            fit.x_data = new_x
-        new_y = resolve_numeric_column(dataset, fit.source_y_column_id)
-        if new_y is not None:
-            fit.y_data = new_y
-        fit.confidence_lower = resolve_numeric_column(dataset, fit.confidence_lower_column_id)
-        fit.confidence_upper = resolve_numeric_column(dataset, fit.confidence_upper_column_id)
+        new_x = resolve_numeric_column(dataset, x_column_id)
+        new_y = resolve_numeric_column(dataset, y_column_id)
+        if new_x is None or new_y is None:
+            self._load_fit_into_controls(fit)
+            return
+
+        fit.source_dataset_id = dataset_id
+        fit.source_x_column_id = x_column_id
+        fit.source_y_column_id = y_column_id
+        fit.x_data = new_x
+        fit.y_data = new_y
+        fit.confidence_lower_column_id = confidence_lower_column_id
+        fit.confidence_upper_column_id = confidence_upper_column_id
+        fit.confidence_lower = resolve_numeric_column(dataset, confidence_lower_column_id)
+        fit.confidence_upper = resolve_numeric_column(dataset, confidence_upper_column_id)
 
     def _on_series_type_changed(self):
         """Retype the selected, already-existing series to the combo's
@@ -1636,7 +1652,16 @@ class DataTab(QWidget):
                 series = chart.data_series[current_row]
                 series.y_axis = self.series_y_axis_control.currentValue()
 
-        if not chart.data_series:
+        # An empty data_series list alone doesn't mean "uninitialized
+        # chart, bootstrap a default series from whatever the form
+        # currently shows" -- a chart converted to be all-fit (e.g. its
+        # only series was just turned into a manual fit via #298) is
+        # legitimately empty here too, and the form's combos are showing
+        # the SELECTED FIT's own source columns at this point, not blank
+        # defaults. Without the fit_data check, clicking Apply while
+        # editing that fit would silently recreate a duplicate series
+        # alongside it.
+        if not chart.data_series and not chart.fit_data:
             dataset_id = self.dataset_combo.currentData()
             dataset_name = self.dataset_combo.currentText()
             x_column_id = self.x_column_combo.currentData()

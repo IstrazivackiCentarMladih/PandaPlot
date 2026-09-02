@@ -434,6 +434,40 @@ def test_editing_a_manual_fits_y_column_resnapshots_its_data():
     np.testing.assert_array_equal(fit.y_data, dataset.data["y2"].to_numpy())
 
 
+def test_editing_a_manual_fits_column_to_an_unresolvable_one_rolls_back_atomically():
+    """Regression test (PR #309 review): picking a Y column that can't
+    resolve (e.g. wholly non-numeric) must not leave the fit in a mixed
+    state where the combo shows the new column but x_data/y_data still
+    reflect the old one -- the whole edit is rejected and the controls
+    revert to the fit's actual, unchanged source/data."""
+    app_context, project, dataset = _app_context_with_project()
+    dataset.data["label"] = ["a", "b"]
+    dataset._sync_column_ids()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    fit = chart.fit_data[0]
+    original_y_column_id = fit.source_y_column_id
+    import numpy as np
+    original_y_data = fit.y_data.copy()
+
+    label_index = tab.y_column_combo.findData(dataset.column_id("label"))
+    tab.y_column_combo.setCurrentIndex(label_index)
+
+    fit = chart.fit_data[0]
+    assert fit.source_y_column_id == original_y_column_id
+    np.testing.assert_array_equal(fit.y_data, original_y_data)
+    # The controls must also reflect the rollback, not the rejected pick.
+    assert tab.y_column_combo.currentData() == original_y_column_id
+
+
 def test_an_auto_applied_fit_stays_non_editable():
     """Regression guard: only a manually-converted fit becomes editable --
     an auto-applied fit (e.g. from the Fit panel, is_manual defaults to
@@ -571,3 +605,31 @@ def test_confidence_column_combos_disabled_while_editing_a_fit():
 
     assert tab.confidence_lower_column_combo.isEnabled() is False
     assert tab.confidence_upper_column_combo.isEnabled() is False
+
+
+def test_apply_to_does_not_recreate_a_series_after_converting_the_only_series_to_fit():
+    """Regression test (PR #309 review): apply_to()'s "no data_series yet
+    -> bootstrap a default series from the form" fallback used to fire
+    whenever data_series was empty, even when the chart already has a
+    fit (e.g. its only series was just converted). Since the form's
+    combos, at that point, show the SELECTED FIT's own source columns
+    (not blank defaults), Apply would silently recreate a duplicate
+    series alongside the fit."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    assert len(chart.data_series) == 0
+    assert len(chart.fit_data) == 1
+
+    tab.apply_to(chart)
+
+    assert len(chart.data_series) == 0
+    assert len(chart.fit_data) == 1

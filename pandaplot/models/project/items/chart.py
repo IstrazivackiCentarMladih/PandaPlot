@@ -824,9 +824,10 @@ def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
 def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
     """Capture the mutable chart state that the properties panel can change.
 
-    Fit data x/y arrays are intentionally not snapshotted — only their
-    editable style/label fields — because the arrays are immutable in the
-    panel and can be large.
+    The whole fit_data list is deep-copied, same as data_series -- a
+    manually-converted fit's source dataset/columns and x_data/y_data are
+    genuinely editable from the Data tab (#298 follow-up), not just its
+    style/label, so Reset/undo needs to be able to revert those too.
     """
     return {
         "config": copy.deepcopy(chart.config),
@@ -834,8 +835,7 @@ def snapshot_chart_state(chart: "Chart") -> Dict[str, Any]:
         "chart_type": chart.chart_type,
         "name": chart.name,
         "data_series": [copy.deepcopy(s) for s in chart.data_series],
-        "fit_data_styles": [copy.deepcopy(f.style) for f in chart.fit_data],
-        "fit_data_labels": [f.label for f in chart.fit_data],
+        "fit_data": [copy.deepcopy(f) for f in chart.fit_data],
     }
 
 
@@ -846,11 +846,6 @@ def restore_chart_state(chart: "Chart", snapshot: Dict[str, Any]) -> None:
     chart.chart_type = snapshot["chart_type"]
     chart.name = snapshot["name"]
     chart.data_series = [copy.deepcopy(s) for s in snapshot["data_series"]]
-    fit_data_labels = snapshot.get("fit_data_labels", [])
-    for i, fit_style in enumerate(snapshot["fit_data_styles"]):
-        if i < len(chart.fit_data):
-            chart.fit_data[i].style = copy.deepcopy(fit_style)
-            if i < len(fit_data_labels):
-                chart.fit_data[i].label = fit_data_labels[i]
+    chart.fit_data = [copy.deepcopy(f) for f in snapshot["fit_data"]]
     chart.update_modified_time()
 
