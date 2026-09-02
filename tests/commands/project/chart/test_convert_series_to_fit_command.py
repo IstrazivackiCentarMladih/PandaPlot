@@ -14,7 +14,7 @@ from pandaplot.commands.project.chart.convert_series_to_fit_command import (
 )
 from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import Chart, DataSeries
+from pandaplot.models.project.items.chart import Chart
 
 
 @pytest.fixture
