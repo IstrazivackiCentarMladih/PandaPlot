@@ -534,23 +534,27 @@ class AnalysisPanel(SidebarPanel):
             def _on_complete(result):
                 self.busy_spinner.stop()
                 self.apply_btn.setEnabled(True)
+                self._pending_analysis_command = None
 
-                if result is CommandResult.SUCCESS:
-                    # The command itself emits the structured column-added /
-                    # data-changed events that refresh the data tab and
-                    # column-source selectors.
-                    self.publish_event(AnalysisEvents.ANALYSIS_COMPLETED, {
-                        "dataset_id": dataset_id,
-                        "new_column_name": config["new_column_name"],
-                        "analysis_type": config["analysis_type"],
-                        "analysis_config": config
-                    })
-                    self.preview_text.setText(
-                        f"✅ Analysis applied successfully!\nColumn '{config['new_column_name']}' added to dataset."
-                    )
-                else:
-                    self.logger.error("Command execution failed for dataset %s", dataset_id)
-                    self.preview_text.setText("❌ Command execution failed. Please check your inputs.")
+                try:
+                    if result is CommandResult.SUCCESS:
+                        # The command itself emits the structured column-added /
+                        # data-changed events that refresh the data tab and
+                        # column-source selectors.
+                        self.publish_event(AnalysisEvents.ANALYSIS_COMPLETED, {
+                            "dataset_id": dataset_id,
+                            "new_column_name": config["new_column_name"],
+                            "analysis_type": config["analysis_type"],
+                            "analysis_config": config
+                        })
+                        self.preview_text.setText(
+                            f"✅ Analysis applied successfully!\nColumn '{config['new_column_name']}' added to dataset."
+                        )
+                    else:
+                        self.logger.error("Command execution failed for dataset %s", dataset_id)
+                        self.preview_text.setText("❌ Command execution failed. Please check your inputs.")
+                except Exception as e:
+                    self.preview_text.setText(f"❌ Error applying analysis: {str(e)}")
 
             command = AnalysisCommand(self.app_context, dataset_id, config, on_complete=_on_complete)
             # Keep a strong reference so the command (and its on_complete
@@ -566,11 +570,13 @@ class AnalysisPanel(SidebarPanel):
                 # wired to fire, so reset the busy state here.
                 self.busy_spinner.stop()
                 self.apply_btn.setEnabled(True)
+                self._pending_analysis_command = None
                 self.preview_text.setText("❌ Command execution failed. Please check your inputs.")
 
         except Exception as e:
             self.busy_spinner.stop()
             self.apply_btn.setEnabled(True)
+            self._pending_analysis_command = None
             self.preview_text.setText(f"❌ Error applying analysis: {str(e)}")
     
     def validate_inputs(self) -> bool:

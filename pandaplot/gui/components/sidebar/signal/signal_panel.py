@@ -408,8 +408,13 @@ class SignalPanel(SidebarPanel):
                 return
 
             self.last_result = result
-            self.results_text.setText(self._format_result(result))
-            self.add_btn.setEnabled(True)
+            try:
+                self.results_text.setText(self._format_result(result))
+                self.add_btn.setEnabled(True)
+            except Exception as e:
+                self.last_result = None
+                self.add_btn.setEnabled(False)
+                self.results_text.setText(f"❌ Analysis failed:\n{e}")
 
         command.run_analysis_async(_on_complete)
 

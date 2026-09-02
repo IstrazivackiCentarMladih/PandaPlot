@@ -1076,6 +1076,51 @@ def test_perform_fit_success_path_populates_results_and_stops_spinner(app_contex
     assert "Fit Type: Linear" in panel.results_text.toPlainText()
 
 
+def test_perform_fit_disables_apply_while_a_refit_is_in_flight(app_context):
+    """Regression test (PR review): Apply must not stay enabled -- bound to
+    the *previous* fit_results -- while a new fit is still computing in the
+    background, or clicking it mid-flight would silently commit stale data."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    # A previous fit already succeeded, so Apply starts out enabled and
+    # fit_results points at the first result.
+    panel._perform_fit()
+    first_command = executed["command"]
+    first_command.result = _make_fake_fit_result()
+    first_command.fixed_parameters = None
+    first_command.on_complete(CommandResult.SUCCESS)
+    assert panel.apply_button.isEnabled() is True
+    first_result = panel.fit_results
+
+    # Trigger a second fit; while it's in flight, Apply must be disabled so
+    # it can't commit `first_result` again under the user's belief they're
+    # applying the fit they just requested.
+    panel._perform_fit()
+
+    assert panel.apply_button.isEnabled() is False
+    assert panel.fit_results is first_result  # unchanged until the new fit completes
+
+
+def test_perform_fit_sync_dispatch_failure_restores_previous_apply_state(app_context):
+    """A dispatch failure (e.g. a fit already in progress) never reaches
+    on_complete, so the previous fit is still valid -- Apply's enabled state
+    must be restored to what it was, not left disabled."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    first_command = executed["command"]
+    first_command.result = _make_fake_fit_result()
+    first_command.fixed_parameters = None
+    first_command.on_complete(CommandResult.SUCCESS)
+    assert panel.apply_button.isEnabled() is True
+
+    panel.app_context.get_command_executor.return_value.execute_command = lambda command: False
+
+    panel._perform_fit()
+
+    assert panel.apply_button.isEnabled() is True
+
+
 def test_perform_fit_failure_path_shows_error_and_stops_spinner(app_context):
     panel, executed = _build_panel_ready_to_fit(app_context)
 

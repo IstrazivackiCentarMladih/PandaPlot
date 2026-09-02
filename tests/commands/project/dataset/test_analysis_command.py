@@ -200,6 +200,48 @@ class TestAnalysisCommand:
         assert dataset.data["dxdx"].iloc[5] == pytest.approx(1.0)
 
 
+class TestAnalysisCommandConcurrentMutation:
+    def test_reruns_column_existence_check_after_async_computation_completes(self, ctx):
+        """Regression test (PR review): column_existed_before/original_data
+        must be re-derived from the dataset's *current* state once the
+        background computation completes, not trusted from the stale
+        snapshot taken at dispatch time -- otherwise a column added by
+        another command while this one's computation was running gets
+        silently dropped (instead of restored) when this command is undone."""
+        app_context, _, dataset, _ = ctx
+        task_scheduler = Mock()
+        app_context.get_task_scheduler.return_value = task_scheduler
+
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        })
+        assert command.execute() is CommandResult.SUCCESS
+        assert command.column_existed_before is False  # snapshot at dispatch time
+        _, kwargs = task_scheduler.run_task.call_args
+
+        # Simulate another command adding "dydx" to the dataset while this
+        # command's computation is still "running" in the background.
+        concurrent_df = dataset.data.copy()
+        concurrent_df["dydx"] = 999.0
+        dataset.set_data(concurrent_df)
+
+        # Now let the (previously un-run) task actually compute, and deliver
+        # its result the way TaskScheduler would.
+        outcome = kwargs["task"](lambda *_: None, **kwargs["task_arguments"])
+        kwargs["on_result"](outcome)
+
+        # The applied result overwrote the concurrently-added column...
+        assert dataset.data["dydx"].iloc[0] != 999.0
+
+        # ...and undo restores that concurrent value instead of deleting the
+        # column outright, proving column_existed_before was re-derived as
+        # True at apply time rather than trusting the stale `False` snapshot.
+        executor = app_context.get_command_executor()
+        assert executor.undo() is True
+        assert dataset.data["dydx"].iloc[0] == pytest.approx(999.0)
+
+
 class TestAnalysisCommandGuards:
     def test_execute_fails_fast_when_already_running(self, ctx):
         app_context, _, _, _ = ctx

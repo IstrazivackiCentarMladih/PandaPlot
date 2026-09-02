@@ -10,8 +10,6 @@ occupies an undo slot. See analysis_command.py for the identical pattern.
 
 from typing import Any, Callable, Dict, Optional, override
 
-import pandas as pd
-
 from pandaplot.analysis import (
     SignalAnalysisResult,
     SignalAnalysisType,
@@ -72,17 +70,6 @@ class SignalAnalysisCommand(Command):
             return None
         item = project.find_item(self.source_dataset_id)
         return item if isinstance(item, Dataset) else None
-
-    def _get_source_column(self) -> "pd.Series | None":
-        """Resolve and return a copy of the source column, or None with the
-        reason logged by the caller. Runs on the main thread -- only the
-        already-extracted Series crosses into the background task."""
-        source = self._get_source_dataset()
-        if source is None or source.data is None:
-            return None
-        if self.column_name not in source.data.columns:
-            return None
-        return source.data[self.column_name].copy()
 
     def _compute_signal_task(self, progress_callback, column) -> dict:
         """Runs on a background thread. Never raises for an expected

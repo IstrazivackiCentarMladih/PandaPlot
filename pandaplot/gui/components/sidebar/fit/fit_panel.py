@@ -960,14 +960,20 @@ class FitPanel(SidebarPanel):
         )
         self._pending_fit_command = command  # keep alive until on_complete fires
 
+        # Disable Apply too: it's bound to the *previous* self.fit_results,
+        # which must not be committable while a new fit is still computing.
+        apply_was_enabled = self.apply_button.isEnabled()
         self.fit_button.setEnabled(False)
+        self.apply_button.setEnabled(False)
         self.busy_spinner.start()
 
         executor = self.app_context.get_command_executor()
         if not executor.execute_command(command):
             # Synchronous dispatch failure (e.g. a fit already in progress) --
-            # on_complete never fires.
+            # on_complete never fires, so the previous result is still valid
+            # and Apply's enabled state must be restored, not left disabled.
             self.busy_spinner.stop()
             self.fit_button.setEnabled(self.scipy_available)
+            self.apply_button.setEnabled(apply_was_enabled)
             self._pending_fit_command = None
 

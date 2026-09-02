@@ -110,6 +110,37 @@ class TestApplyAnalysisAsyncDispatch:
         assert "successfully" in panel.preview_text.toPlainText()
         assert "result_col" in panel.preview_text.toPlainText()
 
+    def test_success_path_clears_the_pending_command_reference(self, panel):
+        """Regression test (PR review): unlike FitPanel's/SignalPanel's
+        equivalent fields, _pending_analysis_command was never reset after
+        completion, keeping a stale strong reference (holding the full
+        Dataset) alive on the panel indefinitely."""
+        executed = _ready_to_apply(panel)
+
+        panel.apply_analysis()
+        assert panel._pending_analysis_command is executed["command"]
+
+        executed["command"].on_complete(CommandResult.SUCCESS)
+
+        assert panel._pending_analysis_command is None
+
+    def test_on_complete_exception_is_shown_as_an_error_not_swallowed(self, panel):
+        """Regression test (PR review): the outer try/except in
+        apply_analysis() only covers the synchronous dispatch -- it does not
+        run again when the async on_complete closure is invoked later from a
+        Qt signal callback, so publish_event()/preview_text updates there
+        need their own error handling to avoid silently swallowing a bug."""
+        executed = _ready_to_apply(panel)
+        panel.publish_event = Mock(side_effect=RuntimeError("boom"))
+
+        panel.apply_analysis()
+        executed["command"].on_complete(CommandResult.SUCCESS)
+
+        assert panel.busy_spinner.is_running is False
+        assert panel.apply_btn.isEnabled() is True
+        assert panel._pending_analysis_command is None
+        assert "boom" in panel.preview_text.toPlainText()
+
     def test_failure_path_shows_error_and_stops_spinner(self, panel):
         executed = _ready_to_apply(panel)
 

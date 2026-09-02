@@ -86,6 +86,35 @@ class TestRunAnalysisAsyncDispatch:
         assert panel.last_result is result
         assert "FFT" in panel.results_text.toPlainText()
 
+    def test_format_result_exception_is_shown_as_an_error_not_swallowed(self, app_context):
+        """Regression test (PR review): the old synchronous run_analysis()
+        wrapped result-formatting in try/except so a formatting bug surfaced
+        as a visible error. The async on_complete callback must keep that
+        guarantee instead of letting an exception raised inside a Qt-signal
+        callback vanish (Qt prints it to stderr, not to the user)."""
+        panel = _build_panel_with_column(app_context)
+
+        captured = {}
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: captured.update(on_complete=on_complete)
+        panel._build_command = lambda: fake_command
+
+        panel.run_analysis()
+
+        broken_result = Mock()
+        broken_result.analysis_name = "FFT"
+        # _format_result's first step is len(result.data); a plain object()
+        # has no __len__, so this raises TypeError, simulating a malformed
+        # result reaching the formatting step.
+        broken_result.data = object()
+        captured["on_complete"](broken_result, None)
+
+        assert panel.busy_spinner.is_running is False
+        assert panel.run_btn.isEnabled() is True
+        assert panel.add_btn.isEnabled() is False
+        assert panel.last_result is None
+        assert "Analysis failed" in panel.results_text.toPlainText()
+
     def test_failure_path_shows_error_and_stops_spinner(self, app_context):
         panel = _build_panel_with_column(app_context)
 

@@ -168,6 +168,16 @@ class AnalysisCommand(Command):
                 self._notify_complete(CommandResult.FAILURE)
                 return
 
+            # Re-check the target column's current state rather than trusting
+            # the snapshot taken at dispatch time: another command may have
+            # added/removed a column of the same name while this one's
+            # computation was running in the background, and applying with a
+            # stale column_existed_before/original_data would silently drop
+            # or misrestore that other command's contribution on undo.
+            current_dataset = self._get_dataset()
+            if current_dataset is not None and current_dataset.data is not None:
+                self._store_original_state(current_dataset.data)
+
             apply_command = ApplyAnalysisResultCommand(
                 self.app_context,
                 self.dataset_id,
