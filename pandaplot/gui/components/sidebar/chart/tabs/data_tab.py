@@ -1094,6 +1094,17 @@ class DataTab(QWidget):
             self.z_column_combo.setEnabled(False)
             self.confidence_lower_column_combo.setEnabled(False)
             self.confidence_upper_column_combo.setEnabled(False)
+            # The combo is shared with whichever series was last edited, so
+            # without this it keeps showing that series' (or the chart's
+            # default) SeriesType -- misleading here since a fit isn't
+            # actually that type, just disabled/non-editable. Show the
+            # "Fit" sentinel entry instead so the disabled combo reads
+            # correctly (#298 follow-up).
+            self.series_type_combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            fit_entry_index = self.series_type_combo.findData(_CONVERT_TO_FIT)
+            if fit_entry_index >= 0:
+                self.series_type_combo.setCurrentIndex(fit_entry_index)
+            self.series_type_combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self.series_type_combo.setEnabled(False)
             self._update_vector_field_visibility()
             self._update_z_column_field_visibility()

@@ -285,6 +285,35 @@ def test_selecting_fit_converts_the_series_to_fit_data():
     assert fit.source_dataset_id == dataset.id
 
 
+def test_the_disabled_series_type_combo_shows_fit_not_the_converted_series_own_type():
+    """Regression test: reported live as "when I transform a series to fit
+    it shows as scatter." _load_fit_into_controls disables the combo but
+    used to leave it showing whichever value was last populated there (the
+    converted series' own prior type, e.g. Scatter) -- misleading, since
+    the disabled combo no longer means "this entry's type is Scatter," it
+    means "this entry isn't a real series anymore." It must show "Fit"
+    instead."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        series_type=SeriesType.SCATTER,
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    # Sanity: before conversion, the combo correctly shows the series' own type.
+    assert tab.series_type_combo.currentData() == SeriesType.SCATTER
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    assert tab.series_type_combo.currentData() == "__convert_to_fit__"
+    assert tab.series_type_combo.isEnabled() is False
+
+
 def test_selecting_fit_snapshots_the_chosen_confidence_columns():
     app_context, project, dataset = _app_context_with_project()
     # dataset from _app_context_with_project has columns x, y, u, v -- add
