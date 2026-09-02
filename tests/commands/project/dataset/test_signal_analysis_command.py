@@ -164,3 +164,59 @@ class TestSignalAnalysisCommandPreviewPath:
         command.run_analysis_async(lambda result, error: None)
 
         assert len(project.get_all_items()) == before
+
+
+class TestSignalAnalysisCommandRealTaskScheduler:
+    """Every other test in this suite (and every other converted command's
+    tests) substitutes SyncTaskScheduler for TaskScheduler, which runs the
+    task inline on the calling thread instead of via QThreadPool. That never
+    exercises the assumption this whole feature branch depends on: that Qt
+    actually delivers Worker's `result`/`error`/`finished` signals back on
+    the GUI thread, which is what makes it safe for on_complete callbacks to
+    touch widgets/event bus/CommandExecutor without their own locking. This
+    test uses the real TaskScheduler (real QThreadPool background thread)
+    and pytest-qt's qtbot.waitUntil to wait for the callback to actually
+    fire, proving the whole pipeline works end to end -- not just that the
+    command's own glue code is correct in isolation."""
+
+    def test_run_analysis_async_via_real_task_scheduler_delivers_result_on_main_thread(
+        self, qtbot, app_context_with_project
+    ):
+        import threading
+
+        from pandaplot.services.qtasks.task_scheduler import TaskScheduler
+
+        app_context, _ = app_context_with_project
+        app_context.get_task_scheduler.return_value = TaskScheduler()
+
+        command = SignalAnalysisCommand(
+            app_context, "ds-1", SignalAnalysisType.FFT, "signal", sampling_rate=1000,
+        )
+
+        main_thread = threading.current_thread()
+        outcome = {}
+
+        def _on_complete(result, error):
+            outcome["result"] = result
+            outcome["error"] = error
+            outcome["thread"] = threading.current_thread()
+
+        command.run_analysis_async(_on_complete)
+
+        # The task itself must actually run on a different thread -- if this
+        # ever ran inline (e.g. a regression collapsing TaskScheduler back to
+        # something synchronous), this test would still pass on the
+        # thread-identity assertion below by accident, so also make sure we
+        # genuinely waited for a background hop rather than the callback
+        # already having fired synchronously.
+        assert "thread" not in outcome
+
+        qtbot.waitUntil(lambda: "thread" in outcome, timeout=5000)
+
+        assert outcome["error"] is None
+        assert outcome["result"] is not None
+        assert "Frequency (Hz)" in outcome["result"].data.columns
+        # Qt queues Worker's signals back to the thread that created the
+        # worker (the GUI/main thread here) -- on_complete must be invoked
+        # there, not on the background QThreadPool worker thread.
+        assert outcome["thread"] is main_thread
