@@ -104,6 +104,38 @@ def test_redo_returns_failure_when_called_before_execute(mock_app_context, caplo
     assert "ds-1" in caplog.text
 
 
+def test_undo_returns_failure_when_execute_failed_after_assigning_dataset(mock_app_context, sample_project, caplog):
+    """execute() assigns self.dataset before attempting the write, so a
+    write that fails (e.g. an out-of-range index) leaves self.dataset set
+    without anything having actually been applied. undo() must not treat
+    that as a valid prior execution."""
+    mock_app_context.app_state.has_project = True
+    mock_app_context.app_state.current_project = sample_project
+    dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]}))
+    sample_project.find_item.return_value = dataset
+    command = EditCommand(mock_app_context, "ds-1", (5, 5), old_value=1, new_value=2)
+
+    assert command.execute() is CommandResult.FAILURE
+
+    with caplog.at_level(logging.WARNING):
+        assert command.undo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+
+
+def test_redo_returns_failure_when_execute_failed_after_assigning_dataset(mock_app_context, sample_project, caplog):
+    mock_app_context.app_state.has_project = True
+    mock_app_context.app_state.current_project = sample_project
+    dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]}))
+    sample_project.find_item.return_value = dataset
+    command = EditCommand(mock_app_context, "ds-1", (5, 5), old_value=1, new_value=2)
+
+    assert command.execute() is CommandResult.FAILURE
+
+    with caplog.at_level(logging.WARNING):
+        assert command.redo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+
+
 def test_cleanup_releases_the_dataset_and_project_references(mock_app_context):
     command = EditCommand(mock_app_context, "ds-1", (0, 0), old_value=1, new_value=2)
     command.dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]}))

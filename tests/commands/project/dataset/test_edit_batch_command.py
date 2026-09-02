@@ -192,6 +192,27 @@ def test_redo_returns_failure_when_called_before_execute(mock_app_context, caplo
     assert "ds-1" in caplog.text
 
 
+def test_redo_returns_failure_when_execute_failed_after_assigning_dataset(mock_app_context, sample_project, caplog):
+    """execute() assigns self.dataset before validating the new_data shape,
+    so a validation failure (mismatched row lengths) leaves self.dataset set
+    without old_data/new_data ever having been consistently applied. redo()
+    must not treat that as a valid prior execution -- otherwise it silently
+    reapplies a malformed, partial batch."""
+    mock_app_context.app_state.has_project = True
+    mock_app_context.app_state.current_project = sample_project
+    dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
+    sample_project.find_item.return_value = dataset
+    command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1, 2], [3]])
+
+    assert command.execute() is CommandResult.FAILURE
+
+    with caplog.at_level(logging.WARNING):
+        assert command.redo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+    assert dataset.data["a"].tolist() == [1, 2]
+    assert dataset.data["b"].tolist() == [3, 4]
+
+
 def test_cleanup_isolates_a_raising_sub_command():
     """If one sub-command's cleanup() raises, the remaining sub-commands must
     still get cleaned up, executed_commands must still be cleared, and the

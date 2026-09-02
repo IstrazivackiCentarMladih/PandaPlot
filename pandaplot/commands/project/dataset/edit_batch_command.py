@@ -78,6 +78,8 @@ class EditBatchCommand(Command):
                     "Batch Edit",
                     "Cannot edit cells in dataset without structure."
                 )
+                self.dataset = None
+                self.project = None
                 return CommandResult.FAILURE
 
             # Validate input data
@@ -87,6 +89,8 @@ class EditBatchCommand(Command):
                     "Batch Edit",
                     "No data provided for batch edit."
                 )
+                self.dataset = None
+                self.project = None
                 return CommandResult.FAILURE
 
             # Check if all rows have the same length
@@ -101,6 +105,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Row {i} has {len(row)} columns, expected {expected_cols}. All rows must have the same length."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
             # Check if data fits in current dataframe dimensions
@@ -122,6 +128,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         "Cannot add rows to completely empty dataset."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
                 add_rows_command = AddRowsCommand(
@@ -140,6 +148,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Failed to add {rows_to_add} rows to accommodate new data."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
                 
                 # Track the command for undo
@@ -170,6 +180,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         "Cannot add columns to dataset without any columns."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
                 add_columns_command = AddColumnsCommand(
@@ -190,6 +202,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Failed to add {cols_to_add} columns to accommodate new data."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
                 
                 # Track the command for undo
@@ -227,6 +241,8 @@ class EditBatchCommand(Command):
             error_msg = f"Failed to perform batch edit at starting position ({self.start_row}, {self.start_column}): {str(e)}"
             self.logger.error(error_msg)
             self.ui_controller.show_error_message("Batch Edit Error", error_msg)
+            self.dataset = None
+            self.project = None
             return CommandResult.FAILURE
 
     def undo(self) -> CommandResult:

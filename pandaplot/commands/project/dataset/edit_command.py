@@ -86,6 +86,8 @@ class EditCommand(Command):
             error_msg = f"Failed to edit cell at index: {self.index} {str(e)}"
             self.logger.error(error_msg)
             self.ui_controller.show_error_message("Edit Error", error_msg)
+            self.dataset = None
+            self.project = None
             return CommandResult.FAILURE
 
     def undo(self) -> CommandResult:
