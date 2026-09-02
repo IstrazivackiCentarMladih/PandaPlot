@@ -35,7 +35,7 @@ from pandaplot.models.chart.series_style_builder import build_series_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import DataSeries, YAxis
+from pandaplot.models.project.items.chart import DataSeries, YAxis, resolve_numeric_column
 from pandaplot.services.theme.theme_manager import ThemeManager
 from pandaplot.utils.item_display_options import dataset_display_options
 
@@ -272,6 +272,8 @@ class DataTab(QWidget):
         self.u_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.v_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.magnitude_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.confidence_lower_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.confidence_upper_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
         self.series_type_combo.currentIndexChanged.connect(self._on_series_type_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
@@ -865,8 +867,15 @@ class DataTab(QWidget):
                     getattr(self, "_expanded_card_y_axis_badge_tokens", {}),
                 )
         else:
-            # Fit data: columns/dataset not editable, ignore
-            return
+            fit_index = current_row - total_series
+            if fit_index < 0 or fit_index >= len(self.current_chart.fit_data):
+                return
+            fit = self.current_chart.fit_data[fit_index]
+            if not fit.is_manual:
+                # Auto-applied fits (from the Fit panel): source
+                # dataset/columns are frozen at fit time, not editable.
+                return
+            self._apply_manual_fit_edits(fit)
 
         # Deliberately `dirtyOnly`, not `configChanged`: pre-refactor, this
         # exact edit path (dataset/X/Y/Y-axis on the selected series) set the
@@ -876,6 +885,35 @@ class DataTab(QWidget):
         # publish CHART_UPDATED for every keystroke-driven combo change here,
         # which is a behavior change the refactor isn't meant to introduce.
         self.dirtyOnly.emit()
+
+    def _apply_manual_fit_edits(self, fit):
+        """Re-derive a manually-converted fit's data from its (possibly
+        just-changed) source dataset/columns -- mirrors the live-edit
+        semantics of a regular DataSeries' dataset/X/Y combos, except the
+        result is still a snapshot (FitData.x_data/y_data are plain
+        arrays, not a live reference): it's re-taken on every edit here
+        rather than resolved at render time. Only reached for a
+        manually-converted fit (fit.is_manual) -- see
+        _on_series_config_changed.
+        """
+        dataset_id = self.dataset_combo.currentData() or fit.source_dataset_id
+        fit.source_dataset_id = dataset_id
+        fit.source_x_column_id = self.x_column_combo.currentData() or ""
+        fit.source_y_column_id = self.y_column_combo.currentData() or ""
+        fit.confidence_lower_column_id = self.confidence_lower_column_combo.currentData() or ""
+        fit.confidence_upper_column_id = self.confidence_upper_column_combo.currentData() or ""
+
+        dataset = self.current_project.find_item(dataset_id) if self.current_project else None
+        dataset = dataset if isinstance(dataset, Dataset) else None
+
+        new_x = resolve_numeric_column(dataset, fit.source_x_column_id)
+        if new_x is not None:
+            fit.x_data = new_x
+        new_y = resolve_numeric_column(dataset, fit.source_y_column_id)
+        if new_y is not None:
+            fit.y_data = new_y
+        fit.confidence_lower = resolve_numeric_column(dataset, fit.confidence_lower_column_id)
+        fit.confidence_upper = resolve_numeric_column(dataset, fit.confidence_upper_column_id)
 
     def _on_series_type_changed(self):
         """Retype the selected, already-existing series to the combo's
@@ -1077,14 +1115,28 @@ class DataTab(QWidget):
             self._updating_controls = previous_guard
 
     def _load_fit_into_controls(self, fit):
-        """Load fit data into the configuration controls."""
+        """Load fit data into the configuration controls.
+
+        A manually-converted fit (fit.is_manual, see
+        ConvertSeriesToFitCommand / #298 follow-up) keeps its
+        dataset/X/Y/confidence-column combos editable, since it's a
+        "custom fit" whose source data the user can still repoint --
+        unlike an auto-applied fit (from the Fit panel), whose source
+        columns are frozen at fit time.
+        """
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
-            # For fit data, disable dataset/column controls since they're not editable
-            self.dataset_combo.setEnabled(False)
-            self.x_column_combo.setEnabled(False)
-            self.y_column_combo.setEnabled(False)
+            is_manual = fit.is_manual
+            # Dataset/X/Y/confidence columns stay editable only for a
+            # manually-converted fit; every other fit-only field (axis,
+            # error bars, vector/Z, asymmetric error toggle) has no
+            # meaning for a fit at all and is always disabled here.
+            self.dataset_combo.setEnabled(is_manual)
+            self.x_column_combo.setEnabled(is_manual)
+            self.y_column_combo.setEnabled(is_manual)
+            self.confidence_lower_column_combo.setEnabled(is_manual)
+            self.confidence_upper_column_combo.setEnabled(is_manual)
             self.series_y_axis_control.setEnabled(False)
             self.x_error_column_combo.setEnabled(False)
             self.y_error_column_combo.setEnabled(False)
@@ -1092,8 +1144,6 @@ class DataTab(QWidget):
             self.v_column_combo.setEnabled(False)
             self.magnitude_column_combo.setEnabled(False)
             self.z_column_combo.setEnabled(False)
-            self.confidence_lower_column_combo.setEnabled(False)
-            self.confidence_upper_column_combo.setEnabled(False)
             # The combo is shared with whichever series was last edited, so
             # without this it keeps showing that series' (or the chart's
             # default) SeriesType -- misleading here since a fit isn't
@@ -1110,6 +1160,26 @@ class DataTab(QWidget):
             self._update_z_column_field_visibility()
             self.error_asymmetric_check.setEnabled(False)
             self._update_error_bar_mode_controls()
+
+            if is_manual:
+                self._populate_column_combos(fit.source_dataset_id)
+                self._populate_confidence_column_combos(fit.source_dataset_id)
+
+                for i in range(self.dataset_combo.count()):
+                    if self.dataset_combo.itemData(i) == fit.source_dataset_id:
+                        self.dataset_combo.setCurrentIndex(i)
+                        break
+
+                for combo, column_id in (
+                    (self.x_column_combo, fit.source_x_column_id),
+                    (self.y_column_combo, fit.source_y_column_id),
+                    (self.confidence_lower_column_combo, fit.confidence_lower_column_id),
+                    (self.confidence_upper_column_combo, fit.confidence_upper_column_id),
+                ):
+                    combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                    index = combo.findData(column_id)
+                    combo.setCurrentIndex(index if index >= 0 else 0)
+                    combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
             # Show fit info in the label (block signals)
             self.series_label_edit.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only

@@ -9,6 +9,7 @@ from enum import StrEnum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import pandas as pd
 
 from pandaplot.models.chart.chart_type import ChartType
 from pandaplot.models.chart.chart_type_spec import CHART_TYPE_SPECS
@@ -117,6 +118,9 @@ class FitData:
     fit_stats: Optional[Dict[str, Any]] = None
     confidence_lower: np.ndarray | None = None
     confidence_upper: np.ndarray | None = None
+    confidence_lower_column_id: str = ""
+    confidence_upper_column_id: str = ""
+    is_manual: bool = False
     style: Optional[FitStyle] = None
 
     def __post_init__(self):
@@ -602,6 +606,9 @@ class Chart(Item):
                     "fit_stats": fit.fit_stats,
                     "confidence_lower": fit.confidence_lower.tolist() if fit.confidence_lower is not None else None,
                     "confidence_upper": fit.confidence_upper.tolist() if fit.confidence_upper is not None else None,
+                    "confidence_lower_column_id": fit.confidence_lower_column_id,
+                    "confidence_upper_column_id": fit.confidence_upper_column_id,
+                    "is_manual": fit.is_manual,
                     "style": asdict(fit.style) if fit.style is not None else None,
                 } for fit in self.fit_data
             ],
@@ -677,6 +684,9 @@ class Chart(Item):
                     np.array(fit_dict["confidence_upper"])
                     if fit_dict.get("confidence_upper") is not None else None
                 ),
+                confidence_lower_column_id=fit_dict.get("confidence_lower_column_id", ""),
+                confidence_upper_column_id=fit_dict.get("confidence_upper_column_id", ""),
+                is_manual=fit_dict.get("is_manual", False),
                 style=style,
             )
             chart.fit_data.append(fit)
@@ -703,6 +713,30 @@ def resolve_series_column(dataset: Any, column_id: str,
         if name is not None:
             return name
     return fallback_name or None
+
+
+def resolve_numeric_column(dataset: Any, column_id: str) -> Optional[np.ndarray]:
+    """Resolve a column id to a JSON-safe numeric numpy array snapshot.
+
+    Used for fit data (FitData.x_data/y_data/confidence_lower/
+    confidence_upper), which is always treated as purely numeric --
+    unlike a live DataSeries reference. Non-numeric values coerce to NaN
+    (pandas.to_numeric(errors="coerce")) rather than raising, and the
+    dtype is always JSON-serializable, since Chart.to_dict() later calls
+    .tolist() on it for json.dumps() during project save with no custom
+    encoder (a non-numeric dtype like datetime64 would otherwise fail
+    that save -- and since ProjectDataManager.save() truncates the
+    project's zip before writing, a failed save can destroy the
+    previously-saved project file). Returns None if the column can't be
+    resolved at all (missing dataset, unknown id, or the id resolves to
+    a name no longer present in the DataFrame).
+    """
+    if dataset is None or not column_id:
+        return None
+    name = resolve_series_column(dataset, column_id, "")
+    if not name or dataset.data is None or name not in dataset.data.columns:
+        return None
+    return pd.to_numeric(dataset.data[name], errors="coerce").to_numpy(copy=True)
 
 
 def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:

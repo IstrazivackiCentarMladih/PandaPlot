@@ -81,6 +81,7 @@ def test_execute_moves_series_to_fit_data(app_context_with_chart):
     assert fit.confidence_lower is None
     assert fit.confidence_upper is None
     assert isinstance(fit.style, FitStyle)
+    assert fit.is_manual is True
 
 
 def test_execute_snapshots_confidence_columns_when_given(app_context_with_chart, dataset):
@@ -96,6 +97,8 @@ def test_execute_snapshots_confidence_columns_when_given(app_context_with_chart,
     fit = chart.fit_data[0]
     np.testing.assert_array_equal(fit.confidence_lower, np.array([9.0, 19.0, 29.0]))
     np.testing.assert_array_equal(fit.confidence_upper, np.array([11.0, 21.0, 31.0]))
+    assert fit.confidence_lower_column_id == dataset.column_id("y_lower")
+    assert fit.confidence_upper_column_id == dataset.column_id("y_upper")
 
 
 def test_fit_data_is_independent_of_later_source_mutations(app_context_with_chart, dataset):

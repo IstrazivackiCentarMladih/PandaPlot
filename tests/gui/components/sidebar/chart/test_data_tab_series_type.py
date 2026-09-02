@@ -384,6 +384,79 @@ def test_converting_to_fit_is_undoable():
     assert len(chart.fit_data) == 0
 
 
+def test_a_manually_converted_fit_keeps_its_columns_editable():
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    assert chart.fit_data[0].is_manual is True
+    assert tab.dataset_combo.isEnabled() is True
+    assert tab.x_column_combo.isEnabled() is True
+    assert tab.y_column_combo.isEnabled() is True
+    assert tab.confidence_lower_column_combo.isEnabled() is True
+    assert tab.confidence_upper_column_combo.isEnabled() is True
+    # X/Y combos show the fit's current source columns.
+    assert tab.x_column_combo.currentData() == dataset.column_id("x")
+    assert tab.y_column_combo.currentData() == dataset.column_id("y")
+
+
+def test_editing_a_manual_fits_y_column_resnapshots_its_data():
+    app_context, project, dataset = _app_context_with_project()
+    dataset.data["y2"] = dataset.data["y"] * 10
+    dataset._sync_column_ids()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    fit = chart.fit_data[0]
+    import numpy as np
+    np.testing.assert_array_equal(fit.y_data, dataset.data["y"].to_numpy())
+
+    y2_index = tab.y_column_combo.findData(dataset.column_id("y2"))
+    tab.y_column_combo.setCurrentIndex(y2_index)
+
+    fit = chart.fit_data[0]
+    assert fit.source_y_column_id == dataset.column_id("y2")
+    np.testing.assert_array_equal(fit.y_data, dataset.data["y2"].to_numpy())
+
+
+def test_an_auto_applied_fit_stays_non_editable():
+    """Regression guard: only a manually-converted fit becomes editable --
+    an auto-applied fit (e.g. from the Fit panel, is_manual defaults to
+    False) must keep the pre-existing locked behavior."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_fit_data(
+        dataset.id, fit_type="Linear",
+        x_data=dataset.data["x"].to_numpy(), y_data=dataset.data["y"].to_numpy(),
+        label="A Fit",
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    assert chart.fit_data[0].is_manual is False
+    assert tab.dataset_combo.isEnabled() is False
+    assert tab.x_column_combo.isEnabled() is False
+    assert tab.y_column_combo.isEnabled() is False
+
+
 def test_selecting_fit_on_a_failed_conversion_reloads_the_real_series_type():
     """Regression test for final-review Fix 2 (#298): if the
     ConvertSeriesToFitCommand fails (e.g. its source dataset no longer
