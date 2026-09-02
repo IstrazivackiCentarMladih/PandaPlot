@@ -97,6 +97,29 @@ def test_execute_snapshots_confidence_columns_when_given(app_context_with_chart,
     np.testing.assert_array_equal(fit.confidence_upper, np.array([11.0, 21.0, 31.0]))
 
 
+def test_fit_data_is_independent_of_later_source_mutations(app_context_with_chart, dataset):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=0)
+
+    assert command.execute() is CommandResult.SUCCESS
+    fit = chart.fit_data[0]
+
+    original_x = fit.x_data.copy()
+    original_y = fit.y_data.copy()
+
+    # Mutate the source DataFrame in place, mirroring EditCommand's
+    # iloc-based cell edit. If FitData.x_data/y_data alias the DataFrame's
+    # block memory (e.g. via a non-copying to_numpy()), this mutation
+    # would leak into the "frozen" fit data.
+    dataset.data.iloc[0, dataset.data.columns.get_loc("x")] = 999.0
+    dataset.data.iloc[0, dataset.data.columns.get_loc("y")] = 888.0
+
+    np.testing.assert_array_equal(fit.x_data, original_x)
+    np.testing.assert_array_equal(fit.y_data, original_y)
+    assert fit.x_data[0] != 999.0
+    assert fit.y_data[0] != 888.0
+
+
 def test_execute_out_of_range_returns_failure(app_context_with_chart, caplog):
     app_context, chart = app_context_with_chart
     command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=5)

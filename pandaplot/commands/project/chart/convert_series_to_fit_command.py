@@ -71,7 +71,7 @@ class ConvertSeriesToFitCommand(Command):
         name = resolve_series_column(dataset, column_id, "")
         if not name or dataset.data is None or name not in dataset.data.columns:
             return None
-        return dataset.data[name].to_numpy()
+        return dataset.data[name].to_numpy(copy=True)
 
     def _build_fit(self, series: DataSeries) -> Optional[FitData]:
         dataset = self._find_dataset(series.dataset_id)
