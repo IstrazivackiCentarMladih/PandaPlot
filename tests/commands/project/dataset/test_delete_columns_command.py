@@ -237,6 +237,56 @@ def test_delete_error_bar_column_clears_reference_but_keeps_series(env):
     assert series.style.error_bars.y_error_column == ""
 
 
+def test_delete_confidence_column_clears_reference_but_keeps_manual_fit(env):
+    """Confidence-band columns are optional (#298 follow-up) -- a
+    manually-converted fit still renders without one, so deleting the
+    referenced column only clears the confidence reference (id AND the
+    cached array) instead of removing the whole fit."""
+    app_context, dataset, _, _, _ = env
+    fit_chart = Chart(name="fc")
+    fit_chart.add_fit_data(
+        dataset.id, "Custom", np.array([1.0]), np.array([2.0]),
+        source_x_column_id=dataset.column_id("c"),
+        source_y_column_id=dataset.column_id("c"),
+        confidence_lower_column_id=dataset.column_id("a"),
+        confidence_lower=np.array([0.5]),
+        is_manual=True,
+    )
+    app_context.get_app_state.return_value.current_project.add_item(fit_chart)
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+
+    assert command.execute() is CommandResult.SUCCESS
+    assert len(fit_chart.fit_data) == 1
+    fit = fit_chart.fit_data[0]
+    assert fit.confidence_lower_column_id == ""
+    assert fit.confidence_lower is None
+    assert fit.source_x_column_id == dataset.column_id("c")
+
+
+def test_undo_restores_a_cleared_confidence_reference(env):
+    app_context, dataset, _, _, _ = env
+    fit_chart = Chart(name="fc")
+    fit_chart.add_fit_data(
+        dataset.id, "Custom", np.array([1.0]), np.array([2.0]),
+        source_x_column_id=dataset.column_id("c"),
+        source_y_column_id=dataset.column_id("c"),
+        confidence_lower_column_id=dataset.column_id("a"),
+        confidence_lower=np.array([0.5]),
+        is_manual=True,
+    )
+    app_context.get_app_state.return_value.current_project.add_item(fit_chart)
+    original_confidence_lower_column_id = dataset.column_id("a")
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+    command.undo()
+
+    fit = fit_chart.fit_data[0]
+    assert fit.confidence_lower_column_id == original_confidence_lower_column_id
+    np.testing.assert_array_equal(fit.confidence_lower, np.array([0.5]))
+
+
 def test_execute_logs_a_warning_when_no_column_specs(env, caplog):
     app_context, dataset, _, _, _ = env
     command = DeleteColumnsCommand(app_context, dataset.id, [])
@@ -381,6 +431,7 @@ def test_cleanup_releases_the_undo_snapshots():
     command.original_column_ids = OrderedDict({"a": "col-a"})
     command.removed_chart_refs = {"chart-1": {"series": [(0, Mock())], "fits": []}}
     command.cleared_error_refs = {"chart-1": [(0, [(Mock(), "y_error_column_id", "col-a")])]}
+    command.cleared_confidence_refs = {"chart-1": [(0, [(Mock(), "confidence_lower_column_id", "col-a")])]}
 
     command.cleanup()
 
@@ -389,3 +440,4 @@ def test_cleanup_releases_the_undo_snapshots():
     assert command.original_column_ids is None
     assert command.removed_chart_refs == {}
     assert command.cleared_error_refs == {}
+    assert command.cleared_confidence_refs == {}
