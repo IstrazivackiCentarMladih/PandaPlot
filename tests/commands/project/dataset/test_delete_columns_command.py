@@ -264,6 +264,35 @@ def test_delete_confidence_column_clears_reference_but_keeps_manual_fit(env):
     assert fit.source_x_column_id == dataset.column_id("c")
 
 
+def test_confirmation_details_mention_fits_losing_confidence_bands(env):
+    """Regression test (PR #309 review): a chart whose ONLY match is a
+    fit's optional confidence-band column used to produce a blank
+    detail line (none of series_indices/fit_indices/error_only_indices
+    was truthy) and a confirmation message that only talked about
+    curves being removed, even though nothing is actually removed for
+    this case -- just an optional band cleared."""
+    app_context, dataset, _, _, _ = env
+    fit_chart = Chart(name="fc")
+    fit_chart.add_fit_data(
+        dataset.id, "Custom", np.array([1.0]), np.array([2.0]),
+        source_x_column_id=dataset.column_id("c"),
+        source_y_column_id=dataset.column_id("c"),
+        confidence_lower_column_id=dataset.column_id("a"),
+        confidence_lower=np.array([0.5]),
+        is_manual=True,
+    )
+    app_context.get_app_state.return_value.current_project.add_item(fit_chart)
+    ui_controller = app_context.get_ui_controller.return_value
+
+    command = DeleteColumnsCommand(app_context, dataset.id, ["a"])
+    command.execute()
+
+    details = ui_controller.show_confirmation.call_args.kwargs["details"]
+    assert "fc: 1 fit(s) losing confidence bands" in details
+    message = ui_controller.show_confirmation.call_args.args[1]
+    assert "confidence band" in message
+
+
 def test_undo_restores_a_cleared_confidence_reference(env):
     app_context, dataset, _, _, _ = env
     fit_chart = Chart(name="fc")

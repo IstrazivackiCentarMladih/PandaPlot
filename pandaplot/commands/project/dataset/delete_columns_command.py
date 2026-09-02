@@ -235,6 +235,8 @@ class DeleteColumnsCommand(Command):
                         ([f"{len(match.series_indices)} series"] if match.series_indices else [])
                         + ([f"{len(match.fit_indices)} fit curve(s)"] if match.fit_indices else [])
                         + ([f"{len(match.error_only_indices)} series losing error bars"] if match.error_only_indices else [])
+                        + ([f"{len(match.confidence_only_indices)} fit(s) losing confidence bands"]
+                           if match.confidence_only_indices else [])
                     )
                     for match in references
                 )
@@ -243,7 +245,8 @@ class DeleteColumnsCommand(Command):
                     f"{len(self.column_names)} column(s) are used by {len(references)} "
                     "chart(s). Deleting them will remove the dependent series/fit "
                     "curves from those charts (series only using the column for "
-                    "error bars will keep plotting, with error bars removed). Continue?",
+                    "error bars, or fits only using it for a confidence band, will "
+                    "keep plotting with that optional data cleared). Continue?",
                     details=details
                 )
                 if not proceed:
