@@ -184,6 +184,14 @@ def test_cleanup_cascades_to_sub_commands():
     assert command.executed_commands == []
 
 
+def test_redo_returns_failure_when_called_before_execute(mock_app_context, caplog):
+    command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
+
+    with caplog.at_level(logging.WARNING):
+        assert command.redo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+
+
 def test_cleanup_isolates_a_raising_sub_command():
     """If one sub-command's cleanup() raises, the remaining sub-commands must
     still get cleaned up, executed_commands must still be cleared, and the

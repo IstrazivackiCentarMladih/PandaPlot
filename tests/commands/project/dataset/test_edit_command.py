@@ -88,6 +88,22 @@ def test_execute_logs_warning_when_dataset_has_no_structure(mock_app_context, sa
     assert "ds-1" in caplog.text and "no structure" in caplog.text.lower()
 
 
+def test_undo_returns_failure_when_called_before_execute(mock_app_context, caplog):
+    command = EditCommand(mock_app_context, "ds-1", (0, 0), old_value=1, new_value=2)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.undo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+
+
+def test_redo_returns_failure_when_called_before_execute(mock_app_context, caplog):
+    command = EditCommand(mock_app_context, "ds-1", (0, 0), old_value=1, new_value=2)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.redo() is CommandResult.FAILURE
+    assert "ds-1" in caplog.text
+
+
 def test_cleanup_releases_the_dataset_and_project_references(mock_app_context):
     command = EditCommand(mock_app_context, "ds-1", (0, 0), old_value=1, new_value=2)
     command.dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1]}))

@@ -24,6 +24,8 @@ class EditBatchCommand(Command):
         self.end_column = start_column + len(new_data[0]) - 1 if new_data else start_column
         self.old_data = None  # Will store the original data for undo
         self.executed_commands = []  # Track commands executed for expansion (for undo)
+        self.project = None
+        self.dataset = None
 
     @override
     def execute(self) -> CommandResult:

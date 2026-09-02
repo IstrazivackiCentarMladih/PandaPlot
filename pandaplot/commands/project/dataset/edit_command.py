@@ -19,6 +19,9 @@ class EditCommand(Command):
         self.new_value = new_value
         self.old_value = old_value
 
+        self.project = None
+        self.dataset = None
+
     @override
     def execute(self) -> CommandResult:
         try:
@@ -86,6 +89,13 @@ class EditCommand(Command):
             return CommandResult.FAILURE
 
     def undo(self) -> CommandResult:
+        if self.dataset is None or self.dataset.data is None:
+            self.logger.warning(
+                "EditCommand.undo: cannot undo for dataset '%s' (dataset found=%s)",
+                self.dataset_id, self.dataset is not None,
+            )
+            return CommandResult.FAILURE
+
         self.dataset.data.iloc[self.index[0], self.index[1]] = self.old_value
         self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, DatasetDataChangedData(
                     dataset_id=self.dataset_id,
@@ -95,6 +105,13 @@ class EditCommand(Command):
         return CommandResult.SUCCESS
 
     def redo(self) -> CommandResult:
+        if self.dataset is None or self.dataset.data is None:
+            self.logger.warning(
+                "EditCommand.redo: cannot redo for dataset '%s' (dataset found=%s)",
+                self.dataset_id, self.dataset is not None,
+            )
+            return CommandResult.FAILURE
+
         self.dataset.data.iloc[self.index[0], self.index[1]] = self.new_value
         self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, DatasetDataChangedData(
                     dataset_id=self.dataset_id,
