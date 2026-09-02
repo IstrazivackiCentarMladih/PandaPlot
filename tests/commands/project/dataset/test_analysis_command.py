@@ -241,6 +241,35 @@ class TestAnalysisCommandConcurrentMutation:
         assert executor.undo() is True
         assert dataset.data["dydx"].iloc[0] == pytest.approx(999.0)
 
+    def test_project_changed_while_running_discards_the_result(self, ctx):
+        """Regression test (PR review): re-resolving the dataset from
+        whichever project happens to be current when the background task
+        finishes is wrong if a different project (persisting a dataset with
+        the same id) was loaded in the meantime -- the result would be
+        silently applied to that other project's dataset instead."""
+        app_context, _, dataset, _ = ctx
+        task_scheduler = Mock()
+        task_scheduler.run_task.side_effect = lambda **kwargs: captured.update(kwargs)
+        app_context.get_task_scheduler.return_value = task_scheduler
+        captured = {}
+
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+            "new_column_name": "dydx",
+        })
+        assert command.execute() is CommandResult.SUCCESS  # dispatched only
+
+        # Simulate the user closing this project and opening another one
+        # while the computation is still "running" in the background.
+        other_project = Project(name="Other")
+        app_context.get_app_state.return_value.current_project = other_project
+
+        outcome = captured["task"](lambda *_: None, **captured["task_arguments"])
+        captured["on_result"](outcome)
+
+        assert "dydx" not in dataset.data.columns
+        app_context.get_ui_controller.return_value.show_warning_message.assert_called_once()
+
 
 class TestAnalysisCommandGuards:
     def test_execute_fails_fast_when_already_running(self, ctx):

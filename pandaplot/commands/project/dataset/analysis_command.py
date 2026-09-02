@@ -69,6 +69,13 @@ class AnalysisCommand(Command):
         self.column_existed_before = False
         self.original_data = None
         self._is_running = False
+        # The project active at dispatch time, so a project switch (e.g. to
+        # another copy of a project persisting the same dataset id) while
+        # the computation runs in the background can be detected and the
+        # result rejected instead of silently applying it to whatever
+        # project happens to be current when the background thread
+        # finishes. Mirrors SignalAnalysisCommand._on_commit_computed().
+        self._dispatch_project = None
 
         # Extract config
         self.analysis_type = AnalysisType(analysis_config["analysis_type"])
@@ -128,6 +135,7 @@ class AnalysisCommand(Command):
             needed_columns = list(dict.fromkeys([self.x_column, self.y_column]))
             analysis_df = df[needed_columns].copy()
 
+            self._dispatch_project = self.app_context.get_app_state().current_project
             self._is_running = True
             self.task_scheduler.run_task(
                 task=self._compute_analysis_task,
@@ -165,6 +173,18 @@ class AnalysisCommand(Command):
         try:
             if not outcome["success"]:
                 self.ui_controller.show_error_message("Analysis Error", outcome["error"] or "Analysis failed")
+                self._notify_complete(CommandResult.FAILURE)
+                return
+
+            if self.app_context.get_app_state().current_project is not self._dispatch_project:
+                # The project changed (or was closed) while this computation
+                # was running in the background -- re-resolving the dataset
+                # now would look it up in whatever project happens to be
+                # current, which could be a different project that persists
+                # a dataset with the same id.
+                message = "The project changed while the analysis was running. The result was discarded."
+                self.logger.warning(message)
+                self.ui_controller.show_warning_message("Analysis Cancelled", message)
                 self._notify_complete(CommandResult.FAILURE)
                 return
 
