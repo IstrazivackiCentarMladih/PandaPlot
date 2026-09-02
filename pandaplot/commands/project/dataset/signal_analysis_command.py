@@ -63,6 +63,11 @@ class SignalAnalysisCommand(Command):
         self.result_dataset_id: Optional[str] = None
         self.result: Optional[SignalAnalysisResult] = None
         self._is_running = False
+        # The project active at dispatch time, so a project switch while the
+        # computation runs in the background can be detected and the result
+        # rejected instead of silently landing in whatever project happens
+        # to be current when the background thread finishes.
+        self._dispatch_project = None
 
     def _get_source_dataset(self) -> Optional[Dataset]:
         project = self.app_state.current_project
@@ -159,6 +164,7 @@ class SignalAnalysisCommand(Command):
 
             column = source.data[self.column_name].copy()
 
+            self._dispatch_project = self.app_state.current_project
             self._is_running = True
             self.task_scheduler.run_task(
                 task=self._compute_signal_task,
@@ -178,6 +184,17 @@ class SignalAnalysisCommand(Command):
     def _on_commit_computed(self, outcome: dict) -> None:
         if not outcome["success"]:
             self.ui_controller.show_error_message("Signal Analysis Error", outcome["error"] or "Signal analysis failed")
+            self._notify_complete(CommandResult.FAILURE)
+            return
+
+        if self.app_state.current_project is not self._dispatch_project:
+            # The project changed (or was closed) while this computation was
+            # running in the background -- adding the result to whatever
+            # project happens to be current now would silently attach it to
+            # the wrong project.
+            message = "The project changed while the signal analysis was running. The result was discarded."
+            self.logger.warning(message)
+            self.ui_controller.show_warning_message("Signal Analysis Cancelled", message)
             self._notify_complete(CommandResult.FAILURE)
             return
 

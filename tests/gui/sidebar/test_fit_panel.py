@@ -1055,6 +1055,36 @@ def _build_panel_ready_to_fit(app_context):
     return panel, executed
 
 
+def test_perform_fit_discards_stale_result_after_chart_switch(app_context):
+    """Regression test (PR review): chart/series navigation stays enabled
+    while a fit computes in the background. If the user switches to a
+    different chart/series before the result comes back, installing it into
+    fit_results/apply_button would silently attach the wrong chart's fit
+    data to whatever is now selected."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    command = executed["command"]
+
+    # Switch to a different chart while the fit is still "running".
+    other_dataset, other_chart = _make_dataset_and_chart_with_id_only_series()
+    other_chart.id = "chart-2"
+    panel.app_context.app_state.current_project.find_item = Mock(return_value=other_dataset)
+    panel.load_chart_object(other_chart)
+
+    command.result = _make_fake_fit_result()
+    command.fixed_parameters = None
+    command.on_complete(CommandResult.SUCCESS)
+
+    # The stale result must not have been installed over the new context.
+    assert panel.fit_results is None
+    assert panel.apply_button.isEnabled() is False
+    # But the panel isn't stuck busy either -- the fit did finish, just for
+    # a context that's no longer current.
+    assert panel.busy_spinner.is_running is False
+    assert panel.fit_button.isEnabled() is True
+
+
 def test_perform_fit_success_path_populates_results_and_stops_spinner(app_context):
     panel, executed = _build_panel_ready_to_fit(app_context)
 

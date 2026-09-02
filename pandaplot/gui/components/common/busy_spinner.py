@@ -10,12 +10,14 @@ run as a single opaque step with no meaningful sub-progress. Hidden until
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QAccessible, QAccessibleEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
 _TICK_INTERVAL_MS = 80
 _DEGREES_PER_TICK = 30
 _ARC_SPAN_DEGREES = 100
+_ACCESSIBLE_NAME = "Busy indicator"
+_ACCESSIBLE_DESCRIPTION_RUNNING = "Operation in progress"
 
 
 class BusySpinner(QWidget):
@@ -27,6 +29,7 @@ class BusySpinner(QWidget):
         self._running = False
 
         self.setFixedSize(diameter, diameter)
+        self.setAccessibleName(_ACCESSIBLE_NAME)
         self.hide()
 
         self._timer = QTimer(self)
@@ -43,13 +46,26 @@ class BusySpinner(QWidget):
 
     def start(self) -> None:
         self._running = True
+        self.setAccessibleDescription(_ACCESSIBLE_DESCRIPTION_RUNNING)
+        self.setToolTip(_ACCESSIBLE_DESCRIPTION_RUNNING)
         self.show()
         self._timer.start()
+        self._notify_accessibility_state_changed()
 
     def stop(self) -> None:
         self._running = False
         self._timer.stop()
         self.hide()
+        self.setAccessibleDescription("")
+        self.setToolTip("")
+        self._notify_accessibility_state_changed()
+
+    def _notify_accessibility_state_changed(self) -> None:
+        """Tell assistive technology the busy state changed -- the spinner
+        is purely custom-painted (no built-in Qt widget conveys "working"),
+        so screen readers get no equivalent feedback without this when
+        surrounding controls become disabled during a background task."""
+        QAccessible.updateAccessibility(QAccessibleEvent(self, QAccessible.Event.StateChanged))
 
     def _advance(self) -> None:
         self._angle = (self._angle + _DEGREES_PER_TICK) % 360

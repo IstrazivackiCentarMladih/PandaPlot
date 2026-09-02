@@ -212,3 +212,71 @@ class TestAddResultsToProjectAsyncDispatch:
         assert executed["command"] is fake_command  # dispatch was attempted
         assert panel.busy_spinner.is_running is False
         assert panel.add_btn.isEnabled() is True
+
+
+class TestRunAndAddMutualExclusion:
+    """Regression tests (PR review): Run and Add to Project share one busy
+    spinner and one _pending_command slot. Letting both be in flight at once
+    lets whichever finishes first stop the shared spinner and clear the
+    other's still-active reference while its work is still running."""
+
+    def test_add_is_a_no_op_while_run_is_in_flight(self, app_context):
+        panel = _build_panel_with_column(app_context)
+
+        run_captured = {}
+        run_command = Mock()
+        run_command.run_analysis_async = lambda on_complete: run_captured.update(on_complete=on_complete)
+        panel._build_command = lambda: run_command
+        panel.run_analysis()
+        assert panel._pending_command is run_command
+
+        add_attempted = {}
+
+        def _build_add_command():
+            add_attempted["built"] = True
+            return Mock()
+
+        panel._build_command = _build_add_command
+        panel.add_results_to_project()
+
+        assert "built" not in add_attempted  # add_results_to_project() bailed out immediately
+        assert panel._pending_command is run_command  # Run's reference untouched
+
+    def test_run_is_a_no_op_while_add_is_in_flight(self, app_context):
+        panel = _build_panel_with_column(app_context)
+
+        add_command = Mock()
+        add_command.result = Mock()
+        panel.app_context.get_command_executor.return_value.execute_command = lambda command: True
+        panel._build_command = lambda: add_command
+        panel.add_results_to_project()
+        assert panel._pending_command is add_command
+
+        run_attempted = {}
+
+        def _build_run_command():
+            run_attempted["built"] = True
+            return Mock()
+
+        panel._build_command = _build_run_command
+        panel.run_analysis()
+
+        assert "built" not in run_attempted  # run_analysis() bailed out immediately
+        assert panel._pending_command is add_command  # Add's reference untouched
+
+    def test_add_disables_run_too_while_committing(self, app_context):
+        panel = _build_panel_with_column(app_context)
+
+        add_command = Mock()
+        add_command.result = Mock()
+        panel.app_context.get_command_executor.return_value.execute_command = lambda command: True
+        panel._build_command = lambda: add_command
+
+        panel.add_results_to_project()
+
+        assert panel.run_btn.isEnabled() is False
+        assert panel.add_btn.isEnabled() is False
+
+        add_command.on_complete(CommandResult.SUCCESS)
+
+        assert panel.run_btn.isEnabled() is True

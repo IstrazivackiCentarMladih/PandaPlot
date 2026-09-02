@@ -51,3 +51,25 @@ def test_advancing_the_timer_changes_the_angle(qtbot):
     spinner._advance()
 
     assert spinner._angle != first_angle
+
+
+def test_has_an_accessible_name(qtbot):
+    """Regression test (PR review): a purely custom-painted widget has no
+    built-in accessible name -- screen readers would announce nothing when
+    the spinner appears next to controls that just got disabled."""
+    spinner = BusySpinner()
+    qtbot.addWidget(spinner)
+
+    assert spinner.accessibleName() != ""
+
+
+def test_start_sets_an_accessible_description_stop_clears_it(qtbot):
+    spinner = BusySpinner()
+    qtbot.addWidget(spinner)
+    spinner.show()
+
+    spinner.start()
+    assert spinner.accessibleDescription() != ""
+
+    spinner.stop()
+    assert spinner.accessibleDescription() == ""

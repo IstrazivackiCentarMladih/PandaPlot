@@ -387,6 +387,14 @@ class SignalPanel(SidebarPanel):
         )
 
     def run_analysis(self):
+        # Run and "Add to Project" share one busy spinner and one
+        # _pending_command slot -- letting both run at once would have
+        # whichever finishes first stop the spinner and clear the other's
+        # still-active reference out from under it, so treat them as mutually
+        # exclusive rather than tracking two independent in-flight jobs.
+        if self._pending_command is not None:
+            return
+
         command = self._build_command()
         if command is None:
             return
@@ -457,16 +465,24 @@ class SignalPanel(SidebarPanel):
         return "\n".join(lines)
 
     def add_results_to_project(self):
+        # See the matching guard/comment in run_analysis(): Run and Add
+        # share one spinner and one _pending_command slot, so they must not
+        # both be in flight at once.
+        if self._pending_command is not None:
+            return
+
         command = self._build_command()
         if command is None:
             return
 
+        self.run_btn.setEnabled(False)
         self.add_btn.setEnabled(False)
         self.busy_spinner.start()
         self._pending_command = command
 
         def _on_complete(result):
             self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
             self._pending_command = None
 
             if result is CommandResult.SUCCESS:
@@ -480,6 +496,7 @@ class SignalPanel(SidebarPanel):
         if not executor.execute_command(command):
             # Synchronous validation failure -- on_complete never fires.
             self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
             self.add_btn.setEnabled(True)
             self._pending_command = None
 

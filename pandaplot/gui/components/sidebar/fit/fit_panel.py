@@ -919,10 +919,36 @@ class FitPanel(SidebarPanel):
         fit_type = self.fit_type_combo.currentText()
         is_custom = fit_type.split(" (")[0] == "Custom Function"
 
+        # Chart/series navigation stays enabled while a fit computes in the
+        # background, so capture what the fit was actually requested for and
+        # compare against the panel's context once the result is back --
+        # applying a stale fit to whatever chart/series happens to be
+        # selected when the background thread finishes would silently
+        # attach the wrong data. Content-based (not object identity): a
+        # "Custom..." selection builds a fresh transient DataSeries on every
+        # _resolve_selected_series() call, so identity would always differ.
+        dispatch_context = (
+            self.current_chart.id if self.current_chart else None,
+            series.dataset_id, series.x_column_id, series.y_column_id,
+        )
+
         def _on_complete(result):
             self.busy_spinner.stop()
             self.fit_button.setEnabled(self.scipy_available)
             self._pending_fit_command = None
+
+            current_series = self._resolve_selected_series()
+            current_context = (
+                self.current_chart.id if self.current_chart else None,
+                current_series.dataset_id if current_series else None,
+                current_series.x_column_id if current_series else None,
+                current_series.y_column_id if current_series else None,
+            )
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Discarding stale fit result: chart/series changed while fitting."
+                )
+                return
 
             if result is not CommandResult.SUCCESS:
                 self.logger.error("PerformFitCommand failed: %s", command.error_message)

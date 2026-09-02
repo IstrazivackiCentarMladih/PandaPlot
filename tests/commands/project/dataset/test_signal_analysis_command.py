@@ -119,6 +119,57 @@ class TestSignalAnalysisCommandCommitPath:
         assert command.execute() is CommandResult.SUCCESS
         assert outcomes == [CommandResult.SUCCESS]
 
+    def test_redo_reuses_the_same_dataset_id(self, app_context_with_project):
+        """Regression test (PR review): redo() delegates to execute(), which
+        used to mint a brand-new dataset id and object every time -- after
+        undo, a redo would silently swap the dataset out from under anything
+        that had recorded the original id (e.g. a chart series sourcing from
+        it). The dataset must be built once and re-added as the same object
+        on redo, mirroring ApplyFitCommand._create_report()."""
+        app_context, project = app_context_with_project
+        executor: CommandExecutor = app_context.get_command_executor()
+        command = SignalAnalysisCommand(app_context, "ds-1", SignalAnalysisType.PEAKS, "signal")
+
+        assert executor.execute_command(command) is True
+        original_id = command.result_dataset_id
+
+        assert executor.undo() is True
+        assert project.find_item(original_id) is None
+
+        assert executor.redo() is True
+        assert command.result_dataset_id == original_id
+        assert project.find_item(original_id) is not None
+
+    def test_project_changed_while_running_discards_the_result(self, app_context_with_project):
+        """Regression test (PR review): the apply step resolved
+        app_state.current_project only once the background result came
+        back, rather than validating it against the project the signal was
+        actually read from -- switching projects mid-computation silently
+        added the result to whichever project became current."""
+        app_context, project = app_context_with_project
+        # Replace the real (synchronous) scheduler with one that just
+        # captures the dispatched task instead of running it, so we can
+        # simulate a project switch before the "result" callback fires.
+        captured = {}
+        fake_scheduler = Mock()
+        fake_scheduler.run_task.side_effect = lambda **kwargs: captured.update(kwargs)
+        app_context.get_task_scheduler.return_value = fake_scheduler
+
+        command = SignalAnalysisCommand(app_context, "ds-1", SignalAnalysisType.FFT, "signal", sampling_rate=1000)
+        assert command.execute() is CommandResult.SUCCESS  # dispatched only
+
+        # Simulate the user closing this project and opening another one
+        # while the computation is still "running" in the background.
+        app_context.get_app_state.return_value.current_project = Project(name="Other")
+
+        outcome = captured["task"](lambda *_: None, **captured["task_arguments"])
+        captured["on_result"](outcome)
+
+        assert command.result_dataset_id is None
+        app_context.get_ui_controller.return_value.show_warning_message.assert_called_once()
+        # The original project never got the result either.
+        assert all(not isinstance(item, Dataset) or item.id == "ds-1" for item in project.items_index.values())
+
     def test_cleanup_releases_the_result_dataset_id_and_result(self, app_context_with_project):
         app_context, _ = app_context_with_project
         command = SignalAnalysisCommand(app_context, "ds-1", SignalAnalysisType.FFT, "signal", sampling_rate=1000)

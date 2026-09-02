@@ -36,6 +36,7 @@ class ApplySignalAnalysisResultCommand(Command):
         self.result = result
 
         self.result_dataset_id: Optional[str] = None
+        self._dataset: Optional[Dataset] = None
 
     @override
     def execute(self) -> CommandResult:
@@ -45,15 +46,23 @@ class ApplySignalAnalysisResultCommand(Command):
                 return CommandResult.FAILURE
 
             project = self.app_state.current_project
-            name = self.result_name or self.result.result_name()
-            self.result_dataset_id = str(uuid.uuid4())
 
-            dataset = Dataset(
-                id=self.result_dataset_id,
-                name=name,
-                data=self.result.data,
-                source_file=None,
-            )
+            # Built once (first execute()) and cached; a later redo() re-adds
+            # this same object instead of minting a fresh id, so anything
+            # that recorded the original id (e.g. a chart series sourcing
+            # from this dataset) keeps working after an undo/redo
+            # round-trip. Mirrors ApplyFitCommand._create_report().
+            if self._dataset is None:
+                name = self.result_name or self.result.result_name()
+                self.result_dataset_id = str(uuid.uuid4())
+                self._dataset = Dataset(
+                    id=self.result_dataset_id,
+                    name=name,
+                    data=self.result.data,
+                    source_file=None,
+                )
+            dataset = self._dataset
+
             project.add_item(dataset, parent_id=self.folder_id)
 
             self.app_state.event_bus.emit(
@@ -61,13 +70,13 @@ class ApplySignalAnalysisResultCommand(Command):
                 {
                     "project": project,
                     "dataset_id": self.result_dataset_id,
-                    "dataset_name": name,
+                    "dataset_name": dataset.name,
                     "folder_id": self.folder_id,
                     "dataset_data": dataset.data,
                 },
             )
             self.logger.info(
-                "Created signal analysis dataset '%s' (%s)", name, self.result_dataset_id,
+                "Created signal analysis dataset '%s' (%s)", dataset.name, self.result_dataset_id,
             )
             return CommandResult.SUCCESS
 
@@ -111,3 +120,4 @@ class ApplySignalAnalysisResultCommand(Command):
     def cleanup(self) -> None:
         self.result_dataset_id = None
         self.result = None
+        self._dataset = None
