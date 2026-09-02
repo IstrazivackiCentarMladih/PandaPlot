@@ -457,6 +457,34 @@ def test_an_auto_applied_fit_stays_non_editable():
     assert tab.y_column_combo.isEnabled() is False
 
 
+def test_an_auto_applied_custom_fit_stays_non_editable_despite_the_shared_fit_type_string():
+    """Regression guard: fit_type=="Custom" alone must NOT make a fit
+    editable -- that string is shared by both a manually-converted fit
+    (is_manual=True, editable) and a Fit-panel "Custom" equation fit
+    (is_manual=False, locked, since #305 let it pick a dataset/X/Y too).
+    is_manual is what must actually gate editability."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_fit_data(
+        dataset.id, fit_type="Custom",
+        x_data=dataset.data["x"].to_numpy(), y_data=dataset.data["y"].to_numpy(),
+        label="A Custom Fit",
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    assert chart.fit_data[0].fit_type == "Custom"
+    assert chart.fit_data[0].is_manual is False
+    assert tab.dataset_combo.isEnabled() is False
+    assert tab.x_column_combo.isEnabled() is False
+    assert tab.y_column_combo.isEnabled() is False
+    assert tab.confidence_lower_column_combo.isEnabled() is False
+    assert tab.confidence_upper_column_combo.isEnabled() is False
+
+
 def test_selecting_fit_on_a_failed_conversion_reloads_the_real_series_type():
     """Regression test for final-review Fix 2 (#298): if the
     ConvertSeriesToFitCommand fails (e.g. its source dataset no longer
