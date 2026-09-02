@@ -275,6 +275,27 @@ def test_wholly_non_numeric_x_column_fails_instead_of_producing_an_all_nan_fit(a
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
 
 
+def test_a_non_empty_but_unresolvable_confidence_column_fails_the_whole_conversion(app_context_with_chart, dataset):
+    """A confidence column id must be either empty ("no confidence band",
+    valid) or resolve to real numeric data -- a non-empty pick that
+    fails to resolve (e.g. wholly non-numeric) must reject the WHOLE
+    conversion, not silently succeed with a confidence_lower_column_id
+    that points at a column the fit's confidence_lower array doesn't
+    actually reflect."""
+    app_context, chart = app_context_with_chart
+    dataset.data["label"] = ["a", "b", "c"]
+    dataset._sync_column_ids()
+
+    command = ConvertSeriesToFitCommand(
+        app_context, chart_id="chart-1", series_index=0,
+        confidence_lower_column_id=dataset.column_id("label"),
+    )
+
+    assert command.execute() is CommandResult.FAILURE
+    assert len(chart.fit_data) == 0
+    assert len(chart.data_series) == 1
+
+
 def test_a_column_with_some_unconvertible_values_still_succeeds(app_context_with_chart):
     """Only a WHOLLY unusable column is rejected -- a column with some
     real numeric values alongside a few unconvertible ones still

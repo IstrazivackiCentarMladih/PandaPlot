@@ -272,8 +272,8 @@ class DataTab(QWidget):
         self.u_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.v_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
         self.magnitude_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
-        self.confidence_lower_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
-        self.confidence_upper_column_combo.currentIndexChanged.connect(self._on_series_config_changed)
+        self.confidence_lower_column_combo.currentIndexChanged.connect(self._on_confidence_column_changed)
+        self.confidence_upper_column_combo.currentIndexChanged.connect(self._on_confidence_column_changed)
         self.error_asymmetric_check.toggled.connect(self._on_error_symmetry_toggled)
         self.series_type_combo.currentIndexChanged.connect(self._on_series_type_changed)
         # Defer label persistence to editingFinished to avoid disruptive refresh while typing
@@ -896,15 +896,19 @@ class DataTab(QWidget):
         manually-converted fit (fit.is_manual) -- see
         _on_series_config_changed.
 
-        Applied atomically: X and Y must BOTH resolve to real data before
-        any of source_dataset_id/source_x_column_id/source_y_column_id are
-        written, and before x_data/y_data are replaced. Committing the
-        source ids while leaving stale x_data/y_data in place (or vice
-        versa) would let the combos show a new source while the chart
-        still plots the old data with no indication anything is wrong --
-        an edit that can't be fully resolved is rejected as a whole, and
-        the controls are reloaded to reflect the fit's actual, unchanged
-        state instead.
+        Applied atomically: X, Y, and any NON-empty confidence column
+        pick must all resolve to real data before any of
+        source_dataset_id/source_x_column_id/source_y_column_id/
+        confidence_*_column_id are written, and before
+        x_data/y_data/confidence_lower/confidence_upper are replaced.
+        Committing a source id while leaving stale (or absent) data in
+        place would let a combo show a new source while the chart still
+        plots the old data (or silently drops a confidence band) with no
+        indication anything is wrong -- an edit that can't be fully
+        resolved is rejected as a whole, and the controls are reloaded to
+        reflect the fit's actual, unchanged state instead. An EMPTY
+        confidence column pick ("None") is always valid -- it just means
+        no confidence band.
         """
         dataset_id = self.dataset_combo.currentData() or fit.source_dataset_id
         x_column_id = self.x_column_combo.currentData() or ""
@@ -921,6 +925,19 @@ class DataTab(QWidget):
             self._load_fit_into_controls(fit)
             return
 
+        new_confidence_lower = None
+        if confidence_lower_column_id:
+            new_confidence_lower = resolve_numeric_column(dataset, confidence_lower_column_id)
+            if new_confidence_lower is None:
+                self._load_fit_into_controls(fit)
+                return
+        new_confidence_upper = None
+        if confidence_upper_column_id:
+            new_confidence_upper = resolve_numeric_column(dataset, confidence_upper_column_id)
+            if new_confidence_upper is None:
+                self._load_fit_into_controls(fit)
+                return
+
         fit.source_dataset_id = dataset_id
         fit.source_x_column_id = x_column_id
         fit.source_y_column_id = y_column_id
@@ -928,8 +945,38 @@ class DataTab(QWidget):
         fit.y_data = new_y
         fit.confidence_lower_column_id = confidence_lower_column_id
         fit.confidence_upper_column_id = confidence_upper_column_id
-        fit.confidence_lower = resolve_numeric_column(dataset, confidence_lower_column_id)
-        fit.confidence_upper = resolve_numeric_column(dataset, confidence_upper_column_id)
+        fit.confidence_lower = new_confidence_lower
+        fit.confidence_upper = new_confidence_upper
+
+    def _on_confidence_column_changed(self):
+        """Live-edit reaction for the two confidence-column combos,
+        wired separately from `_on_series_config_changed`'s other
+        combos: these two are only ever "live" for a manually-converted
+        fit (see `_apply_manual_fit_edits`) -- for a regular DataSeries
+        they're merely pre-staged values read once at conversion time
+        (see `_convert_selected_series_to_fit`), so touching them there
+        must be a true no-op. Sharing `_on_series_config_changed` would
+        mark the panel dirty (via its unconditional trailing
+        `dirtyOnly.emit()`) even though no model state actually changed
+        for a series -- this dedicated handler only reacts, and only
+        marks dirty, when a manual fit is actually selected.
+        """
+        if self._updating_controls or not self.current_chart:
+            return
+        current_row = self._expanded_series_index
+        if current_row < 0:
+            return
+        total_series = len(self.current_chart.data_series)
+        if current_row < total_series:
+            return
+        fit_index = current_row - total_series
+        if fit_index < 0 or fit_index >= len(self.current_chart.fit_data):
+            return
+        fit = self.current_chart.fit_data[fit_index]
+        if not fit.is_manual:
+            return
+        self._apply_manual_fit_edits(fit)
+        self.dirtyOnly.emit()
 
     def _on_series_type_changed(self):
         """Retype the selected, already-existing series to the combo's

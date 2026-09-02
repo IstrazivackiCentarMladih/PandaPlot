@@ -468,6 +468,64 @@ def test_editing_a_manual_fits_column_to_an_unresolvable_one_rolls_back_atomical
     assert tab.y_column_combo.currentData() == original_y_column_id
 
 
+def test_picking_an_unresolvable_confidence_column_rolls_back_the_whole_edit():
+    """Regression test (PR #309 review): a NON-empty confidence-column
+    pick that can't resolve (e.g. wholly non-numeric) must reject the
+    whole edit -- previously the id was persisted anyway even though
+    resolution failed, leaving confidence_lower_column_id pointing at a
+    column the fit's confidence_lower array doesn't actually reflect."""
+    app_context, project, dataset = _app_context_with_project()
+    dataset.data["label"] = ["a", "b"]
+    dataset._sync_column_ids()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    fit = chart.fit_data[0]
+    assert fit.confidence_lower_column_id == ""
+    assert fit.confidence_lower is None
+
+    label_index = tab.confidence_lower_column_combo.findData(dataset.column_id("label"))
+    tab.confidence_lower_column_combo.setCurrentIndex(label_index)
+
+    fit = chart.fit_data[0]
+    assert fit.confidence_lower_column_id == ""
+    assert fit.confidence_lower is None
+    assert tab.confidence_lower_column_combo.currentData() == ""
+
+
+def test_touching_confidence_combos_while_a_regular_series_is_selected_does_not_mark_dirty():
+    """Regression test (PR #309 review): the confidence combos are
+    write-only-at-conversion-time for a regular DataSeries (no model
+    field they'd persist to) -- touching them there must be a true
+    no-op, not mark the panel dirty via the shared
+    _on_series_config_changed handler's unconditional dirtyOnly.emit()."""
+    app_context, project, dataset = _app_context_with_project()
+    dataset.data["label"] = ["a", "b"]
+    dataset._sync_column_ids()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    dirty_calls = []
+    tab.dirtyOnly.connect(lambda: dirty_calls.append(True))
+
+    label_index = tab.confidence_lower_column_combo.findData(dataset.column_id("label"))
+    tab.confidence_lower_column_combo.setCurrentIndex(label_index)
+
+    assert dirty_calls == []
+
+
 def test_an_auto_applied_fit_stays_non_editable():
     """Regression guard: only a manually-converted fit becomes editable --
     an auto-applied fit (e.g. from the Fit panel, is_manual defaults to
