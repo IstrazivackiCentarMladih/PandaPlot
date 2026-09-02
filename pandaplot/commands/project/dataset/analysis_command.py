@@ -117,10 +117,21 @@ class AnalysisCommand(Command):
 
             self._store_original_state(df)
 
+            # Hand the background task only a copy of the columns it actually
+            # reads (see _execute_analysis) -- never the live DataFrame.
+            # EditCommand/EditBatchCommand mutate dataset.data in place
+            # synchronously on the main thread, and pandas is not thread-safe
+            # for concurrent read+mutate on the same object. x_column and
+            # y_column may be the same column, so dedupe to avoid selecting
+            # a duplicate-named pair (which would turn df[self.x_column]
+            # into a DataFrame instead of a Series inside _execute_analysis).
+            needed_columns = list(dict.fromkeys([self.x_column, self.y_column]))
+            analysis_df = df[needed_columns].copy()
+
             self._is_running = True
             self.task_scheduler.run_task(
                 task=self._compute_analysis_task,
-                task_arguments={"df": df},
+                task_arguments={"df": analysis_df},
                 on_result=self._on_analysis_computed,
                 on_error=self._on_analysis_error,
                 on_finished=self._on_analysis_finished,
