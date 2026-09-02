@@ -184,6 +184,21 @@ class TestAnalysisCommand:
         assert arc.iloc[0] == pytest.approx(0.0)
         assert (arc.diff().dropna() >= 0).all()
 
+    def test_same_column_as_both_x_and_y_still_works(self, ctx):
+        """Regression test: the background task's dataframe slice must dedupe
+        x_column/y_column before selecting, or `df[[x, y]]` (with x == y)
+        collapses to a single-column DataFrame and `_execute_analysis`'s
+        `df[self.x_column]` access returns a DataFrame instead of a Series,
+        breaking the analysis engine call."""
+        app_context, _, dataset, _ = ctx
+        command = AnalysisCommand(app_context, "ds-1", {
+            "analysis_type": "derivative", "x_column": "x", "y_column": "x",
+            "new_column_name": "dxdx",
+        })
+        assert command.execute() is CommandResult.SUCCESS
+        # d(x)/d(x) == 1 everywhere.
+        assert dataset.data["dxdx"].iloc[5] == pytest.approx(1.0)
+
 
 class TestAnalysisCommandGuards:
     def test_execute_fails_fast_when_already_running(self, ctx):
