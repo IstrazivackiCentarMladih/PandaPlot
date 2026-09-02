@@ -399,6 +399,12 @@ class SignalPanel(SidebarPanel):
         if command is None:
             return
 
+        # Tab/column navigation stays enabled while a preview computes in
+        # the background -- capture what was actually requested so a stale
+        # completion (user switched dataset/column mid-flight) can be
+        # discarded instead of overwriting whatever the panel now shows.
+        dispatch_context = (self.current_dataset_id, self.column_combo.currentText())
+
         self.run_btn.setEnabled(False)
         self.add_btn.setEnabled(False)
         self.busy_spinner.start()
@@ -408,6 +414,13 @@ class SignalPanel(SidebarPanel):
             self.busy_spinner.stop()
             self.run_btn.setEnabled(True)
             self._pending_command = None
+
+            current_context = (self.current_dataset_id, self.column_combo.currentText())
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Discarding stale signal analysis preview: dataset/column changed."
+                )
+                return
 
             if error is not None:
                 self.last_result = None
@@ -475,6 +488,13 @@ class SignalPanel(SidebarPanel):
         if command is None:
             return
 
+        # See the matching capture/comment in run_analysis(): the commit
+        # itself already happened for real (the dataset was created in the
+        # project regardless of what the panel shows by the time it
+        # completes), but the *display* of that outcome belongs to whatever
+        # dataset/column is now selected -- skip it if that's changed.
+        dispatch_context = (self.current_dataset_id, self.column_combo.currentText())
+
         self.run_btn.setEnabled(False)
         self.add_btn.setEnabled(False)
         self.busy_spinner.start()
@@ -484,6 +504,13 @@ class SignalPanel(SidebarPanel):
             self.busy_spinner.stop()
             self.run_btn.setEnabled(True)
             self._pending_command = None
+
+            current_context = (self.current_dataset_id, self.column_combo.currentText())
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Not displaying signal analysis commit result: dataset/column changed."
+                )
+                return
 
             if result is CommandResult.SUCCESS:
                 self.last_result = command.result

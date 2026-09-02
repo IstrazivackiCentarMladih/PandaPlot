@@ -82,7 +82,7 @@ class ApplyAnalysisResultCommand(Command):
                 # resamples to a new grid): fill from the top, best effort.
                 df_copy[self.new_column_name] = pd.NA
                 df_copy.iloc[:len(result_series), df_copy.columns.get_loc(
-                    self.new_column_name)] = list(result_series)
+                    self.new_column_name)] = np.asarray(result_series)
                 self.logger.info(
                     "Positional assignment: column '%s' added, shape now: %s",
                     self.new_column_name, df_copy.shape)

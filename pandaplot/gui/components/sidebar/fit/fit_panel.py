@@ -601,7 +601,10 @@ class FitPanel(SidebarPanel):
                 self.data_points_label.setStyleSheet(f"color: {base_fg};")
                 self.data_points_label.setToolTip("")
                 self.data_points_warning_icon.setVisible(False)
-                self.fit_button.setEnabled(self.scipy_available)
+                # Don't re-enable while a fit is already in flight -- this
+                # runs from unrelated range/series-change signals that know
+                # nothing about that state.
+                self.fit_button.setEnabled(self.scipy_available and self._pending_fit_command is None)
                 self.fit_button.setToolTip("")
         else:
             tooltip = "Select a chart series with valid data to perform a fit."
@@ -908,6 +911,14 @@ class FitPanel(SidebarPanel):
 
     def _perform_fit(self):
         """Create and execute a curve fitting command."""
+        # update_data_points_display() (fired by unrelated range/series
+        # changes while a fit is in flight) re-enables fit_button based only
+        # on data validity, not on whether a fit is already running -- so a
+        # click can still reach here mid-flight. Guard on the pending
+        # command itself rather than trusting the button's enabled state.
+        if self._pending_fit_command is not None:
+            return
+
         current_data = self.get_current_data()
 
         if current_data is None:

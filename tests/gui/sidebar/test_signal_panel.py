@@ -115,6 +115,36 @@ class TestRunAnalysisAsyncDispatch:
         assert panel.last_result is None
         assert "Analysis failed" in panel.results_text.toPlainText()
 
+    def test_discards_stale_result_after_dataset_switch(self, app_context):
+        """Regression test (PR review): tab/dataset navigation stays enabled
+        while a preview computes in the background. If the user switches to
+        a different dataset before the result comes back, displaying it
+        would silently overwrite whatever the panel now shows for the new
+        dataset."""
+        panel = _build_panel_with_column(app_context)
+
+        captured = {}
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: captured.update(on_complete=on_complete)
+        panel._build_command = lambda: fake_command
+
+        panel.run_analysis()
+
+        # Simulate switching to a different dataset while the preview is
+        # still "running" in the background.
+        panel.current_dataset_id = "ds-2"
+
+        captured["on_complete"](_fake_result(), None)
+
+        # The stale result must not have been installed over the new context.
+        assert panel.last_result is None
+        assert panel.add_btn.isEnabled() is False
+        assert "FFT" not in panel.results_text.toPlainText()
+        # But the panel isn't stuck busy either -- the preview did finish,
+        # just for a dataset that's no longer selected.
+        assert panel.busy_spinner.is_running is False
+        assert panel.run_btn.isEnabled() is True
+
     def test_failure_path_shows_error_and_stops_spinner(self, app_context):
         panel = _build_panel_with_column(app_context)
 
@@ -190,6 +220,24 @@ class TestAddResultsToProjectAsyncDispatch:
         # real behavior of only re-enabling the button to let the user retry
         # after a failure.
         assert panel.add_btn.isEnabled() is False
+
+    def test_discards_stale_result_display_after_dataset_switch(self, app_context):
+        """Regression test (PR review): the same stale-completion problem as
+        run_analysis()'s -- the commit itself already happened for real
+        (the dataset was created regardless), but *displaying* that outcome
+        must not overwrite whatever the panel now shows if the user
+        switched datasets while the commit was in flight."""
+        panel, fake_command, executed = self._ready(app_context)
+
+        panel.add_results_to_project()
+        panel.current_dataset_id = "ds-2"
+
+        fake_command.on_complete(CommandResult.SUCCESS)
+
+        assert panel.last_result is None
+        assert "added to project" not in panel.results_text.toPlainText().lower()
+        assert panel.busy_spinner.is_running is False
+        assert panel.run_btn.isEnabled() is True
 
     def test_failure_path_reenables_add_button_and_stops_spinner(self, app_context):
         panel, fake_command, executed = self._ready(app_context)

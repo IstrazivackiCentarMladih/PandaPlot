@@ -1106,6 +1106,46 @@ def test_perform_fit_success_path_populates_results_and_stops_spinner(app_contex
     assert "Fit Type: Linear" in panel.results_text.toPlainText()
 
 
+def test_perform_fit_is_a_no_op_while_a_fit_is_already_pending(app_context):
+    """Regression test (PR review): update_data_points_display() (fired by
+    unrelated range/series-change signals) re-enables fit_button based only
+    on data validity, not on whether a fit is already running -- so a click
+    reaching _perform_fit() must still be rejected while a fit is pending,
+    even if the button looked clickable."""
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    first_command = executed["command"]
+    assert panel._pending_fit_command is first_command
+
+    # Simulate the button having been (incorrectly) re-enabled by an
+    # unrelated handler while the first fit is still in flight.
+    panel.fit_button.setEnabled(True)
+
+    second_attempted = {}
+
+    def _capture_second(command):
+        second_attempted["command"] = command
+        return True
+
+    panel.app_context.get_command_executor.return_value.execute_command = _capture_second
+    panel._perform_fit()
+
+    assert "command" not in second_attempted  # no second dispatch happened
+    assert panel._pending_fit_command is first_command  # first reference untouched
+
+
+def test_update_data_points_display_keeps_fit_button_disabled_while_pending(app_context):
+    panel, executed = _build_panel_ready_to_fit(app_context)
+
+    panel._perform_fit()
+    assert panel._pending_fit_command is not None
+
+    panel.update_data_points_display()
+
+    assert panel.fit_button.isEnabled() is False
+
+
 def test_perform_fit_disables_apply_while_a_refit_is_in_flight(app_context):
     """Regression test (PR review): Apply must not stay enabled -- bound to
     the *previous* fit_results -- while a new fit is still computing in the

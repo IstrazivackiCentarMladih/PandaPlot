@@ -324,6 +324,33 @@ class TestApplyAnalysisResultCommand:
 
         assert command.original_data is None
 
+    def test_positional_assignment_does_not_materialize_a_python_list(self, ctx, monkeypatch):
+        """Regression test (PR review): the positional-assignment branch
+        (result doesn't align to existing rows, e.g. interpolation resamples
+        to a new grid) used to coerce the result through `list(...)` before
+        assignment -- slow and memory-heavy for a large result. It must
+        assign directly from the array/Series instead."""
+        app_context, _, dataset, _ = ctx
+        result = np.array([100.0, 200.0, 300.0])  # shorter than the dataset's 11 rows
+
+        def _forbid_listing_the_result(arg):
+            assert arg is not result, "must not materialize the result through list(...)"
+            return list(arg)
+
+        monkeypatch.setattr(
+            "pandaplot.commands.project.dataset.apply_analysis_result_command.list",
+            _forbid_listing_the_result,
+            raising=False,
+        )
+
+        command = ApplyAnalysisResultCommand(
+            app_context, "ds-1", "resampled", result, False, None,
+        )
+        assert command.execute() is CommandResult.SUCCESS
+
+        col = dataset.data["resampled"]
+        assert list(col.iloc[:3]) == [100.0, 200.0, 300.0]
+
     def test_execute_fails_when_dataset_missing(self):
         app_context = Mock(spec=AppContext)
         app_state = Mock(spec=AppState)
