@@ -1,5 +1,6 @@
 """Tests for ConvertSeriesToFitCommand execute/undo/redo."""
 
+import json
 import logging
 from unittest.mock import Mock
 
@@ -176,6 +177,81 @@ def test_redo_converts_again(app_context_with_chart):
 
     assert len(chart.data_series) == 0
     assert len(chart.fit_data) == 1
+
+
+def test_datetime_x_column_is_coerced_to_numeric_and_json_safe(app_context_with_chart):
+    """Regression test for final-review Fix 1 (#298): a non-numeric (e.g.
+    datetime64) source column must not be snapshotted as-is into
+    FitData.x_data/y_data. Chart.to_dict() calls .tolist() on those
+    arrays and the project save path json.dumps()s the result with no
+    custom encoder, so a raw datetime64 dtype would make the project
+    fail to save -- and since ProjectDataManager.save() truncates the
+    zip before writing, a failed save can destroy the previously-saved
+    project file.
+    """
+    app_context, chart = app_context_with_chart
+
+    project = app_context.get_app_state.return_value.current_project
+    datetime_dataset = Dataset(
+        id="ds-datetime",
+        name="DS-Datetime",
+        data=pd.DataFrame({
+            "x": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-03"]),
+            "y": [10.0, 20.0, 30.0],
+        }),
+    )
+    original_find_item = project.find_item.side_effect
+
+    def _find_item(item_id):
+        if item_id == datetime_dataset.id:
+            return datetime_dataset
+        return original_find_item(item_id)
+
+    project.find_item.side_effect = _find_item
+
+    datetime_series = chart.add_data_series(
+        datetime_dataset.id,
+        x_column_id=datetime_dataset.column_id("x"),
+        y_column_id=datetime_dataset.column_id("y"),
+        label="Datetime Series",
+    )
+    series_index = chart.data_series.index(datetime_series)
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=series_index)
+
+    assert command.execute() is CommandResult.SUCCESS
+
+    fit = next(f for f in chart.fit_data if f.label == "Datetime Series")
+    assert np.issubdtype(fit.x_data.dtype, np.number)
+    assert np.issubdtype(fit.y_data.dtype, np.number)
+
+    # Must round-trip through Chart.to_dict() -> json.dumps() without
+    # raising (this is what the project save path does).
+    json.dumps(chart.to_dict())
+
+
+def test_empty_series_label_falls_back_to_custom_fit(app_context_with_chart, dataset):
+    """Regression test for final-review Fix 3 (#298): an empty (but
+    normal/supported) series label must not produce an unlabeled fit --
+    fit cards render f"\U0001f527 {fit.label}" with no fallback, unlike
+    series cards.
+    """
+    app_context, chart = app_context_with_chart
+
+    unlabeled_series = chart.add_data_series(
+        dataset.id,
+        x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"),
+        label="",
+    )
+    series_index = chart.data_series.index(unlabeled_series)
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=series_index)
+
+    assert command.execute() is CommandResult.SUCCESS
+
+    fit = chart.fit_data[-1]
+    assert fit.label == "Custom Fit"
 
 
 def test_cleanup_releases_bookkeeping(app_context_with_chart):

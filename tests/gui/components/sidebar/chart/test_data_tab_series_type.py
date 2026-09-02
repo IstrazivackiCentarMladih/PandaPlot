@@ -1,5 +1,6 @@
 """Tests for DataTab's per-series Series Type selector (Phase 4c)."""
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -352,6 +353,47 @@ def test_converting_to_fit_is_undoable():
 
     assert len(chart.data_series) == 1
     assert len(chart.fit_data) == 0
+
+
+def test_selecting_fit_on_a_failed_conversion_reloads_the_real_series_type():
+    """Regression test for final-review Fix 2 (#298): if the
+    ConvertSeriesToFitCommand fails (e.g. its source dataset no longer
+    exists), the series at that index is NOT converted -- but without
+    reloading the controls, the Series Type combo would still show "Fit"
+    even though the series is still really a Line series, and the user
+    couldn't even retry (setCurrentIndex on an already-current index
+    doesn't emit currentIndexChanged)."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    # Point the series at a dataset_id that doesn't exist in the project,
+    # so ConvertSeriesToFitCommand's dataset lookup fails and it returns
+    # CommandResult.FAILURE.
+    chart.add_data_series(
+        "missing-dataset-id",
+        x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        series_type=SeriesType.LINE,
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    # The failed conversion reports the error via a real QMessageBox.critical
+    # (UIController.show_error_message), which is a blocking modal dialog
+    # -- patch the module-level QMessageBox reference (not an instance
+    # method -- Shiboken bypasses those, see test_welcome_tab.py's note) so
+    # the test doesn't hang waiting for a click that will never come.
+    with patch("pandaplot.gui.controllers.ui_controller.QMessageBox"):
+        tab.series_type_combo.setCurrentIndex(fit_index)
+
+    # The series was NOT converted: still a DataSeries, not turned into a fit.
+    assert len(chart.data_series) == 1
+    assert len(chart.fit_data) == 0
+    # The combo must reflect the series' real, unchanged type -- not left
+    # stuck on the "__convert_to_fit__" sentinel.
+    assert tab.series_type_combo.currentData() == SeriesType.LINE
 
 
 def test_confidence_column_combos_disabled_while_editing_a_fit():

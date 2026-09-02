@@ -4,6 +4,7 @@ import copy
 from typing import Optional, override
 
 import numpy as np
+import pandas as pd
 
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
@@ -71,7 +72,17 @@ class ConvertSeriesToFitCommand(Command):
         name = resolve_series_column(dataset, column_id, "")
         if not name or dataset.data is None or name not in dataset.data.columns:
             return None
-        return dataset.data[name].to_numpy(copy=True)
+        # Coerce to a JSON-safe numeric dtype: fit data is treated purely
+        # as numeric x/y arrays for curve fitting, and Chart.to_dict()
+        # later calls .tolist() on it for json.dumps() during project
+        # save with no custom encoder. A raw .to_numpy() would snapshot
+        # whatever dtype the source column has (e.g. datetime64), which
+        # is not JSON-serializable and would fail the save -- and since
+        # ProjectDataManager.save() truncates the zip before writing, a
+        # failed save can destroy the previously-saved project file.
+        # errors="coerce" turns anything that can't convert into NaN
+        # rather than raising.
+        return pd.to_numeric(dataset.data[name], errors="coerce").to_numpy(copy=True)
 
     def _build_fit(self, series: DataSeries) -> Optional[FitData]:
         dataset = self._find_dataset(series.dataset_id)
@@ -87,7 +98,7 @@ class ConvertSeriesToFitCommand(Command):
             fit_type="Custom",
             x_data=x_data,
             y_data=y_data,
-            label=series.label,
+            label=series.label or "Custom Fit",
             confidence_lower=self._column_array(dataset, self.confidence_lower_column_id),
             confidence_upper=self._column_array(dataset, self.confidence_upper_column_id),
             style=FitStyle(),

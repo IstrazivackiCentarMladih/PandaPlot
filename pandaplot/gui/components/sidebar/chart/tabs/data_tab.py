@@ -926,6 +926,16 @@ class DataTab(QWidget):
             confidence_upper_column_id=self.confidence_upper_column_combo.currentData() or "",
         )
         if not self.command_executor.execute_command(command):
+            # Conversion failed (e.g. source dataset was deleted or a
+            # column couldn't be resolved): the series at `index` is
+            # still a real, unconverted DataSeries. Reload it into the
+            # controls so the Series Type combo reflects its actual,
+            # unchanged type instead of being left stuck on "Fit" --
+            # setCurrentIndex on an already-current index wouldn't emit
+            # currentIndexChanged, so without this the user couldn't even
+            # retry by re-selecting "Fit".
+            series = self.current_chart.data_series[index]
+            self._load_series_into_controls(series)
             return
 
         new_index = len(self.current_chart.data_series) + len(self.current_chart.fit_data) - 1
