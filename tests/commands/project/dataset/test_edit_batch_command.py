@@ -194,10 +194,11 @@ def test_redo_returns_failure_when_called_before_execute(mock_app_context, caplo
 
 def test_redo_returns_failure_when_execute_failed_after_assigning_dataset(mock_app_context, sample_project, caplog):
     """execute() assigns self.dataset before validating the new_data shape,
-    so a validation failure (mismatched row lengths) leaves self.dataset set
-    without old_data/new_data ever having been consistently applied. redo()
-    must not treat that as a valid prior execution -- otherwise it silently
-    reapplies a malformed, partial batch."""
+    so a validation failure (mismatched row lengths) would leave self.dataset
+    set without old_data/new_data ever having been consistently applied,
+    unless execute() resets it on that failure path (it does). redo() must
+    not treat this as a valid prior execution -- otherwise it would silently
+    reapply a malformed, partial batch."""
     mock_app_context.app_state.has_project = True
     mock_app_context.app_state.current_project = sample_project
     dataset = Dataset(id="ds-1", name="Test", data=pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
@@ -211,6 +212,22 @@ def test_redo_returns_failure_when_execute_failed_after_assigning_dataset(mock_a
     assert "ds-1" in caplog.text
     assert dataset.data["a"].tolist() == [1, 2]
     assert dataset.data["b"].tolist() == [3, 4]
+
+
+def test_redo_does_not_replay_expansion_commands_when_dataset_is_unset(mock_app_context):
+    """redo() must not blindly replay recorded expansion sub-commands before
+    confirming this command actually executed successfully. Otherwise a
+    stray redo() call after a failed execute() (e.g. row expansion
+    succeeded but column expansion then failed, leaving dataset cleared but
+    executed_commands non-empty) would silently re-apply the recorded
+    row/column additions a second time before finally reporting FAILURE."""
+    command = EditBatchCommand(mock_app_context, "ds-1", 0, 0, [[1]])
+    sub_command = Mock()
+    command.executed_commands = [sub_command]
+    command.dataset = None  # as if execute() failed and cleared it
+
+    assert command.redo() is CommandResult.FAILURE
+    sub_command.redo.assert_not_called()
 
 
 def test_cleanup_isolates_a_raising_sub_command():

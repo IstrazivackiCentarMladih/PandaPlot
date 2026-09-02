@@ -73,6 +73,8 @@ class EditCommand(Command):
                     "Edit Cell",
                     "Cannot edit cell in dataset without structure."
                 )
+                self.dataset = None
+                self.project = None
                 return CommandResult.FAILURE
             
             self.dataset.data.iloc[self.index[0], self.index[1]] = self.new_value
