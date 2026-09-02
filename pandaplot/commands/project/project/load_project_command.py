@@ -159,6 +159,24 @@ class LoadProjectCommand(Command):
                     # Show success message
                     self.ui_controller.show_info_message("Project Loaded", f"Project '{project.name}' loaded successfully from:\n{file_path}")
 
+                    # Items that failed to deserialize are silently dropped from the
+                    # hierarchy by ProjectDataManager.load() -- warn instead of letting
+                    # the project just open with fewer items than its manifest lists.
+                    failed_item_ids = getattr(project, "failed_item_ids", [])
+                    if failed_item_ids:
+                        self.logger.warning(
+                            "Project '%s' loaded with %d item(s) missing: %s",
+                            project.name, len(failed_item_ids), failed_item_ids,
+                        )
+                        self.ui_controller.show_warning_message(
+                            "Some Items Failed to Load",
+                            f"Project '{project.name}' loaded, but {len(failed_item_ids)} "
+                            "item(s) could not be read and are missing from the project:\n\n"
+                            + "\n".join(failed_item_ids)
+                            + "\n\nSee the log for details. Saving the project now will "
+                            "remove these items permanently.",
+                        )
+
                     if self.on_loaded:
                         try:
                             self.on_loaded(project)
