@@ -526,6 +526,35 @@ def test_selecting_fit_on_a_failed_conversion_reloads_the_real_series_type():
     assert tab.series_type_combo.currentData() == SeriesType.LINE
 
 
+def test_selecting_fit_on_a_failed_conversion_does_not_crash_when_theres_no_series_to_reload():
+    """Regression test: the reload-on-failure step (see test above) used
+    to unconditionally index self.current_chart.data_series[index] --
+    safe for the "column couldn't be resolved" failure mode (data_series
+    is untouched), but ConvertSeriesToFitCommand can also fail before
+    ever validating that index (e.g. chart not found, or series_index
+    itself out of range), in which case there may be no series at that
+    index to reload. Simulated here by forcing the command to fail
+    directly and calling the conversion method with an index that's out
+    of range for data_series."""
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    with patch.object(tab.command_executor, "execute_command", return_value=False):
+        # No exception must be raised even though `index` is out of range
+        # for data_series -- this exercises the same failure branch as a
+        # "chart not found" or "series_index out of range" command
+        # failure, which the reload step must guard against.
+        tab._convert_selected_series_to_fit(5)
+
+    assert len(chart.data_series) == 1
+
+
 def test_confidence_column_combos_disabled_while_editing_a_fit():
     app_context, project, dataset = _app_context_with_project()
     chart = Chart(name="Line Chart", chart_type="line")

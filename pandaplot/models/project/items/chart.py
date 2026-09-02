@@ -729,14 +729,24 @@ def resolve_numeric_column(dataset: Any, column_id: str) -> Optional[np.ndarray]
     project's zip before writing, a failed save can destroy the
     previously-saved project file). Returns None if the column can't be
     resolved at all (missing dataset, unknown id, or the id resolves to
-    a name no longer present in the DataFrame).
+    a name no longer present in the DataFrame) -- also None when every
+    value coerces to NaN (e.g. a genuinely non-numeric string/categorical
+    column): a column that resolves but has no usable numeric data at
+    all is treated the same as an unresolvable one, so callers don't
+    silently build/update a fit whose curve is entirely NaN with no
+    feedback that anything went wrong. A column with only SOME
+    unconvertible values still returns normally (NaN mixed with real
+    data), only a wholly-unusable column is rejected.
     """
     if dataset is None or not column_id:
         return None
     name = resolve_series_column(dataset, column_id, "")
     if not name or dataset.data is None or name not in dataset.data.columns:
         return None
-    return pd.to_numeric(dataset.data[name], errors="coerce").to_numpy(copy=True)
+    array = pd.to_numeric(dataset.data[name], errors="coerce").to_numpy(copy=True)
+    if array.size > 0 and np.issubdtype(array.dtype, np.floating) and np.all(np.isnan(array)):
+        return None
+    return array
 
 
 def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:

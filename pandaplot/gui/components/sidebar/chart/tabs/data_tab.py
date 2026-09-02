@@ -971,9 +971,15 @@ class DataTab(QWidget):
             # unchanged type instead of being left stuck on "Fit" --
             # setCurrentIndex on an already-current index wouldn't emit
             # currentIndexChanged, so without this the user couldn't even
-            # retry by re-selecting "Fit".
-            series = self.current_chart.data_series[index]
-            self._load_series_into_controls(series)
+            # retry by re-selecting "Fit". Guarded: ConvertSeriesToFitCommand
+            # can also fail before ever touching data_series (chart not
+            # found, or `index` itself out of range) -- there's no series
+            # to reload in those cases, so leave the controls as-is rather
+            # than risk indexing a chart/list that isn't in the expected
+            # state.
+            if self.current_chart is not None and 0 <= index < len(self.current_chart.data_series):
+                series = self.current_chart.data_series[index]
+                self._load_series_into_controls(series)
             return
 
         new_index = len(self.current_chart.data_series) + len(self.current_chart.fit_data) - 1

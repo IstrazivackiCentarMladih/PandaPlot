@@ -233,6 +233,89 @@ def test_datetime_x_column_is_coerced_to_numeric_and_json_safe(app_context_with_
     json.dumps(chart.to_dict())
 
 
+def test_wholly_non_numeric_x_column_fails_instead_of_producing_an_all_nan_fit(app_context_with_chart):
+    """A source column that's genuinely non-numeric (every value fails to
+    coerce) must reject the conversion with the existing "could not read
+    source data" error, not silently succeed with an all-NaN fit curve
+    that renders nothing and gives the user no indication anything went
+    wrong -- recoverable only via undo."""
+    app_context, chart = app_context_with_chart
+
+    project = app_context.get_app_state.return_value.current_project
+    text_dataset = Dataset(
+        id="ds-text",
+        name="DS-Text",
+        data=pd.DataFrame({
+            "x": ["alpha", "beta", "gamma"],
+            "y": [10.0, 20.0, 30.0],
+        }),
+    )
+    original_find_item = project.find_item.side_effect
+
+    def _find_item(item_id):
+        if item_id == text_dataset.id:
+            return text_dataset
+        return original_find_item(item_id)
+
+    project.find_item.side_effect = _find_item
+
+    text_series = chart.add_data_series(
+        text_dataset.id,
+        x_column_id=text_dataset.column_id("x"),
+        y_column_id=text_dataset.column_id("y"),
+        label="Text Series",
+    )
+    series_index = chart.data_series.index(text_series)
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=series_index)
+
+    assert command.execute() is CommandResult.FAILURE
+    assert not any(f.label == "Text Series" for f in chart.fit_data)
+    assert any(s.label == "Text Series" for s in chart.data_series)
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+
+def test_a_column_with_some_unconvertible_values_still_succeeds(app_context_with_chart):
+    """Only a WHOLLY unusable column is rejected -- a column with some
+    real numeric values alongside a few unconvertible ones still
+    converts fine (NaN mixed with real data is normal/expected)."""
+    app_context, chart = app_context_with_chart
+
+    project = app_context.get_app_state.return_value.current_project
+    mixed_dataset = Dataset(
+        id="ds-mixed",
+        name="DS-Mixed",
+        data=pd.DataFrame({
+            "x": ["1.0", "not-a-number", "3.0"],
+            "y": [10.0, 20.0, 30.0],
+        }),
+    )
+    original_find_item = project.find_item.side_effect
+
+    def _find_item(item_id):
+        if item_id == mixed_dataset.id:
+            return mixed_dataset
+        return original_find_item(item_id)
+
+    project.find_item.side_effect = _find_item
+
+    mixed_series = chart.add_data_series(
+        mixed_dataset.id,
+        x_column_id=mixed_dataset.column_id("x"),
+        y_column_id=mixed_dataset.column_id("y"),
+        label="Mixed Series",
+    )
+    series_index = chart.data_series.index(mixed_series)
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=series_index)
+
+    assert command.execute() is CommandResult.SUCCESS
+    fit = next(f for f in chart.fit_data if f.label == "Mixed Series")
+    assert fit.x_data[0] == 1.0
+    assert np.isnan(fit.x_data[1])
+    assert fit.x_data[2] == 3.0
+
+
 def test_empty_series_label_falls_back_to_custom_fit(app_context_with_chart, dataset):
     """Regression test for final-review Fix 3 (#298): an empty (but
     normal/supported) series label must not produce an unlabeled fit --
