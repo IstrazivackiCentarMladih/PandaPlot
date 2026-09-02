@@ -48,7 +48,9 @@ def test_series_type_combo_offers_only_the_chart_types_allowed_series_types():
     tab.load(chart)
 
     offered = {tab.series_type_combo.itemData(i) for i in range(tab.series_type_combo.count())}
-    assert offered == {SeriesType.BAR, SeriesType.SCATTER}
+    # "Fit" is a conversion action offered regardless of allowed_series_types
+    # (see test_selecting_fit_converts_the_series_to_fit_data below).
+    assert offered == {SeriesType.BAR, SeriesType.SCATTER, "__convert_to_fit__"}
 
 
 def test_series_type_combo_selects_the_current_series_own_type():
@@ -256,3 +258,115 @@ def test_error_bar_fields_are_grouped_by_axis_not_by_sign():
     y_minus_row = _row_of(tab.y_error_minus_column_combo)
 
     assert x_plus_row < x_minus_row < y_plus_row < y_minus_row
+
+
+def test_selecting_fit_converts_the_series_to_fit_data():
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(
+        dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"),
+        label="My Series",
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    assert len(chart.data_series) == 0
+    assert len(chart.fit_data) == 1
+    fit = chart.fit_data[0]
+    assert fit.fit_type == "Custom"
+    assert fit.label == "My Series"
+    assert fit.source_dataset_id == dataset.id
+
+
+def test_selecting_fit_snapshots_the_chosen_confidence_columns():
+    app_context, project, dataset = _app_context_with_project()
+    # dataset from _app_context_with_project has columns x, y, u, v -- add
+    # lower/upper columns for this test.
+    dataset.data["y_lower"] = dataset.data["y"] - 0.5
+    dataset.data["y_upper"] = dataset.data["y"] + 0.5
+    dataset._sync_column_ids()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    lower_index = tab.confidence_lower_column_combo.findData(dataset.column_id("y_lower"))
+    tab.confidence_lower_column_combo.setCurrentIndex(lower_index)
+    upper_index = tab.confidence_upper_column_combo.findData(dataset.column_id("y_upper"))
+    tab.confidence_upper_column_combo.setCurrentIndex(upper_index)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    fit = chart.fit_data[0]
+    import numpy as np
+    np.testing.assert_array_equal(fit.confidence_lower, dataset.data["y_lower"].to_numpy())
+    np.testing.assert_array_equal(fit.confidence_upper, dataset.data["y_upper"].to_numpy())
+
+
+def test_selecting_fit_selects_the_new_fit_card():
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+    tab._expand_series(1)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+
+    # One series remains (index 0), the new fit lands right after it.
+    assert tab.selected_index == 1
+    assert len(chart.data_series) == 1
+    assert len(chart.fit_data) == 1
+
+
+def test_converting_to_fit_is_undoable():
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_data_series(dataset.id, x_column_id=dataset.column_id("x"), y_column_id=dataset.column_id("y"))
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    fit_index = tab.series_type_combo.findData("__convert_to_fit__")
+    tab.series_type_combo.setCurrentIndex(fit_index)
+    assert len(chart.fit_data) == 1
+
+    app_context.command_executor.undo()
+
+    assert len(chart.data_series) == 1
+    assert len(chart.fit_data) == 0
+
+
+def test_confidence_column_combos_disabled_while_editing_a_fit():
+    app_context, project, dataset = _app_context_with_project()
+    chart = Chart(name="Line Chart", chart_type="line")
+    chart.add_fit_data(
+        dataset.id, fit_type="Custom",
+        x_data=dataset.data["x"].to_numpy(), y_data=dataset.data["y"].to_numpy(),
+        label="A Fit",
+    )
+    project.add_item(chart)
+
+    tab = DataTab(app_context=app_context)
+    tab.set_project(project)
+    tab.load(chart)
+
+    assert tab.confidence_lower_column_combo.isEnabled() is False
+    assert tab.confidence_upper_column_combo.isEnabled() is False

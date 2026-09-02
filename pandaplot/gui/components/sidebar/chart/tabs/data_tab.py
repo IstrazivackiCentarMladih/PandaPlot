@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.commands.project.chart import (
     AddSeriesCommand,
+    ConvertSeriesToFitCommand,
     RemoveFitDataCommand,
     RemoveSeriesCommand,
     ReorderSeriesCommand,
@@ -37,6 +38,13 @@ from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import DataSeries, YAxis
 from pandaplot.services.theme.theme_manager import ThemeManager
 from pandaplot.utils.item_display_options import dataset_display_options
+
+# itemData for the Series Type combo's non-retype "Fit" entry -- selecting
+# it doesn't retype the series in place like a real SeriesType; it converts
+# the series into a FitData entry instead (see
+# DataTab._convert_selected_series_to_fit and #298). Kept distinct from any
+# SeriesType member so `currentData()` can tell the two apart.
+_CONVERT_TO_FIT = "__convert_to_fit__"
 
 
 class DataTab(QWidget):
@@ -223,6 +231,22 @@ class DataTab(QWidget):
         series_config_layout.addWidget(QLabel("Series Type:"), 14, 0)
         self.series_type_combo = QComboBox()
         series_config_layout.addWidget(self.series_type_combo, 14, 1)
+
+        # Only meaningful right before converting a series to a fit (see
+        # _convert_selected_series_to_fit): read at that moment to snapshot
+        # optional confidence-band columns into the new FitData. Not
+        # persisted on DataSeries itself -- there is nothing to restore
+        # from the model on reload, so these simply reset to "None" each
+        # time _load_series_into_controls repopulates them.
+        self.confidence_lower_column_label = QLabel("Confidence Lower Column (optional):")
+        series_config_layout.addWidget(self.confidence_lower_column_label, 15, 0)
+        self.confidence_lower_column_combo = QComboBox()
+        series_config_layout.addWidget(self.confidence_lower_column_combo, 15, 1)
+
+        self.confidence_upper_column_label = QLabel("Confidence Upper Column (optional):")
+        series_config_layout.addWidget(self.confidence_upper_column_label, 16, 0)
+        self.confidence_upper_column_combo = QComboBox()
+        series_config_layout.addWidget(self.confidence_upper_column_combo, 16, 1)
 
         for widget in (
             self.z_column_label, self.z_column_combo,
@@ -858,7 +882,14 @@ class DataTab(QWidget):
         newly chosen value (Chart.retype_series), then fully reload it
         into the controls -- this naturally refreshes vector-field
         visibility and the U/V/magnitude combos for the new type, the
-        same as selecting a different series does."""
+        same as selecting a different series does.
+
+        Selecting the "Fit" sentinel entry is not a retype: it converts
+        the series into a FitData entry instead (see
+        _convert_selected_series_to_fit) and returns early, since the
+        series at `current_row` no longer exists in `data_series` once
+        that conversion runs.
+        """
         if self._updating_controls or not self.current_chart:
             return
         current_row = self._expanded_series_index
@@ -867,11 +898,40 @@ class DataTab(QWidget):
         new_type = self.series_type_combo.currentData()
         if new_type is None:
             return
+        if new_type == _CONVERT_TO_FIT:
+            self._convert_selected_series_to_fit(current_row)
+            return
         self.current_chart.retype_series(current_row, new_type)
         series = self.current_chart.data_series[current_row]
         self._load_series_into_controls(series)
         self.seriesSelected.emit("series", series)
         self.dirtyOnly.emit()
+
+    def _convert_selected_series_to_fit(self, index: int):
+        """Convert the data series at `index` into a FitData entry via
+        ConvertSeriesToFitCommand (#298), then select the newly created
+        fit at its new combined index.
+
+        The new fit is always appended to the end of `fit_data`, and
+        converting one entry moves it from `data_series` to `fit_data`
+        without changing the total item count -- so its new combined
+        index (data-series indices first, then fit-data indices, per this
+        tab's existing convention) is always the last one.
+        """
+        command = ConvertSeriesToFitCommand(
+            self.app_context,
+            chart_id=self.current_chart.id,
+            series_index=index,
+            confidence_lower_column_id=self.confidence_lower_column_combo.currentData() or "",
+            confidence_upper_column_id=self.confidence_upper_column_combo.currentData() or "",
+        )
+        if not self.command_executor.execute_command(command):
+            return
+
+        new_index = len(self.current_chart.data_series) + len(self.current_chart.fit_data) - 1
+        self._expanded_series_index = new_index
+        self._expanded_card_indices.add(new_index)
+        self._rebuild_series_cards()
 
     def _on_error_symmetry_toggled(self):
         """Handle the Asymmetric error-bars checkbox: persist and refresh
@@ -945,6 +1005,7 @@ class DataTab(QWidget):
             # don't linger.
             self._populate_column_combos(series.dataset_id)
             self._populate_error_column_combos(series.dataset_id)
+            self._populate_confidence_column_combos(series.dataset_id)
             self._populate_vector_column_combos(series.dataset_id)
             self._populate_z_column_combo(series.dataset_id)
             self._update_vector_field_visibility()
@@ -1021,6 +1082,8 @@ class DataTab(QWidget):
             self.v_column_combo.setEnabled(False)
             self.magnitude_column_combo.setEnabled(False)
             self.z_column_combo.setEnabled(False)
+            self.confidence_lower_column_combo.setEnabled(False)
+            self.confidence_upper_column_combo.setEnabled(False)
             self.series_type_combo.setEnabled(False)
             self._update_vector_field_visibility()
             self._update_z_column_field_visibility()
@@ -1099,6 +1162,8 @@ class DataTab(QWidget):
         self.v_column_combo.setEnabled(True)
         self.magnitude_column_combo.setEnabled(True)
         self.z_column_combo.setEnabled(True)
+        self.confidence_lower_column_combo.setEnabled(True)
+        self.confidence_upper_column_combo.setEnabled(True)
         self.series_type_combo.setEnabled(True)
         self.error_asymmetric_check.setEnabled(True)
 
@@ -1227,6 +1292,34 @@ class DataTab(QWidget):
             for combo in combos:
                 combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
+    def _populate_confidence_column_combos(self, dataset_id):
+        """Fill the confidence lower/upper column combos with a leading
+        "None" entry followed by the given dataset's columns -- mirrors
+        _populate_error_column_combos' item-data convention (column id, or
+        "" for "None"). Unlike the error columns, nothing here is written
+        back to the model outside of the one-shot Fit conversion (see
+        _convert_selected_series_to_fit), so no live-edit signal is wired
+        to these combos.
+        """
+        combos = (self.confidence_lower_column_combo, self.confidence_upper_column_combo)
+        for combo in combos:
+            combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+        try:
+            for combo in combos:
+                combo.clear()
+                combo.addItem("None", "")
+
+            if dataset_id and self.current_project:
+                dataset = self.current_project.find_item(dataset_id)
+                if isinstance(dataset, Dataset) and dataset.data is not None:
+                    for column in dataset.data.columns:
+                        column_id = dataset.column_id(column) or ""
+                        for combo in combos:
+                            combo.addItem(column, column_id)
+        finally:
+            for combo in combos:
+                combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
     def _populate_vector_column_combos(self, dataset_id):
         """Fill the U/V/magnitude column combos with the given dataset's
         columns, each preceded by a leading "None" entry (itemData "") --
@@ -1308,6 +1401,11 @@ class DataTab(QWidget):
             spec = CHART_TYPE_SPECS[self.current_chart.chart_type]
             for series_type in sorted(spec.allowed_series_types, key=lambda t: t.value):
                 self.series_type_combo.addItem(series_type.value.title(), series_type)
+            # "Fit" is a conversion action, not a real SeriesType -- offered
+            # regardless of the chart's own allowed_series_types, since fit
+            # entries have always been chart-type-agnostic (#298). Appended
+            # last so it never affects the default-index lookup below.
+            self.series_type_combo.addItem("Fit", _CONVERT_TO_FIT)
             default_index = self.series_type_combo.findData(spec.default_series_type)
             self.series_type_combo.setCurrentIndex(default_index if default_index >= 0 else 0)
         finally:
@@ -1372,6 +1470,7 @@ class DataTab(QWidget):
         dataset_id = self.dataset_combo.currentData()
         columns = self._populate_column_combos(dataset_id)
         self._populate_error_column_combos(dataset_id)
+        self._populate_confidence_column_combos(dataset_id)
         self._populate_vector_column_combos(dataset_id)
         self._populate_z_column_combo(dataset_id)
 
