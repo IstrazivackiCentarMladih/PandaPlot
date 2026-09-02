@@ -1,0 +1,168 @@
+"""Tests for ConvertSeriesToFitCommand execute/undo/redo."""
+
+import logging
+from unittest.mock import Mock
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from pandaplot.commands.base_command import CommandResult
+from pandaplot.commands.project.chart.convert_series_to_fit_command import (
+    ConvertSeriesToFitCommand,
+)
+from pandaplot.models.chart.fit_style import FitStyle
+from pandaplot.models.project.items import Dataset
+from pandaplot.models.project.items.chart import Chart, DataSeries
+
+
+@pytest.fixture
+def dataset():
+    df = pd.DataFrame({
+        "x": [1.0, 2.0, 3.0],
+        "y": [10.0, 20.0, 30.0],
+        "y_lower": [9.0, 19.0, 29.0],
+        "y_upper": [11.0, 21.0, 31.0],
+    })
+    return Dataset(id="ds-1", name="DS", data=df)
+
+
+@pytest.fixture
+def chart_with_series(dataset):
+    chart = Chart(id="chart-1", name="C")
+    series = chart.add_data_series(
+        dataset.id,
+        x_column_id=dataset.column_id("x"),
+        y_column_id=dataset.column_id("y"),
+        label="My Series",
+    )
+    return chart, series
+
+
+@pytest.fixture
+def app_context_with_chart(chart_with_series, dataset):
+    chart, _ = chart_with_series
+    project = Mock()
+
+    def _find_item(item_id):
+        if item_id == chart.id:
+            return chart
+        if item_id == dataset.id:
+            return dataset
+        return None
+
+    project.find_item.side_effect = _find_item
+
+    app_state = Mock()
+    app_state.has_project = True
+    app_state.current_project = project
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.event_bus = Mock()
+    return app_context, chart
+
+
+def test_execute_moves_series_to_fit_data(app_context_with_chart):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=0)
+
+    assert command.execute() is CommandResult.SUCCESS
+    assert len(chart.data_series) == 0
+    assert len(chart.fit_data) == 1
+
+    fit = chart.fit_data[0]
+    assert fit.source_dataset_id == "ds-1"
+    assert fit.fit_type == "Custom"
+    assert fit.label == "My Series"
+    np.testing.assert_array_equal(fit.x_data, np.array([1.0, 2.0, 3.0]))
+    np.testing.assert_array_equal(fit.y_data, np.array([10.0, 20.0, 30.0]))
+    assert fit.confidence_lower is None
+    assert fit.confidence_upper is None
+    assert isinstance(fit.style, FitStyle)
+
+
+def test_execute_snapshots_confidence_columns_when_given(app_context_with_chart, dataset):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(
+        app_context, chart_id="chart-1", series_index=0,
+        confidence_lower_column_id=dataset.column_id("y_lower"),
+        confidence_upper_column_id=dataset.column_id("y_upper"),
+    )
+
+    assert command.execute() is CommandResult.SUCCESS
+
+    fit = chart.fit_data[0]
+    np.testing.assert_array_equal(fit.confidence_lower, np.array([9.0, 19.0, 29.0]))
+    np.testing.assert_array_equal(fit.confidence_upper, np.array([11.0, 21.0, 31.0]))
+
+
+def test_execute_out_of_range_returns_failure(app_context_with_chart, caplog):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=5)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is CommandResult.FAILURE
+    assert len(chart.data_series) == 1
+    assert len(chart.fit_data) == 0
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+
+
+def test_execute_logs_a_warning_when_chart_not_found(caplog):
+    project = Mock()
+    project.find_item.return_value = None
+    app_state = Mock()
+    app_state.has_project = True
+    app_state.current_project = project
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.event_bus = Mock()
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="missing", series_index=0)
+
+    with caplog.at_level(logging.WARNING):
+        assert command.execute() is CommandResult.FAILURE
+    assert "missing" in caplog.text
+
+
+def test_undo_restores_the_original_series(app_context_with_chart, chart_with_series):
+    app_context, chart = app_context_with_chart
+    _, original_series = chart_with_series
+
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=0)
+    command.execute()
+
+    command.undo()
+
+    assert len(chart.data_series) == 1
+    assert len(chart.fit_data) == 0
+    restored = chart.data_series[0]
+    assert restored.dataset_id == original_series.dataset_id
+    assert restored.x_column_id == original_series.x_column_id
+    assert restored.y_column_id == original_series.y_column_id
+    assert restored.label == original_series.label
+
+
+def test_redo_converts_again(app_context_with_chart):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=0)
+
+    command.execute()
+    command.undo()
+    command.redo()
+
+    assert len(chart.data_series) == 0
+    assert len(chart.fit_data) == 1
+
+
+def test_cleanup_releases_bookkeeping(app_context_with_chart):
+    app_context, chart = app_context_with_chart
+    command = ConvertSeriesToFitCommand(app_context, chart_id="chart-1", series_index=0)
+    command.execute()
+
+    assert command.removed_series is not None
+    assert command.added_fit_index is not None
+
+    command.cleanup()
+    assert command.removed_series is None
+    assert command.added_fit_index is None
