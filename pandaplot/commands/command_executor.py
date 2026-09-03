@@ -64,8 +64,12 @@ class CommandExecutor:
             self.logger.error("Error in on_project_modified hook: %s", str(e), exc_info=True)
 
     def _notify_history_changed(self) -> None:
-        if self.on_history_changed:
+        if not self.on_history_changed:
+            return
+        try:
             self.on_history_changed()
+        except Exception as e:
+            self.logger.error("Error in on_history_changed hook: %s", str(e), exc_info=True)
 
     def _warn_if_not_command_result(self, result, command_name: str, method_name: str) -> None:
         """Surface a command whose `execute()`/`undo()`/`redo()` hasn't been

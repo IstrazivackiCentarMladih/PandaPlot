@@ -849,6 +849,48 @@ class TestHistoryChangedHook:
         executor.redo()
         executor.clear_history()  # must not raise
 
+    def test_a_raising_hook_does_not_break_execute_commands_return_value(self):
+        """on_history_changed is called right before undo()/redo()/
+        execute_command() return -- a raising hook must not escape and take
+        the True/False return with it, same isolation as
+        on_project_modified/on_undo_redo_error already get."""
+        executor = CommandExecutor()
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        result = executor.execute_command(MockCommand())  # must not raise
+
+        assert result is True
+
+    def test_a_raising_hook_does_not_break_a_successful_undo_or_redo(self):
+        executor = CommandExecutor()
+        command = MockCommand()
+        executor.execute_command(command)
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        undo_result = executor.undo()  # must not raise
+        redo_result = executor.redo()  # must not raise
+
+        assert undo_result is True
+        assert redo_result is True
+
+    def test_a_raising_hook_does_not_break_undo_or_redo_failure_reporting(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+
+    def test_a_raising_hook_does_not_break_clear_history(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        executor.clear_history()  # must not raise
+
+        assert len(executor.undo_stack) == 0
+
     def test_undo_failure_still_notifies(self):
         """The stacks changed (the command was dropped) even though undo()
         raised, so the Edit menu still needs to refresh its enabled state."""
