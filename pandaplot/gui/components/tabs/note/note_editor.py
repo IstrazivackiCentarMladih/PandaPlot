@@ -1,11 +1,13 @@
 """
 Note tab widget for displaying and editing notes in the main tab container.
 """
-from typing import override
+import os
+from typing import Optional, override
 
-from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QFont, QKeySequence, QTextCursor
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QAction, QFont, QImage, QKeySequence, QTextCursor, QTextDocument
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
@@ -22,8 +24,10 @@ from PySide6.QtWidgets import (
 
 from pandaplot.commands.project.note import EditNoteCommand
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePickerDialog
 from pandaplot.models.events import NoteEvents, UIEvents
-from pandaplot.models.project.items import Note
+from pandaplot.models.events.event_types import ProjectEvents
+from pandaplot.models.project.items import Image, Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
     render_body_html,
@@ -34,7 +38,143 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 # Point size used both for the editor font and for rasterising equations so
 # the math visually matches the surrounding text.
 _NOTE_FONT_SIZE = 11
-    
+
+
+def get_project_base_dir(app_context: AppContext) -> str:
+    """Get base directory for relative path resolution based on current project path."""
+    try:
+        app_state = app_context.get_app_state() if app_context else None
+        project = app_state.current_project if app_state else None
+        if project and project.project_file_path:
+            return os.path.dirname(os.path.abspath(project.project_file_path))
+    except Exception:
+        pass
+    return os.getcwd()
+
+
+def get_image_gallery_path(project, image_item: Image) -> str:
+    """Get gallery-relative path for an Image item (e.g. 'Album/Photo.png' or 'Photo.png')."""
+    if project is None or image_item is None:
+        return ""
+    folder_path = project.get_folder_path(image_item.id)
+    if folder_path:
+        return "/".join(folder_path) + "/" + image_item.name
+    return image_item.name
+
+
+def load_qimage_for_item(image_item: Image) -> Optional[QImage]:
+    """Load QImage from Image item bytes or source file."""
+    try:
+        data = image_item.get_bytes()
+        if data is None and image_item.source_file:
+            source = image_item.source_file
+            if source.startswith("http://") or source.startswith("https://"):
+                import requests
+                resp = requests.get(source, timeout=5)
+                resp.raise_for_status()
+                data = resp.content
+            elif os.path.isfile(source):
+                with open(source, "rb") as f:
+                    data = f.read()
+        if data:
+            qimg = QImage()
+            if qimg.loadFromData(data):
+                return qimg
+    except Exception:
+        pass
+    return None
+
+
+def register_project_image_resources(document: QTextDocument, app_context: AppContext) -> str:
+    """Configure document base URL and register all project gallery images as resources."""
+    base_dir = get_project_base_dir(app_context)
+    base_url = QUrl.fromLocalFile(os.path.join(base_dir, ""))
+    document.setBaseUrl(base_url)
+
+    try:
+        app_state = app_context.get_app_state() if app_context else None
+        project = app_state.current_project if app_state else None
+        if not project:
+            return base_dir
+
+        all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
+        for img_item in all_images:
+            qimg = load_qimage_for_item(img_item)
+            if qimg is None or qimg.isNull():
+                continue
+
+            keys = {
+                img_item.name,
+                img_item.id,
+                get_image_gallery_path(project, img_item),
+            }
+            if img_item.source_file:
+                keys.add(img_item.source_file)
+
+            for key in keys:
+                if not key:
+                    continue
+                raw_url = QUrl(key)
+                document.addResource(QTextDocument.ResourceType.ImageResource, raw_url, qimg)
+                document.addResource(QTextDocument.ResourceType.ImageResource, base_url.resolved(raw_url), qimg)
+    except Exception:
+        pass
+
+    return base_dir
+
+
+class NotePreviewBrowser(QTextBrowser):
+    """
+    Subclass of QTextBrowser that dynamically resolves relative file paths and
+    project gallery images for note preview rendering.
+    """
+
+    def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.app_context = app_context
+        self.setOpenExternalLinks(True)
+
+    @override
+    def loadResource(self, type_: int, name: QUrl):
+        if type_ == QTextDocument.ResourceType.ImageResource:
+            qimg = self._resolve_gallery_image(name)
+            if qimg is not None and not qimg.isNull():
+                self.document().addResource(QTextDocument.ResourceType.ImageResource, name, qimg)
+                return qimg
+
+        return super().loadResource(type_, name)
+
+    def _resolve_gallery_image(self, name: QUrl) -> Optional[QImage]:
+        try:
+            app_state = self.app_context.get_app_state() if self.app_context else None
+            project = app_state.current_project if app_state else None
+            if not project:
+                return None
+
+            base_dir = get_project_base_dir(self.app_context)
+            ref_str = name.toString()
+            local_path = name.toLocalFile()
+            filename = os.path.basename(local_path if local_path else ref_str)
+            rel_path = os.path.relpath(local_path, base_dir) if local_path and base_dir else ""
+
+            all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
+            for img_item in all_images:
+                gallery_path = get_image_gallery_path(project, img_item)
+                match = (
+                    img_item.id in (ref_str, filename)
+                    or img_item.name in (ref_str, filename, rel_path)
+                    or os.path.splitext(img_item.name)[0] == os.path.splitext(filename)[0]
+                    or gallery_path in (ref_str, rel_path)
+                    or (img_item.source_file and img_item.source_file in (ref_str, local_path, filename))
+                )
+                if match:
+                    qimg = load_qimage_for_item(img_item)
+                    if qimg is not None and not qimg.isNull():
+                        return qimg
+        except Exception:
+            pass
+        return None
+
 
 class NoteEditorWidget(PWidget):
     """
@@ -83,14 +223,14 @@ class NoteEditorWidget(PWidget):
         """Apply theme-specific styling to all components."""
         theme_manager = self.app_context.get_manager(ThemeManager)
         palette = theme_manager.get_surface_palette()
-        
+
         # Get theme-appropriate colors
         card_bg = palette.get("card_bg", "#f8f9fa")
         card_hover = palette.get("card_hover", "#e9ecef")
         card_border = palette.get("card_border", "#dee2e6")
         base_fg = palette.get("base_fg", "#000000")
         secondary_fg = palette.get("secondary_fg", "#555555")
-        
+
         # Apply styling to content frame
         self.content_frame.setStyleSheet(f"""
             QFrame {{
@@ -99,7 +239,7 @@ class NoteEditorWidget(PWidget):
                 border-radius: 6px;
             }}
         """)
-        
+
         # Apply styling to toolbar
         self.toolbar.setStyleSheet(f"""
             QToolBar {{
@@ -131,7 +271,7 @@ class NoteEditorWidget(PWidget):
                     margin: 4px 2px;
                 }}
             """)
-        
+
         # Apply styling to status frame
         self.status_frame.setStyleSheet(f"""
             QFrame {{
@@ -141,7 +281,7 @@ class NoteEditorWidget(PWidget):
                 padding: 4px;
                 }}
             """)
-        
+
         # Apply styling to status labels
         self.word_count_label.setStyleSheet(f"color: {secondary_fg}; font-size: 12px;")
         self.char_count_label.setStyleSheet(f"color: {secondary_fg}; font-size: 12px;")
@@ -173,8 +313,7 @@ class NoteEditorWidget(PWidget):
         font = QFont("Segoe UI", _NOTE_FONT_SIZE)
         self.text_edit.setFont(font)
 
-        self.preview = QTextBrowser()
-        self.preview.setOpenExternalLinks(True)
+        self.preview = NotePreviewBrowser(app_context=self.app_context)
 
         # Create container widgets for each mode
 
@@ -255,6 +394,9 @@ class NoteEditorWidget(PWidget):
         background = palette.get("card_bg", "#ffffff")
         border = palette.get("card_border", "#dddddd")
 
+        base_dir = register_project_image_resources(self.preview.document(), self.app_context)
+        self.preview.setSearchPaths([base_dir])
+
         source = self.text_edit.toPlainText()
         body = render_body_html(source, color=color, fontsize=_NOTE_FONT_SIZE)
         html = wrap_document(
@@ -265,7 +407,7 @@ class NoteEditorWidget(PWidget):
     def export_pdf(self):
         """Export the rendered note (Markdown + LaTeX) to a PDF file."""
         from PySide6.QtCore import QMarginsF
-        from PySide6.QtGui import QPageLayout, QPageSize, QPdfWriter, QTextDocument
+        from PySide6.QtGui import QPageLayout, QPageSize, QPdfWriter
 
         default_name = f"{self.note.name or 'note'}.pdf"
         file_path, _ = QFileDialog.getSaveFileName(
@@ -290,6 +432,7 @@ class NoteEditorWidget(PWidget):
             )
 
             document = QTextDocument()
+            register_project_image_resources(document, self.app_context)
             document.setHtml(html)
 
             writer = QPdfWriter(file_path)
@@ -322,6 +465,12 @@ class NoteEditorWidget(PWidget):
         export_pdf_action.triggered.connect(self.export_pdf)
         toolbar.addAction(export_pdf_action)
 
+        # Insert Gallery Image action
+        insert_image_action = QAction("🖼️ Insert Image", self)
+        insert_image_action.setToolTip("Insert an image from the project gallery")
+        insert_image_action.triggered.connect(self.insert_image_from_picker)
+        toolbar.addAction(insert_image_action)
+
         toolbar.addSeparator()
         self.edit_mode_action = QAction("✍ Edit", self)
         self.edit_mode_action.triggered.connect(lambda: self.set_mode("edit"))
@@ -345,6 +494,22 @@ class NoteEditorWidget(PWidget):
             "Keep the source and preview scrolled to the same place in split view")
         self.scroll_sync_action.toggled.connect(self._on_scroll_sync_toggled)
         toolbar.addAction(self.scroll_sync_action)
+
+    def insert_image_from_picker(self):
+        """Open the image picker dialog and insert markdown for the selected gallery image."""
+        app_state = self.app_context.get_app_state() if self.app_context else None
+        project = app_state.current_project if app_state else None
+        dialog = NoteImagePickerDialog(self.app_context, project, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            image = dialog.get_selected_image()
+            if image is not None:
+                cursor = self.text_edit.textCursor()
+                alt_text = image.name
+                image_ref = image.name
+                markdown_ref = f"![{alt_text}]({image_ref})"
+                cursor.insertText(markdown_ref)
+                self.text_edit.setTextCursor(cursor)
+                self.text_edit.setFocus()
 
     def _on_scroll_sync_toggled(self, enabled: bool):  # noqa: FBT001 - Qt-invoked callback (signal.connect)
         """Enable/disable split-view scroll syncing and align immediately."""
@@ -388,6 +553,21 @@ class NoteEditorWidget(PWidget):
         # Jump to a match when note search asks to reveal one in this note.
         self.subscribe_to_event(
             UIEvents.NOTE_REVEAL_MATCH, self.on_reveal_match_event)
+
+        # Subscribe to project item changes to refresh preview when gallery images change
+        self.subscribe_to_event(
+            ProjectEvents.PROJECT_ITEM_ADDED, self.on_project_item_changed_event)
+        self.subscribe_to_event(
+            ProjectEvents.PROJECT_ITEM_REMOVED, self.on_project_item_changed_event)
+        self.subscribe_to_event(
+            ProjectEvents.PROJECT_ITEM_RENAMED, self.on_project_item_changed_event)
+        self.subscribe_to_event(
+            ProjectEvents.PROJECT_ITEM_MOVED, self.on_project_item_changed_event)
+
+    def on_project_item_changed_event(self, event_data: dict):
+        """Refresh preview if images in the project change."""
+        if self.stack.currentIndex() != 0:  # preview or split mode visible
+            self.update_preview()
 
     def on_reveal_match_event(self, event_data: dict):
         """Move the cursor to (and select) a match requested by note search."""
@@ -490,9 +670,9 @@ class NoteEditorWidget(PWidget):
         theme_manager = self.app_context.get_manager(ThemeManager)
         palette = theme_manager.get_surface_palette()
         secondary_fg = palette.get("secondary_fg", "#555555")
-        
+
         status_text = self.status_label.text()
-        
+
         # Determine color based on status
         if "Modified" in status_text:
             color = "#ffc107"  # Warning yellow
@@ -502,7 +682,7 @@ class NoteEditorWidget(PWidget):
             color = "#dc3545"  # Error red
         else:
             color = secondary_fg  # Default theme color
-            
+
         self.status_label.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
 
     def update_status(self, status: str):
