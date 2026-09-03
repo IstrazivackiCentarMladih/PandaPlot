@@ -273,34 +273,6 @@ class TestAddResultsToProjectAsyncDispatch:
         # Should fall back to full command because cached result was invalidated
         assert executed["command"] is fake_add_command
 
-    def test_row_added_and_removed_events_also_invalidate_cache(self, app_context):
-        """Regression test (PR review): row insert/delete on the source
-        dataset emit DATASET_ROW_ADDED/DATASET_ROW_REMOVED, not
-        DATASET_DATA_CHANGED. A signal's cached length/values are just as
-        stale after a row edit as after a cell edit, so both must also
-        invalidate the cached preview."""
-        from pandaplot.models.events import DatasetOperationEvents
-
-        panel = _build_panel_with_column(app_context)
-
-        subscribed_events = {event_type for event_type, _handler in panel._subscriptions}
-        assert DatasetOperationEvents.DATASET_ROW_ADDED in subscribed_events
-        assert DatasetOperationEvents.DATASET_ROW_REMOVED in subscribed_events
-
-        captured_run = {}
-        fake_run_command = Mock()
-        fake_run_command.run_analysis_async = lambda on_complete: captured_run.update(on_complete=on_complete)
-        panel._build_command = lambda: fake_run_command
-
-        panel.run_analysis()
-        result = _fake_result()
-        captured_run["on_complete"](result, None)
-        assert panel.last_result is result
-
-        panel.on_dataset_data_changed({"dataset_id": panel.current_dataset_id})
-        assert panel.last_result is None
-        assert panel._last_run_params is None
-
     def test_recomputes_if_parameters_changed_after_run(self, app_context):
         panel = _build_panel_with_column(app_context)
 

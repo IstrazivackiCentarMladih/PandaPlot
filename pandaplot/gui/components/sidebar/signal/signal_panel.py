@@ -641,12 +641,4 @@ class SignalPanel(SidebarPanel):
                 DatasetEvents.DATASET_DATA_CHANGED,
                 self.on_dataset_data_changed
             ),
-            (
-                DatasetOperationEvents.DATASET_ROW_ADDED,
-                self.on_dataset_data_changed
-            ),
-            (
-                DatasetOperationEvents.DATASET_ROW_REMOVED,
-                self.on_dataset_data_changed
-            ),
         ])
