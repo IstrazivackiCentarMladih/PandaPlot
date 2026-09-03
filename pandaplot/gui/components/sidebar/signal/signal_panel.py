@@ -15,11 +15,14 @@ from PySide6.QtWidgets import (
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult
 from pandaplot.commands.base_command import CommandResult
+from pandaplot.commands.project.dataset.apply_signal_analysis_result_command import (
+    ApplySignalAnalysisResultCommand,
+)
 from pandaplot.commands.project.dataset.signal_analysis_command import SignalAnalysisCommand
 from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -39,6 +42,7 @@ class SignalPanel(SidebarPanel):
         self.current_dataset_id: Optional[str] = None
 
         self.last_result: Optional[SignalAnalysisResult] = None
+        self._last_run_params = None
         self._pending_command = None
 
         self._initialize()
@@ -336,15 +340,21 @@ class SignalPanel(SidebarPanel):
         if event_data.get("dataset_id") == self.current_dataset_id:
             self._refresh_columns()
 
+    def on_dataset_data_changed(self, event_data):
+        dataset_id = event_data.get("dataset_id") if isinstance(event_data, dict) else getattr(event_data, "dataset_id", None)
+        if dataset_id is None or dataset_id == self.current_dataset_id:
+            self.last_result = None
+            self._last_run_params = None
+
     def _current_analysis_type(self):
         return self.analysis_combo.currentData()
 
-    def _build_command(self):
-
+    def _get_dispatch_params(self):
         if not self.current_dataset_id:
             return None
 
-        if not self.column_combo.currentText():
+        column_name = self.column_combo.currentText()
+        if not column_name:
             return None
 
         parameters = {}
@@ -373,16 +383,27 @@ class SignalPanel(SidebarPanel):
         if self.threshold_spin:
             parameters["threshold"] = self.threshold_spin.value()
 
+        return (
+            self.current_dataset_id,
+            self._current_analysis_type(),
+            column_name,
+            self.sampling_rate.value() if self.sampling_rate else None,
+            parameters,
+        )
+
+    def _build_command(self):
+        params = self._get_dispatch_params()
+        if params is None:
+            return None
+
+        dataset_id, analysis_type, column_name, sampling_rate, parameters = params
+
         return SignalAnalysisCommand(
             app_context=self.app_context,
-            source_dataset_id=self.current_dataset_id,
-            analysis_type=self._current_analysis_type(),
-            column_name=self.column_combo.currentText(),
-            sampling_rate=(
-                self.sampling_rate.value()
-                if self.sampling_rate
-                else None
-            ),
+            source_dataset_id=dataset_id,
+            analysis_type=analysis_type,
+            column_name=column_name,
+            sampling_rate=sampling_rate,
             parameters=parameters,
         )
 
@@ -403,6 +424,7 @@ class SignalPanel(SidebarPanel):
         # the background -- capture what was actually requested so a stale
         # completion (user switched dataset/column mid-flight) can be
         # discarded instead of overwriting whatever the panel now shows.
+        dispatch_params = self._get_dispatch_params()
         dispatch_context = (self.current_dataset_id, self.column_combo.currentText())
 
         self.run_btn.setEnabled(False)
@@ -424,16 +446,19 @@ class SignalPanel(SidebarPanel):
 
             if error is not None:
                 self.last_result = None
+                self._last_run_params = None
                 self.add_btn.setEnabled(False)
                 self.results_text.setText(f"❌ Analysis failed:\n{error}")
                 return
 
             self.last_result = result
+            self._last_run_params = dispatch_params
             try:
                 self.results_text.setText(self._format_result(result))
                 self.add_btn.setEnabled(True)
             except Exception as e:
                 self.last_result = None
+                self._last_run_params = None
                 self.add_btn.setEnabled(False)
                 self.results_text.setText(f"❌ Analysis failed:\n{e}")
 
@@ -484,6 +509,27 @@ class SignalPanel(SidebarPanel):
         if self._pending_command is not None:
             return
 
+        current_params = self._get_dispatch_params()
+        if current_params is None:
+            return
+
+        # If parameters are unchanged since the last successful Run preview,
+        # commit self.last_result directly without re-computing on a background thread.
+        if self.last_result is not None and self._last_run_params == current_params:
+            apply_command = ApplySignalAnalysisResultCommand(
+                app_context=self.app_context,
+                result_name=None,
+                folder_id=None,
+                result=self.last_result,
+            )
+            executor = self.app_context.get_command_executor()
+            if executor.execute_command(apply_command):
+                self.results_text.append("\n\n✅ Results added to project")
+                self.add_btn.setEnabled(False)
+            else:
+                self.add_btn.setEnabled(True)
+            return
+
         command = self._build_command()
         if command is None:
             return
@@ -514,6 +560,7 @@ class SignalPanel(SidebarPanel):
 
             if result is CommandResult.SUCCESS:
                 self.last_result = command.result
+                self._last_run_params = current_params
                 self.results_text.append("\n\n✅ Results added to project")
             else:
                 self.add_btn.setEnabled(True)  # let the user retry
@@ -532,6 +579,7 @@ class SignalPanel(SidebarPanel):
             self.results_text.clear()
 
         self.last_result = None
+        self._last_run_params = None
         if hasattr(self, "add_btn"):
             self.add_btn.setEnabled(False)
         if hasattr(self, "busy_spinner"):
@@ -588,5 +636,17 @@ class SignalPanel(SidebarPanel):
             (
                 DatasetOperationEvents.DATASET_COLUMN_REMOVED,
                 self.on_columns_changed
+            ),
+            (
+                DatasetEvents.DATASET_DATA_CHANGED,
+                self.on_dataset_data_changed
+            ),
+            (
+                DatasetOperationEvents.DATASET_ROW_ADDED,
+                self.on_dataset_data_changed
+            ),
+            (
+                DatasetOperationEvents.DATASET_ROW_REMOVED,
+                self.on_dataset_data_changed
             ),
         ])
