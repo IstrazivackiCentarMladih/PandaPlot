@@ -56,8 +56,12 @@ class CommandExecutor:
             self.logger.error("Error in on_undo_redo_error hook: %s", str(e), exc_info=True)
 
     def _notify_project_modified(self, command: Command) -> None:
-        if self.on_project_modified and getattr(command, "marks_project_modified", True):
+        if not (self.on_project_modified and getattr(command, "marks_project_modified", True)):
+            return
+        try:
             self.on_project_modified()
+        except Exception as e:
+            self.logger.error("Error in on_project_modified hook: %s", str(e), exc_info=True)
 
     def _notify_history_changed(self) -> None:
         if self.on_history_changed:
@@ -160,8 +164,8 @@ class CommandExecutor:
             # succeed (or even be a no-op), nor that any other stack entry
             # is still valid -- see _invalidate_history_after_failure.
             self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
-            self._notify_project_modified(command)
             self._invalidate_history_after_failure(command)
+            self._notify_project_modified(command)
             self._notify_undo_redo_error(command_name, "undo")
             self._notify_history_changed()
             return False
@@ -197,8 +201,8 @@ class CommandExecutor:
             result = command.redo()
         except Exception as e:
             self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
-            self._notify_project_modified(command)
             self._invalidate_history_after_failure(command)
+            self._notify_project_modified(command)
             self._notify_undo_redo_error(command_name, "redo")
             self._notify_history_changed()
             return False

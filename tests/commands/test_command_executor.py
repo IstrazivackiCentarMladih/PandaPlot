@@ -690,6 +690,52 @@ class TestProjectModifiedHook:
 
         assert calls == ["modified"]
 
+    def test_a_raising_hook_does_not_prevent_recovery_from_a_failed_undo(self):
+        """on_project_modified is an external callback (wired to
+        AppState.mark_modified) invoked while undo() is already handling a
+        command failure -- if it raises, recovery (history invalidation,
+        the undo_redo_error hook, the history-changed notification) must
+        still complete, same isolation as on_undo_redo_error and
+        command.cleanup() already get."""
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = MockCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        executor.on_project_modified = lambda: (_ for _ in ()).throw(RuntimeError("mark_modified failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
+    def test_a_raising_hook_does_not_prevent_recovery_from_a_failed_redo(self):
+        executor = CommandExecutor()
+        newer = MockCommand("Newer")
+        failing = MockCommand("Failing", should_fail=True, fail_on="redo")
+        executor.execute_command(failing)
+        executor.execute_command(newer)
+        executor.undo()
+        executor.undo()
+        executor.on_project_modified = lambda: (_ for _ in ()).throw(RuntimeError("mark_modified failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.redo()  # must not raise
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""
