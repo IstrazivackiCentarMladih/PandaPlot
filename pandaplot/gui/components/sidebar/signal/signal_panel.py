@@ -22,7 +22,7 @@ from pandaplot.commands.project.dataset.signal_analysis_command import SignalAna
 from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
-from pandaplot.models.events import DatasetOperationEvents, UIEvents
+from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -340,6 +340,15 @@ class SignalPanel(SidebarPanel):
         if event_data.get("dataset_id") == self.current_dataset_id:
             self._refresh_columns()
 
+    def on_dataset_data_changed(self, event_data):
+        # Source values may have changed under the cached preview -- drop it
+        # so "Add to Project" re-runs the analysis instead of committing
+        # stale results.
+        if event_data.get("dataset_id") == self.current_dataset_id:
+            self.last_result = None
+            self._last_run_params = None
+            self.add_btn.setEnabled(False)
+
     def _current_analysis_type(self):
         return self.analysis_combo.currentData()
 
@@ -630,5 +639,9 @@ class SignalPanel(SidebarPanel):
             (
                 DatasetOperationEvents.DATASET_COLUMN_REMOVED,
                 self.on_columns_changed
+            ),
+            (
+                DatasetEvents.DATASET_DATA_CHANGED,
+                self.on_dataset_data_changed
             ),
         ])
