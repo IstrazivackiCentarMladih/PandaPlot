@@ -24,6 +24,8 @@ class EditBatchCommand(Command):
         self.end_column = start_column + len(new_data[0]) - 1 if new_data else start_column
         self.old_data = None  # Will store the original data for undo
         self.executed_commands = []  # Track commands executed for expansion (for undo)
+        self.project = None
+        self.dataset = None
 
     @override
     def execute(self) -> CommandResult:
@@ -76,6 +78,8 @@ class EditBatchCommand(Command):
                     "Batch Edit",
                     "Cannot edit cells in dataset without structure."
                 )
+                self.dataset = None
+                self.project = None
                 return CommandResult.FAILURE
 
             # Validate input data
@@ -85,6 +89,8 @@ class EditBatchCommand(Command):
                     "Batch Edit",
                     "No data provided for batch edit."
                 )
+                self.dataset = None
+                self.project = None
                 return CommandResult.FAILURE
 
             # Check if all rows have the same length
@@ -99,6 +105,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Row {i} has {len(row)} columns, expected {expected_cols}. All rows must have the same length."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
             # Check if data fits in current dataframe dimensions
@@ -120,6 +128,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         "Cannot add rows to completely empty dataset."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
                 add_rows_command = AddRowsCommand(
@@ -138,6 +148,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Failed to add {rows_to_add} rows to accommodate new data."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
                 
                 # Track the command for undo
@@ -168,6 +180,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         "Cannot add columns to dataset without any columns."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
 
                 add_columns_command = AddColumnsCommand(
@@ -188,6 +202,8 @@ class EditBatchCommand(Command):
                         "Batch Edit",
                         f"Failed to add {cols_to_add} columns to accommodate new data."
                     )
+                    self.dataset = None
+                    self.project = None
                     return CommandResult.FAILURE
                 
                 # Track the command for undo
@@ -225,6 +241,8 @@ class EditBatchCommand(Command):
             error_msg = f"Failed to perform batch edit at starting position ({self.start_row}, {self.start_column}): {str(e)}"
             self.logger.error(error_msg)
             self.ui_controller.show_error_message("Batch Edit Error", error_msg)
+            self.dataset = None
+            self.project = None
             return CommandResult.FAILURE
 
     def undo(self) -> CommandResult:
@@ -257,6 +275,17 @@ class EditBatchCommand(Command):
 
     def redo(self) -> CommandResult:
         """Reapply the batch edit"""
+        # Confirm this command actually executed successfully before
+        # replaying anything -- otherwise a stray redo() on a command whose
+        # execute() failed (possibly after partially expanding the dataset)
+        # would re-run the recorded expansion sub-commands a second time.
+        if not self.dataset or self.dataset.data is None:
+            self.logger.warning(
+                "EditBatchCommand.redo: cannot redo for dataset '%s' (dataset found=%s)",
+                self.dataset_id, getattr(self, "dataset", None) is not None,
+            )
+            return CommandResult.FAILURE
+
         # Re-execute any expansion commands first
         for command in self.executed_commands:
             try:
@@ -265,26 +294,19 @@ class EditBatchCommand(Command):
                 self.logger.error(f"Failed to redo expansion command: {e}")
 
         # Then reapply the cell changes
-        if self.dataset and self.dataset.data is not None:
-            for i, row_data in enumerate(self.new_data):
-                for j, value in enumerate(row_data):
-                    row_idx = self.start_row + i
-                    col_idx = self.start_column + j
-                    self.dataset.data.iloc[row_idx, col_idx] = value
+        for i, row_data in enumerate(self.new_data):
+            for j, value in enumerate(row_data):
+                row_idx = self.start_row + i
+                col_idx = self.start_column + j
+                self.dataset.data.iloc[row_idx, col_idx] = value
 
-            self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, {
-                "start_index": (self.start_row, self.start_column),
-                "end_index": (self.end_row, self.end_column),
-                "new_data": self.new_data,
-                "old_data": self.old_data.values.tolist() if self.old_data is not None else None
-            })
-            return CommandResult.SUCCESS
-        else:
-            self.logger.warning(
-                "EditBatchCommand.redo: cannot redo for dataset '%s' (dataset found=%s)",
-                self.dataset_id, getattr(self, "dataset", None) is not None,
-            )
-            return CommandResult.FAILURE
+        self.app_context.event_bus.emit(DatasetEvents.DATASET_DATA_CHANGED, {
+            "start_index": (self.start_row, self.start_column),
+            "end_index": (self.end_row, self.end_column),
+            "new_data": self.new_data,
+            "old_data": self.old_data.values.tolist() if self.old_data is not None else None
+        })
+        return CommandResult.SUCCESS
 
     @override
     def cleanup(self) -> None:
