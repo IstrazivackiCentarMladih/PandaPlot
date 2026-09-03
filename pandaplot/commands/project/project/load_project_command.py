@@ -1,3 +1,4 @@
+import os
 from typing import Any, Callable, Optional, Tuple, override
 
 from pandaplot.commands.base_command import Command, CommandResult
@@ -10,6 +11,17 @@ from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.session import SessionPersistenceManager
 
 
+def _same_path(a: Optional[str], b: Optional[str]) -> bool:
+    """Compare two project file paths for "is this the same file", tolerant
+    of relative-vs-absolute and symlink differences."""
+    if not a or not b:
+        return False
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
 class LoadProjectCommand(Command):
     """
     Command to load a project into the application state.
@@ -18,6 +30,11 @@ class LoadProjectCommand(Command):
     - Using services (ProjectManager) to load data
     - Updating app state which emits events to update UI
     """
+
+    # Loading a project sets AppState's modified flag explicitly (via
+    # load_project, called from _on_load_result) -- not a project edit
+    # itself.
+    marks_project_modified = False
 
     def __init__(self, app_context: AppContext, file_path: str,
                  on_loaded: Optional[Callable[[Project], None]] = None):
@@ -33,7 +50,14 @@ class LoadProjectCommand(Command):
         self.on_loaded = on_loaded
         self.previous_project: Optional[Project] = None
         self.previous_file_path: Optional[str] = None
+        # Whether the previous project had unsaved changes, so undo() can
+        # restore that dirty state rather than letting load_project() reset
+        # it to "no changes" -- see undo().
+        self.previous_was_modified = False
         self.loaded_project: Optional[Project] = None
+        # AppState.modification_revision as of the moment the background
+        # load task was kicked off -- see _on_load_result.
+        self._dispatch_revision: int = 0
 
         # Task state
         self.is_loading = False
@@ -50,14 +74,41 @@ class LoadProjectCommand(Command):
                 self.ui_controller.show_info_message("Load In Progress", "A project load is already in progress.")
                 return CommandResult.FAILURE
 
+            # Centralized guards for every load path (the file-dialog flow
+            # via OpenProjectCommand, recent/example projects from the
+            # welcome tab, and the Examples dialog) -- previously only
+            # OpenProjectCommand checked these, so the other entry points
+            # could silently replace a modified project or reload the
+            # current file from disk, discarding undo history. Living here
+            # means every caller gets the same protection with nothing
+            # extra to remember at the call site.
+            if self.app_state.has_project and _same_path(self.app_state.project_file_path, self.file_path):
+                self.logger.info("'%s' is already open; skipping reload", self.file_path)
+                return CommandResult.NOOP
+
+            if self.app_state.has_project and self.app_state.is_modified:
+                should_continue = self.ui_controller.show_question(
+                    "Open Project",
+                    "Opening a new project will close the current project.\nAny unsaved changes will be lost.\n\nDo you want to continue?",
+                )
+                if not should_continue:
+                    self.logger.info("Load project cancelled by user (unsaved changes)")
+                    return CommandResult.NOOP
+
             # Store current state for undo
             self.previous_project = self.app_state.current_project
             self.previous_file_path = self.app_state.project_file_path
+            self.previous_was_modified = self.app_state.is_modified
 
             # Show starting message
             self.ui_controller.show_info_message("Load Starting", f"Starting to load project from:\n{self.file_path}")
 
-            # Start background load operation
+            # Start background load operation. The old project stays active
+            # and editable while this runs -- capture its modification
+            # revision now so _on_load_result can tell whether a *new* edit
+            # landed during the load (one the confirmation above never
+            # covered) and needs its own confirmation before being discarded.
+            self._dispatch_revision = self.app_state.modification_revision
             self.is_loading = True
 
             # Run load in background thread
@@ -141,6 +192,39 @@ class LoadProjectCommand(Command):
                 file_path = result.get("file_path")
 
                 if project and file_path:
+                    # A command executed against the still-active old project
+                    # while this load ran in the background bumps
+                    # modification_revision -- an edit the confirmation
+                    # shown before dispatch (if any) never covered. Installing
+                    # the loaded project now would silently discard it, so
+                    # re-confirm before doing that instead of assuming the
+                    # original answer still applies.
+                    if (
+                        self.app_state.has_project
+                        and self.app_state.modification_revision != self._dispatch_revision
+                        and not self.ui_controller.show_question(
+                            "Open Project",
+                            "The current project changed while the new one was loading.\n"
+                            "Loading it now will discard those additional changes.\n\n"
+                            "Do you want to continue?",
+                        )
+                    ):
+                        self.logger.info(
+                            "Discarding loaded project '%s': the current project changed "
+                            "during the load and the user declined to discard it",
+                            project.name,
+                        )
+                        return
+
+                    # Project.from_dict deserializes project_file_path from
+                    # project.json's own record of where IT was saved from.
+                    # If the .pplot file was since moved or copied, that
+                    # stored path no longer matches where it was just
+                    # opened from -- stamp it with the path this command
+                    # actually loaded from so later "already open"
+                    # comparisons and Save target the right file.
+                    project.project_file_path = file_path
+
                     # Store the loaded project for undo/redo
                     self.loaded_project = project
 
@@ -155,9 +239,6 @@ class LoadProjectCommand(Command):
                         self.logger.warning("Failed to persist last_project_path: %s", e)
 
                     self.logger.info(f"Project '{project.name}' loaded successfully from '{file_path}'")
-
-                    # Show success message
-                    self.ui_controller.show_info_message("Project Loaded", f"Project '{project.name}' loaded successfully from:\n{file_path}")
 
                     # Items that failed to deserialize are silently dropped from the
                     # hierarchy by ProjectDataManager.load() -- warn instead of letting
@@ -233,7 +314,13 @@ class LoadProjectCommand(Command):
     def undo(self) -> CommandResult:
         """Undo the load project command."""
         if self.previous_project is not None:
+            # load_project() unconditionally resets is_modified to False
+            # (correct for a fresh disk load), so restore the dirty state
+            # the previous project actually had before this command
+            # replaced it.
             self.app_state.load_project(self.previous_project)
+            if self.previous_was_modified:
+                self.app_state.mark_modified()
         else:
             self.app_state.close_project()
         return CommandResult.SUCCESS

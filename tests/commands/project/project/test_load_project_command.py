@@ -1,11 +1,212 @@
-"""Tests for LoadProjectCommand's cleanup() (see Command.cleanup) and for
-surfacing items that ProjectDataManager.load() silently dropped (issue #288)."""
+"""Tests for LoadProjectCommand (#209): no success dialog on load, and
+opting out of CommandExecutor's generic dirty-tracking hook. Also covers
+cleanup() (see Command.cleanup) and surfacing items that
+ProjectDataManager.load() silently dropped (issue #288)."""
 from unittest.mock import Mock
 
 import pytest
 
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.commands.project.project.load_project_command import LoadProjectCommand
 from pandaplot.models.project.project import Project
+
+
+def _make_app_context():
+    return Mock()
+
+
+def test_marks_project_modified_is_false():
+    """A freshly loaded project starts with nothing unsaved -- AppState.
+    load_project (called from _on_load_result) sets that directly, so this
+    must not be double-counted by CommandExecutor's generic
+    on_project_modified hook."""
+    assert LoadProjectCommand.marks_project_modified is False
+
+
+def test_on_load_result_does_not_show_a_success_dialog():
+    """Regression (#209): loading a project used to pop an "loaded
+    successfully" info dialog on every load -- unnecessary interruption for
+    a routine, already-visible-in-the-UI action."""
+    app_context = _make_app_context()
+    command = LoadProjectCommand(app_context, "/p.pplot")
+
+    project = Mock()
+    project.name = "P"
+    command._on_load_result({"success": True, "project": project, "file_path": "/p.pplot"})
+
+    app_context.get_ui_controller.return_value.show_info_message.assert_not_called()
+
+
+def test_on_load_result_still_loads_the_project_into_app_state():
+    app_context = _make_app_context()
+    command = LoadProjectCommand(app_context, "/p.pplot")
+
+    project = Mock()
+    project.name = "P"
+    command._on_load_result({"success": True, "project": project, "file_path": "/p.pplot"})
+
+    command.app_state.load_project.assert_called_once_with(project)
+
+
+def test_on_load_result_invokes_the_on_loaded_callback():
+    app_context = _make_app_context()
+    calls = []
+    command = LoadProjectCommand(app_context, "/p.pplot", on_loaded=lambda p: calls.append(p))
+
+    project = Mock()
+    project.name = "P"
+    project.failed_item_ids = []
+    command._on_load_result({"success": True, "project": project, "file_path": "/p.pplot"})
+
+    assert calls == [project]
+
+
+def test_on_load_result_stamps_the_project_with_the_actual_load_path():
+    """Regression (PR #235 review): Project.from_dict deserializes
+    project_file_path from the saved project.json's own record of where it
+    was saved from. If the .pplot file was since moved or copied, that
+    stored value is stale -- it must be overwritten with the path this
+    command actually loaded from, or later "already open" comparisons and
+    Save would keep targeting the old location."""
+    app_context = _make_app_context()
+    command = LoadProjectCommand(app_context, "/new/location.pplot")
+
+    project = Mock()
+    project.name = "P"
+    project.project_file_path = "/old/stale-location.pplot"
+    command._on_load_result({"success": True, "project": project, "file_path": "/new/location.pplot"})
+
+    assert project.project_file_path == "/new/location.pplot"
+
+
+class TestLoadProjectCommandRaceGuard:
+    """Regression (PR #235 review): the unsaved-changes confirmation shown
+    (if any) before dispatch only covers the state at that moment. The old
+    project stays active and editable while the background load runs, so a
+    command executed after the user confirms can create new unsaved
+    changes that confirmation never saw -- _on_load_result must re-confirm
+    before silently discarding those too, rather than always installing
+    the loaded project unconditionally."""
+
+    def _dispatch(self, *, project_file_path="/p/current.pplot"):
+        app_context, app_state = _make_configured_app_context(
+            has_project=True, project_file_path=project_file_path, is_modified=False)
+        app_state.modification_revision = 0
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        assert command.execute() is CommandResult.SUCCESS
+        return command, app_context, app_state
+
+    def test_reconfirms_when_the_project_changed_during_the_load(self):
+        command, app_context, app_state = self._dispatch()
+        app_state.modification_revision = 1  # an edit landed while loading
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+
+        project = Mock()
+        project.name = "New"
+        project.failed_item_ids = []
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_context.get_ui_controller.return_value.show_question.assert_called_once()
+        app_state.load_project.assert_called_once_with(project)
+
+    def test_discards_the_load_when_the_user_declines_reconfirmation(self):
+        command, app_context, app_state = self._dispatch()
+        app_state.modification_revision = 1
+        app_context.get_ui_controller.return_value.show_question.return_value = False
+
+        project = Mock()
+        project.name = "New"
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_state.load_project.assert_not_called()
+        assert command.loaded_project is None
+
+    def test_does_not_reconfirm_when_nothing_changed_during_the_load(self):
+        command, app_context, app_state = self._dispatch()
+        # modification_revision unchanged from dispatch time.
+
+        project = Mock()
+        project.name = "New"
+        project.failed_item_ids = []
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_context.get_ui_controller.return_value.show_question.assert_not_called()
+        app_state.load_project.assert_called_once_with(project)
+
+
+def _make_configured_app_context(*, has_project=False, project_file_path=None, is_modified=False):
+    """Like _make_app_context, but with an app_state whose has_project/
+    project_file_path/is_modified are explicitly controllable -- needed to
+    exercise execute()'s centralized already-open/unsaved-changes guards."""
+    app_context = Mock()
+    app_state = Mock()
+    app_state.has_project = has_project
+    app_state.project_file_path = project_file_path
+    app_state.is_modified = is_modified
+    app_context.get_app_state.return_value = app_state
+    return app_context, app_state
+
+
+class TestLoadProjectCommandGuards:
+    """Regression (PR #235 review): these checks used to live only in
+    OpenProjectCommand's file-dialog flow. The welcome tab's recent/example
+    project handlers and the main menu's Examples dialog all call
+    LoadProjectCommand directly and had no such protection -- they now get
+    it for free since the guard lives in the one place every caller goes
+    through."""
+
+    def test_execute_skips_reload_when_the_same_file_is_already_open(self):
+        app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
+        command = LoadProjectCommand(app_context, "/p/current.pplot")
+
+        assert command.execute() is CommandResult.NOOP
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_treats_equivalent_paths_as_the_same_file(self):
+        """Comparison is canonical (os.path.realpath), so a differently-
+        spelled path to the same file (relative segments here) is still
+        recognized as already open."""
+        app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
+        command = LoadProjectCommand(app_context, "/p/sub/../current.pplot")
+
+        assert command.execute() is CommandResult.NOOP
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_proceeds_without_asking_when_unmodified(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=False)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+
+        assert command.execute() is CommandResult.SUCCESS
+        command.ui_controller.show_question.assert_not_called()
+        command.task_scheduler.run_task.assert_called_once()
+
+    def test_execute_asks_for_confirmation_when_modified(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=True)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        command.ui_controller.show_question.return_value = True
+
+        assert command.execute() is CommandResult.SUCCESS
+        command.ui_controller.show_question.assert_called_once()
+        command.task_scheduler.run_task.assert_called_once()
+
+    def test_execute_aborts_when_user_declines_confirmation(self):
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=True)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        command.ui_controller.show_question.return_value = False
+
+        assert command.execute() is CommandResult.NOOP
+        command.task_scheduler.run_task.assert_not_called()
+
+    def test_execute_proceeds_without_asking_when_no_project_loaded(self):
+        app_context, _ = _make_configured_app_context(has_project=False)
+        command = LoadProjectCommand(app_context, "/p/new.pplot")
+
+        assert command.execute() is CommandResult.SUCCESS
+        command.ui_controller.show_question.assert_not_called()
+        command.task_scheduler.run_task.assert_called_once()
 
 
 @pytest.fixture
@@ -18,6 +219,34 @@ def env():
     app_context.get_task_scheduler.return_value = Mock()
     app_context.get_manager.return_value = Mock()
     return app_context
+
+
+def test_undo_restores_the_previous_projects_dirty_state():
+    """Regression (PR #235 review): load_project() (called by undo() to
+    restore the previous project) unconditionally clears is_modified, since
+    it assumes a fresh disk load. Undoing a LoadProjectCommand instead
+    restores a project that may still have had unsaved changes -- those
+    must survive, not be silently reported as saved."""
+    from pandaplot.models.events import EventBus
+    from pandaplot.models.state.app_state import AppState
+
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    previous_project.project_file_path = "/p/current.pplot"
+    app_state.load_project(previous_project)
+    app_state.mark_modified()
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_question.return_value = True
+
+    command = LoadProjectCommand(app_context, "/p/other.pplot")
+    assert command.execute() is CommandResult.SUCCESS
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+    assert app_state.is_modified is True
 
 
 def test_cleanup_releases_the_previous_and_loaded_project_references(env):

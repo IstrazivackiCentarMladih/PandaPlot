@@ -25,6 +25,13 @@ def task_scheduler():
     return SyncTaskScheduler()
 
 
+def test_marks_project_modified_is_false():
+    """Regression (PR #235 review): this command computes a fit preview
+    only and never mutates project state, so it must not flag the project
+    as having unsaved changes."""
+    assert PerformFitCommand.marks_project_modified is False
+
+
 def test_execute_performs_fit(fit_service, fit_result, task_scheduler):
     fit_service.perform_fit.return_value = fit_result
 

@@ -217,6 +217,17 @@ class TestSignalAnalysisCommandPreviewPath:
         assert len(project.get_all_items()) == before
 
 
+def test_marks_project_modified_is_false():
+    """Regression: execute() only dispatches the computation and returns
+    SUCCESS before anything has actually mutated the project -- the
+    dispatched computation may yet fail or be discarded (see
+    _on_commit_computed). Flagging the project as modified here, before
+    ApplySignalAnalysisResultCommand (the real mutation) ever runs, would
+    leave a false "unsaved changes" state if the computation never
+    actually applies."""
+    assert SignalAnalysisCommand.marks_project_modified is False
+
+
 class TestSignalAnalysisCommandRealTaskScheduler:
     """Every other test in this suite (and every other converted command's
     tests) substitutes SyncTaskScheduler for TaskScheduler, which runs the

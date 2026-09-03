@@ -299,6 +299,17 @@ class TestAnalysisCommandGuards:
         assert "df" in kwargs["task_arguments"]
 
 
+def test_marks_project_modified_is_false():
+    """Regression: execute() only dispatches the computation and returns
+    SUCCESS before anything has actually mutated the project -- the
+    dispatched computation may yet fail or be discarded (see
+    _on_analysis_computed). Flagging the project as modified here, before
+    ApplyAnalysisResultCommand (the real mutation) ever runs, would leave a
+    false "unsaved changes" state if the computation never actually
+    applies."""
+    assert AnalysisCommand.marks_project_modified is False
+
+
 def test_cleanup_is_a_documented_noop():
     """AnalysisCommand never occupies an undo slot, so CommandExecutor never
     calls cleanup() on it; kept as a no-op to satisfy the Command interface."""

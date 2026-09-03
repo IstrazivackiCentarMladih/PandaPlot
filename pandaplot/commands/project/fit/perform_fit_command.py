@@ -20,6 +20,11 @@ from pandaplot.services.qtasks.task_scheduler import TaskScheduler
 class PerformFitCommand(Command):
     """Command that performs a curve fit."""
 
+    # Computes a preview only -- never mutates project state (see module
+    # docstring) -- so it must not flag the project as having unsaved
+    # changes.
+    marks_project_modified = False
+
     def __init__(
         self,
         fit_service: FitService,

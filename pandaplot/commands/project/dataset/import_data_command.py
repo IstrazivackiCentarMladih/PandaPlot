@@ -36,6 +36,15 @@ class ImportDataCommand(Command):
     the undo stack.
     """
 
+    # execute() only *schedules* the background read -- the project isn't
+    # actually mutated until _on_import_result adds the parsed dataset(s),
+    # which may never happen (parse failure, project changed/closed mid-
+    # import). Notifying eagerly at schedule time would mark the project
+    # dirty for a mutation that hasn't happened yet (and might not at all),
+    # so this self-reports via app_state.mark_modified() instead -- see
+    # _on_import_result.
+    marks_project_modified = False
+
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
         super().__init__()
         self.app_context = app_context
@@ -311,6 +320,13 @@ class ImportDataCommand(Command):
                         self.ui_controller.show_error_message("Import Failed", error_msg)
                         self.logger.error(error_msg)
                         return
+
+                    # This is the actual mutation (marks_project_modified is
+                    # False on this command -- see class docstring), so mark
+                    # it dirty here, now that datasets were really added,
+                    # rather than back when the background read was merely
+                    # scheduled.
+                    self.app_state.mark_modified()
 
                     self.logger.info("%d dataset(s) successfully added to project", len(datasets))
 

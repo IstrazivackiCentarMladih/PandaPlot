@@ -30,6 +30,13 @@ class AnalysisCommand(Command):
     ApplyAnalysisResultCommand.
     """
 
+    # execute() only dispatches the computation -- it returns SUCCESS before
+    # anything has actually mutated the project, and the dispatched
+    # computation may yet fail or be discarded (see _on_analysis_computed).
+    # The real mutation, and the real "unsaved changes" flag, belongs to
+    # ApplyAnalysisResultCommand alone.
+    marks_project_modified = False
+
     def __init__(
         self,
         app_context: AppContext,
