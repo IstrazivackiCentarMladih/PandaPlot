@@ -21,3 +21,6 @@ class LineSeriesStyle(SeriesStyleBase):
     fill_to_index: int = -1
     marker: MarkerStyle = field(default_factory=MarkerStyle)
     error_bars: ErrorBarConfig = field(default_factory=ErrorBarConfig)
+    # Annotate each rendered point with its numeric Y value (#125) -- see
+    # SeriesTypeSpec.supports_value_labels and series_renderers/value_labels.py.
+    show_value_labels: bool = False

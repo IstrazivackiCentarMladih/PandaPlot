@@ -11,3 +11,6 @@ from pandaplot.models.chart.series_style.base import SeriesStyleBase
 class BarSeriesStyle(SeriesStyleBase):
     color: str = "#1f77b4"
     error_bars: ErrorBarConfig = field(default_factory=ErrorBarConfig)
+    # Annotate each bar with its numeric height (#125) -- see
+    # SeriesTypeSpec.supports_value_labels and series_renderers/value_labels.py.
+    show_value_labels: bool = False

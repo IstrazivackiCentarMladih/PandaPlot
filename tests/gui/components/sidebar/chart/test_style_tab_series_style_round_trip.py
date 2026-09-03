@@ -209,6 +209,81 @@ def test_card_visibility_uses_the_selected_series_own_type_not_the_chart_type():
     assert tab.marker_card.isVisible() is True  # Scatter's marker is required, not optional
 
 
+def test_load_then_apply_round_trips_show_value_labels_for_line_series():
+    """Regression (#125): the Value Labels toggle must persist through a
+    load-then-apply cycle like every other per-series style field."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=True)
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_enabled_toggle.isChecked() is True
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.show_value_labels is True
+
+
+def test_load_then_apply_round_trips_show_value_labels_for_bar_series():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.BAR)
+    series = _line_series(series_type=SeriesType.BAR, color="#654321", show_value_labels=True)
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_enabled_toggle.isChecked() is True
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.show_value_labels is True
+
+
+def test_value_labels_card_visible_for_supported_types_hidden_otherwise():
+    """SeriesTypeSpec.supports_value_labels (LINE/SCATTER/BAR only) drives
+    the card's visibility, mirroring every other per-type card (Fill,
+    Error Bars, ...)."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+
+    line_series = _line_series(color="#112233")
+    tab._current_target = ("series", line_series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_card.isVisible() is True
+
+    bar_series = _line_series(series_type=SeriesType.BAR, color="#112233")
+    tab._current_target = ("series", bar_series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_card.isVisible() is True
+
+    vector_series = _vector_series(vector_color="#112233")
+    tab._current_target = ("series", vector_series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_card.isVisible() is False
+
+
+def test_load_does_not_crash_for_vector_series_with_no_show_value_labels_field():
+    """VectorSeriesStyle declares no show_value_labels field -- loading
+    must not raise just because the (hidden) card's toggle still gets
+    populated with some default value."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.VECTOR)
+    series = _vector_series(vector_color="#abcdef")
+
+    tab.load_series_style(series)  # must not raise
+
+    assert tab.value_labels_enabled_toggle.isChecked() is False
+
+    tab.apply_series_style_to(series)  # must not raise
+
+    assert not hasattr(series.style, "show_value_labels")
+
+
 def test_is_scatter_series_target_uses_the_selected_series_own_type():
     """_is_scatter_series_target must read the SELECTED SERIES' type, not
     the chart's -- a Scatter-typed series inside a Line-typed chart is

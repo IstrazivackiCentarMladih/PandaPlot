@@ -338,7 +338,17 @@ def test_style_field_names_match_the_real_style_dataclasses():
     0) project file can contain them, and this migration only runs for
     schema_version 0 data. A separate assertion locks the two dicts free
     of entries for them, so no one adds placeholder entries that legacy
-    data will never exercise."""
+    data will never exercise.
+
+    Direct fields are checked as a subset, not equality (mirroring
+    test_fit_style_fields_are_a_subset_of_the_real_fit_style_dataclass's
+    reasoning for FitStyle): a style dataclass field added after this
+    migration's field lists were written (e.g. LineSeriesStyle/
+    ScatterSeriesStyle/BarSeriesStyle's show_value_labels, #125) can't
+    appear in any genuinely legacy schema_version-0 file either, so it
+    correctly falls through to the dataclass's own default via
+    style_cls(**style_dict) instead of needing to be hand-added to a list
+    meant to describe the old flat format."""
     import dataclasses
 
     from pandaplot.models.chart.error_bar_config import ErrorBarConfig
@@ -377,7 +387,9 @@ def test_style_field_names_match_the_real_style_dataclasses():
         top_level_field_names = {f.name for f in dataclasses.fields(spec.style_cls)}
         expected_direct = top_level_field_names - {"marker", "error_bars"}
         actual_direct = set(_DIRECT_STYLE_FIELDS_BY_CHART_TYPE[series_type.value])
-        assert actual_direct == expected_direct, f"{series_type.value}: {actual_direct} != {expected_direct}"
+        assert actual_direct.issubset(expected_direct), (
+            f"{series_type.value}: {actual_direct} not a subset of {expected_direct}"
+        )
 
         has_marker = "marker" in top_level_field_names
         assert has_marker == (series_type.value in _MARKER_FIELDS_BY_CHART_TYPE)

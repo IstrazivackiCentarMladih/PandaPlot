@@ -2,6 +2,7 @@
 branch exactly (color/line_style/line_width/marker fields, plus the
 optional area fill)."""
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers.value_labels import annotate_point_labels
 from pandaplot.gui.components.tabs.chart.style_maps import LINESTYLE_MAP, MARKER_MAP
 from pandaplot.models.chart.series_style import LineSeriesStyle
 
@@ -21,6 +22,8 @@ def render_line_series(axes, series_data: SeriesData, style: LineSeriesStyle,
               markeredgewidth=style.marker.marker_edge_width,
               label=label,
               alpha=alpha)
+    if style.show_value_labels:
+        annotate_point_labels(axes, series_data.x_data, series_data.y_data)
     if style.fill_enabled:
         resolve_fill_baseline = extra["resolve_fill_baseline"]
         fill_color = style.fill_color or style.color

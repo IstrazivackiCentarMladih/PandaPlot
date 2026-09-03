@@ -101,6 +101,30 @@ def test_render_line_series_fill_alpha_halved_when_not_visible():
     plt.close(fig)
 
 
+def test_render_line_series_annotates_points_when_show_value_labels_is_set():
+    """#125: each point gets a text annotation of its own Y value."""
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(color="#ff0000", show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "My Line", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert [t.get_text() for t in ax.texts] == ["4", "5", "6"]
+    plt.close(fig)
+
+
+def test_render_line_series_draws_no_annotations_when_show_value_labels_is_unset():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(color="#ff0000", marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "My Line", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert len(ax.texts) == 0
+    plt.close(fig)
+
+
 def test_render_scatter_series_draws_a_scatter_collection():
     fig, ax = plt.subplots()
     style = ScatterSeriesStyle(color="#123456", marker=MarkerStyle(marker_style="square", marker_size=3.0))
@@ -112,6 +136,17 @@ def test_render_scatter_series_draws_a_scatter_collection():
     plt.close(fig)
 
 
+def test_render_scatter_series_annotates_points_when_show_value_labels_is_set():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(color="#123456", show_value_labels=True,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(ax, _series_data(), style, "My Scatter", 1.0, visible=True, extra={})
+
+    assert [t.get_text() for t in ax.texts] == ["4", "5", "6"]
+    plt.close(fig)
+
+
 def test_render_bar_series_draws_bars():
     fig, ax = plt.subplots()
     style = BarSeriesStyle(color="#654321")
@@ -119,6 +154,27 @@ def test_render_bar_series_draws_bars():
     render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
 
     assert len(ax.patches) == 3  # one Rectangle per bar
+    plt.close(fig)
+
+
+def test_render_bar_series_adds_bar_labels_when_show_value_labels_is_set():
+    """#125: matplotlib's bar_label() places one text per bar."""
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321", show_value_labels=True)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
+
+    assert [t.get_text() for t in ax.texts] == ["4", "5", "6"]
+    plt.close(fig)
+
+
+def test_render_bar_series_draws_no_bar_labels_when_show_value_labels_is_unset():
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321")
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
+
+    assert len(ax.texts) == 0
     plt.close(fig)
 
 

@@ -611,6 +611,25 @@ class StyleTab(QWidget):
 
         layout.addWidget(error_bars_card)
 
+        # VALUE LABELS group -- annotate each rendered point/bar with its
+        # own numeric value (#125). A single toggle: no further options
+        # (format, position, ...) to keep this a small, self-contained
+        # feature rather than a whole new styling surface -- see
+        # SeriesTypeSpec.supports_value_labels for which series types show
+        # this card at all.
+        self.value_labels_card = Card()
+        value_labels_card = self.value_labels_card
+        value_labels_layout = QGridLayout(value_labels_card)
+
+        value_labels_header_row = QHBoxLayout()
+        value_labels_header_row.addWidget(SectionHeader("Value Labels"))
+        value_labels_header_row.addStretch(1)
+        self.value_labels_enabled_toggle = ToggleSwitch()
+        value_labels_header_row.addWidget(self.value_labels_enabled_toggle)
+        value_labels_layout.addLayout(value_labels_header_row, 0, 0, 1, 2)
+
+        layout.addWidget(value_labels_card)
+
         # VECTOR group -- shown instead of Line/Fill/Marker/Error Bars for a
         # series on a Vector (quiver) chart, which has no line/marker/fill/
         # error-bar concept of its own.
@@ -758,6 +777,7 @@ class StyleTab(QWidget):
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
+        self.value_labels_enabled_toggle.toggled.connect(self._on_field_changed)
         self.vector_color_row.colorChanged.connect(self._on_field_changed)
         self.vector_colormap_control.currentValueChanged.connect(self._on_field_changed)
         self.vector_scale_slider.valueChanged.connect(self._on_field_changed)
@@ -889,6 +909,7 @@ class StyleTab(QWidget):
         color_supported = spec is not None and spec.supports_color
         fill_supported = spec is not None and spec.supports_fill
         error_bars_supported = spec is not None and spec.supports_error_bars
+        value_labels_supported = spec is not None and spec.supports_value_labels
         # The Line card holds both color/opacity controls (style.color/
         # style.alpha, rendered for line/bar/hist) and line_style/line_width
         # controls (rendered only for "line" -- see SeriesTypeSpec.supports_
@@ -909,6 +930,11 @@ class StyleTab(QWidget):
         self.error_bars_card.setVisible(
             kind == "series" and isinstance(obj, DataSeries) and obj.has_error_data and error_bars_supported
         )
+        # Fit data has no show_value_labels field (FitStyle) -- a fit is
+        # always the analytic curve itself, not individually plotted points/
+        # bars, so per-point annotation doesn't apply the way it does to a
+        # data series.
+        self.value_labels_card.setVisible(kind == "series" and value_labels_supported)
         self.vector_card.setVisible(kind == "series" and spec is not None and spec.needs_secondary_columns)
         self.heatmap_gridding_card.setVisible(kind == "series" and spec is not None and spec.supports_gridding)
         # Re-evaluate "Match line" visibility: it depends on both kind and
@@ -1672,6 +1698,14 @@ class StyleTab(QWidget):
                 style.line_width = self.line_width_slider.value()
             series.alpha = self.line_opacity_slider.value()
 
+        # Value labels (#125): only LineSeriesStyle/ScatterSeriesStyle/
+        # BarSeriesStyle declare this field (see SeriesTypeSpec.supports_
+        # value_labels) -- the Value Labels card itself is only shown for
+        # those types, but this direct write still needs its own guard, same
+        # as the error_bars write below.
+        if hasattr(style, "show_value_labels"):
+            style.show_value_labels = self.value_labels_enabled_toggle.isChecked()
+
         # "Markers enabled" isn't a separate persisted flag: it maps onto
         # MarkerType.NONE -- except for a required-marker target (Scatter,
         # Colormap), which can never write NONE regardless of the (hidden)
@@ -1832,6 +1866,10 @@ class StyleTab(QWidget):
             self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
 
             self._update_marker_controls_enabled()
+
+            self.value_labels_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_enabled_toggle.setChecked(checked=getattr(style, "show_value_labels", False))
+            self.value_labels_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
             # Error-bar fields now live on style.error_bars; not every style
             # class declares one (Hist/Vector don't), so read defensively.

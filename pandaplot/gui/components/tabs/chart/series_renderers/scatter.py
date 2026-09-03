@@ -1,5 +1,6 @@
 """Renders a "scatter" series -- marker fields only, no line/fill."""
 from pandaplot.gui.components.tabs.chart.series_data import SeriesData
+from pandaplot.gui.components.tabs.chart.series_renderers.value_labels import annotate_point_labels
 from pandaplot.gui.components.tabs.chart.style_maps import MARKER_MAP
 from pandaplot.models.chart.series_style import ScatterSeriesStyle
 
@@ -16,3 +17,5 @@ def render_scatter_series(axes, series_data: SeriesData, style: ScatterSeriesSty
                  s=style.marker.marker_size ** 2,
                  label=label,
                  alpha=alpha)
+    if style.show_value_labels:
+        annotate_point_labels(axes, series_data.x_data, series_data.y_data)
