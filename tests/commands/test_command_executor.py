@@ -268,11 +268,14 @@ class TestUndoFunctionality:
         executor.execute_command(command)
         
         result = executor.undo()
-        
+
         assert result is False
         # Command should be removed from undo stack even if undo fails
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
+        # Dropped from both stacks entirely, so its held state (e.g. a large
+        # DataFrame snapshot) must be released like any other stack eviction.
+        assert command.cleanup_count == 1
     
     def test_multiple_undo_operations(self):
         """Test multiple undo operations."""
@@ -336,11 +339,12 @@ class TestRedoFunctionality:
         executor.undo()
         
         result = executor.redo()
-        
+
         assert result is False
         # Command should be removed from redo stack even if redo fails
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
+        assert command.cleanup_count == 1
     
     def test_multiple_redo_operations(self):
         """Test multiple redo operations."""
@@ -724,6 +728,90 @@ class TestHistoryChangedHook:
         executor.undo()
         executor.redo()
         executor.clear_history()  # must not raise
+
+    def test_undo_failure_still_notifies(self):
+        """The stacks changed (the command was dropped) even though undo()
+        raised, so the Edit menu still needs to refresh its enabled state."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_history_changed = lambda: calls.append(None)
+
+        executor.undo()
+
+        assert len(calls) == 1
+
+    def test_redo_failure_still_notifies(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_history_changed = lambda: calls.append(None)
+
+        executor.redo()
+
+        assert len(calls) == 1
+
+
+class TestUndoRedoErrorHook:
+    """Tests for CommandExecutor.on_undo_redo_error, the hook that lets the
+    UI tell the user their undo/redo history was truncated because a
+    command's undo()/redo() raised mid-operation (issue #285): the command
+    is dropped from both stacks rather than left in an inconsistent state,
+    so the user needs to be told that step is gone instead of discovering it
+    only when a later undo/redo silently does the wrong thing."""
+
+    def test_undo_failure_calls_the_hook_with_command_name_and_operation(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+
+        executor.undo()
+
+        assert calls == [("MockCommand", "undo")]
+
+    def test_redo_failure_calls_the_hook_with_command_name_and_operation(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+
+        executor.redo()
+
+        assert calls == [("MockCommand", "redo")]
+
+    def test_successful_undo_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        calls = []
+        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+
+        executor.undo()
+
+        assert calls == []
+
+    def test_successful_redo_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        executor.undo()
+        calls = []
+        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+
+        executor.redo()
+
+        assert calls == []
+
+    def test_no_hook_configured_is_a_no_op(self):
+        """The hook is optional (None by default) -- a raising undo()/redo()
+        must not itself raise just because nothing is listening."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+
+        result = executor.undo()
+
+        assert result is False
 
 
 class TestCleanupOnEviction:

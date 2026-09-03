@@ -11,7 +11,8 @@ class CommandExecutor:
     """
 
     def __init__(self, on_history_changed: Optional[Callable[[], None]] = None,
-                 on_project_modified: Optional[Callable[[], None]] = None):
+                 on_project_modified: Optional[Callable[[], None]] = None,
+                 on_undo_redo_error: Optional[Callable[[str, str], None]] = None):
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Undo/Redo functionality
@@ -32,6 +33,19 @@ class CommandExecutor:
         # e.g. the Edit menu's Undo/Redo actions can keep their enabled
         # state in sync without polling.
         self.on_history_changed = on_history_changed
+
+        # Optional hook invoked when a command's undo()/redo() raises
+        # instead of returning a CommandResult -- the command is dropped
+        # from both stacks (its own state may be partially mutated, so
+        # re-attempting the same undo()/redo() isn't assumed safe), and the
+        # UI needs to tell the user that step is gone rather than let a
+        # later undo/redo silently act on the wrong command. Called with
+        # (command_name, operation), operation being "undo" or "redo".
+        self.on_undo_redo_error = on_undo_redo_error
+
+    def _notify_undo_redo_error(self, command_name: str, operation: str) -> None:
+        if self.on_undo_redo_error:
+            self.on_undo_redo_error(command_name, operation)
 
     def _notify_project_modified(self, command: Command) -> None:
         if self.on_project_modified and getattr(command, "marks_project_modified", True):
@@ -126,30 +140,35 @@ class CommandExecutor:
             self.logger.debug("Undo requested but no commands in undo stack")
             return False
             
-        command = self.undo_stack[-1]  # Peek at the command
+        command = self.undo_stack.pop()
         command_name = command.__class__.__name__
         self.logger.debug("Undoing command: %s", command_name)
-        
-        try:
-            command = self.undo_stack.pop()
-            result = command.undo()
-            self._warn_if_not_command_result(result, command_name, "undo")
-            self.redo_stack.append(command)
-            if result is CommandResult.FAILURE:
-                self.logger.warning("Command undo reported failure: %s", command_name)
-            elif result is CommandResult.NOOP:
-                self.logger.debug("Command undo was a no-op: %s", command_name)
-            else:
-                self._notify_project_modified(command)
-                self.logger.info("Successfully undid command: %s", command_name)
-            self._notify_history_changed()
-            return True
 
+        try:
+            result = command.undo()
         except Exception as e:
-            self.logger.error("Error undoing command '%s': %s",
-                            command.__class__.__name__ if command else "Unknown", str(e), exc_info=True)
-            self.logger.debug("Undo operation failed for command: %s", repr(command) if command else "None")
+            # command.undo() may have raised after partially mutating the
+            # command's own state, so it isn't safe to assume a retry would
+            # succeed (or even be a no-op) -- drop it from both stacks
+            # instead of restoring it to undo_stack, same as it would be
+            # evicted on any other permanent removal.
+            self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
+            self._safe_cleanup(command)
+            self._notify_undo_redo_error(command_name, "undo")
+            self._notify_history_changed()
             return False
+
+        self._warn_if_not_command_result(result, command_name, "undo")
+        self.redo_stack.append(command)
+        if result is CommandResult.FAILURE:
+            self.logger.warning("Command undo reported failure: %s", command_name)
+        elif result is CommandResult.NOOP:
+            self.logger.debug("Command undo was a no-op: %s", command_name)
+        else:
+            self._notify_project_modified(command)
+            self.logger.info("Successfully undid command: %s", command_name)
+        self._notify_history_changed()
+        return True
     
     def redo(self) -> bool:
         """
@@ -162,30 +181,30 @@ class CommandExecutor:
             self.logger.debug("Redo requested but no commands in redo stack")
             return False
             
-        command = self.redo_stack[-1]  # Peek at the command
+        command = self.redo_stack.pop()
         command_name = command.__class__.__name__
         self.logger.debug("Redoing command: %s", command_name)
-        
-        try:
-            command = self.redo_stack.pop()
-            result = command.redo()
-            self._warn_if_not_command_result(result, command_name, "redo")
-            self.undo_stack.append(command)
-            if result is CommandResult.FAILURE:
-                self.logger.warning("Command redo reported failure: %s", command_name)
-            elif result is CommandResult.NOOP:
-                self.logger.debug("Command redo was a no-op: %s", command_name)
-            else:
-                self._notify_project_modified(command)
-                self.logger.info("Successfully redid command: %s", command_name)
-            self._notify_history_changed()
-            return True
 
+        try:
+            result = command.redo()
         except Exception as e:
-            self.logger.error("Error redoing command '%s': %s",
-                            command.__class__.__name__ if command else "Unknown", str(e), exc_info=True)
-            self.logger.debug("Redo operation failed for command: %s", repr(command) if command else "None")
+            self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
+            self._safe_cleanup(command)
+            self._notify_undo_redo_error(command_name, "redo")
+            self._notify_history_changed()
             return False
+
+        self._warn_if_not_command_result(result, command_name, "redo")
+        self.undo_stack.append(command)
+        if result is CommandResult.FAILURE:
+            self.logger.warning("Command redo reported failure: %s", command_name)
+        elif result is CommandResult.NOOP:
+            self.logger.debug("Command redo was a no-op: %s", command_name)
+        else:
+            self._notify_project_modified(command)
+            self.logger.info("Successfully redid command: %s", command_name)
+        self._notify_history_changed()
+        return True
     
     def can_undo(self) -> bool:
         """Check if undo is available."""
