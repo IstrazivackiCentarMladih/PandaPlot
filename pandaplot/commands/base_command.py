@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from enum import Enum
+from typing import Iterable, List, Optional
 
 
 class CommandResult(Enum):
@@ -74,3 +75,142 @@ class Command(ABC):
 
     def __repr__(self):
         return f"{self.__class__.__name__}()"
+
+
+class CompositeCommand(Command):
+    """A command that composes multiple sub-commands into a single atomic action.
+
+    - Executes sub-commands in order. If any sub-command fails or raises an
+      exception during `execute()` or `redo()`, already-executed sub-commands
+      are rolled back (`undo()`) in reverse order and `CommandResult.FAILURE`
+      is returned.
+    - `undo()` undoes all sub-commands in reverse order.
+    - `redo()` re-executes all sub-commands in forward order.
+    - `cleanup()` invokes `cleanup()` on all sub-commands.
+    - Occupies a single slot on the `CommandExecutor` undo/redo stack.
+    """
+
+    def __init__(self, commands: Optional[Iterable[Command]] = None):
+        super().__init__()
+        self.commands: List[Command] = list(commands) if commands is not None else []
+
+    def add_command(self, command: Command) -> None:
+        """Add a sub-command to the composite."""
+        self.commands.append(command)
+
+    @property
+    def marks_project_modified(self) -> bool:
+        if not self.commands:
+            return True
+        return any(getattr(cmd, "marks_project_modified", True) for cmd in self.commands)
+
+    def execute(self) -> CommandResult:
+        executed: List[Command] = []
+        all_noop = True
+
+        for cmd in self.commands:
+            try:
+                res = cmd.execute()
+                if res is CommandResult.FAILURE:
+                    self.logger.warning(
+                        "Sub-command %s failed during execute(); rolling back %d completed sub-commands",
+                        cmd.__class__.__name__, len(executed),
+                    )
+                    self._rollback(executed)
+                    return CommandResult.FAILURE
+
+                executed.append(cmd)
+                if res is not CommandResult.NOOP:
+                    all_noop = False
+            except Exception as e:
+                self.logger.error(
+                    "Sub-command %s raised exception during execute(): %s; rolling back %d completed sub-commands",
+                    cmd.__class__.__name__, e, len(executed), exc_info=True,
+                )
+                self._rollback(executed)
+                return CommandResult.FAILURE
+
+        if not self.commands or all_noop:
+            return CommandResult.NOOP
+        return CommandResult.SUCCESS
+
+    def undo(self) -> CommandResult:
+        has_failure = False
+        all_noop = True
+
+        for cmd in reversed(self.commands):
+            try:
+                res = cmd.undo()
+                if res is CommandResult.FAILURE:
+                    has_failure = True
+                    self.logger.warning("Sub-command %s reported failure during undo()", cmd.__class__.__name__)
+                elif res is not CommandResult.NOOP:
+                    all_noop = False
+            except Exception as e:
+                has_failure = True
+                self.logger.error(
+                    "Sub-command %s raised exception during undo(): %s",
+                    cmd.__class__.__name__, e, exc_info=True,
+                )
+
+        if has_failure:
+            return CommandResult.FAILURE
+        if not self.commands or all_noop:
+            return CommandResult.NOOP
+        return CommandResult.SUCCESS
+
+    def redo(self) -> CommandResult:
+        redone: List[Command] = []
+        all_noop = True
+
+        for cmd in self.commands:
+            try:
+                res = cmd.redo()
+                if res is CommandResult.FAILURE:
+                    self.logger.warning(
+                        "Sub-command %s failed during redo(); rolling back %d redone sub-commands",
+                        cmd.__class__.__name__, len(redone),
+                    )
+                    self._rollback(redone)
+                    return CommandResult.FAILURE
+
+                redone.append(cmd)
+                if res is not CommandResult.NOOP:
+                    all_noop = False
+            except Exception as e:
+                self.logger.error(
+                    "Sub-command %s raised exception during redo(): %s; rolling back %d redone sub-commands",
+                    cmd.__class__.__name__, e, len(redone), exc_info=True,
+                )
+                self._rollback(redone)
+                return CommandResult.FAILURE
+
+        if not self.commands or all_noop:
+            return CommandResult.NOOP
+        return CommandResult.SUCCESS
+
+    def cleanup(self) -> None:
+        for cmd in self.commands:
+            try:
+                cmd.cleanup()
+            except Exception as e:
+                self.logger.error(
+                    "Error cleaning up sub-command %s: %s",
+                    cmd.__class__.__name__, e, exc_info=True,
+                )
+
+    def _rollback(self, executed: List[Command]) -> None:
+        for cmd in reversed(executed):
+            try:
+                cmd.undo()
+            except Exception as e:
+                self.logger.error(
+                    "Error rolling back sub-command %s: %s",
+                    cmd.__class__.__name__, e, exc_info=True,
+                )
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(count={len(self.commands)})"
+
+
+MacroCommand = CompositeCommand
