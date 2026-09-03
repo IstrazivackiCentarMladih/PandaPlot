@@ -300,6 +300,31 @@ class TestUndoFunctionality:
         assert executor.redo_stack[1] is cmd2
         assert executor.redo_stack[2] is cmd1
 
+    def test_undo_failure_invalidates_the_entire_history(self):
+        """Commands here mutate shared live project/dataset objects rather
+        than isolated snapshots, so once one command's undo() raises
+        mid-operation the state it leaves behind is unknown -- any other
+        stack entry may have been recorded against an assumption that no
+        longer holds. The whole history must be dropped and cleaned up, not
+        just the command that raised."""
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = MockCommand("Failing", should_fail=True, fail_on="undo")
+        newer = MockCommand("Newer")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        executor.execute_command(newer)
+        executor.undo()  # newer -> redo_stack; undo_stack = [older, failing]
+
+        result = executor.undo()  # pops `failing`; raises
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
+
 
 class TestRedoFunctionality:
     """Test cases for redo functionality."""
@@ -372,6 +397,30 @@ class TestRedoFunctionality:
         assert executor.undo_stack[0] is cmd1
         assert executor.undo_stack[1] is cmd2
         assert executor.undo_stack[2] is cmd3
+
+    def test_redo_failure_invalidates_the_entire_history(self):
+        executor = CommandExecutor()
+        already_undone = MockCommand("AlreadyUndone")
+        failing = MockCommand("Failing", should_fail=True, fail_on="redo")
+        executor.execute_command(already_undone)
+        executor.execute_command(failing)
+        newer = MockCommand("Newer")
+        executor.execute_command(newer)
+        executor.undo()  # newer -> redo_stack
+        executor.undo()  # failing -> redo_stack
+        executor.undo()  # already_undone -> redo_stack
+
+        result = executor.redo()  # pops `already_undone`, redoes it fine
+        assert result is True
+
+        result = executor.redo()  # pops `failing`; raises
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert already_undone.cleanup_count == 1
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
 
 
 class TestCanUndoRedo:
@@ -616,6 +665,31 @@ class TestProjectModifiedHook:
         executor = CommandExecutor()
         assert executor.execute_command(MockCommand()) is True
 
+    def test_undo_that_raises_still_calls_the_hook(self):
+        """A command's undo() can mutate the shared project/dataset state
+        before raising, so the dirty flag must still be set even though the
+        operation is reported as failed -- otherwise a save right after
+        could mark that mutated state as clean."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.undo()
+
+        assert calls == ["modified"]
+
+    def test_redo_that_raises_still_calls_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.redo()
+
+        assert calls == ["modified"]
+
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""
@@ -755,11 +829,12 @@ class TestHistoryChangedHook:
 
 class TestUndoRedoErrorHook:
     """Tests for CommandExecutor.on_undo_redo_error, the hook that lets the
-    UI tell the user their undo/redo history was truncated because a
-    command's undo()/redo() raised mid-operation (issue #285): the command
-    is dropped from both stacks rather than left in an inconsistent state,
-    so the user needs to be told that step is gone instead of discovering it
-    only when a later undo/redo silently does the wrong thing."""
+    UI tell the user their undo/redo history was reset because a command's
+    undo()/redo() raised mid-operation (issue #285): since commands mutate
+    shared live project state rather than isolated snapshots, a partial
+    failure makes every remaining stack entry's assumed state suspect, so
+    the whole history is invalidated rather than just the failed command --
+    see TestUndoFunctionality.test_undo_failure_invalidates_the_entire_history."""
 
     def test_undo_failure_calls_the_hook_with_command_name_and_operation(self):
         executor = CommandExecutor()
@@ -812,6 +887,23 @@ class TestUndoRedoErrorHook:
         result = executor.undo()
 
         assert result is False
+
+    def test_a_raising_hook_does_not_prevent_recovery(self):
+        """The hook itself (e.g. a Qt dialog) could raise. It runs while
+        undo()/redo() is already handling a command failure, so a hook
+        exception must not escape and skip the history-changed notification
+        that follows it -- same isolation as _safe_cleanup gives
+        command.cleanup()."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        executor.on_undo_redo_error = lambda command_name, operation: (_ for _ in ()).throw(RuntimeError("dialog failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert len(history_calls) == 1
 
 
 class TestCleanupOnEviction:

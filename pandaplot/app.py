@@ -92,7 +92,7 @@ def build_app_context() -> AppContext:
         ui_controller.show_warning_message(
             "Undo" if operation == "undo" else "Redo",
             f"Could not {operation} '{command_name}': an unexpected error occurred. "
-            "This action has been removed from the undo/redo history.",
+            "The undo/redo history has been reset.",
         )
 
     command_executor = CommandExecutor(

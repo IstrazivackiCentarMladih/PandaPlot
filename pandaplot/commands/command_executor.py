@@ -35,17 +35,25 @@ class CommandExecutor:
         self.on_history_changed = on_history_changed
 
         # Optional hook invoked when a command's undo()/redo() raises
-        # instead of returning a CommandResult -- the command is dropped
-        # from both stacks (its own state may be partially mutated, so
-        # re-attempting the same undo()/redo() isn't assumed safe), and the
-        # UI needs to tell the user that step is gone rather than let a
-        # later undo/redo silently act on the wrong command. Called with
-        # (command_name, operation), operation being "undo" or "redo".
+        # instead of returning a CommandResult -- the entire undo/redo
+        # history is invalidated in that case (see
+        # _invalidate_history_after_failure), and the UI needs to tell the
+        # user their history was reset rather than let a later undo/redo
+        # silently act on a command whose assumed state no longer holds.
+        # Called with (command_name, operation), operation being "undo" or
+        # "redo".
         self.on_undo_redo_error = on_undo_redo_error
 
     def _notify_undo_redo_error(self, command_name: str, operation: str) -> None:
-        if self.on_undo_redo_error:
+        if not self.on_undo_redo_error:
+            return
+        try:
             self.on_undo_redo_error(command_name, operation)
+        except Exception as e:
+            # This runs while undo()/redo() is already handling a command
+            # failure -- a raising hook (e.g. a Qt dialog) must not prevent
+            # the history-changed notification that follows it.
+            self.logger.error("Error in on_undo_redo_error hook: %s", str(e), exc_info=True)
 
     def _notify_project_modified(self, command: Command) -> None:
         if self.on_project_modified and getattr(command, "marks_project_modified", True):
@@ -147,13 +155,13 @@ class CommandExecutor:
         try:
             result = command.undo()
         except Exception as e:
-            # command.undo() may have raised after partially mutating the
-            # command's own state, so it isn't safe to assume a retry would
-            # succeed (or even be a no-op) -- drop it from both stacks
-            # instead of restoring it to undo_stack, same as it would be
-            # evicted on any other permanent removal.
+            # command.undo() may have raised after partially mutating shared
+            # project state, so it isn't safe to assume a retry would
+            # succeed (or even be a no-op), nor that any other stack entry
+            # is still valid -- see _invalidate_history_after_failure.
             self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
-            self._safe_cleanup(command)
+            self._notify_project_modified(command)
+            self._invalidate_history_after_failure(command)
             self._notify_undo_redo_error(command_name, "undo")
             self._notify_history_changed()
             return False
@@ -189,7 +197,8 @@ class CommandExecutor:
             result = command.redo()
         except Exception as e:
             self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
-            self._safe_cleanup(command)
+            self._notify_project_modified(command)
+            self._invalidate_history_after_failure(command)
             self._notify_undo_redo_error(command_name, "redo")
             self._notify_history_changed()
             return False
@@ -235,6 +244,22 @@ class CommandExecutor:
         self.undo_stack.clear()
         self.redo_stack.clear()
         self._notify_history_changed()
+
+    def _invalidate_history_after_failure(self, failed_command: Command) -> None:
+        """A command's undo()/redo() raising leaves the shared project state
+        in an unknown, possibly partially-mutated shape -- commands here
+        operate on live shared objects (e.g. a Dataset's DataFrame, a
+        Chart's series list), not isolated snapshots, so any other stack
+        entry may have been recorded against an assumption about that state
+        which no longer holds. The entire history is therefore dropped and
+        cleaned up, not just the command that raised."""
+        self._safe_cleanup(failed_command)
+        for command in self.undo_stack:
+            self._safe_cleanup(command)
+        for command in self.redo_stack:
+            self._safe_cleanup(command)
+        self.undo_stack.clear()
+        self.redo_stack.clear()
 
     def _safe_cleanup(self, command: Command) -> None:
         """Call command.cleanup(), isolating any exception it raises so it
