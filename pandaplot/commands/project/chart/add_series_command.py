@@ -56,6 +56,13 @@ class AddSeriesCommand(Command):
         if not chart or self.added_index is None:
             return CommandResult.FAILURE
 
+        if self.added_index < 0 or self.added_index >= len(chart.data_series):
+            self.logger.warning(
+                "AddSeriesCommand.undo: index %s out of range for chart '%s' (%d series)",
+                self.added_index, self.chart_id, len(chart.data_series),
+            )
+            return CommandResult.FAILURE
+
         chart.remove_data_series(self.added_index)
         self.app_context.event_bus.emit(ChartEvents.CHART_UPDATED, {
             "chart_id": self.chart_id,

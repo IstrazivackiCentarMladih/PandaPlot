@@ -73,6 +73,13 @@ class RemoveFitDataCommand(Command):
             )
             return CommandResult.FAILURE
 
+        if self.fit_index < 0 or self.fit_index > len(chart.fit_data):
+            self.logger.warning(
+                "RemoveFitDataCommand.undo: fit_index %s out of range for chart '%s' (%d fits)",
+                self.fit_index, self.chart_id, len(chart.fit_data),
+            )
+            return CommandResult.FAILURE
+
         # Re-create and insert at original position
         fit = copy.deepcopy(self.removed_fit_data)
         chart.fit_data.insert(self.fit_index, fit)
