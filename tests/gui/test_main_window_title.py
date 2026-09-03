@@ -127,6 +127,47 @@ def test_close_event_prompt_says_discard_for_a_never_saved_project():
     assert "discard" in message
 
 
+def test_close_event_confirming_an_autosave_actually_saves_before_closing():
+    """Regression (PR #235 review): the prompt promises an automatic save,
+    but the actual save previously only happened later, in
+    app._flush_save_on_quit -- after the point of no return, with every
+    exception swallowed into a log line. Make sure the save genuinely runs
+    (and clears is_modified) as part of confirming, not just the promise of
+    one."""
+    window = _make_window(has_project=True, is_modified=True, project_file_path="/p.pplot")
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    project_manager = Mock()
+    window.app_context.get_manager.return_value = project_manager
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    project = window.app_context.get_app_state.return_value.current_project
+    project_manager.save_project.assert_called_once_with(project, "/p.pplot")
+    window.app_context.get_app_state.return_value.mark_saved.assert_called_once()
+    assert event.accepted is True
+
+
+def test_close_event_a_failed_autosave_cancels_the_close_instead_of_losing_edits():
+    """Regression (PR #235 review): _flush_save_on_quit catches every save
+    exception and lets shutdown continue anyway, so a disk-full/permission/
+    serialization failure would silently close the app having lost the
+    edits it just promised to keep. The save must instead be checked here,
+    before the close is accepted."""
+    window = _make_window(has_project=True, is_modified=True, project_file_path="/p.pplot")
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    project_manager = Mock()
+    project_manager.save_project.side_effect = OSError("disk full")
+    window.app_context.get_manager.return_value = project_manager
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    window.app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    window.app_context.get_app_state.return_value.mark_saved.assert_not_called()
+    assert event.accepted is False
+
+
 def test_close_event_skips_the_check_when_already_closing_via_exit_command():
     """Avoids asking twice: File > Exit's ExitCommand already confirmed
     before emitting APP_CLOSING, which on_app_closing_event handles by

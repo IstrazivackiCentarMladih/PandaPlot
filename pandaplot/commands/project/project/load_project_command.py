@@ -55,6 +55,9 @@ class LoadProjectCommand(Command):
         # it to "no changes" -- see undo().
         self.previous_was_modified = False
         self.loaded_project: Optional[Project] = None
+        # AppState.modification_revision as of the moment the background
+        # load task was kicked off -- see _on_load_result.
+        self._dispatch_revision: int = 0
 
         # Task state
         self.is_loading = False
@@ -100,7 +103,12 @@ class LoadProjectCommand(Command):
             # Show starting message
             self.ui_controller.show_info_message("Load Starting", f"Starting to load project from:\n{self.file_path}")
 
-            # Start background load operation
+            # Start background load operation. The old project stays active
+            # and editable while this runs -- capture its modification
+            # revision now so _on_load_result can tell whether a *new* edit
+            # landed during the load (one the confirmation above never
+            # covered) and needs its own confirmation before being discarded.
+            self._dispatch_revision = self.app_state.modification_revision
             self.is_loading = True
 
             # Run load in background thread
@@ -184,6 +192,30 @@ class LoadProjectCommand(Command):
                 file_path = result.get("file_path")
 
                 if project and file_path:
+                    # A command executed against the still-active old project
+                    # while this load ran in the background bumps
+                    # modification_revision -- an edit the confirmation
+                    # shown before dispatch (if any) never covered. Installing
+                    # the loaded project now would silently discard it, so
+                    # re-confirm before doing that instead of assuming the
+                    # original answer still applies.
+                    if (
+                        self.app_state.has_project
+                        and self.app_state.modification_revision != self._dispatch_revision
+                        and not self.ui_controller.show_question(
+                            "Open Project",
+                            "The current project changed while the new one was loading.\n"
+                            "Loading it now will discard those additional changes.\n\n"
+                            "Do you want to continue?",
+                        )
+                    ):
+                        self.logger.info(
+                            "Discarding loaded project '%s': the current project changed "
+                            "during the load and the user declined to discard it",
+                            project.name,
+                        )
+                        return
+
                     # Project.from_dict deserializes project_file_path from
                     # project.json's own record of where IT was saved from.
                     # If the .pplot file was since moved or copied, that

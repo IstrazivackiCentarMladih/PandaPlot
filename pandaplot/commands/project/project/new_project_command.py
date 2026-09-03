@@ -1,4 +1,4 @@
-from typing import override
+from typing import Optional, override
 
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
@@ -30,6 +30,10 @@ class NewProjectCommand(Command):
         # restore that dirty state rather than letting load_project() reset
         # it to "no changes" -- see undo().
         self.previous_was_modified = False
+        # The Project created by execute()'s first run, cached so redo() can
+        # restore that exact object instead of calling execute() again --
+        # see redo().
+        self.created_project: Optional[Project] = None
 
     @override
     def execute(self) -> CommandResult:
@@ -59,6 +63,7 @@ class NewProjectCommand(Command):
             # Create new project
             new_project = Project(
                 name=name, description="A new project created with PandaPlot")
+            self.created_project = new_project
 
             # Update app state - use load_project method
             self.app_state.load_project(new_project)
@@ -111,11 +116,47 @@ class NewProjectCommand(Command):
             return CommandResult.FAILURE
 
     def redo(self) -> CommandResult:
-        """Redo the new project command."""
-        return self.execute()
+        """Redo the new project command.
+
+        Restores the exact `Project` object execute() created the first
+        time, rather than calling execute() again -- which would re-prompt
+        for unsaved-changes confirmation and re-open the naming dialog,
+        building a *different* Project if the user typed a different name
+        (or making redo fail outright if they cancelled). Mirrors
+        CreateNoteCommand/CreateChartCommand's redo(), which re-add their
+        cached created object instead of re-running execute()."""
+        if self.created_project is None:
+            self.logger.warning(
+                "NewProjectCommand.redo: no cached project to restore (execute() "
+                "never completed successfully)"
+            )
+            return CommandResult.FAILURE
+        try:
+            self.app_state.load_project(self.created_project)
+
+            # A brand new project has no file yet; don't restore the previous
+            # project's path next launch until this one is saved (mirrors
+            # execute()).
+            try:
+                session_manager = self.app_context.get_manager(SessionPersistenceManager)
+                session_manager.update_project(None)
+            except Exception as e:  # noqa: BLE001
+                self.logger.warning("Failed to clear last_project_path: %s", e)
+
+            self.logger.info(
+                "Redid new project '%s'", self.created_project.name
+            )
+            return CommandResult.SUCCESS
+        except Exception as e:
+            error_msg = f"Failed to redo new project: {e}"
+            self.logger.error("NewProjectCommand Redo Error: %s", error_msg, exc_info=True)
+            self.ui_controller.show_error_message("Redo Error", error_msg)
+            return CommandResult.FAILURE
 
     @override
     def cleanup(self) -> None:
-        """Release the previous-Project reference held for undo once this
-        command is dropped from the stacks for good (see Command.cleanup)."""
+        """Release the previous/created-Project references held for
+        undo/redo once this command is dropped from the stacks for good
+        (see Command.cleanup)."""
         self.previous_project = None
+        self.created_project = None

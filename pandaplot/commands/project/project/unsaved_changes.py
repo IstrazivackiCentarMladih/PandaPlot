@@ -8,12 +8,14 @@ discard edits. This is the single implementation; callers that need it
 through it rather than each re-implementing the confirmation dialog.
 """
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.data_managers.project_manager import ProjectManager
 
 
 def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: bool = False) -> bool:
     """Return True if it's fine to proceed (no project loaded, or no
-    unsaved changes, or the user confirmed proceeding); False if the
-    caller should cancel whatever it was about to do.
+    unsaved changes, the user confirmed proceeding and (for an autosaving
+    caller) the save actually succeeded); False if the caller should
+    cancel whatever it was about to do.
 
     `will_autosave` must be True for a caller whose proceeding is followed
     by `app.launch()`'s unconditional `_flush_save_on_quit` (currently
@@ -24,6 +26,15 @@ def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: b
     discards, so it keeps the "will be discarded" wording, as does exiting
     a never-saved project (`_flush_save_on_quit` has no file path to write
     to, so it really is discarded).
+
+    For the autosaving case, this performs that save synchronously, right
+    here, once the user confirms -- rather than just trusting
+    `_flush_save_on_quit` to make good on the promise later. That deferred
+    save runs after the point of no return (mid-`aboutToQuit`) and swallows
+    every exception into a log line, so a disk-full/permission/serialization
+    failure would otherwise silently exit the app having lost the edits it
+    just promised to keep. Doing it here means a failure can still cancel
+    the shutdown and leave the project (and its unsaved state) intact.
     """
     app_state = app_context.get_app_state()
     if not app_state.has_project or not app_state.is_modified:
@@ -31,13 +42,31 @@ def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: b
 
     project_name = app_state.current_project.name if app_state.current_project else "Unknown"
     ui_controller = app_context.get_ui_controller()
+    file_path = app_state.project_file_path
+    autosaving = will_autosave and bool(file_path)
     consequence = (
         "They will be saved automatically before exiting."
-        if will_autosave and app_state.project_file_path
+        if autosaving
         else "Continuing now will discard them."
     )
-    return ui_controller.show_question(
+    proceed = ui_controller.show_question(
         "Unsaved Changes",
         f"Project '{project_name}' has unsaved changes.\n"
         f"{consequence}\n\nDo you want to continue?",
     )
+    if not proceed or not autosaving:
+        return proceed
+
+    try:
+        project_manager = app_context.get_manager(ProjectManager)
+        project_manager.save_project(app_state.current_project, file_path)
+    except Exception as e:
+        ui_controller.show_error_message(
+            "Save Failed",
+            f"Project '{project_name}' could not be saved:\n{e}\n\n"
+            "The application will stay open so these changes aren't lost.",
+        )
+        return False
+
+    app_state.mark_saved()
+    return True

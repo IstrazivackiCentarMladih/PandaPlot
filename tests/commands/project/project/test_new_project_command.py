@@ -115,6 +115,40 @@ def test_undo_restores_the_previous_projects_dirty_state():
     assert app_state.is_modified is True
 
 
+def test_redo_restores_the_created_project_without_reprompting():
+    """Regression (PR #235 review): redo() used to delegate to execute(),
+    which re-asks the unsaved-changes confirmation and re-opens the naming
+    dialog -- redoing should silently replay the original creation instead."""
+    app_context = _make_app_context(has_project=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+    created = command.created_project
+
+    app_context.get_ui_controller.return_value.show_new_project_dialog.reset_mock()
+    app_context.get_ui_controller.return_value.show_question.reset_mock()
+    app_context.get_app_state.return_value.load_project.reset_mock()
+
+    assert command.redo() is CommandResult.SUCCESS
+
+    app_context.get_ui_controller.return_value.show_new_project_dialog.assert_not_called()
+    app_context.get_ui_controller.return_value.show_question.assert_not_called()
+    redone = app_context.get_app_state.return_value.load_project.call_args.args[0]
+    assert redone is created
+
+
+def test_redo_without_a_prior_execute_fails():
+    """If execute() never completed (so nothing was ever pushed onto the
+    undo stack in the first place), redo() must not crash trying to
+    restore a project that was never created."""
+    app_context = _make_app_context(has_project=False)
+    command = NewProjectCommand(app_context)
+
+    assert command.redo() is CommandResult.FAILURE
+    app_context.get_app_state.return_value.load_project.assert_not_called()
+
+
 @pytest.fixture
 def env():
     app_state = Mock()
@@ -128,7 +162,9 @@ def env():
 def test_cleanup_releases_the_previous_project_reference(env):
     command = NewProjectCommand(env)
     command.previous_project = Mock()
+    command.created_project = Mock()
 
     command.cleanup()
 
     assert command.previous_project is None
+    assert command.created_project is None

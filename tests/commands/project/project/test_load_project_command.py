@@ -79,6 +79,61 @@ def test_on_load_result_stamps_the_project_with_the_actual_load_path():
     assert project.project_file_path == "/new/location.pplot"
 
 
+class TestLoadProjectCommandRaceGuard:
+    """Regression (PR #235 review): the unsaved-changes confirmation shown
+    (if any) before dispatch only covers the state at that moment. The old
+    project stays active and editable while the background load runs, so a
+    command executed after the user confirms can create new unsaved
+    changes that confirmation never saw -- _on_load_result must re-confirm
+    before silently discarding those too, rather than always installing
+    the loaded project unconditionally."""
+
+    def _dispatch(self, *, project_file_path="/p/current.pplot"):
+        app_context, app_state = _make_configured_app_context(
+            has_project=True, project_file_path=project_file_path, is_modified=False)
+        app_state.modification_revision = 0
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+        assert command.execute() is CommandResult.SUCCESS
+        return command, app_context, app_state
+
+    def test_reconfirms_when_the_project_changed_during_the_load(self):
+        command, app_context, app_state = self._dispatch()
+        app_state.modification_revision = 1  # an edit landed while loading
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+
+        project = Mock()
+        project.name = "New"
+        project.failed_item_ids = []
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_context.get_ui_controller.return_value.show_question.assert_called_once()
+        app_state.load_project.assert_called_once_with(project)
+
+    def test_discards_the_load_when_the_user_declines_reconfirmation(self):
+        command, app_context, app_state = self._dispatch()
+        app_state.modification_revision = 1
+        app_context.get_ui_controller.return_value.show_question.return_value = False
+
+        project = Mock()
+        project.name = "New"
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_state.load_project.assert_not_called()
+        assert command.loaded_project is None
+
+    def test_does_not_reconfirm_when_nothing_changed_during_the_load(self):
+        command, app_context, app_state = self._dispatch()
+        # modification_revision unchanged from dispatch time.
+
+        project = Mock()
+        project.name = "New"
+        project.failed_item_ids = []
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_context.get_ui_controller.return_value.show_question.assert_not_called()
+        app_state.load_project.assert_called_once_with(project)
+
+
 def _make_configured_app_context(*, has_project=False, project_file_path=None, is_modified=False):
     """Like _make_app_context, but with an app_state whose has_project/
     project_file_path/is_modified are explicitly controllable -- needed to

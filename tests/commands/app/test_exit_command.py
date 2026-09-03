@@ -368,6 +368,44 @@ class TestExitCommandUnsavedChangesGuard:
         _, message = app_context.get_ui_controller.return_value.show_question.call_args[0]
         assert "discard" in message
 
+    def test_confirming_an_autosave_actually_saves_before_exiting(self):
+        """Regression (PR #235 review): the prompt promises an automatic
+        save, but the actual save previously only happened later, in
+        app._flush_save_on_quit -- after the point of no return, with every
+        exception swallowed into a log line. Make sure the save genuinely
+        runs (and clears is_modified) as part of confirming, not just the
+        promise of one."""
+        app_context, app_state = self._make_context(has_project=True, is_modified=True, project_file_path="/p.pplot")
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        project_manager = Mock()
+        app_context.get_manager.return_value = project_manager
+        command = ExitCommand(app_context)
+
+        assert command.execute() is CommandResult.SUCCESS
+
+        project_manager.save_project.assert_called_once_with(app_state.current_project, "/p.pplot")
+        app_state.mark_saved.assert_called_once()
+        app_context.event_bus.emit.assert_called_once_with(AppEvents.APP_CLOSING)
+
+    def test_a_failed_autosave_cancels_the_exit_instead_of_losing_edits(self):
+        """Regression (PR #235 review): _flush_save_on_quit catches every
+        save exception and lets shutdown continue anyway, so a disk-full/
+        permission/serialization failure would silently exit the app having
+        lost the edits it just promised to keep. The save must instead be
+        checked here, before committing to the exit."""
+        app_context, app_state = self._make_context(has_project=True, is_modified=True, project_file_path="/p.pplot")
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        project_manager = Mock()
+        project_manager.save_project.side_effect = OSError("disk full")
+        app_context.get_manager.return_value = project_manager
+        command = ExitCommand(app_context)
+
+        assert command.execute() is CommandResult.NOOP
+
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+        app_state.mark_saved.assert_not_called()
+        app_context.event_bus.emit.assert_not_called()
+
 
 def test_marks_project_modified_is_false():
     """Exiting (or cancelling an exit) isn't itself a project edit."""
