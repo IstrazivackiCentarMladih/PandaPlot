@@ -341,13 +341,10 @@ class SignalPanel(SidebarPanel):
             self._refresh_columns()
 
     def on_dataset_data_changed(self, event_data):
-        # Source values may have changed under the cached preview -- drop it
-        # so "Add to Project" re-runs the analysis instead of committing
-        # stale results.
-        if event_data.get("dataset_id") == self.current_dataset_id:
+        dataset_id = event_data.get("dataset_id") if isinstance(event_data, dict) else getattr(event_data, "dataset_id", None)
+        if dataset_id is None or dataset_id == self.current_dataset_id:
             self.last_result = None
             self._last_run_params = None
-            self.add_btn.setEnabled(False)
 
     def _current_analysis_type(self):
         return self.analysis_combo.currentData()

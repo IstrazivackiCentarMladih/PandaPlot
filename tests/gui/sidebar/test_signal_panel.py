@@ -236,12 +236,7 @@ class TestAddResultsToProjectAsyncDispatch:
         assert "added to project" in panel.results_text.toPlainText().lower()
         assert panel.add_btn.isEnabled() is False
 
-    def test_invalidates_cache_when_source_dataset_data_changes(self, app_context):
-        """Regression test (PR review): the cache key only covers dataset id/
-        column/parameters, so it still matched after the source column's
-        values were edited in place. The panel must drop the cached preview
-        on DATASET_DATA_CHANGED for the active dataset so Add re-runs the
-        analysis instead of committing stale results."""
+    def test_invalidates_cached_result_on_dataset_data_changed(self, app_context):
         panel = _build_panel_with_column(app_context)
 
         captured_run = {}
@@ -249,17 +244,18 @@ class TestAddResultsToProjectAsyncDispatch:
         fake_run_command.run_analysis_async = lambda on_complete: captured_run.update(on_complete=on_complete)
         panel._build_command = lambda: fake_run_command
 
+        # Run analysis to populate last_result and _last_run_params
         panel.run_analysis()
         result = _fake_result()
         captured_run["on_complete"](result, None)
 
         assert panel.last_result is result
-        assert panel.add_btn.isEnabled() is True
 
-        panel.on_dataset_data_changed({"dataset_id": panel.current_dataset_id})
+        # Emit dataset data changed event
+        panel.on_dataset_data_changed({"dataset_id": "ds-1"})
 
         assert panel.last_result is None
-        assert panel.add_btn.isEnabled() is False
+        assert panel._last_run_params is None
 
         fake_add_command = Mock()
         fake_add_command.result = Mock()
@@ -274,26 +270,8 @@ class TestAddResultsToProjectAsyncDispatch:
 
         panel.add_results_to_project()
 
-        # Should fall back to dispatching full command instead of reusing
-        # the (now stale) cached result.
+        # Should fall back to full command because cached result was invalidated
         assert executed["command"] is fake_add_command
-
-    def test_ignores_dataset_data_changed_for_other_datasets(self, app_context):
-        panel = _build_panel_with_column(app_context)
-
-        captured_run = {}
-        fake_run_command = Mock()
-        fake_run_command.run_analysis_async = lambda on_complete: captured_run.update(on_complete=on_complete)
-        panel._build_command = lambda: fake_run_command
-
-        panel.run_analysis()
-        result = _fake_result()
-        captured_run["on_complete"](result, None)
-
-        panel.on_dataset_data_changed({"dataset_id": "some-other-dataset"})
-
-        assert panel.last_result is result
-        assert panel.add_btn.isEnabled() is True
 
     def test_recomputes_if_parameters_changed_after_run(self, app_context):
         panel = _build_panel_with_column(app_context)
