@@ -31,8 +31,15 @@ def mock_event_bus():
 
 @pytest.fixture
 def mock_app_state():
-    """Create a mock AppState for testing."""
-    return Mock()
+    """Create a mock AppState for testing. has_project=False so
+    confirm_discard_unsaved_changes (called unconditionally by
+    ExitCommand.execute()) returns True immediately without engaging any of
+    its save/unsaved-changes machinery -- these fixtures/tests predate that
+    check and don't exercise it (see TestExitCommandUnsavedChangesGuard for
+    dedicated tests that do)."""
+    state = Mock()
+    state.has_project = False
+    return state
 
 
 @pytest.fixture
@@ -52,6 +59,7 @@ def mock_app_context(mock_app_state, mock_event_bus, mock_command_executor, mock
     """Create a mock AppContext with all dependencies."""
     context = Mock(spec=AppContext)
     context.app_state = mock_app_state
+    context.get_app_state.return_value = mock_app_state
     context.event_bus = mock_event_bus
     context.command_executor = mock_command_executor
     context.ui_controller = mock_ui_controller
@@ -243,9 +251,14 @@ class TestExitCommandEdgeCases:
     def test_app_context_without_event_bus(self):
         """Test with AppContext that doesn't have event_bus."""
         mock_context = Mock()
+        # No project loaded, so confirm_discard_unsaved_changes returns True
+        # immediately without touching any of the (otherwise unconfigured)
+        # app_state/ui_controller mocks -- isolates this test to exactly the
+        # thing it's testing: event_bus being missing.
+        mock_context.get_app_state.return_value.has_project = False
         # Don't set event_bus attribute
         delattr(mock_context, "event_bus") if hasattr(mock_context, "event_bus") else None
-        
+
         command = ExitCommand(mock_context)
         
         with pytest.raises(AttributeError):
@@ -302,6 +315,7 @@ class TestExitCommandUnsavedChangesGuard:
         app_state.is_modified = is_modified
         app_state.project_file_path = project_file_path
         app_state.current_project.name = "P"
+        app_state.is_saving = False  # no in-flight save to wait for, by default
         app_context = Mock(spec=AppContext)
         app_context.get_app_state.return_value = app_state
         app_context.get_ui_controller.return_value = Mock()
@@ -402,7 +416,26 @@ class TestExitCommandUnsavedChangesGuard:
 
         assert command.execute() is CommandResult.NOOP
 
-        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    def test_refuses_to_exit_while_another_save_is_already_writing_the_file(self):
+        """Regression (PR #235 review): writing here while a SaveProjectCommand
+        (manual or auto-save) is already mid-write would be a second,
+        uncoordinated writer of the same file -- ProjectDataManager.save()
+        opens it in write mode, so two overlapping writers can corrupt it.
+        Refuse to proceed instead (the user can just try exiting again once
+        the in-flight save finishes)."""
+        app_context, app_state = self._make_context(has_project=True, is_modified=True, project_file_path="/p.pplot")
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+        app_state.is_saving = True
+        project_manager = Mock()
+        app_context.get_manager.return_value = project_manager
+        command = ExitCommand(app_context)
+
+        assert command.execute() is CommandResult.NOOP
+
+        project_manager.save_project.assert_not_called()
+        app_state.mark_saved.assert_not_called()
+        app_context.event_bus.emit.assert_not_called()
+        app_context.get_ui_controller.return_value.show_info_message.assert_called_once()
         app_state.mark_saved.assert_not_called()
         app_context.event_bus.emit.assert_not_called()
 

@@ -73,6 +73,66 @@ def test_close_project_resets_is_modified():
     assert state.is_modified is False
 
 
+def test_load_project_emits_when_clearing_a_modified_flag():
+    """Regression (PR #235 review): load_project() used to clear
+    is_modified via a direct assignment, so a True->False flip on load
+    never emitted PROJECT_MODIFIED_CHANGED -- an event-only consumer would
+    keep reporting the previous project's dirty state after the switch."""
+    state = _make_state()
+    state.load_project(Project(name="P"))
+    state.mark_modified()
+
+    events = []
+    state.event_bus.subscribe(ProjectEvents.PROJECT_MODIFIED_CHANGED, lambda data: events.append(data))
+
+    state.load_project(Project(name="Q"))
+
+    assert len(events) == 1
+    assert events[0]["is_modified"] is False
+
+
+def test_load_project_does_not_emit_when_nothing_was_modified():
+    state = _make_state()
+    state.load_project(Project(name="P"))
+
+    events = []
+    state.event_bus.subscribe(ProjectEvents.PROJECT_MODIFIED_CHANGED, lambda data: events.append(data))
+
+    state.load_project(Project(name="Q"))
+
+    assert events == []
+
+
+def test_close_project_emits_when_clearing_a_modified_flag():
+    """Regression (PR #235 review): same gap as load_project() above, for
+    closing a dirty project."""
+    state = _make_state()
+    state.load_project(Project(name="P"))
+    state.mark_modified()
+
+    events = []
+    state.event_bus.subscribe(ProjectEvents.PROJECT_MODIFIED_CHANGED, lambda data: events.append(data))
+
+    state.close_project()
+
+    assert len(events) == 1
+    assert events[0]["is_modified"] is False
+
+
+def test_is_saving_starts_false():
+    state = _make_state()
+    assert state.is_saving is False
+
+
+def test_begin_save_and_end_save_toggle_is_saving():
+    state = _make_state()
+    state.begin_save()
+    assert state.is_saving is True
+
+    state.end_save()
+    assert state.is_saving is False
+
+
 def test_modification_revision_starts_at_zero():
     state = _make_state()
     assert state.modification_revision == 0

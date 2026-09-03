@@ -43,6 +43,7 @@ def _make_window(*, has_project, project_name="P", is_modified=False, project_fi
     app_context.get_app_state.return_value.current_project.name = project_name
     app_context.get_app_state.return_value.is_modified = is_modified
     app_context.get_app_state.return_value.project_file_path = project_file_path
+    app_context.get_app_state.return_value.is_saving = False  # no in-flight save to wait for, by default
     return _FakeMainWindow(app_context)
 
 
@@ -164,6 +165,27 @@ def test_close_event_a_failed_autosave_cancels_the_close_instead_of_losing_edits
     PandaMainWindow.closeEvent(window, event)
 
     window.app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    window.app_context.get_app_state.return_value.mark_saved.assert_not_called()
+    assert event.accepted is False
+
+
+def test_close_event_refuses_to_close_while_another_save_is_already_writing_the_file():
+    """Regression (PR #235 review): writing here while a SaveProjectCommand
+    (manual or auto-save) is already mid-write would be a second,
+    uncoordinated writer of the same file -- ProjectDataManager.save() opens
+    it in write mode, so two overlapping writers can corrupt it. Refuse to
+    proceed instead (the user can just try closing again once the in-flight
+    save finishes)."""
+    window = _make_window(has_project=True, is_modified=True, project_file_path="/p.pplot")
+    window.app_context.get_ui_controller.return_value.show_question.return_value = True
+    window.app_context.get_app_state.return_value.is_saving = True
+    project_manager = Mock()
+    window.app_context.get_manager.return_value = project_manager
+    event = _FakeCloseEvent()
+
+    PandaMainWindow.closeEvent(window, event)
+
+    project_manager.save_project.assert_not_called()
     window.app_context.get_app_state.return_value.mark_saved.assert_not_called()
     assert event.accepted is False
 

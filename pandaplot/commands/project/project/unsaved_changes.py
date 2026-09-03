@@ -57,6 +57,21 @@ def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: b
     if not proceed or not autosaving:
         return proceed
 
+    if app_state.is_saving:
+        # A SaveProjectCommand (manual or auto-save) is already writing
+        # this project's file. ProjectDataManager.save() opens the target
+        # in write mode, so writing over it concurrently here could
+        # corrupt it. Rather than block the UI waiting for it to finish,
+        # just refuse to proceed -- the in-flight save will itself clear
+        # is_modified on success, and the user can exit again once it's
+        # done (a narrow, easily-retried window, not a silent failure).
+        ui_controller.show_info_message(
+            "Save In Progress",
+            f"A save of project '{project_name}' is already in progress.\n"
+            "Please wait for it to finish, then try again.",
+        )
+        return False
+
     try:
         project_manager = app_context.get_manager(ProjectManager)
         project_manager.save_project(app_state.current_project, file_path)

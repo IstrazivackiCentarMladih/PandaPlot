@@ -24,6 +24,13 @@ class AppState:
         # whether a *newer* edit landed before its completion callback runs,
         # so it doesn't clobber that edit's dirty flag. See mark_saved().
         self._modification_revision: int = 0
+        # Single source of truth for "is a save of the current project
+        # writing to disk right now" -- SaveProjectCommand (manual or
+        # auto-save) is the only writer, but it's not the only place that
+        # cares: a caller about to perform its own save (e.g. the exit-time
+        # autosave in unsaved_changes.py) needs to know not to write the
+        # same file concurrently. See begin_save()/end_save().
+        self._save_in_progress: bool = False
 
     @property
     def current_project(self) -> Optional[Project]:
@@ -58,6 +65,26 @@ class AppState:
         """Monotonic counter bumped on every mark_modified() call. See
         mark_saved()'s `at_revision` parameter for why this exists."""
         return self._modification_revision
+
+    @property
+    def is_saving(self) -> bool:
+        """Whether a save of the current project is currently writing to
+        disk (see begin_save()/end_save())."""
+        return self._save_in_progress
+
+    def begin_save(self) -> None:
+        """Called by SaveProjectCommand right before it dispatches its
+        background write. Lets any other would-be writer of the same file
+        (another SaveProjectCommand instance, or a caller doing its own
+        synchronous save) know not to write concurrently -- the target file
+        is opened in write mode, so two overlapping writers can corrupt
+        it."""
+        self._save_in_progress = True
+
+    def end_save(self) -> None:
+        """Called by SaveProjectCommand once its background write has
+        finished (success or failure) -- see begin_save()."""
+        self._save_in_progress = False
 
     def mark_modified(self) -> None:
         """Flag the current project as having unsaved changes."""
@@ -100,7 +127,11 @@ class AppState:
         self._current_project = project
         # A just-(re)loaded project -- new, opened from disk, or reloaded
         # after a save -- has no changes relative to what's on disk yet.
-        self._is_modified = False
+        # Route through mark_saved() (rather than a direct assignment) so a
+        # true True->False flip still emits PROJECT_MODIFIED_CHANGED --
+        # event-only consumers would otherwise keep reporting the old
+        # project's dirty state after this switch.
+        self.mark_saved()
 
         # Emit events
         self.event_bus.emit(ProjectEvents.PROJECT_LOADED, {
@@ -122,7 +153,10 @@ class AppState:
             old_project = self._current_project
 
             self._current_project = None
-            self._is_modified = False
+            # See load_project()'s matching comment: route through
+            # mark_saved() rather than a direct assignment so a true
+            # True->False flip still emits PROJECT_MODIFIED_CHANGED.
+            self.mark_saved()
 
             self.event_bus.emit(ProjectEvents.PROJECT_CLOSED, {
                 "project": old_project
