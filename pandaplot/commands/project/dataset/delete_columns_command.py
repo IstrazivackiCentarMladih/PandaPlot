@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import List, Union, override
+from typing import Any, Callable, List, Optional, Sequence, Set, Tuple, Union, override
 
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.gui.controllers.ui_controller import UIController
@@ -8,9 +8,16 @@ from pandaplot.models.chart.series_style.vector import VectorSeriesStyle
 from pandaplot.models.events.event_data import DatasetColumnsAddedData, DatasetColumnsRemovedData
 from pandaplot.models.events.event_types import ChartEvents, DatasetOperationEvents
 from pandaplot.models.project.items import Chart
+from pandaplot.models.project.items.chart import DataSeries, FitData
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.app_state import AppState
+
+# (container, id_field, name_field, linked_field) -- see
+# _error_field_targets/_confidence_field_targets. name_field/linked_field
+# are None when a target has no legacy name fallback / no cached array to
+# clear alongside the id.
+RefTarget = Tuple[Any, str, Optional[str], Optional[str]]
 
 
 @dataclass
@@ -22,38 +29,94 @@ class ChartReferenceMatch:
     confidence_only_indices: List[int]
 
 
-def _error_field_targets(series):
-    """Return (container, id_field, name_field) triples for a series'
-    optional error/magnitude column references -- these now live on
+def _error_field_targets(series: DataSeries) -> List[RefTarget]:
+    """Return (container, id_field, name_field, linked_field) tuples for a
+    series' optional error/magnitude column references -- these now live on
     ``series.style.error_bars`` (x/y error + minus pairs) and, for a
     VECTOR series, ``series.style.magnitude_column*`` directly, rather
-    than flatly on ``series`` itself."""
+    than flatly on ``series`` itself. No linked_field: unlike a fit's
+    confidence columns, a series resolves its data live, so there's no
+    cached array that needs clearing alongside the id (see
+    _confidence_field_targets)."""
     targets = []
     error_bars = getattr(series.style, "error_bars", None)
     if error_bars is not None:
         targets.extend([
-            (error_bars, "x_error_column_id", "x_error_column"),
-            (error_bars, "y_error_column_id", "y_error_column"),
-            (error_bars, "x_error_minus_column_id", "x_error_minus_column"),
-            (error_bars, "y_error_minus_column_id", "y_error_minus_column"),
+            (error_bars, "x_error_column_id", "x_error_column", None),
+            (error_bars, "y_error_column_id", "y_error_column", None),
+            (error_bars, "x_error_minus_column_id", "x_error_minus_column", None),
+            (error_bars, "y_error_minus_column_id", "y_error_minus_column", None),
         ])
     if isinstance(series.style, VectorSeriesStyle):
-        targets.append((series.style, "magnitude_column_id", "magnitude_column"))
+        targets.append((series.style, "magnitude_column_id", "magnitude_column", None))
     return targets
 
 
-def _confidence_field_targets(fit):
-    """Return (container, id_field) pairs for a manually-converted fit's
-    optional confidence-band column references (#298 follow-up) --
-    like a series' error-bar columns, these are optional metadata whose
-    absence doesn't invalidate the fit, so a delete should clear them
-    rather than remove the whole fit. Unlike the error-bar fields, these
-    have no separate legacy name-fallback field (added after stable ids
-    became the norm), so there's no name_field to pair with."""
+def _confidence_field_targets(fit: FitData) -> List[RefTarget]:
+    """Return (container, id_field, name_field, linked_field) tuples for a
+    manually-converted fit's optional confidence-band column references
+    (#298 follow-up) -- like a series' error-bar columns, these are
+    optional metadata whose absence doesn't invalidate the fit, so a
+    delete should clear them rather than remove the whole fit. Unlike the
+    error-bar fields, these have no separate legacy name-fallback field
+    (added after stable ids became the norm), but do have a linked_field:
+    the cached confidence_lower/confidence_upper array that must be
+    cleared alongside the id, since a fit's data is a snapshot taken at
+    conversion time rather than a live reference (see
+    ConvertSeriesToFitCommand) -- a dangling array left behind would
+    otherwise still plot a confidence band the id no longer justifies."""
     return [
-        (fit, "confidence_lower_column_id"),
-        (fit, "confidence_upper_column_id"),
+        (fit, "confidence_lower_column_id", None, "confidence_lower"),
+        (fit, "confidence_upper_column_id", None, "confidence_upper"),
     ]
+
+
+def _only_indices(
+    items: Sequence[Any],
+    primary_idx: Union[List[int], Set[int]],
+    dataset_id_matches: Callable[[Any], bool],
+    targets_fn: Callable[[Any], List[RefTarget]],
+    refs: Callable[[str, str], bool],
+) -> List[int]:
+    """Indices into `items` (a chart's data_series or fit_data) whose only
+    matching reference to the columns being deleted is one of
+    targets_fn's optional fields, not one of the primary (required)
+    fields already captured in `primary_idx` -- shared by
+    _find_chart_references' error-only and confidence-only passes."""
+    return [
+        i for i, item in enumerate(items)
+        if i not in primary_idx and dataset_id_matches(item)
+        and any(
+            refs(getattr(container, id_field), getattr(container, name_field) if name_field else "")
+            for container, id_field, name_field, _ in targets_fn(item)
+        )
+    ]
+
+
+def _clear_optional_refs(
+    targets: List[RefTarget], deleted_ids: Set[str], column_set: Set[str]
+) -> List[Tuple[Any, str, Any]]:
+    """Snapshot every field a set of optional-reference targets (from
+    _error_field_targets/_confidence_field_targets) touches, then clear
+    the id (+ name + linked) fields of any target matching a deleted
+    column. Returns the old (container, field, value) triples for undo --
+    shared by _perform_deletion's error-clearing and confidence-clearing
+    passes."""
+    old_values = [
+        (container, field, getattr(container, field))
+        for container, id_field, name_field, linked_field in targets
+        for field in filter(None, (id_field, name_field, linked_field))
+    ]
+    for container, id_field, name_field, linked_field in targets:
+        cid = getattr(container, id_field)
+        name = getattr(container, name_field) if name_field else ""
+        if (cid and cid in deleted_ids) or (name_field and name in column_set):
+            setattr(container, id_field, "")
+            if name_field:
+                setattr(container, name_field, "")
+            if linked_field:
+                setattr(container, linked_field, None)
+    return old_values
 
 
 class DeleteColumnsCommand(Command):
@@ -320,24 +383,22 @@ class DeleteColumnsCommand(Command):
                          and (refs(series.style.u_column_id, series.style.u_column)
                               or refs(series.style.v_column_id, series.style.v_column))))
             ]
-            error_only_idx = [
-                i for i, series in enumerate(item.data_series)
-                if i not in series_idx and series.dataset_id == self.dataset_id
-                and any(refs(getattr(container, id_field), getattr(container, name_field))
-                        for container, id_field, name_field in _error_field_targets(series))
-            ]
+            error_only_idx = _only_indices(
+                item.data_series, series_idx,
+                lambda series: series.dataset_id == self.dataset_id,
+                _error_field_targets, refs,
+            )
             fit_idx = [
                 i for i, fit in enumerate(item.fit_data)
                 if fit.source_dataset_id == self.dataset_id
                 and (refs(fit.source_x_column_id, fit.source_x_column)
                      or refs(fit.source_y_column_id, fit.source_y_column))
             ]
-            confidence_only_idx = [
-                i for i, fit in enumerate(item.fit_data)
-                if i not in fit_idx and fit.source_dataset_id == self.dataset_id
-                and any(refs(getattr(container, id_field), "")
-                        for container, id_field in _confidence_field_targets(fit))
-            ]
+            confidence_only_idx = _only_indices(
+                item.fit_data, fit_idx,
+                lambda fit: fit.source_dataset_id == self.dataset_id,
+                _confidence_field_targets, refs,
+            )
             if series_idx or fit_idx or error_only_idx or confidence_only_idx:
                 matches.append(
                     ChartReferenceMatch(item, series_idx, fit_idx, error_only_idx, confidence_only_idx)
@@ -384,47 +445,24 @@ class DeleteColumnsCommand(Command):
             # deletion shifts the list, so `i` still points at the right series.
             # Match by stable id (deleted_ids) with a name fallback for legacy
             # references; clear both the id and the name field together.
-            cleared_series = []
-            for i in error_only_idx:
-                series = chart.data_series[i]
-                targets = _error_field_targets(series)
-                old_values = [
-                    (container, field, getattr(container, field))
-                    for container, id_field, name_field in targets
-                    for field in (id_field, name_field)
-                ]
-                for container, id_field, name_field in targets:
-                    cid = getattr(container, id_field)
-                    name = getattr(container, name_field)
-                    if (cid and cid in deleted_ids) or name in column_set:
-                        setattr(container, id_field, "")
-                        setattr(container, name_field, "")
-                cleared_series.append((i, old_values))
+            cleared_series = [
+                (i, _clear_optional_refs(_error_field_targets(chart.data_series[i]), deleted_ids, column_set))
+                for i in error_only_idx
+            ]
 
             # Clear confidence-only references the same way, before fit_idx
             # deletion shifts the list -- clears the stale id AND the cached
-            # confidence_lower/confidence_upper array together, since a
-            # dangling id with no matching column would otherwise make the
-            # NEXT manual-fit edit reject outright (an unresolvable non-empty
+            # confidence_lower/confidence_upper array together (via
+            # _confidence_field_targets' linked_field), since a dangling id
+            # with no matching column would otherwise make the NEXT
+            # manual-fit edit reject outright (an unresolvable non-empty
             # confidence id blocks the whole edit, see
             # DataTab._apply_manual_fit_edits) instead of the fit simply
             # having no confidence band, which is what actually happened here.
-            cleared_fits = []
-            for i in confidence_only_idx:
-                fit = chart.fit_data[i]
-                old_values = [
-                    (fit, "confidence_lower_column_id", fit.confidence_lower_column_id),
-                    (fit, "confidence_upper_column_id", fit.confidence_upper_column_id),
-                    (fit, "confidence_lower", fit.confidence_lower),
-                    (fit, "confidence_upper", fit.confidence_upper),
-                ]
-                if fit.confidence_lower_column_id and fit.confidence_lower_column_id in deleted_ids:
-                    fit.confidence_lower_column_id = ""
-                    fit.confidence_lower = None
-                if fit.confidence_upper_column_id and fit.confidence_upper_column_id in deleted_ids:
-                    fit.confidence_upper_column_id = ""
-                    fit.confidence_upper = None
-                cleared_fits.append((i, old_values))
+            cleared_fits = [
+                (i, _clear_optional_refs(_confidence_field_targets(chart.fit_data[i]), deleted_ids, column_set))
+                for i in confidence_only_idx
+            ]
 
             for i in sorted(series_idx, reverse=True):
                 del chart.data_series[i]

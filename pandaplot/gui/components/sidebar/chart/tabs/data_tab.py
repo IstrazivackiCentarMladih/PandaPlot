@@ -35,7 +35,7 @@ from pandaplot.models.chart.series_style_builder import build_series_style
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
 from pandaplot.models.project.items import Dataset
-from pandaplot.models.project.items.chart import DataSeries, YAxis, resolve_numeric_column
+from pandaplot.models.project.items.chart import DataSeries, FitData, YAxis, resolve_numeric_column
 from pandaplot.services.theme.theme_manager import ThemeManager
 from pandaplot.utils.item_display_options import dataset_display_options
 
@@ -886,7 +886,7 @@ class DataTab(QWidget):
         # which is a behavior change the refactor isn't meant to introduce.
         self.dirtyOnly.emit()
 
-    def _apply_manual_fit_edits(self, fit):
+    def _apply_manual_fit_edits(self, fit: FitData) -> None:
         """Re-derive a manually-converted fit's data from its (possibly
         just-changed) source dataset/columns -- mirrors the live-edit
         semantics of a regular DataSeries' dataset/X/Y combos, except the
@@ -948,7 +948,7 @@ class DataTab(QWidget):
         fit.confidence_lower = new_confidence_lower
         fit.confidence_upper = new_confidence_upper
 
-    def _on_confidence_column_changed(self):
+    def _on_confidence_column_changed(self) -> None:
         """Live-edit reaction for the two confidence-column combos,
         wired separately from `_on_series_config_changed`'s other
         combos: these two are only ever "live" for a manually-converted
@@ -1008,7 +1008,7 @@ class DataTab(QWidget):
         self.seriesSelected.emit("series", series)
         self.dirtyOnly.emit()
 
-    def _convert_selected_series_to_fit(self, index: int):
+    def _convert_selected_series_to_fit(self, index: int) -> None:
         """Convert the data series at `index` into a FitData entry via
         ConvertSeriesToFitCommand (#298), then select the newly created
         fit at its new combined index.
@@ -1389,7 +1389,7 @@ class DataTab(QWidget):
         dataset = self.current_project.find_item(dataset_id) if self.current_project else None
         return resolve_series_column(dataset, column_id, fallback_name) or ""
 
-    def _populate_column_combos(self, dataset_id):
+    def _populate_column_combos(self, dataset_id: str) -> List[str]:
         """Fill the x/y column combos with the columns of the given dataset.
 
         Each item's display text is the column name and its itemData is the
@@ -1421,7 +1421,7 @@ class DataTab(QWidget):
             return columns
         return []
 
-    def _populate_error_column_combos(self, dataset_id):
+    def _populate_error_column_combos(self, dataset_id: str) -> None:
         """Fill the x/y (+/-) error column combos with a leading "None" entry
         followed by the columns of the given dataset.
 
@@ -1452,7 +1452,7 @@ class DataTab(QWidget):
             for combo in combos:
                 combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
-    def _populate_confidence_column_combos(self, dataset_id):
+    def _populate_confidence_column_combos(self, dataset_id: str) -> None:
         """Fill the confidence lower/upper column combos with a leading
         "None" entry followed by the given dataset's columns -- mirrors
         _populate_error_column_combos' item-data convention (column id, or
@@ -1480,7 +1480,7 @@ class DataTab(QWidget):
             for combo in combos:
                 combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
-    def _populate_vector_column_combos(self, dataset_id):
+    def _populate_vector_column_combos(self, dataset_id: str) -> None:
         """Fill the U/V/magnitude column combos with the given dataset's
         columns, each preceded by a leading "None" entry (itemData "") --
         mirrors _populate_column_combos/_populate_error_column_combos'
