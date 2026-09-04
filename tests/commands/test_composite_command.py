@@ -174,6 +174,39 @@ def test_rollback_undo_logs_error_when_a_compensating_redo_returns_failure_witho
     assert any("rolling back" in record.message for record in caplog.records)
 
 
+def test_rollback_logs_error_when_a_compensating_undo_returns_noop(caplog):
+    """NOOP from the compensating undo() means it changed no state either --
+    just as much a failed compensation as an explicit FAILURE, since the
+    sub-command being rolled back had just been successfully executed and
+    so must have had real state to undo (see PR #333 review)."""
+    cmd1 = SimpleCommand("c1", undo_result=CommandResult.NOOP)
+    cmd2 = SimpleCommand("c2", execute_result=CommandResult.FAILURE)
+
+    composite = CompositeCommand([cmd1, cmd2])
+    with caplog.at_level("ERROR"):
+        assert composite.execute() is CommandResult.FAILURE
+
+    assert cmd1.undone_count == 1
+    assert any(
+        "rolling back" in record.message and "SimpleCommand" in record.message
+        for record in caplog.records
+    )
+
+
+def test_rollback_undo_logs_error_when_a_compensating_redo_returns_noop(caplog):
+    cmd1 = SimpleCommand("c1", undo_result=CommandResult.FAILURE)
+    cmd2 = SimpleCommand("c2", redo_result=CommandResult.NOOP)
+
+    composite = CompositeCommand([cmd1, cmd2])
+    composite.execute()
+
+    with caplog.at_level("ERROR"):
+        assert composite.undo() is CommandResult.FAILURE
+
+    assert cmd2.redone_count == 1
+    assert any("rolling back" in record.message for record in caplog.records)
+
+
 def test_composite_command_undo_reverse_order():
     call_order: List[str] = []
 

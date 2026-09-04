@@ -176,11 +176,15 @@ class CompositeCommand(Command):
         for cmd in reversed(executed):
             try:
                 res = cmd.undo()
-                if res is CommandResult.FAILURE:
+                if res is not CommandResult.SUCCESS:
+                    # NOOP is just as much a failed compensation as FAILURE
+                    # here: cmd was just successfully executed/redone, so it
+                    # must have had real state to undo -- NOOP means it
+                    # didn't, and is still applied.
                     self.logger.error(
-                        "Sub-command %s reported failure while rolling back; it may remain "
+                        "Sub-command %s reported %s (not SUCCESS) while rolling back; it may remain "
                         "applied outside this composite's undo/redo tracking from here on",
-                        cmd.__class__.__name__,
+                        cmd.__class__.__name__, res,
                     )
             except Exception as e:
                 self.logger.error(
@@ -196,11 +200,11 @@ class CompositeCommand(Command):
         for cmd in reversed(undone):
             try:
                 res = cmd.redo()
-                if res is CommandResult.FAILURE:
+                if res is not CommandResult.SUCCESS:
                     self.logger.error(
-                        "Sub-command %s reported failure while rolling back (re-applying); it may "
-                        "remain undone outside this composite's undo/redo tracking from here on",
-                        cmd.__class__.__name__,
+                        "Sub-command %s reported %s (not SUCCESS) while rolling back (re-applying); "
+                        "it may remain undone outside this composite's undo/redo tracking from here on",
+                        cmd.__class__.__name__, res,
                     )
             except Exception as e:
                 self.logger.error(
