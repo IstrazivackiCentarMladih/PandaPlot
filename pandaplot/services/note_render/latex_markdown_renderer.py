@@ -17,9 +17,7 @@ import io
 import logging
 import re
 import struct
-import uuid
 from dataclasses import dataclass
-from typing import Optional
 
 from markdown import markdown
 
@@ -41,32 +39,6 @@ _MATH_TOKEN_RE = re.compile(r"zzmathplaceholder(\d+)zz")
 
 _DISPLAY_MATH_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"\$(.+?)\$", re.DOTALL)
-
-# Image size modifier: Typora-style `![alt](target =WxH)`, with width and/or
-# height optional (`=300x`, `=x200`, `=300x200`). Bare `=WxH` isn't valid
-# CommonMark, so it's stripped before Markdown parses the link and reapplied
-# as width/height attributes on the rendered <img> afterwards. The stripped
-# size is carried through as a URL fragment tagged with a token unique to
-# this render call, so a user's own URL that happens to already end in
-# something like "#pandaimgsize3" is never mistaken for one of ours.
-# The leading (?<!\\) skips a `\![...]` the user escaped to be literal text
-# (no image is emitted there, so there'd be no <img> to reapply a size to).
-_IMAGE_SIZE_RE = re.compile(r"(?<!\\)!\[([^\]]*)\]\(([^\s)]+)\s+=(\d*)x(\d*)\)")
-_IMG_SIZE_FRAGMENT = "pandaimgsize"
-
-# Fenced/inline code spans aren't image links even if they contain
-# "![...](... =WxH)"-shaped text; both are stashed as inert placeholders for
-# the duration of `_extract_image_sizes` only, then restored verbatim so
-# Markdown still renders them as ordinary code afterwards.
-_FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
-_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
-_CODE_TOKEN = "zzcodeplaceholder{index}zz"
-_CODE_TOKEN_RE = re.compile(r"zzcodeplaceholder(\d+)zz")
-_IMG_TAG_RE = re.compile(r"(<img\b[^>]*?)(/?)>")
-
-
-def _img_size_src_re(token: str) -> re.Pattern:
-    return re.compile(rf'src="([^"]*)#{_IMG_SIZE_FRAGMENT}-{re.escape(token)}-(\d+)"')
 
 # Cache rendered equations for the session; keyed on everything that affects
 # the pixels. data: URIs are large but bounded by the number of distinct
@@ -171,90 +143,6 @@ def _equation_img(latex: str, *, color: str, fontsize: float, display: bool) -> 
     )
 
 
-def _protect_code_regions(text: str) -> tuple[str, list[str]]:
-    """Stash fenced and inline code spans behind inert placeholder tokens.
-
-    Used only around `_extract_image_sizes`: that regex operates on raw text
-    ahead of Markdown's own parsing, so without this it would also rewrite
-    "![...](... =WxH)"-shaped text sitting inside a code span/block, leaving
-    our internal fragment marker visible in the rendered code (Markdown
-    doesn't emit an <img> there for `_apply_image_sizes` to attach it to).
-    """
-    blocks: list[str] = []
-
-    def _stash(m: re.Match) -> str:
-        idx = len(blocks)
-        blocks.append(m.group(0))
-        return _CODE_TOKEN.format(index=idx)
-
-    text = _FENCED_CODE_RE.sub(_stash, text)
-    text = _INLINE_CODE_RE.sub(_stash, text)
-    return text, blocks
-
-
-def _restore_code_regions(text: str, blocks: list[str]) -> str:
-    def _restore(m: re.Match) -> str:
-        idx = int(m.group(1))
-        return blocks[idx] if idx < len(blocks) else m.group(0)
-
-    return _CODE_TOKEN_RE.sub(_restore, text)
-
-
-def _extract_image_sizes(
-    text: str,
-) -> tuple[str, list[tuple[Optional[str], Optional[str]]], str]:
-    """Strip `=WxH` size modifiers from image links, stashing them by index.
-
-    Each stripped modifier is tagged onto its link target as a URL fragment
-    (`target#pandaimgsize-{token}-N`) so Markdown's own link parsing carries
-    it through to the `<img src="...">` untouched, ready for
-    `_apply_image_sizes` to pull back out. `token` is unique to this call, so
-    a user-authored URL that already ends in something shaped like our own
-    fragment is never mistaken for one.
-    """
-    token = uuid.uuid4().hex
-    sizes: list[tuple[Optional[str], Optional[str]]] = []
-
-    def _stash(m: re.Match) -> str:
-        alt, target, width, height = m.groups()
-        if not width and not height:
-            return m.group(0)
-        idx = len(sizes)
-        sizes.append((width or None, height or None))
-        return f"![{alt}]({target}#{_IMG_SIZE_FRAGMENT}-{token}-{idx})"
-
-    return _IMAGE_SIZE_RE.sub(_stash, text), sizes, token
-
-
-def _apply_image_sizes(
-    html: str, sizes: list[tuple[Optional[str], Optional[str]]], token: str
-) -> str:
-    """Reapply width/height attributes stashed by `_extract_image_sizes`."""
-    if not sizes:
-        return html
-    size_src_re = _img_size_src_re(token)
-
-    def _fix_tag(m: re.Match) -> str:
-        body, slash = m.group(1), m.group(2)
-        size_match = size_src_re.search(body)
-        if not size_match:
-            return m.group(0)
-        src, idx = size_match.group(1), int(size_match.group(2))
-        if idx >= len(sizes):
-            # Not one of ours (shouldn't happen given the per-render token,
-            # but never trust an index into someone else's data).
-            return m.group(0)
-        width, height = sizes[idx]
-        body = size_src_re.sub(f'src="{src}"', body).rstrip()
-        if width:
-            body += f' width="{width}"'
-        if height:
-            body += f' height="{height}"'
-        return f"{body}{' ' + slash if slash else ''}>"
-
-    return _IMG_TAG_RE.sub(_fix_tag, html)
-
-
 def _escape_html(text: str) -> str:
     return (
         text.replace("&", "&amp;")
@@ -272,12 +160,6 @@ def render_body_html(source: str, *, color: str = "#000000", fontsize: float = 1
     """
     # 1. Protect escaped dollars so they are never treated as math delimiters.
     text = source.replace(r"\$", _ESCAPED_DOLLAR)
-
-    # 1b. Strip `=WxH` image size modifiers before Markdown sees the links,
-    # without touching any that merely appear inside code spans/blocks.
-    text, code_blocks = _protect_code_regions(text)
-    text, image_sizes, image_size_token = _extract_image_sizes(text)
-    text = _restore_code_regions(text, code_blocks)
 
     equations: list[str] = []
     display_flags: list[bool] = []
@@ -305,10 +187,7 @@ def render_body_html(source: str, *, color: str = "#000000", fontsize: float = 1
 
     html = _MATH_TOKEN_RE.sub(_restore, html)
 
-    # 5. Reapply any stripped image size modifiers to their <img> tags.
-    html = _apply_image_sizes(html, image_sizes, image_size_token)
-
-    # 6. Restore any literal (escaped) dollar signs.
+    # 5. Restore any literal (escaped) dollar signs.
     html = html.replace(_ESCAPED_DOLLAR, "$")
     return html
 
@@ -334,7 +213,6 @@ body {{ color: {color}; background-color: {background};
        line-height: 1.5; }}
 h1, h2, h3, h4 {{ color: {color}; }}
 a {{ color: #4A90E2; }}
-p {{ margin: 4px 0; }}
 code, pre {{ background-color: rgba(128,128,128,0.15); border-radius: 4px;
             font-family: 'Consolas', 'Courier New', monospace; }}
 pre {{ padding: 8px; }}

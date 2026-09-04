@@ -12,7 +12,7 @@ from pandaplot.models.project.items.chart import (
     Chart,
     DataSeries,
     FitData,
-    resolve_manual_fit_source_data,
+    resolve_numeric_column,
 )
 from pandaplot.models.state import AppContext
 
@@ -70,16 +70,29 @@ class ConvertSeriesToFitCommand(Command):
 
     def _build_fit(self, series: DataSeries) -> Optional[FitData]:
         dataset = self._find_dataset(series.dataset_id)
-        resolved = resolve_manual_fit_source_data(
-            dataset,
-            series.x_column_id,
-            series.y_column_id,
-            self.confidence_lower_column_id,
-            self.confidence_upper_column_id,
-        )
-        if resolved is None:
+        x_data = resolve_numeric_column(dataset, series.x_column_id)
+        y_data = resolve_numeric_column(dataset, series.y_column_id)
+        if dataset is None or x_data is None or y_data is None:
             return None
-        x_data, y_data, confidence_lower, confidence_upper = resolved
+
+        # An empty confidence_*_column_id means "no confidence band" (a
+        # valid, intentional choice) and resolves to None -- but a
+        # NON-empty one that still fails to resolve (e.g. a wholly
+        # non-numeric column) must reject the whole conversion, same as
+        # an unresolvable X/Y column, rather than silently completing
+        # with a confidence_*_column_id that points at a column the
+        # fit's actual confidence_lower/confidence_upper array doesn't
+        # reflect.
+        confidence_lower = None
+        if self.confidence_lower_column_id:
+            confidence_lower = resolve_numeric_column(dataset, self.confidence_lower_column_id)
+            if confidence_lower is None:
+                return None
+        confidence_upper = None
+        if self.confidence_upper_column_id:
+            confidence_upper = resolve_numeric_column(dataset, self.confidence_upper_column_id)
+            if confidence_upper is None:
+                return None
 
         return FitData(
             source_dataset_id=series.dataset_id,
