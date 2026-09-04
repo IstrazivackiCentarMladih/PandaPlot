@@ -577,7 +577,10 @@ class NoteEditorWidget(PWidget):
             image = dialog.get_selected_image()
             if image is not None:
                 cursor = self.text_edit.textCursor()
-                alt_text = image.name
+                # "[" / "]" in the name would prematurely close the Markdown
+                # alt-text span (there's no escape for it in bare link
+                # syntax), breaking the whole image reference.
+                alt_text = image.name.replace("[", "(").replace("]", ")")
                 # Reference by immutable id: names are mutable and can be
                 # duplicated across galleries, so a name-based reference could
                 # later resolve to the wrong (renamed/duplicate) image.

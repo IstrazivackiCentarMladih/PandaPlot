@@ -246,6 +246,45 @@ def test_note_image_picker_dialog_tree_and_selection(qapp):
     assert dialog.get_selected_image() == image
 
 
+def test_note_image_picker_dialog_scales_thumbnail_to_icon_size(qapp):
+    """A full-resolution gallery photo must be scaled down, not drawn at
+    native size and clipped/cropped inside the small tree icon."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes(width=1200, height=800)
+    image = Image(name="big_photo.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+    pix = dialog._load_pixmap_for_image(image)
+
+    assert pix is not None
+    assert pix.width() <= 24 and pix.height() <= 24
+
+
+def test_note_image_picker_dialog_falls_back_to_source_file_when_copied(qapp, tmp_path):
+    """Matches note_editor.load_qimage_for_item's fallback: a "copied" image
+    with no in-memory bytes yet but a leftover source_file should still load,
+    not show as broken, for consistency between the preview and the picker."""
+    real_file = tmp_path / "leftover.png"
+    real_file.write_bytes(create_test_png_bytes())
+
+    project = Project(name="Test Project")
+    image = Image(name="leftover.png", source_file=str(real_file), storage_mode="copied")
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+    pix = dialog._load_pixmap_for_image(image)
+
+    assert pix is not None and not pix.isNull()
+
+
 def test_note_image_picker_dialog_empty_state(qapp):
     project = Project(name="Empty Project")
     app_context = MagicMock()
@@ -311,6 +350,41 @@ def test_note_editor_insert_image_applies_default_width_cap(qapp):
         editor.insert_image_from_picker()
 
     assert editor.text_edit.toPlainText() == f"![wide.png]({image.id} =500x)"
+
+
+def test_note_editor_insert_image_sanitizes_bracket_in_alt_text(qapp):
+    """A name containing "]" would otherwise close the Markdown alt-text span
+    early, breaking the whole image reference (there's no escape for it in
+    bare link syntax)."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="Screenshot [final].png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="Note 1", content="")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+
+    mock_dialog = MagicMock()
+    mock_dialog.exec.return_value = QDialog.DialogCode.Accepted
+    mock_dialog.get_selected_image.return_value = image
+
+    with patch("pandaplot.gui.components.tabs.note.note_editor.NoteImagePickerDialog", return_value=mock_dialog):
+        editor.insert_image_from_picker()
+
+    content = editor.text_edit.toPlainText()
+    assert content == f"![Screenshot (final).png]({image.id})"
+
+    # And it must actually render as an image, not fall back to plain text.
+    from pandaplot.services.note_render.latex_markdown_renderer import render_body_html
+    html = render_body_html(content)
+    assert "<img" in html
 
 
 def test_note_editor_insert_image_refreshes_preview_only_mode(qapp):

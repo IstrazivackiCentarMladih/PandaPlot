@@ -94,7 +94,7 @@ class NoteImagePickerDialog(PDialog):
     def _load_pixmap_uncached(self, image: Image) -> Optional[QPixmap]:
         try:
             data = image.get_bytes()
-            if data is None and image.storage_mode == "external":
+            if data is None and image.source_file:
                 source = image.source_file
                 if source.startswith("http://") or source.startswith("https://"):
                     import requests
@@ -107,7 +107,11 @@ class NoteImagePickerDialog(PDialog):
             if data:
                 pix = QPixmap()
                 if pix.loadFromData(data):
-                    return pix
+                    return pix.scaled(
+                        _ICON_SIZE,
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
         except Exception:
             pass
         return None
