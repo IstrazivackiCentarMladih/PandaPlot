@@ -749,40 +749,6 @@ def resolve_numeric_column(dataset: Any, column_id: str) -> Optional[np.ndarray]
     return array
 
 
-def resolve_manual_fit_source_data(
-    dataset: Any,
-    x_column_id: str,
-    y_column_id: str,
-    confidence_lower_column_id: str = "",
-    confidence_upper_column_id: str = "",
-) -> Optional[tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]]:
-    """Resolve X, Y, and optional confidence-lower/confidence-upper columns for a manual fit.
-
-    Returns a 4-tuple of numpy arrays (x_data, y_data, confidence_lower, confidence_upper)
-    if all required (and any specified non-empty confidence) columns resolve to numeric data,
-    or None if any resolution fails (all-or-nothing validation). An empty confidence column ID
-    is valid and resolves to None for that array.
-    """
-    x_data = resolve_numeric_column(dataset, x_column_id)
-    y_data = resolve_numeric_column(dataset, y_column_id)
-    if dataset is None or x_data is None or y_data is None:
-        return None
-
-    confidence_lower = None
-    if confidence_lower_column_id:
-        confidence_lower = resolve_numeric_column(dataset, confidence_lower_column_id)
-        if confidence_lower is None:
-            return None
-
-    confidence_upper = None
-    if confidence_upper_column_id:
-        confidence_upper = resolve_numeric_column(dataset, confidence_upper_column_id)
-        if confidence_upper is None:
-            return None
-
-    return x_data, y_data, confidence_lower, confidence_upper
-
-
 def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
     """Fill a series' ``*_column_id`` fields from its name fields via ``dataset``.
 
