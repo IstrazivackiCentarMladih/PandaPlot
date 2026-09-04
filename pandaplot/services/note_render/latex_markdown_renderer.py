@@ -18,6 +18,7 @@ import logging
 import re
 import struct
 from dataclasses import dataclass
+from typing import Optional
 
 from markdown import markdown
 
@@ -39,6 +40,15 @@ _MATH_TOKEN_RE = re.compile(r"zzmathplaceholder(\d+)zz")
 
 _DISPLAY_MATH_RE = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"\$(.+?)\$", re.DOTALL)
+
+# Image size modifier: Typora-style `![alt](target =WxH)`, with width and/or
+# height optional (`=300x`, `=x200`, `=300x200`). Bare `=WxH` isn't valid
+# CommonMark, so it's stripped before Markdown parses the link and reapplied
+# as width/height attributes on the rendered <img> afterwards.
+_IMAGE_SIZE_RE = re.compile(r"!\[([^\]]*)\]\(([^\s)]+)\s+=(\d*)x(\d*)\)")
+_IMG_SIZE_FRAGMENT = "pandaimgsize"
+_IMG_TAG_RE = re.compile(r"(<img\b[^>]*?)(/?)>")
+_IMG_SIZE_SRC_RE = re.compile(rf'src="([^"]*)#{_IMG_SIZE_FRAGMENT}(\d+)"')
 
 # Cache rendered equations for the session; keyed on everything that affects
 # the pixels. data: URIs are large but bounded by the number of distinct
@@ -143,6 +153,49 @@ def _equation_img(latex: str, *, color: str, fontsize: float, display: bool) -> 
     )
 
 
+def _extract_image_sizes(text: str) -> tuple[str, list[tuple[Optional[str], Optional[str]]]]:
+    """Strip `=WxH` size modifiers from image links, stashing them by index.
+
+    Each stripped modifier is tagged onto its link target as a URL fragment
+    (`target#pandaimgsizeN`) so Markdown's own link parsing carries it through
+    to the `<img src="...">` untouched, ready for `_apply_image_sizes` to pull
+    back out.
+    """
+    sizes: list[tuple[Optional[str], Optional[str]]] = []
+
+    def _stash(m: re.Match) -> str:
+        alt, target, width, height = m.groups()
+        if not width and not height:
+            return m.group(0)
+        idx = len(sizes)
+        sizes.append((width or None, height or None))
+        return f"![{alt}]({target}#{_IMG_SIZE_FRAGMENT}{idx})"
+
+    return _IMAGE_SIZE_RE.sub(_stash, text), sizes
+
+
+def _apply_image_sizes(html: str, sizes: list[tuple[Optional[str], Optional[str]]]) -> str:
+    """Reapply width/height attributes stashed by `_extract_image_sizes`."""
+    if not sizes:
+        return html
+
+    def _fix_tag(m: re.Match) -> str:
+        body, slash = m.group(1), m.group(2)
+        size_match = _IMG_SIZE_SRC_RE.search(body)
+        if not size_match:
+            return m.group(0)
+        src, idx = size_match.group(1), int(size_match.group(2))
+        width, height = sizes[idx]
+        body = _IMG_SIZE_SRC_RE.sub(f'src="{src}"', body).rstrip()
+        if width:
+            body += f' width="{width}"'
+        if height:
+            body += f' height="{height}"'
+        return f"{body}{' ' + slash if slash else ''}>"
+
+    return _IMG_TAG_RE.sub(_fix_tag, html)
+
+
 def _escape_html(text: str) -> str:
     return (
         text.replace("&", "&amp;")
@@ -160,6 +213,9 @@ def render_body_html(source: str, *, color: str = "#000000", fontsize: float = 1
     """
     # 1. Protect escaped dollars so they are never treated as math delimiters.
     text = source.replace(r"\$", _ESCAPED_DOLLAR)
+
+    # 1b. Strip `=WxH` image size modifiers before Markdown sees the links.
+    text, image_sizes = _extract_image_sizes(text)
 
     equations: list[str] = []
     display_flags: list[bool] = []
@@ -187,7 +243,10 @@ def render_body_html(source: str, *, color: str = "#000000", fontsize: float = 1
 
     html = _MATH_TOKEN_RE.sub(_restore, html)
 
-    # 5. Restore any literal (escaped) dollar signs.
+    # 5. Reapply any stripped image size modifiers to their <img> tags.
+    html = _apply_image_sizes(html, image_sizes)
+
+    # 6. Restore any literal (escaped) dollar signs.
     html = html.replace(_ESCAPED_DOLLAR, "$")
     return html
 

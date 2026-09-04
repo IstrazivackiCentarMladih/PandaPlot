@@ -84,6 +84,33 @@ def test_render_equation_has_transparent_background():
     assert alpha.getpixel((image.width - 1, 0)) == 0
 
 
+def test_image_size_modifier_applies_width_and_height():
+    html = render_body_html("![Chart](chart.png =300x200)")
+    assert 'src="chart.png"' in html
+    assert 'width="300"' in html
+    assert 'height="200"' in html
+    assert "pandaimgsize" not in html
+
+
+def test_image_size_modifier_width_only():
+    html = render_body_html("![Chart](chart.png =300x)")
+    assert 'width="300"' in html
+    assert "height=" not in html
+
+
+def test_image_size_modifier_height_only():
+    html = render_body_html("![Chart](chart.png =x200)")
+    assert 'height="200"' in html
+    assert "width=" not in html
+
+
+def test_image_without_size_modifier_is_unaffected():
+    html = render_body_html("![Chart](chart.png)")
+    assert 'src="chart.png"' in html
+    assert "width=" not in html
+    assert "height=" not in html
+
+
 def test_wrap_document_applies_colors():
     doc = wrap_document("<p>hi</p>", color="#123456", background="#abcdef")
     assert "#123456" in doc

@@ -1,9 +1,9 @@
 """Dialog for selecting an Image from project galleries to insert into a note."""
 
 import os
-from typing import Dict, Optional, override
+from typing import Dict, List, Optional, Tuple, override
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -39,9 +39,18 @@ class NoteImagePickerDialog(PDialog):
         super().__init__(app_context=app_context, parent=parent)
         self.project = project
         self._selected_image: Optional[Image] = None
+        # Memoises decoded thumbnails by image id so re-populating the tree
+        # (or a future dialog instance reusing this one) doesn't re-fetch.
+        self._pixmap_cache: Dict[str, Optional[QPixmap]] = {}
+        self._pending_thumbnails: List[Tuple[QTreeWidgetItem, Image]] = []
         self._initialize()
         self._populate_tree()
         self._refresh_ok_enabled()
+        # Thumbnails (which may block on external file/network reads) load
+        # one at a time after the dialog is already shown, instead of all
+        # synchronously before exec() -- a single slow/unavailable image no
+        # longer makes the whole dialog appear hung.
+        QTimer.singleShot(0, self._load_next_thumbnail)
 
     @override
     def _init_ui(self):
@@ -76,6 +85,13 @@ class NoteImagePickerDialog(PDialog):
         return self.app_context.get_manager(ThemeManager).get_design_tokens()
 
     def _load_pixmap_for_image(self, image: Image) -> Optional[QPixmap]:
+        if image.id in self._pixmap_cache:
+            return self._pixmap_cache[image.id]
+        pixmap = self._load_pixmap_uncached(image)
+        self._pixmap_cache[image.id] = pixmap
+        return pixmap
+
+    def _load_pixmap_uncached(self, image: Image) -> Optional[QPixmap]:
         try:
             data = image.get_bytes()
             if data is None and image.storage_mode == "external":
@@ -96,18 +112,35 @@ class NoteImagePickerDialog(PDialog):
             pass
         return None
 
-    def _tile_icon_for(self, item) -> QIcon:
+    def _tile_icon_for(self, item, *, placeholder: bool = False) -> QIcon:
         tokens = self._get_tokens()
         if isinstance(item, ImageGallery):
             return build_gallery_tile_icon(None, "album", selected=False, tokens=tokens, size=_ICON_SIZE)
         if isinstance(item, Image):
+            if placeholder:
+                # Deferred to _load_next_thumbnail; don't decode/fetch here.
+                return build_gallery_tile_icon(None, "broken", selected=False, tokens=tokens, size=_ICON_SIZE)
             pix = self._load_pixmap_for_image(item)
             tile_type = "image" if pix is not None else "broken"
             return build_gallery_tile_icon(pix, tile_type, selected=False, tokens=tokens, size=_ICON_SIZE)
         return build_gallery_tile_icon(None, "broken", selected=False, tokens=tokens, size=_ICON_SIZE)
 
+    def _load_next_thumbnail(self) -> None:
+        """Load one pending thumbnail, then reschedule for the next.
+
+        Spreads potentially-blocking image decodes (and external file/network
+        reads) across event-loop turns so the dialog stays responsive instead
+        of freezing on `exec()` while every thumbnail loads synchronously.
+        """
+        if not self._pending_thumbnails:
+            return
+        tree_item, image = self._pending_thumbnails.pop(0)
+        tree_item.setIcon(0, self._tile_icon_for(image))
+        QTimer.singleShot(0, self._load_next_thumbnail)
+
     def _populate_tree(self) -> None:
         self.tree.clear()
+        self._pending_thumbnails = []
         if self.project is None:
             self.empty_label.setVisible(True)
             self.tree.setVisible(False)
@@ -147,7 +180,8 @@ class NoteImagePickerDialog(PDialog):
         for img in all_images:
             tree_item = QTreeWidgetItem([img.name])
             tree_item.setData(0, Qt.ItemDataRole.UserRole, img.id)
-            tree_item.setIcon(0, self._tile_icon_for(img))
+            tree_item.setIcon(0, self._tile_icon_for(img, placeholder=True))
+            self._pending_thumbnails.append((tree_item, img))
             by_id[img.id] = tree_item
 
             parent = items_by_id.get(img.parent_id) if img.parent_id else None
