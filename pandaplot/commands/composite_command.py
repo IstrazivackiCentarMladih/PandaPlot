@@ -26,14 +26,18 @@ class CompositeCommand(Command):
     rather than risk it re-applying or re-reversing something that was
     never actually touched.
 
-    `occupies_undo_slot()` is True only if every executed sub-command's own
-    `occupies_undo_slot()` is True. A sub-command that returns False there
-    means its real effect isn't synchronous within execute() -- it finishes
-    its own undo tracking later via a separate, independent
-    `execute_command()` call (see `Command.occupies_undo_slot()`) -- so a
-    composite containing one can't represent a complete, atomic action
-    synchronously either, and must not claim a stack slot for what is, from
-    this call's point of view, still an incomplete action.
+    `execute()` rejects (raises `ValueError`, before running any sub-command)
+    any sub-command whose `occupies_undo_slot()` is False. Such a
+    sub-command's real effect isn't synchronous within execute() -- it
+    finishes its own undo tracking later via a separate, independent
+    `execute_command()` call (see `Command.occupies_undo_slot()`) -- and a
+    composite can't fold that into a single atomic undo/redo unit either
+    way: claiming a stack slot would mean undo() runs on a sub-command with
+    nothing of its own to undo yet, while declining one would silently
+    strand any OTHER, genuinely synchronous sub-command that already
+    executed for real with no undo entry ever created for it. Rejecting the
+    composition upfront is the only choice that doesn't corrupt one or the
+    other.
 
     `cleanup()` invokes `cleanup()` on every configured sub-command.
 
@@ -69,14 +73,17 @@ class CompositeCommand(Command):
             return True
         return any(cmd.marks_project_modified() for cmd in self._executed)
 
-    def occupies_undo_slot(self) -> bool:
-        if not self.commands:
-            return True
-        if not self._executed:
-            return True
-        return all(cmd.occupies_undo_slot() for cmd in self._executed)
-
     def execute(self) -> CommandResult:
+        for cmd in self.commands:
+            if not cmd.occupies_undo_slot():
+                raise ValueError(
+                    f"CompositeCommand cannot compose {cmd.__class__.__name__}, whose "
+                    "occupies_undo_slot() is False: its real effect isn't synchronous within "
+                    "execute() -- it completes its own undo tracking later via a separate, "
+                    "independent execute_command() call, which a composite has no way to fold "
+                    "into a single atomic undo/redo unit."
+                )
+
         executed: List[Command] = []
 
         for cmd in self.commands:

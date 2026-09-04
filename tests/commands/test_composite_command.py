@@ -1,6 +1,8 @@
 from typing import List, Optional
 from unittest.mock import Mock
 
+import pytest
+
 from pandaplot.commands import Command, CommandExecutor, CommandResult, CompositeCommand, MacroCommand
 
 
@@ -495,7 +497,7 @@ def test_composite_command_occupies_undo_slot_defaults_true():
     assert CompositeCommand().occupies_undo_slot() is True
 
 
-def test_composite_command_occupies_undo_slot_true_when_all_executed_subcommands_opt_in():
+def test_composite_command_occupies_undo_slot_true_when_all_subcommands_opt_in():
     cmd1 = SimpleCommand("c1")
     cmd2 = SimpleCommand("c2")
 
@@ -505,21 +507,29 @@ def test_composite_command_occupies_undo_slot_true_when_all_executed_subcommands
     assert composite.occupies_undo_slot() is True
 
 
-def test_composite_command_occupies_undo_slot_false_if_any_executed_subcommand_opts_out():
+def test_composite_command_rejects_a_non_slot_occupying_subcommand_before_executing_any():
     """occupies_undo_slot()==False means a sub-command's real effect isn't
     synchronous within execute() -- it completes its own undo tracking
-    later via a separate execute_command() call (see
-    Command.occupies_undo_slot()). Without aggregating this, wrapping such
-    a sub-command in a composite would silently push the composite onto the
-    undo stack anyway, contradicting the sub-command's own contract (see
-    PR #333 review)."""
+    later via a separate, independent execute_command() call (see
+    Command.occupies_undo_slot()). A composite containing one can't
+    represent a complete, atomic action either way: if the composite then
+    claimed a stack slot, undo() would be invoked on a sub-command with
+    nothing of its own to undo yet; if it declined one (as an earlier,
+    incorrect fix here did), any OTHER, genuinely synchronous sub-command
+    that already executed for real would become permanently untracked --
+    applied, but with no undo entry ever created for it (see PR #333
+    review). So such a sub-command must be rejected before anything in the
+    composite executes, not discovered afterward."""
     tracked = SimpleCommand("tracked")
     deferred = SimpleCommand("deferred", occupies_slot=False)
 
     composite = CompositeCommand([tracked, deferred])
-    composite.execute()
 
-    assert composite.occupies_undo_slot() is False
+    with pytest.raises(ValueError, match="occupies_undo_slot"):
+        composite.execute()
+
+    assert tracked.executed_count == 0  # rejected before anything ran
+    assert deferred.executed_count == 0
 
 
 def test_command_executor_integration():
