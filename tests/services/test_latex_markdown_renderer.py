@@ -200,3 +200,54 @@ def test_wrap_document_sets_tight_paragraph_margin():
     doc = wrap_document("<p>hi</p>")
     assert "p {" in doc
     assert "margin: 4px 0;" in doc
+
+
+def test_wrap_document_uses_fixed_unit_line_height_not_a_multiplier():
+    """A unitless (or percentage) line-height is a *multiplier* of each
+    line's own natural height -- fine for a text line, but Qt applies the
+    same multiplier to a paragraph containing only an image, whose "line" is
+    the image's full pixel height. That inflates the gap below a large image
+    far beyond normal paragraph spacing (Qt adds the extra space below the
+    line, not split around it), producing a much bigger gap after an image
+    than before it. A fixed absolute line-height sets every line's height to
+    the same constant regardless of content, avoiding the inflation."""
+    doc = wrap_document("<p>hi</p>", fontsize=11.0)
+    assert "line-height: 16.5pt;" in doc
+    assert "line-height: 1.5;" not in doc
+    assert "line-height: 150%;" not in doc
+
+
+def test_image_paragraph_gap_matches_text_paragraph_gap(qapp):
+    """End-to-end regression for the line-height/image interaction above:
+    the gap around an image paragraph must match the gap between two plain
+    text paragraphs, not balloon after it."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtGui import QImage
+    from PySide6.QtGui import QTextDocument as QtTextDocument
+    from PySide6.QtWidgets import QTextEdit
+
+    qimg = QImage(80, 80, QImage.Format.Format_RGB32)
+    qimg.fill(0xFF0000)
+
+    source = "Before text.\n\n![Chart](img-id =80x80)\n\nAfter text."
+    body = render_body_html(source)
+    html = wrap_document(body)
+
+    edit = QTextEdit()
+    doc = edit.document()
+    doc.addResource(QtTextDocument.ResourceType.ImageResource, QUrl("img-id"), qimg)
+    edit.setHtml(html)
+    edit.resize(400, 400)
+    doc.setTextWidth(400)
+    layout_doc = doc.documentLayout()
+
+    rects = []
+    block = doc.begin()
+    while block.isValid():
+        r = layout_doc.blockBoundingRect(block)
+        rects.append((r.top(), r.bottom()))
+        block = block.next()
+
+    gap_before_image = rects[1][0] - rects[0][1]
+    gap_after_image = rects[2][0] - rects[1][1]
+    assert gap_after_image == gap_before_image

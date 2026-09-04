@@ -376,10 +376,23 @@ def wrap_document(
     limited HTML rendering (``QTextBrowser`` / ``QTextDocument``), not a full
     browser.
     """
+    # A unitless/percentage line-height (the usual "1.5") is a *multiplier* of
+    # each line's own natural height in CSS -- fine for text, where every
+    # line is roughly font-size tall, but Qt applies the same multiplier to a
+    # paragraph containing only an image, whose "line" is the image's full
+    # pixel height. The proportional extra space that produces then dwarfs
+    # normal paragraph spacing (an 80px image gets ~40px of extra leading
+    # below it, vs. ~10px for a text line), and Qt adds it entirely below the
+    # line rather than splitting it, so only the gap *after* an image balloons.
+    # A fixed absolute line-height sidesteps this: it sets every line's height
+    # to the same constant regardless of its content, which happens to also
+    # be what a real browser would do, giving uniform spacing between every
+    # pair of paragraphs whether or not either one is an image.
+    line_height_pt = round(fontsize * 1.5, 2)
     return f"""<html><head><style>
 body {{ color: {color}; background-color: {background};
        font-family: 'Segoe UI', Arial, sans-serif; font-size: {fontsize}pt;
-       line-height: 1.5; }}
+       line-height: {line_height_pt}pt; }}
 h1, h2, h3, h4 {{ color: {color}; }}
 a {{ color: #4A90E2; }}
 p {{ margin: 4px 0; }}
