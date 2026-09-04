@@ -3,6 +3,7 @@
 import logging
 from typing import Optional
 
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext
 
@@ -23,11 +24,11 @@ class ChartFinder:
         self.app_context = app_context
 
     def find(self, chart_id: str) -> Optional[Chart]:
-        app_state = self.app_context.get_app_state()
-        if not app_state.has_project or not app_state.current_project:
+        project = get_current_project(self.app_context)
+        if project is None:
             return None
 
-        item = app_state.current_project.find_item(chart_id)
+        item = project.find_item(chart_id)
         if item is None:
             return None
 
