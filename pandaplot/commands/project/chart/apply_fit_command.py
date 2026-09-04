@@ -13,7 +13,6 @@ from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.events.event_types import DatasetEvents, ProjectEvents
 from pandaplot.models.project.items import Dataset, Note
-from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext
 
 # Maps a short fit-type name to its chart color. `fit_type` from the fit panel is a
