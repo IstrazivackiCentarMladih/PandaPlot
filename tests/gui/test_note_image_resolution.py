@@ -146,6 +146,38 @@ def test_extract_referenced_image_keys_ignores_code_and_escaped_images():
     assert "code.png" not in keys
 
 
+def test_extract_referenced_image_keys_respects_backslash_parity():
+    """"\\\\![x](id)" is a literal backslash followed by a *live* image (an
+    even run of backslashes doesn't escape the "!"), unlike "\\![x](id)" --
+    the former's target must still count as referenced."""
+    keys = extract_referenced_image_keys(r"\\![x](live-id.png)")
+    assert "live-id.png" in keys
+
+
+def test_extract_referenced_image_keys_handles_reference_style_links():
+    """"![alt][label]" plus a "[label]: target" definition elsewhere in the
+    note is valid Markdown that renders an <img>, just like the inline
+    "![alt](target)" form -- PDF export/preview must not skip registering
+    the image just because it's referenced this way."""
+    source = "![Plot][plot]\n\n[plot]: gallery-id.png"
+    keys = extract_referenced_image_keys(source)
+    assert "gallery-id.png" in keys
+
+    # Collapsed form: the label defaults to the alt text.
+    source = "![gallery-id.png][]\n\n[gallery-id.png]: gallery-id.png"
+    keys = extract_referenced_image_keys(source)
+    assert "gallery-id.png" in keys
+
+    # Labels are case-insensitive, per CommonMark.
+    source = "![Plot][Plot]\n\n[plot]: gallery-id.png"
+    keys = extract_referenced_image_keys(source)
+    assert "gallery-id.png" in keys
+
+    # An undefined label resolves to nothing extra (no crash).
+    keys = extract_referenced_image_keys("![Plot][undefined]")
+    assert keys == set()
+
+
 def test_register_project_image_resources_skips_key_matching_real_file(qapp, tmp_path):
     """A gallery image whose id/path happens to match a real on-disk file
     must not be pre-registered under that URL -- pre-registering bypasses
@@ -503,6 +535,49 @@ def test_note_image_picker_dialog_tree_and_selection(qapp):
     assert dialog.ok_button.isEnabled()
     dialog._on_ok_clicked()
     assert dialog.get_selected_image() == image
+
+
+def test_note_image_picker_dialog_preserves_folder_hierarchy_for_same_named_galleries(qapp):
+    """Two different galleries that happen to share a name (duplicates are
+    allowed) must not collapse into indistinguishable top-level entries just
+    because their Folder ancestor isn't itself an ImageGallery -- the real
+    hierarchy must be shown so each image's actual source is identifiable."""
+    project = Project(name="Test Project")
+
+    folder_a = Folder(name="Folder A")
+    project.add_item(folder_a)
+    gallery_a = ImageGallery(name="Gallery 1")
+    project.add_item(gallery_a, parent_id=folder_a.id)
+    image_a = Image(name="photo.png", storage_mode="copied")
+    image_a.set_bytes(create_test_png_bytes())
+    project.add_item(image_a, parent_id=gallery_a.id)
+
+    folder_b = Folder(name="Folder B")
+    project.add_item(folder_b)
+    gallery_b = ImageGallery(name="Gallery 1")  # same name as gallery_a
+    project.add_item(gallery_b, parent_id=folder_b.id)
+    image_b = Image(name="photo.png", storage_mode="copied")  # same name as image_a
+    image_b.set_bytes(create_test_png_bytes())
+    project.add_item(image_b, parent_id=gallery_b.id)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+    dialog.show()
+
+    # Both "Gallery 1" nodes must be nested under their distinct folder, not
+    # sitting as two identical top-level items.
+    assert dialog.tree.topLevelItemCount() == 2
+    top_level_names = {dialog.tree.topLevelItem(i).text(0) for i in range(dialog.tree.topLevelItemCount())}
+    assert top_level_names == {"Folder A", "Folder B"}
+
+    gallery_items = dialog.tree.findItems(
+        "Gallery 1", Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive
+    )
+    assert len(gallery_items) == 2
+    parent_names = {item.parent().text(0) for item in gallery_items}
+    assert parent_names == {"Folder A", "Folder B"}
 
 
 def test_note_image_picker_dialog_scales_thumbnail_to_icon_size(qapp):

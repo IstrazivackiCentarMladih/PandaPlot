@@ -6,6 +6,7 @@ structure survives around embedded math.
 """
 
 from pandaplot.services.note_render.latex_markdown_renderer import (
+    is_escaped_at,
     render_body_html,
     render_equation,
     wrap_document,
@@ -146,6 +147,41 @@ def test_code_placeholder_does_not_collide_with_literal_note_text():
     html = render_body_html("zzcodeplaceholder-deadbeef-0zz and `real code`")
     assert "zzcodeplaceholder-deadbeef-0zz" in html
     assert "<code>real code</code>" in html
+
+
+def test_is_escaped_at_respects_backslash_parity():
+    # "\!" -- odd run of one backslash -- escapes the "!".
+    assert is_escaped_at(r"\!", 1) is True
+    # "\\!" -- even run of two backslashes -- is a literal backslash
+    # followed by a live, unescaped "!".
+    assert is_escaped_at(r"\\!", 2) is False
+    # "\\\!" -- odd run of three -- escapes it again.
+    assert is_escaped_at(r"\\\!", 3) is True
+    assert is_escaped_at("!", 0) is False
+
+
+def test_image_size_modifier_applies_despite_even_escaped_backslash():
+    """"\\\\!" is a literal backslash followed by a live image -- the size
+    modifier must still apply, not be skipped as if the "!" were escaped."""
+    html = render_body_html(r"\\![Chart](img-id =300x200)")
+    assert 'width="300"' in html
+    assert 'height="200"' in html
+
+
+def test_fenced_code_backreference_handles_nested_triple_backtick():
+    """A longer fence (four backticks) whose content contains an unrelated,
+    shorter run of the same character (a literal ```) must not close the
+    protected region early -- only a fence of the same length does."""
+    html = render_body_html("````\ntext with ``` inside\n![Chart](img-id =300x200)\n````")
+    assert "pandaimgsize" not in html
+    assert "<pre>" in html
+    assert "text with ``` inside" in html
+
+
+def test_tilde_fence_is_protected_like_backtick_fence():
+    html = render_body_html("~~~\n![Chart](img-id =300x200)\n~~~")
+    assert "pandaimgsize" not in html
+    assert "<pre>" in html
 
 
 def test_wrap_document_applies_colors():

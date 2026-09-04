@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
-from pandaplot.models.project.items import Image, ImageGallery, Item
+from pandaplot.models.project.items import Folder, Image, ImageGallery, Item
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -136,7 +136,7 @@ class NoteImagePickerDialog(PDialog):
 
     def _tile_icon_for(self, item, *, placeholder: bool = False) -> QIcon:
         tokens = self._get_tokens()
-        if isinstance(item, ImageGallery):
+        if isinstance(item, (ImageGallery, Folder)):
             return build_gallery_tile_icon(None, "album", selected=False, tokens=tokens, size=_ICON_SIZE)
         if isinstance(item, Image):
             if placeholder:
@@ -215,21 +215,28 @@ class NoteImagePickerDialog(PDialog):
         self.empty_label.setVisible(False)
         self.tree.setVisible(True)
 
-        galleries = [item for item in all_items if isinstance(item, ImageGallery)]
+        # Both kinds of collection are tree nodes here, not just galleries:
+        # an ImageGallery can be created underneath an ordinary Folder, and
+        # gallery names aren't required to be unique, so a gallery whose
+        # Folder ancestors were dropped could become an indistinguishable
+        # duplicate top-level entry (e.g. two different folders each holding
+        # a gallery named "Gallery 1"). Showing the real hierarchy avoids
+        # that ambiguity instead of trying to disambiguate the label text.
+        collections = [item for item in all_items if isinstance(item, (ImageGallery, Folder))]
         by_id: Dict[str, QTreeWidgetItem] = {}
         items_by_id: Dict[str, Item] = {i.id: i for i in all_items}
 
-        # First, build gallery collection nodes
-        for gallery in galleries:
-            tree_item = QTreeWidgetItem([gallery.name])
-            tree_item.setData(0, Qt.ItemDataRole.UserRole, gallery.id)
-            tree_item.setIcon(0, self._tile_icon_for(gallery))
-            by_id[gallery.id] = tree_item
+        # First, build collection nodes (folders and galleries)
+        for collection in collections:
+            tree_item = QTreeWidgetItem([collection.name])
+            tree_item.setData(0, Qt.ItemDataRole.UserRole, collection.id)
+            tree_item.setIcon(0, self._tile_icon_for(collection))
+            by_id[collection.id] = tree_item
 
-        # Attach nested galleries to parent gallery or root tree
-        for gallery in galleries:
-            tree_item = by_id[gallery.id]
-            parent = items_by_id.get(gallery.parent_id) if gallery.parent_id else None
+        # Attach nested collections to their parent collection or root tree
+        for collection in collections:
+            tree_item = by_id[collection.id]
+            parent = items_by_id.get(collection.parent_id) if collection.parent_id else None
             if parent and parent.id in by_id:
                 by_id[parent.id].addChild(tree_item)
             else:

@@ -49,12 +49,15 @@ _INLINE_MATH_RE = re.compile(r"\$(.+?)\$", re.DOTALL)
 # size is carried through as a URL fragment tagged with a token unique to
 # this render call, so a user's own URL that happens to already end in
 # something like "#pandaimgsize3" is never mistaken for one of ours.
-# The leading (?<!\\) skips a `\![...]` the user escaped to be literal text
-# (no image is emitted there, so there'd be no <img> to reapply a size to).
 # Group 2 handles the angle-bracket target form required for a gallery path
 # containing spaces (`![x](<Gallery 1/sample.png> =300x)`); group 3 is the
-# bare form.
-_IMAGE_SIZE_RE = re.compile(r"(?<!\\)!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^\s)]+))\s+=(\d*)x(\d*)\)")
+# bare form. Whether the leading "!" is itself escaped (an odd run of
+# backslashes immediately before it, per Markdown backslash-escape rules --
+# "\!" is literal, "\\!" is a literal backslash then a live "!") is checked
+# separately via `is_escaped_at`, not by a lookbehind here: a lookbehind can
+# only see one fixed-width slice, so it can't tell an odd run from an even
+# one.
+_IMAGE_SIZE_RE = re.compile(r"!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^\s)]+))\s+=(\d*)x(\d*)\)")
 _IMG_SIZE_FRAGMENT = "pandaimgsize"
 
 # Fenced/inline code spans aren't image links even if they contain
@@ -63,7 +66,16 @@ _IMG_SIZE_FRAGMENT = "pandaimgsize"
 # Markdown still renders them as ordinary code afterwards. The token is
 # unique per call so the placeholder can never collide with literal note
 # text that happens to look like "zzcodeplaceholder0zz".
-_FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
+#
+# The fenced pattern backreferences its own opening fence (\1) so a longer
+# fence (` ```` `) whose content contains a shorter, unrelated run of the
+# same character (a literal ``` inside it) doesn't close the match early;
+# both backtick and tilde fences (both supported by the "fenced_code"
+# extension) are covered. This still doesn't replicate every construct
+# Markdown treats as code (notably 4-space-indented code blocks, which have
+# no unique delimiter to key off of) -- a narrower, known limitation of this
+# regex-based approach rather than a full Markdown tokenizer.
+_FENCED_CODE_RE = re.compile(r"(`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\1[ \t]*$", re.DOTALL | re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
 _CODE_TOKEN = "zzcodeplaceholder-{token}-{index}zz"
 _IMG_TAG_RE = re.compile(r"(<img\b[^>]*?)(/?)>")
@@ -71,6 +83,24 @@ _IMG_TAG_RE = re.compile(r"(<img\b[^>]*?)(/?)>")
 
 def _code_token_re(token: str) -> re.Pattern:
     return re.compile(rf"zzcodeplaceholder-{re.escape(token)}-(\d+)zz")
+
+
+def is_escaped_at(text: str, pos: int) -> bool:
+    """Whether `text[pos]` is escaped by Markdown backslash rules.
+
+    A character is escaped only by an *odd*-length run of backslashes
+    immediately before it -- "\\!" is a literal "!", but "\\\\!" is a
+    literal backslash followed by a live, unescaped "!". Shared by the
+    image-size and image-reference extractors so both agree with Markdown's
+    own escaping rules instead of treating any single preceding backslash as
+    disqualifying.
+    """
+    count = 0
+    i = pos - 1
+    while i >= 0 and text[i] == "\\":
+        count += 1
+        i -= 1
+    return count % 2 == 1
 
 
 def _img_size_src_re(token: str) -> re.Pattern:
@@ -231,6 +261,8 @@ def _extract_image_sizes(
     sizes: list[tuple[Optional[str], Optional[str]]] = []
 
     def _stash(m: re.Match) -> str:
+        if is_escaped_at(text, m.start()):
+            return m.group(0)
         alt, angle_target, bare_target, width, height = m.groups()
         target = angle_target if angle_target is not None else bare_target
         if not width and not height:

@@ -32,6 +32,7 @@ from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery, ItemCollection, Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
+    is_escaped_at,
     protect_code_regions,
     render_body_html,
     wrap_document,
@@ -42,13 +43,22 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 # the math visually matches the surrounding text.
 _NOTE_FONT_SIZE = 11
 
-# Matches a Markdown image link's target, e.g. "id" in "![alt](id =300x200)".
-# Group 1 handles the angle-bracket form for a target containing spaces
-# (`![alt](<my id> =300x200)`); group 2 is the bare form, which stops at the
-# first whitespace so a trailing size modifier isn't swept in. The leading
-# (?<!\\) skips a `\![...]` the user escaped to be literal text -- Markdown
-# never emits an <img> there, so it isn't a live reference either.
-_IMAGE_REF_RE = re.compile(r"(?<!\\)!\[[^\]]*\]\(\s*(?:<([^>]*)>|([^\s)]+))")
+# Matches a Markdown inline image link's target, e.g. "id" in
+# "![alt](id =300x200)". Group 1 handles the angle-bracket form for a target
+# containing spaces (`![alt](<my id> =300x200)`); group 2 is the bare form,
+# which stops at the first whitespace so a trailing size modifier isn't
+# swept in. Whether the leading "!" is itself escaped is checked separately
+# via `is_escaped_at` (Markdown backslash rules need to look at an arbitrary
+# run of preceding backslashes, not just one character).
+_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(\s*(?:<([^>]*)>|([^\s)]+))")
+
+# Reference-style image link, e.g. "![alt][plot]" (or the collapsed
+# "![alt][]", whose label is `alt` itself) paired with a definition elsewhere
+# in the note like "[plot]: image-id". Both are valid Markdown that renders
+# an <img>, so a note using this style must still have its target counted as
+# referenced.
+_IMAGE_REF_LABEL_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]*)\]")
+_LINK_DEFINITION_RE = re.compile(r"^[ \t]{0,3}\[([^\]]+)\]:\s*(?:<([^>]*)>|(\S+))", re.MULTILINE)
 
 # Default cap applied to a gallery image's width when inserted via the picker,
 # so a large photo doesn't blow out the note by default. The user can still
@@ -121,33 +131,57 @@ def get_cached_qimage(image_item: Image, cache: Dict[str, Optional[QImage]]) -> 
     return qimg
 
 
+def _add_key_and_decoded(keys: Set[str], target: Optional[str]) -> None:
+    if not target:
+        return
+    keys.add(target)
+    decoded = unquote(target)
+    if decoded != target:
+        keys.add(decoded)
+
+
 def extract_referenced_image_keys(source: str) -> Set[str]:
     """Return the set of image link targets referenced in note `source`.
 
     Used to skip loading/registering gallery images that the note doesn't
     actually reference, rather than eagerly resolving every image in the
-    project on each render. Handles both the bare and angle-bracket
-    (`<target with spaces>`) link forms, and includes the percent-decoded
-    form of each target (gallery keys like "Album/Photo.png" are stored
-    unencoded, so a note written as "Album%2FPhoto.png" would otherwise never
-    match).
+    project on each render. Handles inline links (bare and angle-bracket
+    (`<target with spaces>`) target forms) and reference-style links
+    (`![alt][label]` / `![alt][]` plus a `[label]: target` definition
+    elsewhere in the note) -- both are valid Markdown that renders an
+    <img>. Each target's percent-decoded form is included too (gallery keys
+    like "Album/Photo.png" are stored unencoded, so a note written as
+    "Album%2FPhoto.png" would otherwise never match).
 
-    Image-shaped text inside a fenced/inline code span is not a real
-    reference (Markdown renders it as literal code, not an <img>), so it's
-    excluded the same way the renderer excludes it from size-modifier
-    handling -- otherwise an unrelated code example could trigger decoding,
-    or a synchronous network fetch, of a same-named external gallery image.
+    Image-shaped text inside a fenced/inline code span, or escaped with a
+    leading "\\!", is not a real reference (Markdown renders neither as an
+    <img>), so both are excluded the same way the renderer excludes them
+    from size-modifier handling -- otherwise an unrelated code example or
+    escaped image could trigger decoding, or a synchronous network fetch, of
+    a same-named external gallery image.
     """
     protected_source, _, _ = protect_code_regions(source)
     keys: Set[str] = set()
+
     for match in _IMAGE_REF_RE.finditer(protected_source):
-        target = match.group(1) if match.group(1) is not None else match.group(2)
-        if not target:
+        if is_escaped_at(protected_source, match.start()):
             continue
-        keys.add(target)
-        decoded = unquote(target)
-        if decoded != target:
-            keys.add(decoded)
+        target = match.group(1) if match.group(1) is not None else match.group(2)
+        _add_key_and_decoded(keys, target)
+
+    definitions: Dict[str, str] = {}
+    for def_match in _LINK_DEFINITION_RE.finditer(protected_source):
+        target = def_match.group(2) if def_match.group(2) is not None else def_match.group(3)
+        if target:
+            definitions[def_match.group(1).lower()] = target
+
+    for ref_match in _IMAGE_REF_LABEL_RE.finditer(protected_source):
+        if is_escaped_at(protected_source, ref_match.start()):
+            continue
+        alt, label = ref_match.groups()
+        target = definitions.get((label or alt).lower())
+        _add_key_and_decoded(keys, target)
+
     return keys
 
 
