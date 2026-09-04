@@ -18,6 +18,7 @@ class SimpleCommand(Command):
         undo_exception: Optional[Exception] = None,
         redo_exception: Optional[Exception] = None,
         marks_modified: bool = True,
+        occupies_slot: bool = True,
     ):
         super().__init__()
         self.name = name
@@ -28,6 +29,7 @@ class SimpleCommand(Command):
         self.undo_exception = undo_exception
         self.redo_exception = redo_exception
         self._marks_modified = marks_modified
+        self._occupies_slot = occupies_slot
 
         self.executed_count = 0
         self.undone_count = 0
@@ -54,6 +56,9 @@ class SimpleCommand(Command):
 
     def marks_project_modified(self) -> bool:
         return self._marks_modified
+
+    def occupies_undo_slot(self) -> bool:
+        return self._occupies_slot
 
     def cleanup(self) -> None:
         self.cleanup_count += 1
@@ -488,6 +493,33 @@ def test_composite_command_marks_project_modified_ignores_noop_subcommands():
 
 def test_composite_command_occupies_undo_slot_defaults_true():
     assert CompositeCommand().occupies_undo_slot() is True
+
+
+def test_composite_command_occupies_undo_slot_true_when_all_executed_subcommands_opt_in():
+    cmd1 = SimpleCommand("c1")
+    cmd2 = SimpleCommand("c2")
+
+    composite = CompositeCommand([cmd1, cmd2])
+    composite.execute()
+
+    assert composite.occupies_undo_slot() is True
+
+
+def test_composite_command_occupies_undo_slot_false_if_any_executed_subcommand_opts_out():
+    """occupies_undo_slot()==False means a sub-command's real effect isn't
+    synchronous within execute() -- it completes its own undo tracking
+    later via a separate execute_command() call (see
+    Command.occupies_undo_slot()). Without aggregating this, wrapping such
+    a sub-command in a composite would silently push the composite onto the
+    undo stack anyway, contradicting the sub-command's own contract (see
+    PR #333 review)."""
+    tracked = SimpleCommand("tracked")
+    deferred = SimpleCommand("deferred", occupies_slot=False)
+
+    composite = CompositeCommand([tracked, deferred])
+    composite.execute()
+
+    assert composite.occupies_undo_slot() is False
 
 
 def test_command_executor_integration():
