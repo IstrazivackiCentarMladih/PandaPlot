@@ -27,6 +27,21 @@ class CompositeCommand(Command):
     never actually touched.
 
     `cleanup()` invokes `cleanup()` on every configured sub-command.
+
+    Caveat: the "FAILURE always means nothing net changed" guarantee above
+    is only as strong as its sub-commands. It assumes each sub-command's
+    own execute()/undo()/redo() never leaves a partial mutation before
+    returning FAILURE or raising -- the same assumption every other Command
+    in this codebase already relies on for itself (see CommandResult) --
+    and that the compensating undo()/redo() call used to roll one back
+    always succeeds. A sub-command that breaks either assumption (e.g. one
+    that mutates two things in sequence with no rollback of its own if the
+    second one fails) can still leave an untracked, unmarked-dirty mutation
+    behind; that is a bug in the sub-command, not something a generic
+    composite can detect or repair. `_rollback()`/`_rollback_undo()` do log
+    an error (not just on an exception, also on a FAILURE return) when a
+    compensating call itself doesn't fully succeed, so such cases are at
+    least loud rather than silent.
     """
 
     def __init__(self, commands: Optional[Iterable[Command]] = None):
@@ -160,7 +175,13 @@ class CompositeCommand(Command):
     def _rollback(self, executed: List[Command]) -> None:
         for cmd in reversed(executed):
             try:
-                cmd.undo()
+                res = cmd.undo()
+                if res is CommandResult.FAILURE:
+                    self.logger.error(
+                        "Sub-command %s reported failure while rolling back; it may remain "
+                        "applied outside this composite's undo/redo tracking from here on",
+                        cmd.__class__.__name__,
+                    )
             except Exception as e:
                 self.logger.error(
                     "Error rolling back sub-command %s: %s",
@@ -174,7 +195,13 @@ class CompositeCommand(Command):
         since it's reversing an undo rather than an execute()/redo()."""
         for cmd in reversed(undone):
             try:
-                cmd.redo()
+                res = cmd.redo()
+                if res is CommandResult.FAILURE:
+                    self.logger.error(
+                        "Sub-command %s reported failure while rolling back (re-applying); it may "
+                        "remain undone outside this composite's undo/redo tracking from here on",
+                        cmd.__class__.__name__,
+                    )
             except Exception as e:
                 self.logger.error(
                     "Error rolling back (re-applying) sub-command %s: %s",
