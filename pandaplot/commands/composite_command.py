@@ -99,7 +99,8 @@ class CompositeCommand(Command):
                     self._rollback(redone)
                     return CommandResult.FAILURE
 
-                redone.append(cmd)
+                if res is not CommandResult.NOOP:
+                    redone.append(cmd)
             except Exception as e:
                 self.logger.error(
                     "Sub-command %s raised exception during redo(): %s; rolling back %d redone sub-commands",
@@ -108,7 +109,8 @@ class CompositeCommand(Command):
                 self._rollback(redone)
                 return CommandResult.FAILURE
 
-        if not self._executed:
+        self._executed = redone
+        if not redone:
             return CommandResult.NOOP
         return CommandResult.SUCCESS
 

@@ -215,6 +215,39 @@ def test_composite_command_redo_rollback_on_failure():
     assert cmd2.redone_count == 1
 
 
+def test_composite_command_redo_excludes_noop_subcommands_from_replay_set():
+    """A sub-command that returns NOOP from redo() made no change, so it
+    must not be retained in the replay set: composite.undo() must not undo
+    it afterwards, and it must not count toward marks_project_modified()
+    (see PR #333 review)."""
+    cmd_noop = SimpleCommand("noop", redo_result=CommandResult.NOOP, marks_modified=True)
+    cmd_real = SimpleCommand("real", marks_modified=False)
+
+    composite = CompositeCommand([cmd_noop, cmd_real])
+    composite.execute()
+    composite.undo()
+
+    assert composite.redo() is CommandResult.SUCCESS  # cmd_real did redo
+    assert composite.marks_project_modified() is False  # only cmd_real is in the replay set
+
+    cmd_noop.undone_count = 0
+    cmd_real.undone_count = 0
+    composite.undo()
+    assert cmd_noop.undone_count == 0
+    assert cmd_real.undone_count == 1
+
+
+def test_composite_command_redo_all_noop_reports_noop():
+    cmd1 = SimpleCommand("c1", redo_result=CommandResult.NOOP)
+    cmd2 = SimpleCommand("c2", redo_result=CommandResult.NOOP)
+
+    composite = CompositeCommand([cmd1, cmd2])
+    composite.execute()
+    composite.undo()
+
+    assert composite.redo() is CommandResult.NOOP
+
+
 def test_composite_command_cleanup():
     cmd1 = SimpleCommand("c1")
     cmd2 = Mock(spec=Command)
