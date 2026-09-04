@@ -7,23 +7,26 @@ class CompositeCommand(Command):
     """A command that composes multiple sub-commands into a single atomic
     undo/redo unit on the CommandExecutor stack.
 
-    - `execute()` runs sub-commands in order. If one returns FAILURE or
-      raises, already-executed sub-commands are undone in reverse order and
-      FAILURE is returned. Sub-commands that returned NOOP had no effect, so
-      they're excluded from the executed set `undo()`/`redo()` operate on --
-      calling undo() on them could fail or undo state they never touched.
-    - `undo()` undoes the executed set in reverse order, continuing past a
-      sub-command whose undo() fails or raises so every other sub-command
-      still gets a chance to undo; a sub-command left applied this way (or
-      one that returned NOOP, meaning it reversed nothing) is dropped from
-      the set so a later `redo()` can't re-apply it, or replay a no-op.
-      `redo()` re-executes the (possibly narrowed) set in forward order,
-      rolling back on FAILURE the same way `execute()` does -- and then
-      goes inert (empties the replay set) rather than risk a later `undo()`
-      re-undoing sub-commands that are already back in their undone state
-      (CommandExecutor moves a command between stacks regardless of its
-      undo()/redo() result, so that later undo() call is unavoidable).
-    - `cleanup()` invokes `cleanup()` on every configured sub-command.
+    `execute()`, `undo()`, and `redo()` all share the same all-or-nothing
+    contract: each stops at the first sub-command that returns FAILURE or
+    raises, rolls back whatever it already did *this call* (undoing a
+    partial execute()/redo(), or re-applying a partial undo()), and reports
+    FAILURE. So FAILURE always means nothing net changed -- never a silent
+    partial mutation left for the next save to miss. A sub-command that
+    returned NOOP made no change either, so it's excluded from the set the
+    next call operates on, same as one rolled back after a failure.
+
+    Because CommandExecutor moves a command between the undo/redo stacks
+    regardless of what undo()/redo() returns, a FAILURE here still gets
+    followed by an executor-driven call in the opposite direction that the
+    composite has no way to decline. Since nothing net changed, that call
+    would be operating on a composite already back in its pre-call state --
+    so a FAILURE from undo() or redo() also empties the replay set, making
+    the composite inert (a no-op) for that unavoidable next call and beyond,
+    rather than risk it re-applying or re-reversing something that was
+    never actually touched.
+
+    `cleanup()` invokes `cleanup()` on every configured sub-command.
     """
 
     def __init__(self, commands: Optional[Iterable[Command]] = None):
@@ -72,29 +75,37 @@ class CompositeCommand(Command):
         return CommandResult.SUCCESS
 
     def undo(self) -> CommandResult:
-        has_failure = False
         undone: List[Command] = []
 
         for cmd in reversed(self._executed):
             try:
                 res = cmd.undo()
                 if res is CommandResult.FAILURE:
-                    has_failure = True
-                    self.logger.warning("Sub-command %s reported failure during undo()", cmd.__class__.__name__)
-                    continue  # still applied -- must not be replayed by a later redo()
+                    self.logger.warning(
+                        "Sub-command %s failed during undo(); rolling back %d undone sub-commands",
+                        cmd.__class__.__name__, len(undone),
+                    )
+                    self._rollback_undo(undone)
+                    # Nothing net changed (still fully applied), but
+                    # CommandExecutor moves this composite to the redo stack
+                    # regardless of this FAILURE. Go inert rather than risk a
+                    # later redo() re-applying sub-commands that were never
+                    # actually undone.
+                    self._executed = []
+                    return CommandResult.FAILURE
 
                 if res is not CommandResult.NOOP:
                     undone.append(cmd)
             except Exception as e:
-                has_failure = True
                 self.logger.error(
-                    "Sub-command %s raised exception during undo(): %s",
-                    cmd.__class__.__name__, e, exc_info=True,
+                    "Sub-command %s raised exception during undo(): %s; rolling back %d undone sub-commands",
+                    cmd.__class__.__name__, e, len(undone), exc_info=True,
                 )
+                self._rollback_undo(undone)
+                self._executed = []
+                return CommandResult.FAILURE
 
         self._executed = list(reversed(undone))
-        if has_failure:
-            return CommandResult.FAILURE
         if not self._executed:
             return CommandResult.NOOP
         return CommandResult.SUCCESS
@@ -153,6 +164,20 @@ class CompositeCommand(Command):
             except Exception as e:
                 self.logger.error(
                     "Error rolling back sub-command %s: %s",
+                    cmd.__class__.__name__, e, exc_info=True,
+                )
+
+    def _rollback_undo(self, undone: List[Command]) -> None:
+        """Re-apply sub-commands already undone earlier in this same undo()
+        call, so a failure partway through never leaves a partial mutation
+        in place. Mirrors _rollback(), but redo()es instead of undo()ing
+        since it's reversing an undo rather than an execute()/redo()."""
+        for cmd in reversed(undone):
+            try:
+                cmd.redo()
+            except Exception as e:
+                self.logger.error(
+                    "Error rolling back (re-applying) sub-command %s: %s",
                     cmd.__class__.__name__, e, exc_info=True,
                 )
 

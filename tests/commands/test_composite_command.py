@@ -160,42 +160,69 @@ def test_composite_command_undo_reverse_order():
     assert cmd3.undone_count == 1
 
 
-def test_composite_command_undo_failure_and_exception():
+def test_composite_command_undo_stops_and_rolls_back_on_failure():
+    """undo() mirrors execute()'s all-or-nothing contract: a FAILURE result
+    must never leave a partial mutation behind (see PR #333 review, which
+    pointed out that a partial undo failure previously changed real project
+    state without CommandExecutor ever marking the project modified, since
+    it only does that for a non-FAILURE result). undo() processes
+    self._executed in reverse order, so with [c1, c2, c3] it visits c3
+    first; c3 undoes successfully, then c2 fails, so c1 (earlier in the
+    order) is never reached and c3's successful undo is rolled back
+    (re-applied) before FAILURE is returned."""
     cmd1 = SimpleCommand("c1")
     cmd2 = SimpleCommand("c2", undo_result=CommandResult.FAILURE)
-    cmd3 = SimpleCommand("c3", undo_exception=RuntimeError("undo error"))
+    cmd3 = SimpleCommand("c3")
 
     composite = CompositeCommand([cmd1, cmd2, cmd3])
     composite.execute()
 
     assert composite.undo() is CommandResult.FAILURE
-    # Should still attempt undo on all subcommands
     assert cmd3.undone_count == 1
+    assert cmd3.redone_count == 1  # rolled back: re-applied after cmd2 failed
     assert cmd2.undone_count == 1
-    assert cmd1.undone_count == 1
+    assert cmd1.undone_count == 0  # never reached
 
 
-def test_composite_command_undo_partial_failure_excludes_still_applied_subcommand_from_redo():
-    """A sub-command whose undo() fails is left applied (its effect never
-    reversed). It must not be replayed by a later redo() -- that would
-    double-apply it -- while a sub-command that did undo successfully still
-    redoes normally (see PR #333 review)."""
+def test_composite_command_undo_stops_and_rolls_back_on_exception():
     cmd1 = SimpleCommand("c1")
-    cmd2 = SimpleCommand("c2", undo_result=CommandResult.FAILURE)
+    cmd2 = SimpleCommand("c2", undo_exception=RuntimeError("undo error"))
+    cmd3 = SimpleCommand("c3")
+
+    composite = CompositeCommand([cmd1, cmd2, cmd3])
+    composite.execute()
+
+    assert composite.undo() is CommandResult.FAILURE
+    assert cmd3.undone_count == 1
+    assert cmd3.redone_count == 1
+    assert cmd2.undone_count == 1
+    assert cmd1.undone_count == 0
+
+
+def test_composite_command_undo_failure_leaves_composite_inert_not_re_redoable():
+    """Symmetric to redo()'s inert-on-failure contract: after undo() fails
+    and rolls back to fully applied (no net change), CommandExecutor still
+    moves the composite onto the redo stack regardless of the FAILURE. A
+    later redo() call must not re-apply sub-commands that were never
+    actually undone -- that would double-apply them -- so the composite
+    goes inert instead."""
+    cmd1 = SimpleCommand("c1", undo_result=CommandResult.FAILURE)
+    cmd2 = SimpleCommand("c2")
 
     composite = CompositeCommand([cmd1, cmd2])
     composite.execute()
 
     assert composite.undo() is CommandResult.FAILURE
-    assert cmd1.undone_count == 1
-    assert cmd2.undone_count == 1  # attempted, but failed -- still applied
+    assert cmd2.undone_count == 1
+    assert cmd2.redone_count == 1  # rolled back: re-applied after cmd1 failed
+    assert cmd1.undone_count == 1  # attempted, failed
 
     cmd1.redone_count = 0
     cmd2.redone_count = 0
 
-    assert composite.redo() is CommandResult.SUCCESS
-    assert cmd1.redone_count == 1
-    assert cmd2.redone_count == 0  # excluded: never actually undone
+    assert composite.redo() is CommandResult.NOOP
+    assert cmd1.redone_count == 0
+    assert cmd2.redone_count == 0
 
 
 def test_composite_command_undo_excludes_noop_subcommands_from_replay_set():
@@ -419,3 +446,26 @@ def test_command_executor_integration():
     assert len(executor.redo_stack) == 0
     assert cmd1.redone_count == 1
     assert cmd2.redone_count == 1
+
+
+def test_command_executor_does_not_mark_project_modified_after_partial_undo_failure():
+    """A failed undo() must never leave real project mutations unmarked --
+    otherwise the app could sit there reporting no unsaved changes while
+    project content actually differs from disk (see PR #333 review). Since
+    CompositeCommand's undo() is atomic (rolls back to fully applied on any
+    sub-command failure), a FAILURE result correctly means nothing changed,
+    so the executor is right not to call on_project_modified for it -- there
+    is nothing to mark dirty."""
+    on_project_modified = Mock()
+    executor = CommandExecutor(on_project_modified=on_project_modified)
+    cmd1 = SimpleCommand("c1", undo_result=CommandResult.FAILURE)
+    cmd2 = SimpleCommand("c2")
+    composite = CompositeCommand([cmd1, cmd2])
+
+    executor.execute_command(composite)
+    on_project_modified.reset_mock()
+
+    assert executor.undo() is True  # executor call succeeds; command result is FAILURE
+    assert cmd2.undone_count == 1
+    assert cmd2.redone_count == 1  # rolled back -- no net change
+    on_project_modified.assert_not_called()
