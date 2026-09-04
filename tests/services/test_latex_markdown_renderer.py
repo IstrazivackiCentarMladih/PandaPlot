@@ -116,3 +116,14 @@ def test_wrap_document_applies_colors():
     assert "#123456" in doc
     assert "#abcdef" in doc
     assert "<body>" in doc and "hi" in doc
+
+
+def test_wrap_document_sets_tight_paragraph_margin():
+    """Qt's QTextDocument doesn't collapse adjacent block margins like a
+    browser does, so relying on its ~12px default <p> margin makes the gap
+    between two consecutive paragraphs (e.g. an image on its own line
+    followed by a blank line) look roughly double a normal line gap. Pin an
+    explicit, smaller margin instead."""
+    doc = wrap_document("<p>hi</p>")
+    assert "p {" in doc
+    assert "margin: 4px 0;" in doc

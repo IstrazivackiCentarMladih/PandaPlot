@@ -272,6 +272,7 @@ body {{ color: {color}; background-color: {background};
        line-height: 1.5; }}
 h1, h2, h3, h4 {{ color: {color}; }}
 a {{ color: #4A90E2; }}
+p {{ margin: 4px 0; }}
 code, pre {{ background-color: rgba(128,128,128,0.15); border-radius: 4px;
             font-family: 'Consolas', 'Courier New', monospace; }}
 pre {{ padding: 8px; }}
