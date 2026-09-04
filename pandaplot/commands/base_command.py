@@ -6,8 +6,8 @@ from enum import StrEnum
 class CommandResult(StrEnum):
     """Outcome of `Command.execute()`/`undo()`/`redo()`.
 
-    SUCCESS/FAILURE/NOOP determine `CommandExecutor`'s log level (warning,
-    debug, info respectively) and, for `execute()`, whether the command is
+    SUCCESS/FAILURE/NOOP determine `CommandExecutor`'s log level (info,
+    warning, debug respectively) and, for `execute()`, whether the command is
     pushed onto the undo stack (SUCCESS only; FAILURE and NOOP are not).
     `undo()`/`redo()` always move the command between stacks regardless of
     result.
