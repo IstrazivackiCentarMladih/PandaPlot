@@ -31,13 +31,6 @@ class SignalAnalysisCommand(Command):
     dataset (execute).
     """
 
-    # execute() only dispatches the computation -- it returns SUCCESS before
-    # anything has actually mutated the project, and the dispatched
-    # computation may yet fail or be discarded (see _on_commit_computed).
-    # The real mutation, and the real "unsaved changes" flag, belongs to
-    # ApplySignalAnalysisResultCommand alone.
-    marks_project_modified = False
-
     def __init__(
         self,
         app_context: AppContext,
@@ -75,6 +68,15 @@ class SignalAnalysisCommand(Command):
         # rejected instead of silently landing in whatever project happens
         # to be current when the background thread finishes.
         self._dispatch_project = None
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only dispatches the computation -- it returns SUCCESS
+        before anything has actually mutated the project, and the
+        dispatched computation may yet fail or be discarded (see
+        _on_commit_computed). The real mutation, and the real "unsaved
+        changes" flag, belongs to ApplySignalAnalysisResultCommand alone."""
+        return False
 
     def _get_source_dataset(self) -> Optional[Dataset]:
         project = self.app_state.current_project

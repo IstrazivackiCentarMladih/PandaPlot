@@ -16,10 +16,6 @@ class SaveProjectCommand(Command):
     This will save the project to its current file path, or prompt for a new path if needed.
     """
 
-    # A save clears AppState's modified flag (via mark_saved in
-    # _on_save_result) rather than setting it.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -43,6 +39,12 @@ class SaveProjectCommand(Command):
 
         # Task state
         self.is_saving = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """A save clears AppState's modified flag (via mark_saved in
+        _on_save_result) rather than setting it."""
+        return False
 
     @override
     def occupies_undo_slot(self) -> bool:

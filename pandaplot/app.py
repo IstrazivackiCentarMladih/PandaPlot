@@ -87,7 +87,7 @@ def build_app_context() -> AppContext:
     ui_controller = UIController()
     # Every command passes through CommandExecutor, so it's the single choke
     # point to flag the project as having unsaved changes -- see
-    # Command.marks_project_modified.
+    # Command.marks_project_modified().
     command_executor = CommandExecutor(
         on_history_changed=lambda: event_bus.emit(AppEvents.HISTORY_CHANGED),
         on_project_modified=app_state.mark_modified,

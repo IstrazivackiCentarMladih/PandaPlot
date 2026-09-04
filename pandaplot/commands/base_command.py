@@ -22,13 +22,6 @@ class CommandResult(StrEnum):
 
 
 class Command(ABC):
-    # Whether a successful execute()/undo()/redo() of this command should
-    # flag the project as having unsaved changes (see
-    # CommandExecutor.on_project_modified). False for project-lifecycle
-    # commands (new/open/load/save/close), which manage AppState's modified
-    # flag explicitly instead.
-    marks_project_modified: bool = True
-
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -51,6 +44,14 @@ class Command(ABC):
         e.g. one that opens a dialog and does its actual work later, in a
         callback, via its own execute_command() call (see
         CreateChartFromWizardCommand)."""
+        return True
+
+    def marks_project_modified(self) -> bool:
+        """Whether a successful execute()/undo()/redo() of this command
+        should flag the project as having unsaved changes (see
+        CommandExecutor.on_project_modified). Default True; override to
+        False for project-lifecycle commands (new/open/load/save/close),
+        which manage AppState's modified flag explicitly instead."""
         return True
 
     def cleanup(self) -> None:

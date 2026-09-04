@@ -74,8 +74,9 @@ def test_marks_project_modified_is_false():
     """SaveProjectCommand clears AppState's dirty flag itself (via
     mark_saved) and must not be double-counted by CommandExecutor's generic
     on_project_modified hook. SaveProjectAsCommand inherits this."""
-    assert SaveProjectCommand.marks_project_modified is False
-    assert SaveProjectAsCommand.marks_project_modified is False
+    app_context, _ = _make_app_context()
+    assert SaveProjectCommand(app_context).marks_project_modified() is False
+    assert SaveProjectAsCommand(app_context).marks_project_modified() is False
 
 
 def test_on_save_result_marks_the_project_saved():

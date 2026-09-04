@@ -53,7 +53,7 @@ class AppState:
 
         Always False when no project is loaded. Set via `mark_modified()`
         (called by CommandExecutor after any command whose
-        `marks_project_modified` is True) and cleared via `mark_saved()`
+        `marks_project_modified()` is True) and cleared via `mark_saved()`
         (called on a successful save) or implicitly by `load_project`/
         `close_project`, since a freshly (re)loaded or absent project has
         nothing unsaved yet.

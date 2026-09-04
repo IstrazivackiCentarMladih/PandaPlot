@@ -31,6 +31,7 @@ class ApplyAnalysisResultCommand(Command):
         dataset_id: str,
         new_column_name: str,
         result_series: Union[pd.Series, np.ndarray],
+        *,
         column_existed_before: bool,
         original_data: Optional[pd.Series],
     ):

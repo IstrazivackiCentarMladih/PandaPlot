@@ -15,7 +15,6 @@ from pandaplot.models.events.event_types import DatasetEvents, DatasetOperationE
 from pandaplot.models.project.items.dataset import Dataset
 from pandaplot.models.project.project import Project
 from pandaplot.models.state import AppContext, AppState
-
 from tests.commands.project.conftest import SyncTaskScheduler
 
 
@@ -299,7 +298,7 @@ class TestAnalysisCommandGuards:
         assert "df" in kwargs["task_arguments"]
 
 
-def test_marks_project_modified_is_false():
+def test_marks_project_modified_is_false(ctx):
     """Regression: execute() only dispatches the computation and returns
     SUCCESS before anything has actually mutated the project -- the
     dispatched computation may yet fail or be discarded (see
@@ -307,7 +306,12 @@ def test_marks_project_modified_is_false():
     ApplyAnalysisResultCommand (the real mutation) ever runs, would leave a
     false "unsaved changes" state if the computation never actually
     applies."""
-    assert AnalysisCommand.marks_project_modified is False
+    app_context, _, dataset, _ = ctx
+    command = AnalysisCommand(app_context, dataset.id, {
+        "analysis_type": "derivative", "x_column": "x", "y_column": "y",
+        "new_column_name": "dydx",
+    })
+    assert command.marks_project_modified() is False
 
 
 def test_cleanup_is_a_documented_noop():
@@ -327,7 +331,8 @@ class TestApplyAnalysisResultCommand:
         app_context.get_ui_controller.return_value = Mock()
 
         command = ApplyAnalysisResultCommand(
-            app_context, "ds-1", "dydx", pd.Series([1.0, 2.0]), False, None,
+            app_context, "ds-1", "dydx", pd.Series([1.0, 2.0]),
+            column_existed_before=False, original_data=None,
         )
         command.original_data = pd.Series([1, 2, 3])
 
@@ -355,7 +360,8 @@ class TestApplyAnalysisResultCommand:
         )
 
         command = ApplyAnalysisResultCommand(
-            app_context, "ds-1", "resampled", result, False, None,
+            app_context, "ds-1", "resampled", result,
+            column_existed_before=False, original_data=None,
         )
         assert command.execute() is CommandResult.SUCCESS
 
@@ -370,6 +376,7 @@ class TestApplyAnalysisResultCommand:
         app_context.get_ui_controller.return_value = Mock()
 
         command = ApplyAnalysisResultCommand(
-            app_context, "missing-ds", "dydx", pd.Series([1.0, 2.0]), False, None,
+            app_context, "missing-ds", "dydx", pd.Series([1.0, 2.0]),
+            column_existed_before=False, original_data=None,
         )
         assert command.execute() is CommandResult.FAILURE

@@ -11,14 +11,16 @@ from pandaplot.services.session import SessionPersistenceManager
 class CloseProjectCommand(Command):
     """Command to close the currently loaded project."""
 
-    # Closing sets AppState's modified flag explicitly (close_project always
-    # resets it) -- not a project edit itself.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
         self.ui_controller: UIController = app_context.get_ui_controller()
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Closing sets AppState's modified flag explicitly (close_project
+        always resets it) -- not a project edit itself."""
+        return False
 
     @override
     def execute(self) -> CommandResult:

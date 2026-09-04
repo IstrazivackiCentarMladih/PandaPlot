@@ -36,15 +36,6 @@ class ImportDataCommand(Command):
     the undo stack.
     """
 
-    # execute() only *schedules* the background read -- the project isn't
-    # actually mutated until _on_import_result adds the parsed dataset(s),
-    # which may never happen (parse failure, project changed/closed mid-
-    # import). Notifying eagerly at schedule time would mark the project
-    # dirty for a mutation that hasn't happened yet (and might not at all),
-    # so this self-reports via app_state.mark_modified() instead -- see
-    # _on_import_result.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
         super().__init__()
         self.app_context = app_context
@@ -70,6 +61,17 @@ class ImportDataCommand(Command):
 
         # Task state
         self.is_importing = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only *schedules* the background read -- the project
+        isn't actually mutated until _on_import_result adds the parsed
+        dataset(s), which may never happen (parse failure, project
+        changed/closed mid-import). Notifying eagerly at schedule time would
+        mark the project dirty for a mutation that hasn't happened yet (and
+        might not at all), so this self-reports via
+        app_state.mark_modified() instead -- see _on_import_result."""
+        return False
 
     @override
     def occupies_undo_slot(self) -> bool:

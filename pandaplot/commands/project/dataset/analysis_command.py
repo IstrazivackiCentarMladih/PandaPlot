@@ -30,13 +30,6 @@ class AnalysisCommand(Command):
     ApplyAnalysisResultCommand.
     """
 
-    # execute() only dispatches the computation -- it returns SUCCESS before
-    # anything has actually mutated the project, and the dispatched
-    # computation may yet fail or be discarded (see _on_analysis_computed).
-    # The real mutation, and the real "unsaved changes" flag, belongs to
-    # ApplyAnalysisResultCommand alone.
-    marks_project_modified = False
-
     def __init__(
         self,
         app_context: AppContext,
@@ -91,6 +84,15 @@ class AnalysisCommand(Command):
         self.new_column_name = analysis_config["new_column_name"]
         self.replace_existing = analysis_config.get("replace_existing", False)
         self.parameters = analysis_config.get("parameters", {})
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only dispatches the computation -- it returns SUCCESS
+        before anything has actually mutated the project, and the
+        dispatched computation may yet fail or be discarded (see
+        _on_analysis_computed). The real mutation, and the real "unsaved
+        changes" flag, belongs to ApplyAnalysisResultCommand alone."""
+        return False
 
     @override
     def occupies_undo_slot(self) -> bool:
@@ -210,8 +212,8 @@ class AnalysisCommand(Command):
                 self.dataset_id,
                 self.new_column_name,
                 outcome["result"].result_data,
-                self.column_existed_before,
-                self.original_data,
+                column_existed_before=self.column_existed_before,
+                original_data=self.original_data,
             )
             executor = self.app_context.get_command_executor()
             if executor.execute_command(apply_command):

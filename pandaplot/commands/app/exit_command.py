@@ -14,12 +14,14 @@ class ExitCommand(Command):
     Command to exit the application.
     """
 
-    # Exiting (or cancelling an exit) isn't itself a project edit.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Exiting (or cancelling an exit) isn't itself a project edit."""
+        return False
 
     @override
     def execute(self) -> CommandResult:

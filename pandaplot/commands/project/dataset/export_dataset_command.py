@@ -14,9 +14,6 @@ class ExportDatasetCommand(Command):
     Command to export dataset to various file formats supported by pandas.
     """
 
-    # Only writes an external file; the project itself is never mutated.
-    marks_project_modified = False
-
     SUPPORTED_FORMATS = {
         "CSV (Comma Separated Values)": {
             "extension": ".csv",
@@ -79,6 +76,12 @@ class ExportDatasetCommand(Command):
         
         # Task state
         self.is_exporting = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Only writes an external file; the project itself is never
+        mutated."""
+        return False
 
     @override
     def execute(self) -> CommandResult:

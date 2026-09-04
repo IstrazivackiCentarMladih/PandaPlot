@@ -20,7 +20,8 @@ def test_marks_project_modified_is_false():
     load_project (called from _on_load_result) sets that directly, so this
     must not be double-counted by CommandExecutor's generic
     on_project_modified hook."""
-    assert LoadProjectCommand.marks_project_modified is False
+    command = LoadProjectCommand(_make_app_context(), "/p.pplot")
+    assert command.marks_project_modified() is False
 
 
 def test_on_load_result_does_not_show_a_success_dialog():

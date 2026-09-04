@@ -13,10 +13,6 @@ class NewProjectCommand(Command):
     This will clear the current project (with user confirmation if needed) and create a fresh project.
     """
 
-    # Creates a fresh project via load_project, which resets AppState's
-    # modified flag itself -- not a project edit.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
@@ -34,6 +30,12 @@ class NewProjectCommand(Command):
         # restore that exact object instead of calling execute() again --
         # see redo().
         self.created_project: Optional[Project] = None
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Creates a fresh project via load_project, which resets AppState's
+        modified flag itself -- not a project edit."""
+        return False
 
     @override
     def execute(self) -> CommandResult:
