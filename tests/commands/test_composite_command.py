@@ -198,6 +198,54 @@ def test_composite_command_undo_partial_failure_excludes_still_applied_subcomman
     assert cmd2.redone_count == 0  # excluded: never actually undone
 
 
+def test_composite_command_undo_excludes_noop_subcommands_from_replay_set():
+    """A sub-command that returns NOOP from undo() reversed no state, so it
+    must not be replayed by a later redo() (see PR #333 review)."""
+    cmd_noop = SimpleCommand("noop", undo_result=CommandResult.NOOP)
+    cmd_real = SimpleCommand("real")
+
+    composite = CompositeCommand([cmd_noop, cmd_real])
+    composite.execute()
+
+    assert composite.undo() is CommandResult.SUCCESS  # cmd_real did undo
+
+    cmd_noop.redone_count = 0
+    cmd_real.redone_count = 0
+
+    assert composite.redo() is CommandResult.SUCCESS
+    assert cmd_noop.redone_count == 0  # excluded: nothing was undone to redo
+    assert cmd_real.redone_count == 1
+
+
+def test_composite_command_redo_failure_leaves_composite_inert_not_re_undoable():
+    """After redo() fails partway through, the successfully-redone prefix is
+    rolled back to undone -- but CommandExecutor moves the composite to the
+    undo stack regardless of redo()'s result (see CommandResult's docstring).
+    A later undo() call must not re-undo sub-commands that were already
+    rolled back to undone by this failed redo() -- that would double-undo
+    them. The composite has no reliable way to know whether the never-
+    reached remainder is safe to undo either, so the safest contract is to
+    become inert: a further undo()/redo() on it is a no-op (see PR #333
+    review)."""
+    cmd1 = SimpleCommand("c1")
+    cmd2 = SimpleCommand("c2", redo_result=CommandResult.FAILURE)
+
+    composite = CompositeCommand([cmd1, cmd2])
+    composite.execute()
+    composite.undo()
+
+    assert composite.redo() is CommandResult.FAILURE
+    assert cmd1.redone_count == 1
+    assert cmd1.undone_count == 2  # rolled back after cmd2's redo() failed
+
+    cmd1.undone_count = 0
+    cmd2.undone_count = 0
+
+    assert composite.undo() is CommandResult.NOOP
+    assert cmd1.undone_count == 0
+    assert cmd2.undone_count == 0
+
+
 def test_composite_command_redo_forward_order():
     call_order: List[str] = []
 
