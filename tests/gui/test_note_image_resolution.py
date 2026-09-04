@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog
 from pandaplot.gui.components.tabs.note.note_editor import (
     NoteEditorWidget,
     NotePreviewBrowser,
+    extract_referenced_image_keys,
     get_project_base_dir,
     register_project_image_resources,
 )
@@ -107,6 +108,58 @@ def test_note_preview_browser_load_resource(qapp, tmp_path):
     assert not res.isNull()
 
 
+def test_extract_referenced_image_keys_handles_angle_brackets_and_percent_encoding():
+    # Angle-bracket form is required by CommonMark for a target containing
+    # spaces; without it, a naive "stop at whitespace" extractor would grab
+    # just "<Gallery" and never match the real gallery path.
+    keys = extract_referenced_image_keys("![x](<Gallery 1/sample.png>)")
+    assert "Gallery 1/sample.png" in keys
+
+    # Percent-encoded targets must also match their raw/decoded gallery key.
+    keys = extract_referenced_image_keys("![x](Gallery%201/sample.png)")
+    assert "Gallery 1/sample.png" in keys
+    assert "Gallery%201/sample.png" in keys
+
+    # Plain bare targets still work as before.
+    keys = extract_referenced_image_keys("![x](plain.png =300x)")
+    assert "plain.png" in keys
+
+
+def test_register_project_image_resources_skips_key_matching_real_file(qapp, tmp_path):
+    """A gallery image whose id/path happens to match a real on-disk file
+    must not be pre-registered under that URL -- pre-registering bypasses
+    NotePreviewBrowser's "real file wins" loadResource check entirely, since
+    a pre-registered resource is returned without loadResource ever running."""
+    project_file = str(tmp_path / "my_project.pplot")
+    project = Project(name="Test Project")
+    project.project_file_path = project_file
+
+    real_file = tmp_path / "shared.png"
+    real_file.write_bytes(create_test_png_bytes(width=5, height=5))
+
+    gallery_bytes = create_test_png_bytes(width=50, height=50)
+    image = Image(id="shared.png", name="shared.png", storage_mode="copied")
+    image.set_bytes(gallery_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+
+    doc = QTextDocument()
+    base_dir = register_project_image_resources(doc, app_context)
+    base_url = QUrl.fromLocalFile(base_dir + "/")
+
+    # Not pre-registered under the id/name that coincides with the real
+    # file's relative path -- QTextDocument's own default resource loading
+    # then resolves it to the real 5x5 file, not the 50x50 gallery image
+    # that would have shadowed it if pre-registered.
+    res = doc.resource(QTextDocument.ResourceType.ImageResource, base_url.resolved(QUrl("shared.png")))
+    assert res is not None
+    assert res.width() == 5 and res.height() == 5
+
+
 def test_note_preview_browser_does_not_fuzzy_match_by_stem(qapp, tmp_path):
     """A reference to an unrelated file must not be hijacked by a same-stem
     gallery image (PR #326 review: only exact id/gallery-path should match)."""
@@ -161,6 +214,47 @@ def test_note_preview_browser_prefers_real_file_over_gallery_match(qapp, tmp_pat
     assert loaded.width() == 5 and loaded.height() == 5
 
 
+def test_note_editor_update_preview_discards_stale_document_resources(qapp, tmp_path):
+    """QTextDocument has no API to remove a resource once added, and
+    setHtml() on the same document doesn't clear that cache either. If a
+    gallery image is removed and a *new, unrelated* image happens to reuse
+    its id, re-rendering the same document object would still answer with
+    the old image's bytes. update_preview() must give the preview a fresh
+    document each render instead of reusing/mutating the same one forever."""
+    project = Project(name="Test Project")
+    old_bytes = create_test_png_bytes(width=5, height=5)
+    old_image = Image(id="reused-id", name="old.png", storage_mode="copied")
+    old_image.set_bytes(old_bytes)
+    project.add_item(old_image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content="![Old](reused-id)")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    old_res = editor.preview.document().resource(QTextDocument.ResourceType.ImageResource, QUrl("reused-id"))
+    assert old_res.width() == 5
+
+    # Simulate the old image being removed and a new, unrelated image
+    # reusing the same id, with different pixel content.
+    project.remove_item(old_image)
+    new_bytes = create_test_png_bytes(width=9, height=9)
+    new_image = Image(id="reused-id", name="new.png", storage_mode="copied")
+    new_image.set_bytes(new_bytes)
+    project.add_item(new_image)
+
+    editor.preview.image_cache.clear()  # what on_project_item_changed_event does
+    editor.update_preview()
+
+    new_res = editor.preview.document().resource(QTextDocument.ResourceType.ImageResource, QUrl("reused-id"))
+    assert new_res.width() == 9  # not the stale 5x5 old image
+
+
 def test_note_editor_update_preview_and_event_refresh(qapp, tmp_path):
     project = Project(name="Test Project")
     png_bytes = create_test_png_bytes()
@@ -186,10 +280,44 @@ def test_note_editor_update_preview_and_event_refresh(qapp, tmp_path):
     res = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl("plot.png"))
     assert res is not None and not res.isNull()
 
-    # Trigger project item changed event
+    # Trigger project item changed event for an image (only image/gallery
+    # changes should refresh the preview -- see the "unrelated event" test
+    # below).
     with patch.object(editor, "update_preview") as mock_update:
-        editor.on_project_item_changed_event({"event": ProjectEvents.PROJECT_ITEM_ADDED})
+        editor.on_project_item_changed_event(
+            {"event": ProjectEvents.PROJECT_ITEM_ADDED, "image_id": image.id}
+        )
         mock_update.assert_called_once()
+
+
+def test_note_editor_ignores_unrelated_project_item_events(qapp, tmp_path):
+    """Adding/renaming an unrelated note/dataset must not clear the image
+    cache or rerender the preview -- these are generic project-item events,
+    not necessarily about images at all."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="plot.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content="![Plot](plot.png)")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    with patch.object(editor, "update_preview") as mock_update:
+        # A generic item event with no image/gallery id and an id that
+        # doesn't resolve to an Image/ImageGallery (e.g. an unrelated note
+        # being renamed) must be ignored.
+        editor.on_project_item_changed_event(
+            {"event": ProjectEvents.PROJECT_ITEM_RENAMED, "item_id": "some-other-note-id"}
+        )
+        mock_update.assert_not_called()
 
 
 def test_note_editor_export_pdf_registers_resources(qapp, tmp_path):
