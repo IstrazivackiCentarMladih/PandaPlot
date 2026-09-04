@@ -3,8 +3,8 @@
 import os
 from typing import Dict, List, Optional, Tuple, override
 
-from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -19,6 +19,7 @@ from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
 from pandaplot.models.project.items import Image, ImageGallery, Item
 from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.qtasks import TaskScheduler
 from pandaplot.services.theme.theme_manager import ThemeManager
 
 _ICON_SIZE = QSize(24, 24)
@@ -38,6 +39,7 @@ class NoteImagePickerDialog(PDialog):
     ):
         super().__init__(app_context=app_context, parent=parent)
         self.project = project
+        self.task_scheduler: TaskScheduler = app_context.get_task_scheduler()
         self._selected_image: Optional[Image] = None
         # Memoises decoded thumbnails by image id so re-populating the tree
         # (or a future dialog instance reusing this one) doesn't re-fetch.
@@ -46,11 +48,11 @@ class NoteImagePickerDialog(PDialog):
         self._initialize()
         self._populate_tree()
         self._refresh_ok_enabled()
-        # Thumbnails (which may block on external file/network reads) load
-        # one at a time after the dialog is already shown, instead of all
-        # synchronously before exec() -- a single slow/unavailable image no
-        # longer makes the whole dialog appear hung.
-        QTimer.singleShot(0, self._load_next_thumbnail)
+        # Thumbnails (which may block on external file/network reads) decode
+        # on a background thread via TaskScheduler instead of synchronously
+        # before exec() -- a single slow/unavailable image no longer blocks
+        # the UI thread at all, let alone makes the whole dialog appear hung.
+        self._start_thumbnail_loading()
 
     @override
     def _init_ui(self):
@@ -85,6 +87,13 @@ class NoteImagePickerDialog(PDialog):
         return self.app_context.get_manager(ThemeManager).get_design_tokens()
 
     def _load_pixmap_for_image(self, image: Image) -> Optional[QPixmap]:
+        """Synchronous decode+scale, on whatever thread calls it.
+
+        Only safe to call from the GUI thread (it builds a QPixmap). The tree
+        icons instead go through the async `_start_thumbnail_loading` path,
+        which decodes on a worker thread and only touches QPixmap back on the
+        GUI thread -- QPixmap, unlike QImage, isn't thread-safe to create.
+        """
         if image.id in self._pixmap_cache:
             return self._pixmap_cache[image.id]
         pixmap = self._load_pixmap_uncached(image)
@@ -92,6 +101,23 @@ class NoteImagePickerDialog(PDialog):
         return pixmap
 
     def _load_pixmap_uncached(self, image: Image) -> Optional[QPixmap]:
+        data = self._fetch_image_bytes(image)
+        if not data:
+            return None
+        pix = QPixmap()
+        if not pix.loadFromData(data):
+            return None
+        return pix.scaled(
+            _ICON_SIZE,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+    @staticmethod
+    def _fetch_image_bytes(image: Image) -> Optional[bytes]:
+        """Read an Image item's raw bytes: in-memory, else source_file (local
+        disk or, for a URL, a network fetch). Pure I/O -- safe to run on a
+        background thread."""
         try:
             data = image.get_bytes()
             if data is None and image.source_file:
@@ -104,17 +130,9 @@ class NoteImagePickerDialog(PDialog):
                 elif os.path.isfile(source):
                     with open(source, "rb") as f:
                         data = f.read()
-            if data:
-                pix = QPixmap()
-                if pix.loadFromData(data):
-                    return pix.scaled(
-                        _ICON_SIZE,
-                        Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
+            return data
         except Exception:
-            pass
-        return None
+            return None
 
     def _tile_icon_for(self, item, *, placeholder: bool = False) -> QIcon:
         tokens = self._get_tokens()
@@ -129,18 +147,55 @@ class NoteImagePickerDialog(PDialog):
             return build_gallery_tile_icon(pix, tile_type, selected=False, tokens=tokens, size=_ICON_SIZE)
         return build_gallery_tile_icon(None, "broken", selected=False, tokens=tokens, size=_ICON_SIZE)
 
-    def _load_next_thumbnail(self) -> None:
-        """Load one pending thumbnail, then reschedule for the next.
+    def _start_thumbnail_loading(self) -> None:
+        """Kick off a background decode for every pending thumbnail.
 
-        Spreads potentially-blocking image decodes (and external file/network
-        reads) across event-loop turns so the dialog stays responsive instead
-        of freezing on `exec()` while every thumbnail loads synchronously.
+        Each decode runs on a TaskScheduler worker thread and returns a
+        QImage (thread-safe to create off the GUI thread); the result
+        callback -- which Qt delivers back on the GUI thread -- is what
+        converts it to a QPixmap and sets the icon. Unlike loading every
+        thumbnail synchronously before the dialog is shown, a slow or
+        unavailable external image no longer blocks the UI thread at all.
         """
-        if not self._pending_thumbnails:
-            return
-        tree_item, image = self._pending_thumbnails.pop(0)
-        tree_item.setIcon(0, self._tile_icon_for(image))
-        QTimer.singleShot(0, self._load_next_thumbnail)
+        pending, self._pending_thumbnails = self._pending_thumbnails, []
+        for tree_item, image in pending:
+            self.task_scheduler.run_task(
+                task=self._decode_qimage_task,
+                task_arguments={"image": image},
+                on_result=lambda qimg, item=tree_item, img=image: self._on_thumbnail_decoded(item, img, qimg),
+                on_error=lambda _err, item=tree_item: self._on_thumbnail_error(item),
+            )
+
+    def _decode_qimage_task(self, progress_callback, image: Image) -> Optional[QImage]:
+        """Runs on a TaskScheduler worker thread; see `_start_thumbnail_loading`."""
+        del progress_callback  # unused; required by the Worker call signature
+        data = self._fetch_image_bytes(image)
+        if not data:
+            return None
+        qimg = QImage()
+        return qimg if qimg.loadFromData(data) else None
+
+    def _on_thumbnail_decoded(self, tree_item: QTreeWidgetItem, image: Image, qimg: Optional[QImage]) -> None:
+        pix = None
+        if qimg is not None and not qimg.isNull():
+            pix = QPixmap.fromImage(qimg).scaled(
+                _ICON_SIZE, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
+        self._pixmap_cache[image.id] = pix
+        self._apply_thumbnail_icon(tree_item, pix)
+
+    def _on_thumbnail_error(self, tree_item: QTreeWidgetItem) -> None:
+        self._apply_thumbnail_icon(tree_item, None)
+
+    def _apply_thumbnail_icon(self, tree_item: QTreeWidgetItem, pix: Optional[QPixmap]) -> None:
+        tile_type = "image" if pix is not None else "broken"
+        icon = build_gallery_tile_icon(pix, tile_type, selected=False, tokens=self._get_tokens(), size=_ICON_SIZE)
+        try:
+            tree_item.setIcon(0, icon)
+        except RuntimeError:
+            # The dialog (and its tree items) was already closed/destroyed
+            # before this background decode finished; nothing to update.
+            pass
 
     def _populate_tree(self) -> None:
         self.tree.clear()

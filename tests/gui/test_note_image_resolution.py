@@ -19,6 +19,7 @@ from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePicker
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery, Note
 from pandaplot.models.project.project import Project
+from pandaplot.services.qtasks import TaskScheduler
 
 
 def create_test_png_bytes(width=10, height=10) -> bytes:
@@ -282,6 +283,33 @@ def test_note_image_picker_dialog_falls_back_to_source_file_when_copied(qapp, tm
     dialog = NoteImagePickerDialog(app_context=app_context, project=project)
     pix = dialog._load_pixmap_for_image(image)
 
+    assert pix is not None and not pix.isNull()
+
+
+def test_note_image_picker_dialog_loads_thumbnails_via_task_scheduler(qapp, qtbot):
+    """Thumbnails decode on a TaskScheduler worker thread and land back on
+    the tree icon via the GUI-thread result callback, instead of blocking
+    __init__ synchronously for every image."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="photo1.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+    app_context.get_task_scheduler.return_value = TaskScheduler()
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+
+    # The decode is dispatched to a worker thread and hasn't necessarily
+    # completed yet -- but it must have been dispatched, not done inline.
+    assert image.id not in dialog._pixmap_cache or dialog._pixmap_cache[image.id] is None
+
+    dialog.task_scheduler.threadpool.waitForDone(2000)
+    qtbot.waitUntil(lambda: dialog._pixmap_cache.get(image.id) is not None, timeout=2000)
+
+    pix = dialog._pixmap_cache[image.id]
     assert pix is not None and not pix.isNull()
 
 
