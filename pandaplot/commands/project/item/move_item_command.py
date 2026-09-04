@@ -1,6 +1,7 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.state import AppContext, AppState
@@ -47,7 +48,7 @@ class MoveItemCommand(Command):
                 )
                 return CommandResult.FAILURE
 
-            project = self.app_state.current_project
+            project = get_current_project(self.app_context)
             if project is None:
                 self.logger.warning(
                     "MoveItemCommand.execute: has_project is True but current_project is None"
@@ -126,7 +127,7 @@ class MoveItemCommand(Command):
         """Undo the move item command."""
         try:
             if self.move_performed and self.app_state.has_project:
-                project = self.app_state.current_project
+                project = get_current_project(self.app_context)
                 if project and self.item_id:
                     # Find the item in the hierarchical structure
                     item = project.find_item(self.item_id)
@@ -170,7 +171,7 @@ class MoveItemCommand(Command):
             # Try to get item name for error message
             item_name = self.item_id  # Fallback to ID
             if self.app_state.has_project:
-                project = self.app_state.current_project
+                project = get_current_project(self.app_context)
                 if project and self.item_id:
                     item = project.find_item(self.item_id)
                     if item is not None:

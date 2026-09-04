@@ -20,12 +20,14 @@ import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.chart.chart_finder import ChartFinder
 from pandaplot.commands.project.chart.series_xy import (
     SourceKind,
     create_result_dataset,
     remove_result_dataset,
     resolve_series_xy,
 )
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state import AppContext, AppState
@@ -65,15 +67,12 @@ class AnalyzeChartSeriesCommand(Command):
         # the command's lifetime, and the UI calls it repeatedly (once per
         # segment bound, on every spinbox tick) to resolve/bound indices.
         self._resolved_xy_cache: Optional[tuple[pd.Series, pd.Series, str, str]] = None
+        self._chart_finder = ChartFinder(app_context)
 
     # -- source resolution ------------------------------------------------
 
     def _get_chart(self) -> Optional[Chart]:
-        project = self.app_state.current_project
-        if not project:
-            return None
-        item = project.find_item(self.chart_id)
-        return item if isinstance(item, Chart) else None
+        return self._chart_finder.find(self.chart_id)
 
     def _resolve_xy(self, chart: Chart) -> tuple[pd.Series, pd.Series, str, str]:
         """Return (x, y, x_label, y_label) for the selected chart series."""
@@ -191,7 +190,7 @@ class AnalyzeChartSeriesCommand(Command):
     @override
     def execute(self) -> CommandResult:
         try:
-            if not self.app_state.has_project or not self.app_state.current_project:
+            if get_current_project(self.app_context) is None:
                 message = "No project loaded; cannot analyze chart series."
                 self.logger.warning(message)
                 self.ui_controller.show_error_message("Chart Analysis Error", message)
@@ -214,7 +213,7 @@ class AnalyzeChartSeriesCommand(Command):
     @override
     def undo(self) -> CommandResult:
         try:
-            if not self.result_dataset_id or not self.app_state.current_project:
+            if not self.result_dataset_id or get_current_project(self.app_context) is None:
                 return CommandResult.FAILURE
             remove_result_dataset(self.app_state, self.result_dataset_id)
             return CommandResult.SUCCESS

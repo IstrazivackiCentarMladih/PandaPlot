@@ -21,6 +21,7 @@ from pandaplot.models.state.app_context import AppContext
 def mock_app_context():
     app_context = Mock(spec=AppContext)
     app_context.app_state = Mock()
+    app_context.get_app_state.return_value = app_context.app_state
     app_context.get_ui_controller.return_value = Mock(spec=UIController)
     app_context.event_bus = Mock()
     app_context.event_bus.emit = Mock()

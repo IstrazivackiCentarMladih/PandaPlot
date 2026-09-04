@@ -31,11 +31,6 @@ class LoadProjectCommand(Command):
     - Updating app state which emits events to update UI
     """
 
-    # Loading a project sets AppState's modified flag explicitly (via
-    # load_project, called from _on_load_result) -- not a project edit
-    # itself.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext, file_path: str,
                  on_loaded: Optional[Callable[[Project], None]] = None):
         super().__init__()
@@ -61,6 +56,13 @@ class LoadProjectCommand(Command):
 
         # Task state
         self.is_loading = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Loading a project sets AppState's modified flag explicitly (via
+        load_project, called from _on_load_result) -- not a project edit
+        itself."""
+        return False
 
     @override
     def execute(self) -> CommandResult:

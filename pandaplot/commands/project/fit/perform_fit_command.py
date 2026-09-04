@@ -20,11 +20,6 @@ from pandaplot.services.qtasks.task_scheduler import TaskScheduler
 class PerformFitCommand(Command):
     """Command that performs a curve fit."""
 
-    # Computes a preview only -- never mutates project state (see module
-    # docstring) -- so it must not flag the project as having unsaved
-    # changes.
-    marks_project_modified = False
-
     def __init__(
         self,
         fit_service: FitService,
@@ -66,6 +61,13 @@ class PerformFitCommand(Command):
         self.result: Optional[FitResult] = None
         self.error_message: Optional[str] = None
         self._is_running = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Computes a preview only -- never mutates project state (see
+        module docstring) -- so it must not flag the project as having
+        unsaved changes."""
+        return False
 
     @override
     def occupies_undo_slot(self) -> bool:

@@ -4,12 +4,12 @@ import copy
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.chart.chart_finder import ChartFinder
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.fit_style import FitStyle
 from pandaplot.models.events import ChartEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.project.items.chart import (
-    Chart,
     DataSeries,
     FitData,
     resolve_manual_fit_source_data,
@@ -52,13 +52,7 @@ class ConvertSeriesToFitCommand(Command):
         self.removed_series: Optional[DataSeries] = None
         self.added_fit_index: Optional[int] = None
         self._fit: Optional[FitData] = None
-
-    def _find_chart(self) -> Optional[Chart]:
-        app_state = self.app_context.get_app_state()
-        if not app_state.has_project or not app_state.current_project:
-            return None
-        chart = app_state.current_project.find_item(self.chart_id)
-        return chart if isinstance(chart, Chart) else None
+        self._chart_finder = ChartFinder(app_context)
 
     def _find_dataset(self, dataset_id: str) -> Optional[Dataset]:
         app_state = self.app_context.get_app_state()
@@ -99,7 +93,7 @@ class ConvertSeriesToFitCommand(Command):
 
     @override
     def execute(self) -> CommandResult:
-        chart = self._find_chart()
+        chart = self._chart_finder.find(self.chart_id)
         if chart is None:
             self.logger.warning(
                 "ConvertSeriesToFitCommand.execute: chart '%s' not found or not a Chart",
@@ -152,7 +146,7 @@ class ConvertSeriesToFitCommand(Command):
 
     @override
     def undo(self) -> CommandResult:
-        chart = self._find_chart()
+        chart = self._chart_finder.find(self.chart_id)
         if chart is None or self.removed_series is None or self.added_fit_index is None:
             self.logger.warning(
                 "ConvertSeriesToFitCommand.undo: cannot undo for chart '%s' (chart "

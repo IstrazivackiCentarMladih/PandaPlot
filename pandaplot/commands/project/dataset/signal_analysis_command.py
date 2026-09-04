@@ -16,6 +16,7 @@ from pandaplot.analysis import (
     SignalEngine,
 )
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.apply_signal_analysis_result_command import (
     ApplySignalAnalysisResultCommand,
 )
@@ -30,13 +31,6 @@ class SignalAnalysisCommand(Command):
     non-undoable preview (run_analysis_async) or committed as a new project
     dataset (execute).
     """
-
-    # execute() only dispatches the computation -- it returns SUCCESS before
-    # anything has actually mutated the project, and the dispatched
-    # computation may yet fail or be discarded (see _on_commit_computed).
-    # The real mutation, and the real "unsaved changes" flag, belongs to
-    # ApplySignalAnalysisResultCommand alone.
-    marks_project_modified = False
 
     def __init__(
         self,
@@ -76,8 +70,17 @@ class SignalAnalysisCommand(Command):
         # to be current when the background thread finishes.
         self._dispatch_project = None
 
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only dispatches the computation -- it returns SUCCESS
+        before anything has actually mutated the project, and the
+        dispatched computation may yet fail or be discarded (see
+        _on_commit_computed). The real mutation, and the real "unsaved
+        changes" flag, belongs to ApplySignalAnalysisResultCommand alone."""
+        return False
+
     def _get_source_dataset(self) -> Optional[Dataset]:
-        project = self.app_state.current_project
+        project = get_current_project(self.app_context)
         if not project:
             return None
         item = project.find_item(self.source_dataset_id)
@@ -150,7 +153,7 @@ class SignalAnalysisCommand(Command):
                 self.logger.warning("Signal analysis already in progress")
                 return CommandResult.FAILURE
 
-            if not self.app_state.has_project or not self.app_state.current_project:
+            if get_current_project(self.app_context) is None:
                 message = "No project loaded; cannot run signal analysis."
                 self.logger.warning(message)
                 self.ui_controller.show_error_message("Signal Analysis Error", message)

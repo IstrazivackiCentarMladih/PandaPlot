@@ -1,6 +1,7 @@
 from typing import Tuple, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_data import DatasetDataChangedData
 from pandaplot.models.events.event_types import DatasetEvents
@@ -34,7 +35,7 @@ class EditCommand(Command):
                 )
                 return CommandResult.FAILURE
 
-            self.project = self.app_context.app_state.current_project
+            self.project = get_current_project(self.app_context)
             if not self.project:
                 self.logger.warning("EditCommand.execute: has_project is True but current_project is None")
                 return CommandResult.FAILURE
