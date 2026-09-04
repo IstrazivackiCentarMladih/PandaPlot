@@ -17,6 +17,7 @@ import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.apply_analysis_result_command import ApplyAnalysisResultCommand
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items import Dataset
@@ -265,9 +266,8 @@ class AnalysisCommand(Command):
     def _get_dataset(self) -> Dataset | None:
         """Get dataset from app context."""
         try:
-            app_state = self.app_context.get_app_state()
-            if app_state.has_project and app_state.current_project:
-                project = app_state.current_project
+            project = get_current_project(self.app_context)
+            if project is not None:
                 dataset_item = project.find_item(self.dataset_id)
                 if dataset_item and hasattr(dataset_item, "data") and isinstance(dataset_item, Dataset):
                     return dataset_item

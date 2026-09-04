@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.column_change_events import emit_columns_changed
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items import Dataset
@@ -47,9 +48,8 @@ class ApplyAnalysisResultCommand(Command):
         self.dataset: Optional[Dataset] = None
 
     def _get_dataset(self) -> Optional[Dataset]:
-        app_state = self.app_context.get_app_state()
-        if app_state.has_project and app_state.current_project:
-            project = app_state.current_project
+        project = get_current_project(self.app_context)
+        if project is not None:
             dataset_item = project.find_item(self.dataset_id)
             if dataset_item and hasattr(dataset_item, "data") and isinstance(dataset_item, Dataset):
                 return dataset_item

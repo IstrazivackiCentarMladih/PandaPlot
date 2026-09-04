@@ -1,6 +1,7 @@
 from typing import Any, List, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.add_columns_command import AddColumnsCommand
 from pandaplot.commands.project.dataset.add_rows_command import AddRowsCommand
 from pandaplot.gui.controllers.ui_controller import UIController
@@ -39,7 +40,7 @@ class EditBatchCommand(Command):
                 )
                 return CommandResult.FAILURE
 
-            self.project = self.app_context.app_state.current_project
+            self.project = get_current_project(self.app_context)
             if not self.project:
                 self.logger.warning("EditBatchCommand.execute: has_project is True but current_project is None")
                 return CommandResult.FAILURE
