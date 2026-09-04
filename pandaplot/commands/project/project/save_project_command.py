@@ -1,6 +1,7 @@
 from typing import Any, Callable, Optional, Tuple, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.project import Project
@@ -72,14 +73,9 @@ class SaveProjectCommand(Command):
                 return CommandResult.FAILURE
 
             # Check if we have a project to save
-            if not self.app_state.has_project:
+            project = get_current_project(self.app_context)
+            if project is None:
                 self.logger.warning("SaveProjectCommand.execute: no project is currently loaded to save")
-                self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
-                return CommandResult.FAILURE
-
-            project = self.app_state.current_project
-            if not project:  # Additional safety check
-                self.logger.warning("SaveProjectCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project", "No project is currently loaded to save.")
                 return CommandResult.FAILURE
 
@@ -350,14 +346,9 @@ class SaveProjectAsCommand(SaveProjectCommand):
         """Execute the save as command."""
         try:
             # Check if we have a project to save
-            if not self.app_state.has_project:
+            project = get_current_project(self.app_context)
+            if project is None:
                 self.logger.warning("SaveProjectAsCommand.execute: no project is currently loaded to save")
-                self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
-                return CommandResult.FAILURE
-
-            project = self.app_state.current_project
-            if not project:  # Additional safety check
-                self.logger.warning("SaveProjectAsCommand.execute: has_project is True but current_project is None")
                 self.ui_controller.show_warning_message("Save Project As", "No project is currently loaded to save.")
                 return CommandResult.FAILURE
 
