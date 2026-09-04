@@ -111,6 +111,43 @@ def test_image_without_size_modifier_is_unaffected():
     assert "height=" not in html
 
 
+def test_image_size_modifier_supports_angle_bracket_target():
+    """The angle-bracket target form is required Markdown syntax for a
+    gallery path containing spaces, and must work together with sizing."""
+    html = render_body_html("![Chart](<Gallery 1/sample.png> =300x200)")
+    assert 'src="Gallery 1/sample.png"' in html
+    assert 'width="300"' in html
+    assert 'height="200"' in html
+    assert "pandaimgsize" not in html
+
+
+def test_image_size_modifier_ignored_inside_code_span():
+    """Image-shaped text inside inline/fenced code is literal code, not a
+    live image link -- the internal size-fragment marker must never leak
+    into the rendered code."""
+    html = render_body_html("Use `![Chart](img-id =300x200)` syntax.")
+    assert "pandaimgsize" not in html
+    assert "<code>![Chart](img-id =300x200)</code>" in html
+
+    html = render_body_html("```\n![Chart](img-id =300x200)\n```")
+    assert "pandaimgsize" not in html
+    assert "<pre>" in html
+
+
+def test_image_size_modifier_ignored_when_escaped():
+    html = render_body_html(r"\![Chart](img-id =300x200)")
+    assert "pandaimgsize" not in html
+
+
+def test_code_placeholder_does_not_collide_with_literal_note_text():
+    """The code-region placeholder token is randomized per render call, so a
+    note that happens to contain literal text shaped like the placeholder
+    isn't corrupted by `restore_code_regions` mistaking it for a real one."""
+    html = render_body_html("zzcodeplaceholder-deadbeef-0zz and `real code`")
+    assert "zzcodeplaceholder-deadbeef-0zz" in html
+    assert "<code>real code</code>" in html
+
+
 def test_wrap_document_applies_colors():
     doc = wrap_document("<p>hi</p>", color="#123456", background="#abcdef")
     assert "#123456" in doc

@@ -18,7 +18,7 @@ from pandaplot.gui.components.tabs.note.note_editor import (
 )
 from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePickerDialog
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Image, ImageGallery, Note
+from pandaplot.models.project.items import Folder, Image, ImageGallery, Note
 from pandaplot.models.project.project import Project
 from pandaplot.services.qtasks import TaskScheduler
 
@@ -125,6 +125,27 @@ def test_extract_referenced_image_keys_handles_angle_brackets_and_percent_encodi
     assert "plain.png" in keys
 
 
+def test_extract_referenced_image_keys_ignores_code_and_escaped_images():
+    """Image-shaped text inside code isn't a live reference (Markdown
+    renders it as literal code, not an <img>), and neither is an image
+    escaped with a leading backslash -- extracting either as "referenced"
+    would trigger decoding, or a synchronous network fetch, of a same-named
+    external gallery image for text that never actually renders as one."""
+    keys = extract_referenced_image_keys("Use `![x](inline-code-id.png)` in prose.")
+    assert "inline-code-id.png" not in keys
+
+    keys = extract_referenced_image_keys("```\n![x](fenced-code-id.png)\n```")
+    assert "fenced-code-id.png" not in keys
+
+    keys = extract_referenced_image_keys(r"\![x](escaped-id.png)")
+    assert "escaped-id.png" not in keys
+
+    # A real reference alongside the code/escaped ones is still found.
+    keys = extract_referenced_image_keys("`![x](code.png)` and ![y](real.png)")
+    assert "real.png" in keys
+    assert "code.png" not in keys
+
+
 def test_register_project_image_resources_skips_key_matching_real_file(qapp, tmp_path):
     """A gallery image whose id/path happens to match a real on-disk file
     must not be pre-registered under that URL -- pre-registering bypasses
@@ -178,6 +199,33 @@ def test_note_preview_browser_does_not_fuzzy_match_by_stem(qapp, tmp_path):
     # Different extension/full name than the gallery image's exact name/id:
     # must not resolve via filename-stem or basename fuzzy matching.
     res = browser.loadResource(QTextDocument.ResourceType.ImageResource, QUrl("assets/plot.jpg"))
+
+    assert res is None or (hasattr(res, "isNull") and res.isNull())
+
+
+def test_note_preview_browser_does_not_match_by_source_file(qapp, tmp_path):
+    """source_file isn't a registrable/matchable key (only id and exact
+    gallery path are): a note referencing an image's former/remote source
+    path -- which the image itself no longer resolves through, e.g. after
+    being re-imported as "copied" -- must not be served that image's bytes
+    just because the string happens to coincide."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(
+        name="plot.png", storage_mode="copied", source_file="https://example.com/old-plot.png"
+    )
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+
+    browser = NotePreviewBrowser(app_context=app_context)
+    res = browser.loadResource(
+        QTextDocument.ResourceType.ImageResource, QUrl("https://example.com/old-plot.png")
+    )
 
     assert res is None or (hasattr(res, "isNull") and res.isNull())
 
@@ -316,6 +364,88 @@ def test_note_editor_ignores_unrelated_project_item_events(qapp, tmp_path):
         # being renamed) must be ignored.
         editor.on_project_item_changed_event(
             {"event": ProjectEvents.PROJECT_ITEM_RENAMED, "item_id": "some-other-note-id"}
+        )
+        mock_update.assert_not_called()
+
+
+def test_note_editor_refreshes_for_folder_containing_gallery(qapp, tmp_path):
+    """A generic Folder isn't itself an image, but renaming/moving one that
+    contains an ImageGallery (galleries can be created beneath ordinary
+    folders) changes every descendant image's gallery-relative path just as
+    surely as touching the gallery directly -- it must not be ignored just
+    because the folder itself isn't an Image/ImageGallery."""
+    project = Project(name="Test Project")
+    folder = Folder(name="My Folder")
+    project.add_item(folder)
+    gallery = ImageGallery(name="Gallery 1")
+    project.add_item(gallery, parent_id=folder.id)
+    png_bytes = create_test_png_bytes()
+    image = Image(name="plot.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image, parent_id=gallery.id)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content=f"![Plot]({image.id})")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    with patch.object(editor, "update_preview") as mock_update:
+        editor.on_project_item_changed_event(
+            {"event": ProjectEvents.PROJECT_ITEM_RENAMED, "item_id": folder.id}
+        )
+        mock_update.assert_called_once()
+
+
+def test_note_editor_refreshes_for_deleted_folder_snapshot_containing_image(qapp, tmp_path):
+    """Once a folder is deleted it's gone from the project, so the only
+    place left to tell whether its subtree held any images is the deleted
+    snapshot delete_item_command attaches to the event."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content="Just text, no images.")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    deleted_image = Image(name="plot.png", storage_mode="copied")
+    deleted_image.set_bytes(png_bytes)
+    deleted_snapshot = {
+        "id": "deleted-folder",
+        "name": "Deleted Folder",
+        "items": [deleted_image.to_dict()],
+    }
+
+    with patch.object(editor, "update_preview") as mock_update:
+        editor.on_project_item_changed_event(
+            {
+                "event": ProjectEvents.PROJECT_ITEM_REMOVED,
+                "item_id": "deleted-folder",
+                "item_type": "folder",
+                "item_data": deleted_snapshot,
+            }
+        )
+        mock_update.assert_called_once()
+
+    # A deleted folder confirmed to hold no images is correctly ignored.
+    with patch.object(editor, "update_preview") as mock_update:
+        editor.on_project_item_changed_event(
+            {
+                "event": ProjectEvents.PROJECT_ITEM_REMOVED,
+                "item_id": "deleted-empty-folder",
+                "item_type": "folder",
+                "item_data": {"id": "deleted-empty-folder", "name": "Empty", "items": []},
+            }
         )
         mock_update.assert_not_called()
 

@@ -51,18 +51,26 @@ _INLINE_MATH_RE = re.compile(r"\$(.+?)\$", re.DOTALL)
 # something like "#pandaimgsize3" is never mistaken for one of ours.
 # The leading (?<!\\) skips a `\![...]` the user escaped to be literal text
 # (no image is emitted there, so there'd be no <img> to reapply a size to).
-_IMAGE_SIZE_RE = re.compile(r"(?<!\\)!\[([^\]]*)\]\(([^\s)]+)\s+=(\d*)x(\d*)\)")
+# Group 2 handles the angle-bracket target form required for a gallery path
+# containing spaces (`![x](<Gallery 1/sample.png> =300x)`); group 3 is the
+# bare form.
+_IMAGE_SIZE_RE = re.compile(r"(?<!\\)!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^\s)]+))\s+=(\d*)x(\d*)\)")
 _IMG_SIZE_FRAGMENT = "pandaimgsize"
 
 # Fenced/inline code spans aren't image links even if they contain
 # "![...](... =WxH)"-shaped text; both are stashed as inert placeholders for
 # the duration of `_extract_image_sizes` only, then restored verbatim so
-# Markdown still renders them as ordinary code afterwards.
+# Markdown still renders them as ordinary code afterwards. The token is
+# unique per call so the placeholder can never collide with literal note
+# text that happens to look like "zzcodeplaceholder0zz".
 _FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
-_CODE_TOKEN = "zzcodeplaceholder{index}zz"
-_CODE_TOKEN_RE = re.compile(r"zzcodeplaceholder(\d+)zz")
+_CODE_TOKEN = "zzcodeplaceholder-{token}-{index}zz"
 _IMG_TAG_RE = re.compile(r"(<img\b[^>]*?)(/?)>")
+
+
+def _code_token_re(token: str) -> re.Pattern:
+    return re.compile(rf"zzcodeplaceholder-{re.escape(token)}-(\d+)zz")
 
 
 def _img_size_src_re(token: str) -> re.Pattern:
@@ -171,33 +179,39 @@ def _equation_img(latex: str, *, color: str, fontsize: float, display: bool) -> 
     )
 
 
-def _protect_code_regions(text: str) -> tuple[str, list[str]]:
+def protect_code_regions(text: str) -> tuple[str, list[str], str]:
     """Stash fenced and inline code spans behind inert placeholder tokens.
 
-    Used only around `_extract_image_sizes`: that regex operates on raw text
-    ahead of Markdown's own parsing, so without this it would also rewrite
-    "![...](... =WxH)"-shaped text sitting inside a code span/block, leaving
-    our internal fragment marker visible in the rendered code (Markdown
-    doesn't emit an <img> there for `_apply_image_sizes` to attach it to).
+    Shared by `_extract_image_sizes` and note_editor's
+    `extract_referenced_image_keys`: both run a raw-text regex ahead of (or
+    independent of) Markdown's own parsing, so without this they'd also
+    treat "![...](...)"-shaped text sitting inside a code span/block as a
+    real image link/reference. `token` is unique to this call, so the
+    placeholder can never collide with literal note text that happens to
+    look like one (e.g. a note containing the literal string
+    "zzcodeplaceholder-0-0zz").
     """
+    token = uuid.uuid4().hex
     blocks: list[str] = []
 
     def _stash(m: re.Match) -> str:
         idx = len(blocks)
         blocks.append(m.group(0))
-        return _CODE_TOKEN.format(index=idx)
+        return _CODE_TOKEN.format(token=token, index=idx)
 
     text = _FENCED_CODE_RE.sub(_stash, text)
     text = _INLINE_CODE_RE.sub(_stash, text)
-    return text, blocks
+    return text, blocks, token
 
 
-def _restore_code_regions(text: str, blocks: list[str]) -> str:
+def restore_code_regions(text: str, blocks: list[str], token: str) -> str:
+    code_token_re = _code_token_re(token)
+
     def _restore(m: re.Match) -> str:
         idx = int(m.group(1))
         return blocks[idx] if idx < len(blocks) else m.group(0)
 
-    return _CODE_TOKEN_RE.sub(_restore, text)
+    return code_token_re.sub(_restore, text)
 
 
 def _extract_image_sizes(
@@ -205,9 +219,10 @@ def _extract_image_sizes(
 ) -> tuple[str, list[tuple[Optional[str], Optional[str]]], str]:
     """Strip `=WxH` size modifiers from image links, stashing them by index.
 
-    Each stripped modifier is tagged onto its link target as a URL fragment
-    (`target#pandaimgsize-{token}-N`) so Markdown's own link parsing carries
-    it through to the `<img src="...">` untouched, ready for
+    Each stripped modifier is tagged onto its link target (re-wrapped in
+    angle brackets, which accept any target -- spaced or not) as a URL
+    fragment (`<target#pandaimgsize-{token}-N>`) so Markdown's own link
+    parsing carries it through to the `<img src="...">` untouched, ready for
     `_apply_image_sizes` to pull back out. `token` is unique to this call, so
     a user-authored URL that already ends in something shaped like our own
     fragment is never mistaken for one.
@@ -216,12 +231,13 @@ def _extract_image_sizes(
     sizes: list[tuple[Optional[str], Optional[str]]] = []
 
     def _stash(m: re.Match) -> str:
-        alt, target, width, height = m.groups()
+        alt, angle_target, bare_target, width, height = m.groups()
+        target = angle_target if angle_target is not None else bare_target
         if not width and not height:
             return m.group(0)
         idx = len(sizes)
         sizes.append((width or None, height or None))
-        return f"![{alt}]({target}#{_IMG_SIZE_FRAGMENT}-{token}-{idx})"
+        return f"![{alt}](<{target}#{_IMG_SIZE_FRAGMENT}-{token}-{idx}>)"
 
     return _IMAGE_SIZE_RE.sub(_stash, text), sizes, token
 
@@ -275,9 +291,9 @@ def render_body_html(source: str, *, color: str = "#000000", fontsize: float = 1
 
     # 1b. Strip `=WxH` image size modifiers before Markdown sees the links,
     # without touching any that merely appear inside code spans/blocks.
-    text, code_blocks = _protect_code_regions(text)
+    text, code_blocks, code_token = protect_code_regions(text)
     text, image_sizes, image_size_token = _extract_image_sizes(text)
-    text = _restore_code_regions(text, code_blocks)
+    text = restore_code_regions(text, code_blocks, code_token)
 
     equations: list[str] = []
     display_flags: list[bool] = []

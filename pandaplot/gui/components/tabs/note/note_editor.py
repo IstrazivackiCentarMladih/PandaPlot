@@ -29,9 +29,10 @@ from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePickerDialog
 from pandaplot.models.events import NoteEvents, UIEvents
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Image, ImageGallery, Note
+from pandaplot.models.project.items import Image, ImageGallery, ItemCollection, Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
+    protect_code_regions,
     render_body_html,
     wrap_document,
 )
@@ -44,8 +45,10 @@ _NOTE_FONT_SIZE = 11
 # Matches a Markdown image link's target, e.g. "id" in "![alt](id =300x200)".
 # Group 1 handles the angle-bracket form for a target containing spaces
 # (`![alt](<my id> =300x200)`); group 2 is the bare form, which stops at the
-# first whitespace so a trailing size modifier isn't swept in.
-_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(\s*(?:<([^>]*)>|([^\s)]+))")
+# first whitespace so a trailing size modifier isn't swept in. The leading
+# (?<!\\) skips a `\![...]` the user escaped to be literal text -- Markdown
+# never emits an <img> there, so it isn't a live reference either.
+_IMAGE_REF_RE = re.compile(r"(?<!\\)!\[[^\]]*\]\(\s*(?:<([^>]*)>|([^\s)]+))")
 
 # Default cap applied to a gallery image's width when inserted via the picker,
 # so a large photo doesn't blow out the note by default. The user can still
@@ -128,9 +131,16 @@ def extract_referenced_image_keys(source: str) -> Set[str]:
     form of each target (gallery keys like "Album/Photo.png" are stored
     unencoded, so a note written as "Album%2FPhoto.png" would otherwise never
     match).
+
+    Image-shaped text inside a fenced/inline code span is not a real
+    reference (Markdown renders it as literal code, not an <img>), so it's
+    excluded the same way the renderer excludes it from size-modifier
+    handling -- otherwise an unrelated code example could trigger decoding,
+    or a synchronous network fetch, of a same-named external gallery image.
     """
+    protected_source, _, _ = protect_code_regions(source)
     keys: Set[str] = set()
-    for match in _IMAGE_REF_RE.finditer(source):
+    for match in _IMAGE_REF_RE.finditer(protected_source):
         target = match.group(1) if match.group(1) is not None else match.group(2)
         if not target:
             continue
@@ -173,9 +183,11 @@ def register_project_image_resources(
         all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
         for img_item in all_images:
             gallery_path = get_image_gallery_path(project, img_item)
+            # Only the immutable id and exact gallery path are registrable
+            # keys -- notably not source_file, which for a moved/renamed
+            # external source could match a note's now-unrelated reference
+            # to that same former/remote path.
             keys = {img_item.id, gallery_path}
-            if img_item.source_file:
-                keys.add(img_item.source_file)
 
             if referenced_keys is not None and keys.isdisjoint(referenced_keys):
                 continue
@@ -238,9 +250,11 @@ class NotePreviewBrowser(QTextBrowser):
     def _resolve_gallery_image(self, name: QUrl) -> Optional[QImage]:
         """Resolve `name` to a gallery image by exact id or exact gallery path only.
 
-        No fuzzy filename/stem matching: that could match an unrelated
-        same-named or same-stem image instead of (or before) a real relative
-        file path is even attempted.
+        No fuzzy filename/stem matching, and no match against source_file:
+        either could match an unrelated same-named/same-stem image, or a
+        note's now-unrelated reference to an image's former/remote source
+        path, instead of (or before) a real relative file path is even
+        attempted.
         """
         try:
             app_state = self.app_context.get_app_state() if self.app_context else None
@@ -248,19 +262,15 @@ class NotePreviewBrowser(QTextBrowser):
             if not project:
                 return None
 
-            base_dir = get_project_base_dir(self.app_context)
             ref_str = name.toString()
             local_path = name.toLocalFile()
+            base_dir = get_project_base_dir(self.app_context)
             rel_path = os.path.relpath(local_path, base_dir) if local_path and base_dir else ""
 
             all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
             for img_item in all_images:
                 gallery_path = get_image_gallery_path(project, img_item)
-                match = (
-                    img_item.id == ref_str
-                    or (gallery_path and gallery_path in (ref_str, rel_path))
-                    or (img_item.source_file and img_item.source_file in (ref_str, local_path))
-                )
+                match = img_item.id == ref_str or (gallery_path and gallery_path in (ref_str, rel_path))
                 if match:
                     qimg = get_cached_qimage(img_item, self.image_cache)
                     if qimg is not None and not qimg.isNull():
@@ -713,6 +723,12 @@ class NoteEditorWidget(PWidget):
         single field reliably identifies the item type across all of them.
         Falls back to looking the item up in the project when only a generic
         "item_id" is given and no type is present.
+
+        A generic Folder isn't itself an image, but one can contain an
+        ImageGallery (or nested Folder containing one) -- gallery-relative
+        paths include every ancestor folder name, so renaming/moving/
+        deleting such a folder changes or removes descendant images' paths
+        just as surely as touching the gallery directly.
         """
         if "image_id" in event_data or "gallery_id" in event_data:
             return True
@@ -728,8 +744,56 @@ class NoteEditorWidget(PWidget):
         project = app_state.current_project if app_state else None
         if project is None:
             return False
+
         item = project.find_item(item_id)
-        return isinstance(item, (Image, ImageGallery))
+        if item is not None:
+            if isinstance(item, (Image, ImageGallery)):
+                return True
+            if isinstance(item, ItemCollection):
+                return self._collection_has_image_descendant(project, item)
+            return False
+
+        # The item no longer exists (a REMOVED event) -- fall back to the
+        # deleted snapshot delete_item_command attaches, since it's the only
+        # place left to check whether the removed subtree held any images.
+        return self._snapshot_has_image_descendant(event_data.get("item_data"))
+
+    @staticmethod
+    def _collection_has_image_descendant(project, collection: ItemCollection) -> bool:
+        """Whether `collection` (a Folder/ImageGallery still in the project)
+        contains an Image/ImageGallery anywhere in its subtree."""
+        collection_ids = {collection.id}
+        # A second pass catches grandchildren etc.: collection_ids grows
+        # every time a new descendant collection is found, so items whose
+        # parent was only just added get picked up on a later iteration.
+        changed = True
+        while changed:
+            changed = False
+            for item in project.get_all_items():
+                if item.parent_id in collection_ids and item.id not in collection_ids:
+                    if isinstance(item, (Image, ImageGallery)):
+                        return True
+                    if isinstance(item, ItemCollection):
+                        collection_ids.add(item.id)
+                        changed = True
+        return False
+
+    @staticmethod
+    def _snapshot_has_image_descendant(item_data: Optional[dict]) -> bool:
+        """Best-effort check of a deleted item's serialized snapshot
+        (Item.to_dict()) for an embedded Image.
+
+        There's no explicit "type" field in the serialized form, so this
+        looks for Image-specific keys (present only on Image.to_dict()).
+        """
+        if not isinstance(item_data, dict):
+            return False
+        if "storage_mode" in item_data and "image_ext" in item_data:
+            return True
+        return any(
+            NoteEditorWidget._snapshot_has_image_descendant(child)
+            for child in item_data.get("items", [])
+        )
 
     def on_reveal_match_event(self, event_data: dict):
         """Move the cursor to (and select) a match requested by note search."""
