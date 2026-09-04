@@ -175,6 +175,29 @@ def test_composite_command_undo_failure_and_exception():
     assert cmd1.undone_count == 1
 
 
+def test_composite_command_undo_partial_failure_excludes_still_applied_subcommand_from_redo():
+    """A sub-command whose undo() fails is left applied (its effect never
+    reversed). It must not be replayed by a later redo() -- that would
+    double-apply it -- while a sub-command that did undo successfully still
+    redoes normally (see PR #333 review)."""
+    cmd1 = SimpleCommand("c1")
+    cmd2 = SimpleCommand("c2", undo_result=CommandResult.FAILURE)
+
+    composite = CompositeCommand([cmd1, cmd2])
+    composite.execute()
+
+    assert composite.undo() is CommandResult.FAILURE
+    assert cmd1.undone_count == 1
+    assert cmd2.undone_count == 1  # attempted, but failed -- still applied
+
+    cmd1.redone_count = 0
+    cmd2.redone_count = 0
+
+    assert composite.redo() is CommandResult.SUCCESS
+    assert cmd1.redone_count == 1
+    assert cmd2.redone_count == 0  # excluded: never actually undone
+
+
 def test_composite_command_redo_forward_order():
     call_order: List[str] = []
 

@@ -12,9 +12,12 @@ class CompositeCommand(Command):
       FAILURE is returned. Sub-commands that returned NOOP had no effect, so
       they're excluded from the executed set `undo()`/`redo()` operate on --
       calling undo() on them could fail or undo state they never touched.
-    - `undo()` undoes the executed set in reverse order; `redo()` re-executes
-      it in forward order, rolling back on FAILURE the same way `execute()`
-      does.
+    - `undo()` undoes the executed set in reverse order, continuing past a
+      sub-command whose undo() fails or raises so every other sub-command
+      still gets a chance to undo; a sub-command left applied this way is
+      dropped from the set so a later `redo()` can't re-apply it on top of
+      itself. `redo()` re-executes the (possibly narrowed) set in forward
+      order, rolling back on FAILURE the same way `execute()` does.
     - `cleanup()` invokes `cleanup()` on every configured sub-command.
     """
 
@@ -65,6 +68,7 @@ class CompositeCommand(Command):
 
     def undo(self) -> CommandResult:
         has_failure = False
+        undone: List[Command] = []
 
         for cmd in reversed(self._executed):
             try:
@@ -72,6 +76,9 @@ class CompositeCommand(Command):
                 if res is CommandResult.FAILURE:
                     has_failure = True
                     self.logger.warning("Sub-command %s reported failure during undo()", cmd.__class__.__name__)
+                    continue  # still applied -- must not be replayed by a later redo()
+
+                undone.append(cmd)
             except Exception as e:
                 has_failure = True
                 self.logger.error(
@@ -79,6 +86,7 @@ class CompositeCommand(Command):
                     cmd.__class__.__name__, e, exc_info=True,
                 )
 
+        self._executed = list(reversed(undone))
         if has_failure:
             return CommandResult.FAILURE
         if not self._executed:
