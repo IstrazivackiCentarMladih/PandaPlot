@@ -156,6 +156,22 @@ class ConvertSeriesToFitCommand(Command):
             )
             return CommandResult.FAILURE
 
+        if self.added_fit_index < 0 or self.added_fit_index >= len(chart.fit_data):
+            self.logger.warning(
+                "ConvertSeriesToFitCommand.undo: added_fit_index %s out of range for "
+                "chart '%s' (%d fits)",
+                self.added_fit_index, self.chart_id, len(chart.fit_data),
+            )
+            return CommandResult.FAILURE
+
+        if self.series_index < 0 or self.series_index > len(chart.data_series):
+            self.logger.warning(
+                "ConvertSeriesToFitCommand.undo: series_index %s out of range for "
+                "chart '%s' (%d series)",
+                self.series_index, self.chart_id, len(chart.data_series),
+            )
+            return CommandResult.FAILURE
+
         chart.remove_fit_data(self.added_fit_index)
         chart.data_series.insert(self.series_index, copy.deepcopy(self.removed_series))
         chart.update_modified_time()

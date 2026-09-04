@@ -39,6 +39,7 @@ class ChartPropertiesPanel(SidebarPanel):
         # Baseline for Cancel and for Apply's undo: the chart state as of the
         # last load into this panel or the last Apply.
         self._loaded_snapshot: Optional[dict] = None
+        self._snapshot_command_count: int = 0
 
         self._initialize()
 
@@ -335,19 +336,19 @@ class ChartPropertiesPanel(SidebarPanel):
             return
 
         if "chart" in event_data:
-            # Command-originated update (Apply execute/undo/redo, add/remove
-            # series, fit added): the model changed outside this panel's live
-            # edits, so re-sync all controls and re-capture the Cancel/Apply
-            # baseline to match the new command boundary.
-            # This branch always fires first (add/remove series and
-            # fit-added events include both "chart" and "update_type"), making
-            # the update_type branch below unreachable for those. That's fine
-            # now that DataTab.load preserves the selected row for a reload of
-            # the same chart object (only add/remove -- which can invalidate
-            # the previous index -- clamp it; a genuinely different chart
-            # still resets to 0).
-            self.load_chart_object(self.current_chart)
-            self.logger.debug("Chart properties panel reloaded for command-originated update")
+            current_undo_depth = len(self.command_executor.undo_stack)
+            if current_undo_depth < self._snapshot_command_count:
+                # External undo moved the undo stack below our baseline --
+                # reset baseline to current chart state.
+                self.load_chart_object(self.current_chart)
+                self.logger.debug("Chart properties panel reloaded baseline after undo past baseline")
+            else:
+                # Command executed during panel editing -- refresh controls
+                # without clobbering _loaded_snapshot or _snapshot_command_count.
+                self._sync_controls_from_chart(self.current_chart)
+                self._has_unsaved_changes = True
+                self._update_status_indicator()
+                self.logger.debug("Chart properties panel synced controls for command update")
             return
 
         update_type = event_data.get("update_type", "")
@@ -411,41 +412,44 @@ class ChartPropertiesPanel(SidebarPanel):
         """Handle apply button click."""
         if not self.current_chart:
             return
+        snapshot_before_apply = snapshot_chart_state(self.current_chart)
         command = ApplyChartPropertiesCommand(
             self.app_context,
             chart_id=self.current_chart.id,
             apply_fn=self.apply_to_chart,
-            old_snapshot=self._loaded_snapshot,
+            old_snapshot=snapshot_before_apply,
         )
         self.command_executor.execute_command(command)
 
         # The applied state is the new baseline for Cancel / the next Apply.
         self._loaded_snapshot = snapshot_chart_state(self.current_chart)
+        self._snapshot_command_count = len(self.command_executor.undo_stack)
         self._has_unsaved_changes = False
         self._update_status_indicator()
-    
+
     def _on_reset(self):
         """Revert live edits back to the last loaded/applied state."""
         if not self.current_chart or self._loaded_snapshot is None:
             return
+
+        commands_to_undo = len(self.command_executor.undo_stack) - self._snapshot_command_count
+        if commands_to_undo > 0:
+            for _ in range(commands_to_undo):
+                if self.command_executor.can_undo():
+                    self.command_executor.undo()
+                    if self.command_executor.redo_stack:
+                        undone_cmd = self.command_executor.redo_stack.pop()
+                        self.command_executor._safe_cleanup(undone_cmd)
+
         restore_chart_state(self.current_chart, self._loaded_snapshot)
         self.load_chart_object(self.current_chart)
         self.publish_event(ChartEvents.CHART_UPDATED, {
             "chart_id": self.current_chart.id,
             "update_type": "config_updated",
         })
-    
-    def load_chart_object(self, chart):
-        """Load a Chart object into the panel for editing.
 
-        Args:
-            chart: Chart object to load, or None to clear
-        """
-        self.current_chart = chart
-        self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
-        self._has_unsaved_changes = False
-        self._update_status_indicator()
-
+    def _sync_controls_from_chart(self, chart):
+        """Sync panel controls from a Chart object without resetting baseline snapshots."""
         if chart:
             # Ensure datasets are available (important after opening a project file)
             self._ensure_datasets_loaded()
@@ -478,10 +482,22 @@ class ChartPropertiesPanel(SidebarPanel):
                 self.legend_tab.load(chart)
             finally:
                 self._updating_controls = previous_guard
-
         else:
-            # Clear/default values
             self._clear_controls()
+
+    def load_chart_object(self, chart):
+        """Load a Chart object into the panel for editing.
+
+        Args:
+            chart: Chart object to load, or None to clear
+        """
+        self.current_chart = chart
+        self._loaded_snapshot = snapshot_chart_state(chart) if chart else None
+        self._snapshot_command_count = len(self.command_executor.undo_stack) if chart else 0
+        self._has_unsaved_changes = False
+        self._update_status_indicator()
+
+        self._sync_controls_from_chart(chart)
 
     def apply_to_chart(self, chart):
         """Apply current panel settings to a Chart object.

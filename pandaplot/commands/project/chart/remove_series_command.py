@@ -69,6 +69,13 @@ class RemoveSeriesCommand(Command):
             )
             return CommandResult.FAILURE
 
+        if self.series_index < 0 or self.series_index > len(chart.data_series):
+            self.logger.warning(
+                "RemoveSeriesCommand.undo: series_index %s out of range for chart '%s' (%d series)",
+                self.series_index, self.chart_id, len(chart.data_series),
+            )
+            return CommandResult.FAILURE
+
         # Re-create and insert at original position
         series = copy.deepcopy(self.removed_series_data)
         chart.data_series.insert(self.series_index, series)
