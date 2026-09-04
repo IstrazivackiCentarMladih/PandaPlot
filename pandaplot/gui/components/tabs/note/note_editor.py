@@ -2,7 +2,9 @@
 Note tab widget for displaying and editing notes in the main tab container.
 """
 import os
-from typing import Optional, override
+import re
+from typing import Dict, Optional, Set, override
+from urllib.parse import unquote
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QFont, QImage, QKeySequence, QTextCursor, QTextDocument
@@ -27,7 +29,7 @@ from pandaplot.gui.core.widget_extension import PWidget
 from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePickerDialog
 from pandaplot.models.events import NoteEvents, UIEvents
 from pandaplot.models.events.event_types import ProjectEvents
-from pandaplot.models.project.items import Image, Note
+from pandaplot.models.project.items import Image, ImageGallery, Note
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.note_render.latex_markdown_renderer import (
     render_body_html,
@@ -38,6 +40,17 @@ from pandaplot.services.theme.theme_manager import ThemeManager
 # Point size used both for the editor font and for rasterising equations so
 # the math visually matches the surrounding text.
 _NOTE_FONT_SIZE = 11
+
+# Matches a Markdown image link's target, e.g. "id" in "![alt](id =300x200)".
+# Group 1 handles the angle-bracket form for a target containing spaces
+# (`![alt](<my id> =300x200)`); group 2 is the bare form, which stops at the
+# first whitespace so a trailing size modifier isn't swept in.
+_IMAGE_REF_RE = re.compile(r"!\[[^\]]*\]\(\s*(?:<([^>]*)>|([^\s)]+))")
+
+# Default cap applied to a gallery image's width when inserted via the picker,
+# so a large photo doesn't blow out the note by default. The user can still
+# edit/remove the `=WxH` modifier by hand.
+_DEFAULT_INSERT_MAX_WIDTH = 500
 
 
 def get_project_base_dir(app_context: AppContext) -> str:
@@ -63,7 +76,11 @@ def get_image_gallery_path(project, image_item: Image) -> str:
 
 
 def load_qimage_for_item(image_item: Image) -> Optional[QImage]:
-    """Load QImage from Image item bytes or source file."""
+    """Load QImage from Image item bytes or source file.
+
+    Hits the network/disk for "external" images, so callers on a hot path
+    (every keystroke) should go through `get_cached_qimage` instead.
+    """
     try:
         data = image_item.get_bytes()
         if data is None and image_item.source_file:
@@ -85,8 +102,64 @@ def load_qimage_for_item(image_item: Image) -> Optional[QImage]:
     return None
 
 
-def register_project_image_resources(document: QTextDocument, app_context: AppContext) -> str:
-    """Configure document base URL and register all project gallery images as resources."""
+def get_cached_qimage(image_item: Image, cache: Dict[str, Optional[QImage]]) -> Optional[QImage]:
+    """Load an Image item's QImage, memoised by id in `cache`.
+
+    Avoids re-decoding bytes (and re-fetching external URLs/files) on every
+    call -- `register_project_image_resources` runs on every keystroke while
+    editing in split/preview mode. Failed loads are cached too (as None) so a
+    broken external reference doesn't retry the network on every render;
+    callers clear the cache when project images actually change.
+    """
+    if image_item.id in cache:
+        return cache[image_item.id]
+    qimg = load_qimage_for_item(image_item)
+    cache[image_item.id] = qimg
+    return qimg
+
+
+def extract_referenced_image_keys(source: str) -> Set[str]:
+    """Return the set of image link targets referenced in note `source`.
+
+    Used to skip loading/registering gallery images that the note doesn't
+    actually reference, rather than eagerly resolving every image in the
+    project on each render. Handles both the bare and angle-bracket
+    (`<target with spaces>`) link forms, and includes the percent-decoded
+    form of each target (gallery keys like "Album/Photo.png" are stored
+    unencoded, so a note written as "Album%2FPhoto.png" would otherwise never
+    match).
+    """
+    keys: Set[str] = set()
+    for match in _IMAGE_REF_RE.finditer(source):
+        target = match.group(1) if match.group(1) is not None else match.group(2)
+        if not target:
+            continue
+        keys.add(target)
+        decoded = unquote(target)
+        if decoded != target:
+            keys.add(decoded)
+    return keys
+
+
+def register_project_image_resources(
+    document: QTextDocument,
+    app_context: AppContext,
+    cache: Optional[Dict[str, Optional[QImage]]] = None,
+    referenced_keys: Optional[Set[str]] = None,
+) -> str:
+    """Configure document base URL and register referenced gallery images as resources.
+
+    Each image is registered only under its immutable id and its exact
+    gallery-relative path (e.g. "Album/Photo.png") -- never by bare name or
+    filename stem, which could ambiguously match an unrelated same-named
+    image or an on-disk file the note also references by relative path.
+
+    If `referenced_keys` is given, only images matching one of those keys are
+    resolved/registered (see `extract_referenced_image_keys`); pass None to
+    register every gallery image regardless of whether the note uses it.
+    """
+    if cache is None:
+        cache = {}
     base_dir = get_project_base_dir(app_context)
     base_url = QUrl.fromLocalFile(os.path.join(base_dir, ""))
     document.setBaseUrl(base_url)
@@ -99,24 +172,33 @@ def register_project_image_resources(document: QTextDocument, app_context: AppCo
 
         all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
         for img_item in all_images:
-            qimg = load_qimage_for_item(img_item)
-            if qimg is None or qimg.isNull():
-                continue
-
-            keys = {
-                img_item.name,
-                img_item.id,
-                get_image_gallery_path(project, img_item),
-            }
+            gallery_path = get_image_gallery_path(project, img_item)
+            keys = {img_item.id, gallery_path}
             if img_item.source_file:
                 keys.add(img_item.source_file)
+
+            if referenced_keys is not None and keys.isdisjoint(referenced_keys):
+                continue
+
+            qimg = get_cached_qimage(img_item, cache)
+            if qimg is None or qimg.isNull():
+                continue
 
             for key in keys:
                 if not key:
                     continue
                 raw_url = QUrl(key)
-                document.addResource(QTextDocument.ResourceType.ImageResource, raw_url, qimg)
-                document.addResource(QTextDocument.ResourceType.ImageResource, base_url.resolved(raw_url), qimg)
+                resolved_url = base_url.resolved(raw_url)
+                for url in (raw_url, resolved_url):
+                    # An existing on-disk file always wins over a gallery
+                    # match (see NotePreviewBrowser.loadResource): pre-
+                    # registering it here would shadow that check entirely,
+                    # since a pre-registered resource is returned without
+                    # ever calling loadResource at all.
+                    local_path = url.toLocalFile()
+                    if local_path and os.path.isfile(local_path):
+                        continue
+                    document.addResource(QTextDocument.ResourceType.ImageResource, url, qimg)
     except Exception:
         pass
 
@@ -133,18 +215,33 @@ class NotePreviewBrowser(QTextBrowser):
         super().__init__(parent)
         self.app_context = app_context
         self.setOpenExternalLinks(True)
+        # Memoises decoded gallery images by id; cleared by the owning editor
+        # when project images actually change (see NoteEditorWidget).
+        self.image_cache: Dict[str, Optional[QImage]] = {}
 
     @override
     def loadResource(self, type_: int, name: QUrl):
         if type_ == QTextDocument.ResourceType.ImageResource:
-            qimg = self._resolve_gallery_image(name)
-            if qimg is not None and not qimg.isNull():
-                self.document().addResource(QTextDocument.ResourceType.ImageResource, name, qimg)
-                return qimg
+            # An existing on-disk file always wins over a gallery match, so a
+            # relative-file reference is never hijacked by a same-named/same-id
+            # gallery image (see PR #326 review).
+            local_path = name.toLocalFile()
+            is_real_file = bool(local_path) and os.path.isfile(local_path)
+            if not is_real_file:
+                qimg = self._resolve_gallery_image(name)
+                if qimg is not None and not qimg.isNull():
+                    self.document().addResource(QTextDocument.ResourceType.ImageResource, name, qimg)
+                    return qimg
 
         return super().loadResource(type_, name)
 
     def _resolve_gallery_image(self, name: QUrl) -> Optional[QImage]:
+        """Resolve `name` to a gallery image by exact id or exact gallery path only.
+
+        No fuzzy filename/stem matching: that could match an unrelated
+        same-named or same-stem image instead of (or before) a real relative
+        file path is even attempted.
+        """
         try:
             app_state = self.app_context.get_app_state() if self.app_context else None
             project = app_state.current_project if app_state else None
@@ -154,21 +251,18 @@ class NotePreviewBrowser(QTextBrowser):
             base_dir = get_project_base_dir(self.app_context)
             ref_str = name.toString()
             local_path = name.toLocalFile()
-            filename = os.path.basename(local_path if local_path else ref_str)
             rel_path = os.path.relpath(local_path, base_dir) if local_path and base_dir else ""
 
             all_images = [item for item in project.get_all_items() if isinstance(item, Image)]
             for img_item in all_images:
                 gallery_path = get_image_gallery_path(project, img_item)
                 match = (
-                    img_item.id in (ref_str, filename)
-                    or img_item.name in (ref_str, filename, rel_path)
-                    or os.path.splitext(img_item.name)[0] == os.path.splitext(filename)[0]
-                    or gallery_path in (ref_str, rel_path)
-                    or (img_item.source_file and img_item.source_file in (ref_str, local_path, filename))
+                    img_item.id == ref_str
+                    or (gallery_path and gallery_path in (ref_str, rel_path))
+                    or (img_item.source_file and img_item.source_file in (ref_str, local_path))
                 )
                 if match:
-                    qimg = load_qimage_for_item(img_item)
+                    qimg = get_cached_qimage(img_item, self.image_cache)
                     if qimg is not None and not qimg.isNull():
                         return qimg
         except Exception:
@@ -394,15 +488,28 @@ class NoteEditorWidget(PWidget):
         background = palette.get("card_bg", "#ffffff")
         border = palette.get("card_border", "#dddddd")
 
-        base_dir = register_project_image_resources(self.preview.document(), self.app_context)
+        source = self.text_edit.toPlainText()
+        referenced_keys = extract_referenced_image_keys(source)
+
+        # A fresh QTextDocument every render, rather than reusing/mutating
+        # self.preview.document(): QTextDocument has no API to remove a
+        # resource once added with addResource(), and setHtml() doesn't
+        # clear that cache either. Reusing the same document would let a
+        # removed/renamed image's now-stale bytes keep answering under its
+        # old id/path forever (e.g. a later image that happens to reuse that
+        # id or gallery path would render the old, wrong image).
+        document = QTextDocument()
+        base_dir = register_project_image_resources(
+            document, self.app_context, self.preview.image_cache, referenced_keys
+        )
         self.preview.setSearchPaths([base_dir])
 
-        source = self.text_edit.toPlainText()
         body = render_body_html(source, color=color, fontsize=_NOTE_FONT_SIZE)
         html = wrap_document(
             body, color=color, background=background, border=border, fontsize=_NOTE_FONT_SIZE
         )
-        self.preview.setHtml(html)
+        document.setHtml(html)
+        self.preview.setDocument(document)
 
     def export_pdf(self):
         """Export the rendered note (Markdown + LaTeX) to a PDF file."""
@@ -432,7 +539,8 @@ class NoteEditorWidget(PWidget):
             )
 
             document = QTextDocument()
-            register_project_image_resources(document, self.app_context)
+            referenced_keys = extract_referenced_image_keys(source)
+            register_project_image_resources(document, self.app_context, referenced_keys=referenced_keys)
             document.setHtml(html)
 
             writer = QPdfWriter(file_path)
@@ -504,12 +612,26 @@ class NoteEditorWidget(PWidget):
             image = dialog.get_selected_image()
             if image is not None:
                 cursor = self.text_edit.textCursor()
-                alt_text = image.name
-                image_ref = image.name
-                markdown_ref = f"![{alt_text}]({image_ref})"
+                # "[" / "]" in the name would prematurely close the Markdown
+                # alt-text span (there's no escape for it in bare link
+                # syntax), breaking the whole image reference.
+                alt_text = image.name.replace("[", "(").replace("]", ")")
+                # Reference by immutable id: names are mutable and can be
+                # duplicated across galleries, so a name-based reference could
+                # later resolve to the wrong (renamed/duplicate) image.
+                image_ref = image.id
+                size_suffix = ""
+                if image.width and image.width > _DEFAULT_INSERT_MAX_WIDTH:
+                    size_suffix = f" ={_DEFAULT_INSERT_MAX_WIDTH}x"
+                markdown_ref = f"![{alt_text}]({image_ref}{size_suffix})"
                 cursor.insertText(markdown_ref)
                 self.text_edit.setTextCursor(cursor)
                 self.text_edit.setFocus()
+                if self.stack.currentIndex() == 1:  # preview-only mode
+                    # textChanged->update_preview is disconnected in this mode,
+                    # so the (hidden) source changed but the preview wouldn't
+                    # otherwise refresh until the mode is switched.
+                    self.update_preview()
 
     def _on_scroll_sync_toggled(self, enabled: bool):  # noqa: FBT001 - Qt-invoked callback (signal.connect)
         """Enable/disable split-view scroll syncing and align immediately."""
@@ -565,9 +687,49 @@ class NoteEditorWidget(PWidget):
             ProjectEvents.PROJECT_ITEM_MOVED, self.on_project_item_changed_event)
 
     def on_project_item_changed_event(self, event_data: dict):
-        """Refresh preview if images in the project change."""
+        """Refresh preview if images in the project change.
+
+        These add/remove/rename/move events are generic to every project
+        item type, so without filtering, adding or renaming an unrelated
+        note/dataset/chart would also clear every decoded image and
+        immediately rerender -- for a note with a visible external gallery
+        URL, that means a synchronous network fetch on the UI thread for a
+        change that has nothing to do with images at all.
+        """
+        if not self._event_affects_images(event_data):
+            return
+        # Added/removed/renamed/moved images invalidate cached decodes (an id
+        # could be reused by a new item, a rename changes its gallery path).
+        self.preview.image_cache.clear()
         if self.stack.currentIndex() != 0:  # preview or split mode visible
             self.update_preview()
+
+    def _event_affects_images(self, event_data: dict) -> bool:
+        """Whether a PROJECT_ITEM_* event concerns an Image/ImageGallery.
+
+        Payload shape differs per emitting command (image commands use
+        "image_id"/"gallery_id"; generic add/remove/rename/move commands use
+        "item_id" [+ "item_type" for remove/move, but not rename]), so no
+        single field reliably identifies the item type across all of them.
+        Falls back to looking the item up in the project when only a generic
+        "item_id" is given and no type is present.
+        """
+        if "image_id" in event_data or "gallery_id" in event_data:
+            return True
+
+        item_type = str(event_data.get("item_type", "")).lower()
+        if item_type in ("image", "imagegallery", "image_gallery", "gallery"):
+            return True
+
+        item_id = event_data.get("item_id")
+        if not item_id:
+            return False
+        app_state = self.app_context.get_app_state() if self.app_context else None
+        project = app_state.current_project if app_state else None
+        if project is None:
+            return False
+        item = project.find_item(item_id)
+        return isinstance(item, (Image, ImageGallery))
 
     def on_reveal_match_event(self, event_data: dict):
         """Move the cursor to (and select) a match requested by note search."""

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog
 from pandaplot.gui.components.tabs.note.note_editor import (
     NoteEditorWidget,
     NotePreviewBrowser,
+    extract_referenced_image_keys,
     get_project_base_dir,
     register_project_image_resources,
 )
@@ -19,6 +20,7 @@ from pandaplot.gui.dialogs.image.note_image_picker_dialog import NoteImagePicker
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery, Note
 from pandaplot.models.project.project import Project
+from pandaplot.services.qtasks import TaskScheduler
 
 
 def create_test_png_bytes(width=10, height=10) -> bytes:
@@ -71,14 +73,19 @@ def test_register_project_image_resources(qapp, tmp_path):
     assert base_dir == str(tmp_path)
     base_url = QUrl.fromLocalFile(str(tmp_path) + "/")
 
-    # Check that image is registered by name and id
-    res_name = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl("sample.png"))
-    res_resolved = doc.resource(QTextDocument.ResourceType.ImageResource, base_url.resolved(QUrl("sample.png")))
+    # Registered by immutable id and by its exact gallery-relative path
+    # ("Gallery 1/sample.png") -- never by bare name, which would ambiguously
+    # match any other same-named image or an unrelated on-disk file.
+    gallery_path = "Gallery 1/sample.png"
+    res_path = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl(gallery_path))
+    res_resolved = doc.resource(QTextDocument.ResourceType.ImageResource, base_url.resolved(QUrl(gallery_path)))
     res_id = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl(image.id))
+    res_bare_name = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl("sample.png"))
 
-    assert res_name is not None and not res_name.isNull()
+    assert res_path is not None and not res_path.isNull()
     assert res_resolved is not None and not res_resolved.isNull()
     assert res_id is not None and not res_id.isNull()
+    assert res_bare_name is None
 
 
 def test_note_preview_browser_load_resource(qapp, tmp_path):
@@ -99,6 +106,153 @@ def test_note_preview_browser_load_resource(qapp, tmp_path):
     assert res is not None
     assert isinstance(res, QImage)
     assert not res.isNull()
+
+
+def test_extract_referenced_image_keys_handles_angle_brackets_and_percent_encoding():
+    # Angle-bracket form is required by CommonMark for a target containing
+    # spaces; without it, a naive "stop at whitespace" extractor would grab
+    # just "<Gallery" and never match the real gallery path.
+    keys = extract_referenced_image_keys("![x](<Gallery 1/sample.png>)")
+    assert "Gallery 1/sample.png" in keys
+
+    # Percent-encoded targets must also match their raw/decoded gallery key.
+    keys = extract_referenced_image_keys("![x](Gallery%201/sample.png)")
+    assert "Gallery 1/sample.png" in keys
+    assert "Gallery%201/sample.png" in keys
+
+    # Plain bare targets still work as before.
+    keys = extract_referenced_image_keys("![x](plain.png =300x)")
+    assert "plain.png" in keys
+
+
+def test_register_project_image_resources_skips_key_matching_real_file(qapp, tmp_path):
+    """A gallery image whose id/path happens to match a real on-disk file
+    must not be pre-registered under that URL -- pre-registering bypasses
+    NotePreviewBrowser's "real file wins" loadResource check entirely, since
+    a pre-registered resource is returned without loadResource ever running."""
+    project_file = str(tmp_path / "my_project.pplot")
+    project = Project(name="Test Project")
+    project.project_file_path = project_file
+
+    real_file = tmp_path / "shared.png"
+    real_file.write_bytes(create_test_png_bytes(width=5, height=5))
+
+    gallery_bytes = create_test_png_bytes(width=50, height=50)
+    image = Image(id="shared.png", name="shared.png", storage_mode="copied")
+    image.set_bytes(gallery_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+
+    doc = QTextDocument()
+    base_dir = register_project_image_resources(doc, app_context)
+    base_url = QUrl.fromLocalFile(base_dir + "/")
+
+    # Not pre-registered under the id/name that coincides with the real
+    # file's relative path -- QTextDocument's own default resource loading
+    # then resolves it to the real 5x5 file, not the 50x50 gallery image
+    # that would have shadowed it if pre-registered.
+    res = doc.resource(QTextDocument.ResourceType.ImageResource, base_url.resolved(QUrl("shared.png")))
+    assert res is not None
+    assert res.width() == 5 and res.height() == 5
+
+
+def test_note_preview_browser_does_not_fuzzy_match_by_stem(qapp, tmp_path):
+    """A reference to an unrelated file must not be hijacked by a same-stem
+    gallery image (PR #326 review: only exact id/gallery-path should match)."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="plot.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+
+    browser = NotePreviewBrowser(app_context=app_context)
+    # Different extension/full name than the gallery image's exact name/id:
+    # must not resolve via filename-stem or basename fuzzy matching.
+    res = browser.loadResource(QTextDocument.ResourceType.ImageResource, QUrl("assets/plot.jpg"))
+
+    assert res is None or (hasattr(res, "isNull") and res.isNull())
+
+
+def test_note_preview_browser_prefers_real_file_over_gallery_match(qapp, tmp_path):
+    """An existing on-disk file wins over a same-name/id gallery image."""
+    real_file = tmp_path / "shared.png"
+    real_bytes = create_test_png_bytes(width=5, height=5)
+    real_file.write_bytes(real_bytes)
+
+    project = Project(name="Test Project")
+    gallery_bytes = create_test_png_bytes(width=50, height=50)
+    image = Image(id="shared.png", name="shared.png", storage_mode="copied")
+    image.set_bytes(gallery_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+
+    browser = NotePreviewBrowser(app_context=app_context)
+    res = browser.loadResource(QTextDocument.ResourceType.ImageResource, QUrl.fromLocalFile(str(real_file)))
+
+    # Qt's default loadResource() may hand back either a decoded QImage or
+    # the raw file bytes (which QTextDocument decodes itself); either way it
+    # must be the 5x5 real file, not the 50x50 gallery image.
+    if isinstance(res, QImage):
+        loaded = res
+    else:
+        loaded = QImage()
+        loaded.loadFromData(bytes(res))
+    assert not loaded.isNull()
+    assert loaded.width() == 5 and loaded.height() == 5
+
+
+def test_note_editor_update_preview_discards_stale_document_resources(qapp, tmp_path):
+    """QTextDocument has no API to remove a resource once added, and
+    setHtml() on the same document doesn't clear that cache either. If a
+    gallery image is removed and a *new, unrelated* image happens to reuse
+    its id, re-rendering the same document object would still answer with
+    the old image's bytes. update_preview() must give the preview a fresh
+    document each render instead of reusing/mutating the same one forever."""
+    project = Project(name="Test Project")
+    old_bytes = create_test_png_bytes(width=5, height=5)
+    old_image = Image(id="reused-id", name="old.png", storage_mode="copied")
+    old_image.set_bytes(old_bytes)
+    project.add_item(old_image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content="![Old](reused-id)")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    old_res = editor.preview.document().resource(QTextDocument.ResourceType.ImageResource, QUrl("reused-id"))
+    assert old_res.width() == 5
+
+    # Simulate the old image being removed and a new, unrelated image
+    # reusing the same id, with different pixel content.
+    project.remove_item(old_image)
+    new_bytes = create_test_png_bytes(width=9, height=9)
+    new_image = Image(id="reused-id", name="new.png", storage_mode="copied")
+    new_image.set_bytes(new_bytes)
+    project.add_item(new_image)
+
+    editor.preview.image_cache.clear()  # what on_project_item_changed_event does
+    editor.update_preview()
+
+    new_res = editor.preview.document().resource(QTextDocument.ResourceType.ImageResource, QUrl("reused-id"))
+    assert new_res.width() == 9  # not the stale 5x5 old image
 
 
 def test_note_editor_update_preview_and_event_refresh(qapp, tmp_path):
@@ -126,10 +280,44 @@ def test_note_editor_update_preview_and_event_refresh(qapp, tmp_path):
     res = doc.resource(QTextDocument.ResourceType.ImageResource, QUrl("plot.png"))
     assert res is not None and not res.isNull()
 
-    # Trigger project item changed event
+    # Trigger project item changed event for an image (only image/gallery
+    # changes should refresh the preview -- see the "unrelated event" test
+    # below).
     with patch.object(editor, "update_preview") as mock_update:
-        editor.on_project_item_changed_event({"event": ProjectEvents.PROJECT_ITEM_ADDED})
+        editor.on_project_item_changed_event(
+            {"event": ProjectEvents.PROJECT_ITEM_ADDED, "image_id": image.id}
+        )
         mock_update.assert_called_once()
+
+
+def test_note_editor_ignores_unrelated_project_item_events(qapp, tmp_path):
+    """Adding/renaming an unrelated note/dataset must not clear the image
+    cache or rerender the preview -- these are generic project-item events,
+    not necessarily about images at all."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="plot.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="My Note", content="![Plot](plot.png)")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    with patch.object(editor, "update_preview") as mock_update:
+        # A generic item event with no image/gallery id and an id that
+        # doesn't resolve to an Image/ImageGallery (e.g. an unrelated note
+        # being renamed) must be ignored.
+        editor.on_project_item_changed_event(
+            {"event": ProjectEvents.PROJECT_ITEM_RENAMED, "item_id": "some-other-note-id"}
+        )
+        mock_update.assert_not_called()
 
 
 def test_note_editor_export_pdf_registers_resources(qapp, tmp_path):
@@ -187,6 +375,72 @@ def test_note_image_picker_dialog_tree_and_selection(qapp):
     assert dialog.get_selected_image() == image
 
 
+def test_note_image_picker_dialog_scales_thumbnail_to_icon_size(qapp):
+    """A full-resolution gallery photo must be scaled down, not drawn at
+    native size and clipped/cropped inside the small tree icon."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes(width=1200, height=800)
+    image = Image(name="big_photo.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+    pix = dialog._load_pixmap_for_image(image)
+
+    assert pix is not None
+    assert pix.width() <= 24 and pix.height() <= 24
+
+
+def test_note_image_picker_dialog_falls_back_to_source_file_when_copied(qapp, tmp_path):
+    """Matches note_editor.load_qimage_for_item's fallback: a "copied" image
+    with no in-memory bytes yet but a leftover source_file should still load,
+    not show as broken, for consistency between the preview and the picker."""
+    real_file = tmp_path / "leftover.png"
+    real_file.write_bytes(create_test_png_bytes())
+
+    project = Project(name="Test Project")
+    image = Image(name="leftover.png", source_file=str(real_file), storage_mode="copied")
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+    pix = dialog._load_pixmap_for_image(image)
+
+    assert pix is not None and not pix.isNull()
+
+
+def test_note_image_picker_dialog_loads_thumbnails_via_task_scheduler(qapp, qtbot):
+    """Thumbnails decode on a TaskScheduler worker thread and land back on
+    the tree icon via the GUI-thread result callback, instead of blocking
+    __init__ synchronously for every image."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="photo1.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_design_tokens.return_value = {}
+    app_context.get_task_scheduler.return_value = TaskScheduler()
+
+    dialog = NoteImagePickerDialog(app_context=app_context, project=project)
+
+    # The decode is dispatched to a worker thread and hasn't necessarily
+    # completed yet -- but it must have been dispatched, not done inline.
+    assert image.id not in dialog._pixmap_cache or dialog._pixmap_cache[image.id] is None
+
+    dialog.task_scheduler.threadpool.waitForDone(2000)
+    qtbot.waitUntil(lambda: dialog._pixmap_cache.get(image.id) is not None, timeout=2000)
+
+    pix = dialog._pixmap_cache[image.id]
+    assert pix is not None and not pix.isNull()
+
+
 def test_note_image_picker_dialog_empty_state(qapp):
     project = Project(name="Empty Project")
     app_context = MagicMock()
@@ -222,4 +476,96 @@ def test_note_editor_insert_image_action(qapp):
     with patch("pandaplot.gui.components.tabs.note.note_editor.NoteImagePickerDialog", return_value=mock_dialog):
         editor.insert_image_from_picker()
 
-    assert editor.text_edit.toPlainText() == "![my_diagram.png](my_diagram.png)"
+    # References by immutable id (not the mutable/duplicatable name), with
+    # the name kept as alt text.
+    assert editor.text_edit.toPlainText() == f"![my_diagram.png]({image.id})"
+
+
+def test_note_editor_insert_image_applies_default_width_cap(qapp):
+    """A gallery image wider than the default cap gets a `=WIDTHx` modifier."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="wide.png", storage_mode="copied", width=1200, height=800)
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="Note 1", content="")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+
+    mock_dialog = MagicMock()
+    mock_dialog.exec.return_value = QDialog.DialogCode.Accepted
+    mock_dialog.get_selected_image.return_value = image
+
+    with patch("pandaplot.gui.components.tabs.note.note_editor.NoteImagePickerDialog", return_value=mock_dialog):
+        editor.insert_image_from_picker()
+
+    assert editor.text_edit.toPlainText() == f"![wide.png]({image.id} =500x)"
+
+
+def test_note_editor_insert_image_sanitizes_bracket_in_alt_text(qapp):
+    """A name containing "]" would otherwise close the Markdown alt-text span
+    early, breaking the whole image reference (there's no escape for it in
+    bare link syntax)."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="Screenshot [final].png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="Note 1", content="")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+
+    mock_dialog = MagicMock()
+    mock_dialog.exec.return_value = QDialog.DialogCode.Accepted
+    mock_dialog.get_selected_image.return_value = image
+
+    with patch("pandaplot.gui.components.tabs.note.note_editor.NoteImagePickerDialog", return_value=mock_dialog):
+        editor.insert_image_from_picker()
+
+    content = editor.text_edit.toPlainText()
+    assert content == f"![Screenshot (final).png]({image.id})"
+
+    # And it must actually render as an image, not fall back to plain text.
+    from pandaplot.services.note_render.latex_markdown_renderer import render_body_html
+    html = render_body_html(content)
+    assert "<img" in html
+
+
+def test_note_editor_insert_image_refreshes_preview_only_mode(qapp):
+    """Inserting while preview-only (no live textChanged connection) still refreshes."""
+    project = Project(name="Test Project")
+    png_bytes = create_test_png_bytes()
+    image = Image(name="my_diagram.png", storage_mode="copied")
+    image.set_bytes(png_bytes)
+    project.add_item(image)
+
+    app_context = MagicMock()
+    app_state = MagicMock()
+    app_state.current_project = project
+    app_context.get_app_state.return_value = app_state
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+
+    note = Note(name="Note 1", content="")
+    editor = NoteEditorWidget(app_context=app_context, note=note, parent=None)
+    editor.set_mode("preview")
+
+    mock_dialog = MagicMock()
+    mock_dialog.exec.return_value = QDialog.DialogCode.Accepted
+    mock_dialog.get_selected_image.return_value = image
+
+    with patch("pandaplot.gui.components.tabs.note.note_editor.NoteImagePickerDialog", return_value=mock_dialog):
+        with patch.object(editor, "update_preview") as mock_update:
+            editor.insert_image_from_picker()
+            mock_update.assert_called_once()
