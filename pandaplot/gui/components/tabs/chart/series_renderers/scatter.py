@@ -24,7 +24,7 @@ def render_scatter_series(axes, series_data: SeriesData, style: ScatterSeriesSty
             show_arrow=style.value_label_show_arrow,
             offset_x=style.value_label_offset_x,
             offset_y=style.value_label_offset_y,
-            text_color=style.value_label_text_color,
+            text_color=style.value_label_text_color or style.color,
             bg_color=style.value_label_bg_color,
             bg_alpha=style.value_label_bg_alpha,
         )

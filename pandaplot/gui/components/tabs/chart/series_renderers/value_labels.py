@@ -15,12 +15,19 @@ already positions the label without any offset/arrow concept.
 import pandas as pd
 
 
+def _format_number(value) -> str:
+    try:
+        return f"{value:.3g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _format_label(x: float, y: float, mode: str) -> str:
     if mode == "x":
-        return f"{x:.3g}"
+        return _format_number(x)
     if mode == "xy":
-        return f"{x:.3g}, {y:.3g}"
-    return f"{y:.3g}"
+        return f"{_format_number(x)}, {_format_number(y)}"
+    return _format_number(y)
 
 
 def annotate_point_labels(

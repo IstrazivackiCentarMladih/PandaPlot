@@ -214,6 +214,36 @@ def test_render_line_series_no_background_box_when_bg_color_unset():
     plt.close(fig)
 
 
+def test_render_line_series_value_label_color_falls_back_to_series_color():
+    """"Match series color" toggle writes value_label_text_color = "" --
+    the label must then take on the series' own rendered color, not
+    matplotlib's default text color (black)."""
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(color="#123456", show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert ax.texts[0].get_color() == "#123456"
+    plt.close(fig)
+
+
+def test_render_line_series_value_label_mode_x_handles_non_numeric_x():
+    """X-axis data can be categorical/string (or datetime) rather than
+    numeric -- unconditional f"{x:.3g}" raises TypeError for these, which
+    previously blanked the whole chart. Must fall back to str(value)."""
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_mode="x",
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(x_data=["a", "b", "c"]), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert [t.get_text() for t in ax.texts] == ["a", "b", "c"]
+    plt.close(fig)
+
+
 def test_render_scatter_series_value_label_mode_x_shows_x_value():
     fig, ax = plt.subplots()
     style = ScatterSeriesStyle(show_value_labels=True, value_label_mode="x",
@@ -238,6 +268,17 @@ def test_render_scatter_series_applies_text_color_and_background():
     bbox_patch = text.get_bbox_patch()
     assert bbox_patch is not None
     assert bbox_patch.get_alpha() == 0.25
+    plt.close(fig)
+
+
+def test_render_scatter_series_value_label_color_falls_back_to_series_color():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(color="#654321", show_value_labels=True,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(ax, _series_data(), style, "S", 1.0, visible=True, extra={})
+
+    assert ax.texts[0].get_color() == "#654321"
     plt.close(fig)
 
 
@@ -317,6 +358,16 @@ def test_render_bar_series_no_background_box_when_bg_color_unset():
     render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
 
     assert ax.texts[0].get_bbox_patch() is None
+    plt.close(fig)
+
+
+def test_render_bar_series_value_label_color_falls_back_to_series_color():
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#abcdef", show_value_labels=True)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
+
+    assert ax.texts[0].get_color() == "#abcdef"
     plt.close(fig)
 
 

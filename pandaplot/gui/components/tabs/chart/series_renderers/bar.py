@@ -23,5 +23,5 @@ def render_bar_series(axes, series_data: SeriesData, style: BarSeriesStyle,
             if style.value_label_bg_color else None
         )
         axes.bar_label(bars, fmt="%.3g", fontsize=8,
-                        color=style.value_label_text_color or None,
+                        color=style.value_label_text_color or style.color,
                         bbox=bbox)
