@@ -313,6 +313,26 @@ def test_render_scatter_series_value_label_color_falls_back_to_series_color():
     plt.close(fig)
 
 
+def test_render_scatter_series_value_label_color_falls_back_to_marker_color_not_base_color():
+    """"Match series color" must match the point's actually-rendered fill --
+    for Scatter that's `mfc` (marker.marker_color or style.color), not
+    style.color directly. Scatter has no drawn line to make style.color the
+    visible "series color" the way it is for Line, and the Style tab lets a
+    user override the marker's own fill color independently of `color`
+    (SeriesTypeSpec.supports_color=False for Scatter) -- so once a marker
+    color override is set, the label must follow IT, not the unused base
+    color underneath it."""
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(color="#654321", show_value_labels=True,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0,
+                                                    marker_color="#00ff00"))
+
+    render_scatter_series(ax, _series_data(), style, "S", 1.0, visible=True, extra={})
+
+    assert ax.texts[0].get_color() == "#00ff00"
+    plt.close(fig)
+
+
 def test_render_scatter_series_value_label_alpha_matches_renderer_alpha():
     fig, ax = plt.subplots()
     style = ScatterSeriesStyle(show_value_labels=True,
