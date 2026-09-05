@@ -11,6 +11,39 @@ from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.data_managers.project_manager import ProjectManager
 
 
+def flush_pending_note_edits(app_context: AppContext) -> None:
+    """Commit any open note tab's debounced, not-yet-saved edit into the
+    project model before a lifecycle guard reads/acts on AppState.is_modified.
+
+    NoteEditorWidget.on_content_changed() debounces its EditNoteCommand
+    behind a 2-second single-shot timer -- AppState.mark_modified() only
+    fires once that timer's auto_save() actually runs the command, not on
+    every keystroke (see note_editor.py). A lifecycle transition (Close/New/
+    Open/Exit) that races that window would otherwise see is_modified still
+    False and silently proceed past a note edit that exists only in the
+    tab's QTextEdit, never written to the Note/Project model. Best-effort:
+    a lookup or save failure here must never block the lifecycle transition
+    that called this.
+    """
+    from pandaplot.gui.components.tabs.tab_container import TabContainer
+
+    try:
+        tabs = list(app_context.get_manager(TabContainer).tabs.values())
+    except Exception:
+        return
+
+    for tab in tabs:
+        has_unsaved_changes = getattr(tab, "has_unsaved_changes", None)
+        save = getattr(tab, "save", None)
+        if not callable(has_unsaved_changes) or not callable(save):
+            continue
+        try:
+            if has_unsaved_changes():
+                save()
+        except Exception:
+            continue
+
+
 def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: bool = False) -> bool:
     """Return True if it's fine to proceed (no project loaded, or no
     unsaved changes, the user confirmed proceeding and (for an autosaving
