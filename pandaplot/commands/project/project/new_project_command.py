@@ -42,7 +42,12 @@ class NewProjectCommand(Command):
     def execute(self) -> CommandResult:
         """Execute the new project command."""
         try:
-            flush_pending_note_edits(self.app_context)
+            if not flush_pending_note_edits(self.app_context):
+                self.ui_controller.show_error_message(
+                    "Create New Project",
+                    "One or more open notes could not be saved. Save them manually before continuing.",
+                )
+                return CommandResult.FAILURE
 
             # Only prompt if closing the current project would actually
             # discard something -- an unmodified project has nothing to lose.

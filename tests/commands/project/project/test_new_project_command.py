@@ -146,7 +146,7 @@ def test_execute_flushes_pending_note_edits_before_checking_modified(monkeypatch
     calls = []
     monkeypatch.setattr(
         "pandaplot.commands.project.project.new_project_command.flush_pending_note_edits",
-        lambda ctx: calls.append(ctx),
+        lambda ctx: calls.append(ctx) or True,
     )
     app_context = _make_app_context(has_project=True, is_modified=False)
     app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
@@ -156,6 +156,23 @@ def test_execute_flushes_pending_note_edits_before_checking_modified(monkeypatch
 
     assert calls == [app_context]
     app_context.get_ui_controller.return_value.show_question.assert_not_called()
+
+
+def test_execute_fails_and_reports_an_error_when_flush_fails(monkeypatch):
+    """Regression (PR #352 review): a flush failure means a note edit is
+    still stuck unsaved -- must refuse to create the new project (which
+    would discard the current one) instead of silently proceeding."""
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_note_edits",
+        lambda ctx: False,
+    )
+    app_context = _make_app_context(has_project=True, is_modified=False)
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.FAILURE
+
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    app_context.get_ui_controller.return_value.show_new_project_dialog.assert_not_called()
 
 
 def test_redo_without_a_prior_execute_fails():
