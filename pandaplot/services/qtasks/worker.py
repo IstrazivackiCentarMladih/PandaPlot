@@ -1,4 +1,3 @@
-import inspect
 import sys
 import traceback
 from typing import Any, Callable, Optional, Protocol
@@ -8,7 +7,11 @@ from PySide6.QtCore import (
     Slot,
 )
 
-from pandaplot.services.qtasks.cancellation import CancellationToken, TaskCancelledError
+from pandaplot.services.qtasks.cancellation import (
+    CancellationToken,
+    TaskCancelledError,
+    build_cancellation_kwargs,
+)
 from pandaplot.services.qtasks.worker_signal import WorkerSignals
 
 
@@ -27,7 +30,7 @@ class Worker(QRunnable):
     :param kwargs: Keywords to pass to the callback function
     """
 
-    def __init__(self, fn: WorkerFuncType, cancellation_token: Optional[CancellationToken] = None, *args, **kwargs):
+    def __init__(self, fn: WorkerFuncType, *args, cancellation_token: Optional[CancellationToken] = None, **kwargs):
         super().__init__()
         self.fn = fn
         self.cancellation_token = cancellation_token or CancellationToken()
@@ -39,39 +42,31 @@ class Worker(QRunnable):
         self.kwargs["progress_callback"] = self.signals.progress.emit
 
         # Inspect fn signature to supply cancellation tokens if accepted or if **kwargs accepted
-        try:
-            sig = inspect.signature(fn)
-            params = sig.parameters
-            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+        self.kwargs.update(build_cancellation_kwargs(fn, self.cancellation_token))
 
-            if "is_cancelled" in params or has_var_keyword:
-                self.kwargs["is_cancelled"] = self.cancellation_token.is_cancelled
-            if "cancellation_token" in params or has_var_keyword:
-                self.kwargs["cancellation_token"] = self.cancellation_token
-        except (ValueError, TypeError):
-            # In case fn is a built-in or C-extension without signature support
-            pass
+    def _is_cancelled(self) -> bool:
+        return self.cancellation_token is not None and self.cancellation_token.is_cancelled()
 
     @Slot()
     def run(self):
-        if self.cancellation_token.is_cancelled():
+        if self._is_cancelled():
             self.signals.cancelled.emit()
             self.signals.finished.emit()
             return
 
         try:
             result = self.fn(*self.args, **self.kwargs)
-            if self.cancellation_token.is_cancelled():
+            if self._is_cancelled():
                 raise TaskCancelledError("Task was cancelled.")
         except TaskCancelledError:
             self.signals.cancelled.emit()
         except Exception:
-            if self.cancellation_token.is_cancelled():
-                self.signals.cancelled.emit()
-            else:
-                traceback.print_exc()
-                exctype, value = sys.exc_info()[:2]
-                self.signals.error.emit((exctype, value, traceback.format_exc()))
+            # Any exception other than TaskCancelledError is a genuine task
+            # failure, even if cancellation happens to have been requested
+            # around the same time - do not misreport it as a cancellation.
+            traceback.print_exc()
+            exctype, value = sys.exc_info()[:2]
+            self.signals.error.emit((exctype, value, traceback.format_exc()))
         else:
             self.signals.result.emit(result)
         finally:

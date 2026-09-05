@@ -1,4 +1,6 @@
+import inspect
 import threading
+from typing import Any, Callable, Dict
 
 
 class TaskCancelledError(Exception):
@@ -36,3 +38,24 @@ class CancellationToken:
         """Raise TaskCancelledError if cancellation has been requested."""
         if self.is_cancelled():
             raise TaskCancelledError("Task was cancelled.")
+
+
+def build_cancellation_kwargs(fn: Callable[..., Any], token: CancellationToken) -> Dict[str, Any]:
+    """Inspect fn's signature and return the is_cancelled/cancellation_token
+    kwargs it should be called with, based on which of them it declares (or,
+    if it accepts **kwargs, both).
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (ValueError, TypeError):
+        # fn is a built-in or C-extension without signature support.
+        return {}
+
+    has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+    kwargs: Dict[str, Any] = {}
+    if "is_cancelled" in params or has_var_keyword:
+        kwargs["is_cancelled"] = token.is_cancelled
+    if "cancellation_token" in params or has_var_keyword:
+        kwargs["cancellation_token"] = token
+    return kwargs

@@ -6,6 +6,8 @@ from PySide6.QtCore import QMutex, QMutexLocker, QThreadPool
 from pandaplot.services.qtasks.cancellation import CancellationToken
 from pandaplot.services.qtasks.worker import Worker, WorkerFuncType
 
+_RESERVED_TASK_ARGUMENT_KEYS = {"cancellation_token", "is_cancelled", "progress_callback"}
+
 
 class TaskScheduler:
     def __init__(self):
@@ -26,8 +28,13 @@ class TaskScheduler:
                  on_cancelled: Optional[Callable[[], None]] = None,
                  cancellation_token: Optional[CancellationToken] = None) -> CancellationToken:
         task_arguments = task_arguments if task_arguments is not None else {}
+        conflicting_keys = _RESERVED_TASK_ARGUMENT_KEYS & task_arguments.keys()
+        if conflicting_keys:
+            raise ValueError(
+                f"task_arguments must not include reserved keys: {sorted(conflicting_keys)}"
+            )
         token = cancellation_token or CancellationToken()
-        
+
         worker = Worker(
             task,
             cancellation_token=token,

@@ -1,12 +1,17 @@
 """Shared fixtures for command tests that dispatch work via TaskScheduler."""
 
-import inspect
 import traceback
 from typing import Any, Callable, Optional, Union
 
 import pytest
 
-from pandaplot.services.qtasks.cancellation import CancellationToken, TaskCancelledError
+from pandaplot.services.qtasks.cancellation import (
+    CancellationToken,
+    TaskCancelledError,
+    build_cancellation_kwargs,
+)
+
+_RESERVED_TASK_ARGUMENT_KEYS = {"cancellation_token", "is_cancelled", "progress_callback"}
 
 
 class SyncTaskScheduler:
@@ -30,22 +35,16 @@ class SyncTaskScheduler:
         cancellation_token: Optional[CancellationToken] = None,
     ) -> CancellationToken:
         task_arguments = task_arguments if task_arguments is not None else {}
+        conflicting_keys = _RESERVED_TASK_ARGUMENT_KEYS & task_arguments.keys()
+        if conflicting_keys:
+            raise ValueError(
+                f"task_arguments must not include reserved keys: {sorted(conflicting_keys)}"
+            )
         token = cancellation_token or CancellationToken()
         self._active_tokens.append((task, token))
 
         progress_callback = on_progress if on_progress is not None else (lambda _p: None)
-        extra_kwargs = {}
-
-        try:
-            sig = inspect.signature(task)
-            params = sig.parameters
-            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
-            if "is_cancelled" in params or has_var_keyword:
-                extra_kwargs["is_cancelled"] = token.is_cancelled
-            if "cancellation_token" in params or has_var_keyword:
-                extra_kwargs["cancellation_token"] = token
-        except (ValueError, TypeError):
-            pass
+        extra_kwargs = build_cancellation_kwargs(task, token)
 
         all_kwargs = {**task_arguments, "progress_callback": progress_callback, **extra_kwargs}
 
@@ -64,10 +63,10 @@ class SyncTaskScheduler:
             if on_cancelled:
                 on_cancelled()
         except Exception as e:
-            if token.is_cancelled():
-                if on_cancelled:
-                    on_cancelled()
-            elif on_error:
+            # Any exception other than TaskCancelledError is a genuine task
+            # failure, even if cancellation happens to have been requested
+            # around the same time - do not misreport it as a cancellation.
+            if on_error:
                 on_error((type(e), e, traceback.format_exc()))
         else:
             if on_result:
