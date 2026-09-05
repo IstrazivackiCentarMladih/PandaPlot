@@ -79,7 +79,7 @@ class EditImageCommand(Command):
                 item.image_ext = self.new_ext
             item.modified_at = datetime.datetime.now().isoformat()
 
-            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_RENAMED, {
+            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED, {
                 "project": project,
                 "item_id": item.id,
                 "image_id": item.id,
@@ -116,7 +116,7 @@ class EditImageCommand(Command):
             item.image_ext = self.old_image_ext
             item.modified_at = self.old_modified_at
 
-            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_RENAMED, {
+            self.app_state.event_bus.emit(ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED, {
                 "project": project,
                 "item_id": item.id,
                 "image_id": item.id,

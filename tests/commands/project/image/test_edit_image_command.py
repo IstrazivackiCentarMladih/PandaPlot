@@ -59,3 +59,27 @@ class TestEditImageCommand:
         assert image.width == 10
         assert image.height == 15
         assert image.get_bytes() == new_data
+
+    def test_execute_emits_content_changed_not_renamed(self, app_context_with_project):
+        from pandaplot.models.events.event_types import ProjectEvents
+
+        gallery_cmd = CreateImageGalleryCommand(app_context_with_project, gallery_name="Gallery")
+        gallery_cmd.execute()
+        gallery_id = gallery_cmd.created_gallery_id
+        project = app_context_with_project.get_app_state().current_project
+
+        image = Image(id="img-edit-2", name="Original", width=20, height=20, storage_mode="external")
+        image.set_bytes(_make_png_bytes(20, 20))
+        project.add_item(image, parent_id=gallery_id)
+
+        edit_cmd = EditImageCommand(
+            app_context_with_project, image_id="img-edit-2",
+            new_bytes=_make_png_bytes(10, 15), new_width=10, new_height=15, new_ext="png"
+        )
+        edit_cmd.execute()
+        edit_cmd.undo()
+
+        event_bus = app_context_with_project.get_app_state().event_bus
+        emitted_types = [call.args[0] for call in event_bus.emit.call_args_list]
+        assert emitted_types.count(ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED) == 2
+        assert ProjectEvents.PROJECT_ITEM_RENAMED not in emitted_types

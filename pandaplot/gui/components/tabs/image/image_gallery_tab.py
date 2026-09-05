@@ -274,6 +274,7 @@ class ImageGalleryTab(PWidget):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_changed)
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_MOVED, self._on_project_item_changed)
 
     def get_tab_title(self) -> str:

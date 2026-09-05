@@ -501,6 +501,17 @@ class TestImageGalleryTabMovedEvent:
         assert tab.grid.count() == 0
 
 
+class TestImageGalleryTabContentChangedEvent:
+    def test_subscribes_to_project_item_content_changed(self, app_context):
+        from pandaplot.models.events.event_types import ProjectEvents
+
+        gallery = ImageGallery(name="Trip")
+        ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+
+        subscribed_events = [call.args[0] for call in app_context.event_bus.subscribe.call_args_list]
+        assert ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED in subscribed_events
+
+
 class TestImageGalleryTabListViewSelection:
     """Regression coverage for the toolbar/context-menu acting on stale grid
     selection after the user has switched to (and selected in) list view."""
