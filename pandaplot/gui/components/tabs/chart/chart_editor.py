@@ -46,7 +46,7 @@ from pandaplot.models.chart.marker_style import MarkerStyle
 from pandaplot.models.chart.series_style import LineSeriesStyle
 from pandaplot.models.chart.series_type import SeriesType
 from pandaplot.models.chart.series_type_spec import SERIES_TYPE_SPECS
-from pandaplot.models.events.event_types import ConfigEvents
+from pandaplot.models.events.event_types import ChartEvents, ConfigEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.models.state.config import (
@@ -482,6 +482,7 @@ class ChartEditorWidget(PWidget):
         # render), so update_chart must explicitly remove the previous one
         # before drawing again, or stale colorbars would accumulate.
         self._colorbar = None
+        self._artist_series_map: dict = {}
 
         self._initialize()
         self.load_chart_config()
@@ -674,6 +675,7 @@ class ChartEditorWidget(PWidget):
         # Chart canvas
         self.chart_canvas = ChartCanvas(
             width=cm_to_inches(width_cm), height=cm_to_inches(height_cm), dpi=dpi)
+        self.chart_canvas.mpl_connect("pick_event", self._on_pick_event)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -826,8 +828,9 @@ class ChartEditorWidget(PWidget):
             is_3d = CHART_TYPE_SPECS[self.chart.chart_type].is_3d
             self.chart_canvas.set_projection(projection_3d=is_3d)
 
-            # Clear the current plot
+            # Clear the current plot and artist-to-series mapping
             self.chart_canvas.axes.clear()
+            self._artist_series_map.clear()
 
             # Reset the main axes to a fresh full-figure 1x1 gridspec. A colorbar's
             # default use_gridspec=True *subdivides* the gridspec, and that
@@ -931,6 +934,12 @@ class ChartEditorWidget(PWidget):
                     series_type = series.series_type
                     style = series.style
 
+                    # Track artists created during this series' render so clicking
+                    # on them selects this series.
+                    before_children = set(self.chart_canvas.axes.get_children())
+                    if self.chart_canvas.axes2 is not None:
+                        before_children.update(self.chart_canvas.axes2.get_children())
+
                     # Draw error bars BEFORE the series/marker renderer:
                     # matplotlib draws artists in the order they're added
                     # to the axes when zorder is tied (neither call here
@@ -967,6 +976,24 @@ class ChartEditorWidget(PWidget):
                             "color_limits": color_limits,
                         },
                     )
+
+                    after_children = set(self.chart_canvas.axes.get_children())
+                    if self.chart_canvas.axes2 is not None:
+                        after_children.update(self.chart_canvas.axes2.get_children())
+
+                    new_artists = after_children - before_children
+                    for artist in new_artists:
+                        # Set picking sensitivity on lines/collections/patches
+                        try:
+                            if hasattr(artist, "set_picker"):
+                                if hasattr(artist, "get_linewidth") and artist.get_linewidth() is not None:
+                                    artist.set_picker(5)
+                                else:
+                                    artist.set_picker(True)
+                        except Exception:
+                            pass
+                        self._artist_series_map[artist] = i
+
                     if mappable is None and series_type in SERIES_RENDERERS_REPORTING_NO_DATA:
                         series_errors.append(f"{series.label or f'Series {i + 1}'}: no plottable data")
                         continue
@@ -1015,7 +1042,8 @@ class ChartEditorWidget(PWidget):
                 # Plot fit data from chart.fit_data, routed to the same axis as
                 # the data series it was fitted from (if that series uses the
                 # secondary Y axis).
-                for fit in self.chart.fit_data:
+                total_data_series = len(self.chart.data_series)
+                for fit_idx, fit in enumerate(self.chart.fit_data):
                     if fit.visible:
                         fit_axes = self.chart_canvas.axes
                         if self.chart_canvas.axes2 is not None:
@@ -1036,6 +1064,10 @@ class ChartEditorWidget(PWidget):
                                                        fit.source_y_column_id, fit.source_y_column)):
                                     fit_axes = self.chart_canvas.axes2
                                     break
+
+                        before_children = set(self.chart_canvas.axes.get_children())
+                        if self.chart_canvas.axes2 is not None:
+                            before_children.update(self.chart_canvas.axes2.get_children())
 
                         # Plot the fit line
                         style = fit.style
@@ -1063,6 +1095,19 @@ class ChartEditorWidget(PWidget):
                                 fit.confidence_upper,
                                 color=band_color,
                                 alpha=style.band_fill_alpha)
+
+                        after_children = set(self.chart_canvas.axes.get_children())
+                        if self.chart_canvas.axes2 is not None:
+                            after_children.update(self.chart_canvas.axes2.get_children())
+
+                        combined_index = total_data_series + fit_idx
+                        for artist in after_children - before_children:
+                            try:
+                                if hasattr(artist, "set_picker"):
+                                    artist.set_picker(5)
+                            except Exception:
+                                pass
+                            self._artist_series_map[artist] = combined_index
 
             # Apply chart configuration
             config = self.chart.config
@@ -1391,6 +1436,17 @@ class ChartEditorWidget(PWidget):
                         bg_alpha=config.get("legend_bg_alpha", 1.0),
                         placement_kwargs=placement_kwargs,
                     )
+                    if legend is not None:
+                        # Map legend items (handles & labels) back to series/fit index
+                        for handle_art, text_art, orig_handle in zip(
+                            legend.legend_handles, legend.get_texts(), handles, strict=False
+                        ):
+                            series_idx = self._artist_series_map.get(orig_handle)
+                            if series_idx is not None:
+                                handle_art.set_picker(True)
+                                text_art.set_picker(True)
+                                self._artist_series_map[handle_art] = series_idx
+                                self._artist_series_map[text_art] = series_idx
 
             tight_layout_kwargs = dict(
                 pad=config.get("chart_padding", 2.0),
@@ -1422,6 +1478,16 @@ class ChartEditorWidget(PWidget):
         except Exception as e:
             self.logger.exception("Error updating chart")
             self.update_status(f"Chart error: {str(e)}")
+
+    def _on_pick_event(self, event):
+        """Handle click/pick events on chart artists (lines, scatter points, legend, etc.)."""
+        artist = getattr(event, "artist", None)
+        if artist in self._artist_series_map:
+            series_index = self._artist_series_map[artist]
+            self.publish_event(
+                ChartEvents.SERIES_SELECTED,
+                {"chart_id": self.chart.id, "series_index": series_index},
+            )
 
     def reset_chart(self):
         """Reset chart to default configuration."""

@@ -99,6 +99,7 @@ class ChartEvents:
     CHART_STYLE_CHANGED = "chart.style_changed"
     CHART_DATA_UPDATED = "chart.data_updated"
     CHART_SELECTED = "chart.selected"
+    SERIES_SELECTED = "chart.series_selected"
     CHART_PREVIEW_REQUESTED = "chart.preview_requested"
 
 
@@ -208,6 +209,7 @@ class EventHierarchy:
         "chart.style_changed": ["chart.style_changed"],
         "chart.data_updated": ["chart.data_updated"],
         "chart.selected": ["chart.selected"],
+        "chart.series_selected": ["chart.series_selected"],
         
         # UI events (no hierarchy needed)
         "ui.tab_changed": ["ui.tab_changed"],
