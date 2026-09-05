@@ -114,6 +114,44 @@ class TestSegmentRangeLabels:
         assert panel._build_parameters()["end_index"] == 51
 
 
+class TestSourceChangeResetsSegment:
+    """Regression: _on_source_changed only reset end_index (via
+    setMaximum()/setValue()) -- a nonzero start carried over from the
+    previous source either stayed as-is (if still in range) or got clamped
+    down to the new source's last index rather than reset to 0, leaving a
+    shrunk or degenerate one-point segment instead of actually selecting
+    the whole new series."""
+
+    def test_start_index_resets_to_zero_when_switching_to_a_shorter_source(self, app_context, project):
+        short_t = np.linspace(0.0, 0.05, 6)
+        short_dataset = Dataset(
+            id="ds-2", name="Short",
+            data=pd.DataFrame({"t": short_t, "signal": np.sin(2 * np.pi * 5 * short_t)}),
+        )
+        project.add_item(short_dataset)
+
+        chart = project.find_item("chart-1")
+        chart.add_data_series(
+            dataset_id="ds-2",
+            x_column_id=short_dataset.column_id("t"), y_column_id=short_dataset.column_id("signal"),
+            x_column="t", y_column="signal", label="Short",
+        )
+
+        panel = ChartSignalAnalysisPanel(app_context)
+        panel.current_chart = chart
+        panel.current_chart_id = "chart-1"
+        panel._populate_sources()
+
+        panel.source_combo.setCurrentIndex(0)  # the 101-point "Signal" series
+        panel.start_index.setValue(30)
+        assert panel.start_index.value() == 30
+
+        panel.source_combo.setCurrentIndex(1)  # the 6-point "Short" series
+
+        assert panel.start_index.value() == 0
+        assert panel.end_index.value() == panel.end_index.maximum()
+
+
 class TestMethodDropdownAndParameterWidgets:
     def test_method_dropdown_lists_exactly_the_signal_analyses(self, panel):
         assert panel.analysis_combo.count() == len(SIGNAL_ANALYSES)
@@ -518,3 +556,34 @@ class TestDatasetChangedInvalidatesCache:
 
         assert panel._range_command("series", 0) is stale_range_command
         assert panel.last_result is not None
+
+
+class TestShowEventRefresh:
+    """Regression: a Chart Properties > Data tab edit to a series'
+    dataset/X/Y binding mutates the chart live but deliberately emits only
+    `dirtyOnly`, not ChartEvents.CHART_UPDATED, and switching the active
+    sidebar panel emits nothing at all -- so neither of this panel's two
+    existing invalidation hooks ever fired for that edit. Qt's showEvent
+    (fired when PanelArea, a QStackedWidget, makes this panel current)
+    closes that gap."""
+
+    def test_show_event_refreshes_sources_and_invalidates_cache(self, panel):
+        stale_range_command = panel._range_command("series", 0)
+        panel.last_result = Mock()
+        panel._last_run_params = panel._get_dispatch_params()
+        generation_before = panel._generation
+
+        panel.show()
+
+        assert panel._generation != generation_before
+        assert panel.last_result is None
+        assert panel._range_command("series", 0) is not stale_range_command
+
+    def test_show_event_is_a_no_op_without_a_current_chart(self, app_context):
+        panel = ChartSignalAnalysisPanel(app_context)
+        panel.current_chart = None
+        generation_before = panel._generation
+
+        panel.show()
+
+        assert panel._generation == generation_before

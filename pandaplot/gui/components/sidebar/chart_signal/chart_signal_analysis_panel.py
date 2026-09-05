@@ -552,9 +552,16 @@ class ChartSignalAnalysisPanel(SidebarPanel):
             last = max(self._series_length(*source) - 1, 0)
         self.start_index.setMaximum(last)
         self.end_index.setMaximum(last)
-        # Default to the whole series -- the last included point -- whenever
-        # the source changes, since a previous value may no longer make
-        # sense against the new series' length.
+        # Default to the whole series -- start at the first point, end at
+        # the last -- whenever the source changes, since a previous value
+        # may no longer make sense against the new series' length.
+        # setMaximum() alone only clamps an out-of-range start down to
+        # `last` (not up to 0), which left a nonzero start from a longer
+        # previous source retained -- or, if it exceeded the new shorter
+        # source's last index, clamped to a degenerate one-point segment
+        # (start == end == last) rather than actually selecting the whole
+        # new series.
+        self.start_index.setValue(0)
         self.end_index.setValue(last)
         self._update_range_labels()
         self._refresh_sampling_rate_default()
@@ -652,6 +659,28 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # Only invalidate if this chart actually plots the changed dataset --
         # mirrors ChartTab.on_dataset_changed's own filter.
         if changed_dataset_id in self.current_chart.get_all_datasets():
+            self._populate_sources()
+
+    @override
+    def showEvent(self, event):
+        """Force a refresh whenever this panel becomes the visible sidebar
+        panel (PanelArea is a QStackedWidget, and Qt fires this on
+        setCurrentWidget()).
+
+        A Chart Properties > Data tab edit to a series' dataset/X/Y/type
+        binding mutates the chart live but deliberately emits only a
+        `dirtyOnly` signal, not ChartEvents.CHART_UPDATED (see data_tab.py's
+        _on_series_config_changed -- routing every keystroke-driven combo
+        change through CHART_UPDATED would redraw the chart on every one),
+        and switching the active sidebar panel emits nothing at all. Without
+        this, a user could edit a series' source in the Data tab, switch to
+        this panel, and have Add to Project's cached-result fast path commit
+        a preview computed from the pre-edit source. _populate_sources()
+        already does exactly the invalidation this scenario needs -- it's
+        just never otherwise triggered by either of those two events.
+        """
+        super().showEvent(event)
+        if self.current_chart is not None:
             self._populate_sources()
 
     # -- theme ------------------------------------------------------------------
