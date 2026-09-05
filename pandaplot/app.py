@@ -28,6 +28,7 @@ from pandaplot.storage.image_gallery_data_manager import ImageGalleryDataManager
 from pandaplot.storage.item_data_manager_factory import ItemDataManagerFactory
 from pandaplot.storage.note_data_manager import NoteDataManager
 from pandaplot.storage.project_data_manager import ProjectDataManager
+from pandaplot.storage.version_manager import VersionManager
 from pandaplot.utils.log import setup_logging
 
 
@@ -101,11 +102,12 @@ def build_app_context() -> AppContext:
         on_undo_redo_error=_warn_undo_redo_error,
     )
     task_scheduler = TaskScheduler()
+    version_manager = VersionManager()
 
     # Create list of managers to pass to AppContext. ProjectDataManager is
     # intentionally not registered here -- it's an implementation detail
     # owned by ProjectManager, not something commands should fetch directly.
-    managers = [command_executor, ui_controller, config_manager, theme_manager, session_manager, auto_save_manager, task_scheduler, project_manager, tab_factory]
+    managers = [command_executor, ui_controller, config_manager, theme_manager, session_manager, auto_save_manager, task_scheduler, project_manager, tab_factory, version_manager]
 
     app_context = AppContext(app_state=app_state, event_bus=event_bus, managers=managers)
     # AutoSaveManager needs the AppContext itself (to construct SaveProjectCommand),
