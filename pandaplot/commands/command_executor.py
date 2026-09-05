@@ -51,10 +51,11 @@ class CommandExecutor:
             self.logger.error("Error in on_undo_redo_error hook: %s", str(e), exc_info=True)
 
     def _notify_project_modified(self, command: Command) -> None:
-        if not (self.on_project_modified and command.marks_project_modified()):
+        if not self.on_project_modified:
             return
         try:
-            self.on_project_modified()
+            if command.marks_project_modified():
+                self.on_project_modified()
         except Exception as e:
             self.logger.error("Error in on_project_modified hook: %s", str(e), exc_info=True)
 

@@ -737,6 +737,35 @@ class TestProjectModifiedHook:
         assert failing.cleanup_count == 1
         assert len(history_calls) == 1
 
+    def test_a_raising_marks_project_modified_does_not_prevent_recovery_from_a_failed_undo(self):
+        """marks_project_modified() is itself overridable, so it can raise
+        just like on_project_modified can -- it must get the same isolation,
+        since it now runs inside the same try as the hook it gates."""
+
+        class RaisingMarksProjectModifiedCommand(MockCommand):
+            def marks_project_modified(self) -> bool:
+                raise RuntimeError("marks_project_modified failed")
+
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = RaisingMarksProjectModifiedCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert calls == []
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""
@@ -925,32 +954,32 @@ class TestUndoRedoErrorHook:
     the whole history is invalidated rather than just the failed command --
     see TestUndoFunctionality.test_undo_failure_invalidates_the_entire_history."""
 
-    def test_undo_failure_calls_the_hook_with_command_name_and_operation(self):
+    def test_undo_failure_calls_the_hook_with_command_display_name_and_operation(self):
         executor = CommandExecutor()
         executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
         calls = []
-        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
 
         executor.undo()
 
-        assert calls == [("MockCommand", "undo")]
+        assert calls == [("Mock", "undo")]
 
-    def test_redo_failure_calls_the_hook_with_command_name_and_operation(self):
+    def test_redo_failure_calls_the_hook_with_command_display_name_and_operation(self):
         executor = CommandExecutor()
         executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
         executor.undo()
         calls = []
-        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
 
         executor.redo()
 
-        assert calls == [("MockCommand", "redo")]
+        assert calls == [("Mock", "redo")]
 
     def test_successful_undo_does_not_call_the_hook(self):
         executor = CommandExecutor()
         executor.execute_command(MockCommand())
         calls = []
-        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
 
         executor.undo()
 
@@ -961,7 +990,7 @@ class TestUndoRedoErrorHook:
         executor.execute_command(MockCommand())
         executor.undo()
         calls = []
-        executor.on_undo_redo_error = lambda command_name, operation: calls.append((command_name, operation))
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
 
         executor.redo()
 
@@ -985,7 +1014,7 @@ class TestUndoRedoErrorHook:
         command.cleanup()."""
         executor = CommandExecutor()
         executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
-        executor.on_undo_redo_error = lambda command_name, operation: (_ for _ in ()).throw(RuntimeError("dialog failed"))
+        executor.on_undo_redo_error = lambda command_description, operation: (_ for _ in ()).throw(RuntimeError("dialog failed"))
         history_calls = []
         executor.on_history_changed = lambda: history_calls.append(None)
 
