@@ -139,6 +139,25 @@ def test_redo_restores_the_created_project_without_reprompting():
     assert redone is created
 
 
+def test_execute_flushes_pending_note_edits_before_checking_modified(monkeypatch):
+    """Regression (#318): a note's debounced edit must be flushed (and so
+    reflected in is_modified) before this command decides whether creating
+    a new project would discard anything."""
+    calls = []
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_note_edits",
+        lambda ctx: calls.append(ctx),
+    )
+    app_context = _make_app_context(has_project=True, is_modified=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+
+    assert calls == [app_context]
+    app_context.get_ui_controller.return_value.show_question.assert_not_called()
+
+
 def test_redo_without_a_prior_execute_fails():
     """If execute() never completed (so nothing was ever pushed onto the
     undo stack in the first place), redo() must not crash trying to

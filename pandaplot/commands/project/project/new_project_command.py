@@ -1,6 +1,7 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.project.unsaved_changes import flush_pending_note_edits
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state import AppContext, AppState
@@ -41,6 +42,8 @@ class NewProjectCommand(Command):
     def execute(self) -> CommandResult:
         """Execute the new project command."""
         try:
+            flush_pending_note_edits(self.app_context)
+
             # Only prompt if closing the current project would actually
             # discard something -- an unmodified project has nothing to lose.
             if self.app_state.has_project and self.app_state.is_modified:
