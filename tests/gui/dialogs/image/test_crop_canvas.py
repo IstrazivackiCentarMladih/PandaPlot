@@ -5,6 +5,19 @@ from PySide6.QtWidgets import QApplication
 
 from pandaplot.gui.dialogs.image.crop_canvas import CropCanvas
 
+from PySide6.QtCore import QEvent, QPointF
+from PySide6.QtGui import QMouseEvent
+
+
+def _mouse_event(event_type: QEvent.Type, pos: QPoint) -> QMouseEvent:
+    # Uses the (local, global) overload rather than the 5-positional-arg one
+    # (type, localPos, button, buttons, modifiers) -- the latter is flagged
+    # deprecated by PySide6 even when a device is supplied explicitly.
+    from PySide6.QtCore import Qt as _Qt
+    point = QPointF(pos)
+    return QMouseEvent(event_type, point, point, _Qt.MouseButton.LeftButton,
+                        _Qt.MouseButton.LeftButton, _Qt.KeyboardModifier.NoModifier)
+
 
 @pytest.fixture(scope="module", autouse=True)
 def qapp():
@@ -129,3 +142,34 @@ class TestCropCanvasAspectLock:
         assert len(received) == 1
         assert received[0].width() == 100
         assert received[0].height() == 50
+
+
+class TestCropCanvasMouseDrag:
+    def test_dragging_body_moves_rect_and_emits_signal(self):
+        canvas = _make_canvas(widget_size=(200, 200), image_size=(100, 100))
+        canvas.set_crop_rect(QRect(20, 20, 40, 40))  # widget-space (40,40)-(120,120)
+        received = []
+        canvas.cropRectChanged.connect(received.append)
+
+        canvas.mousePressEvent(_mouse_event(QEvent.Type.MouseButtonPress, QPoint(60, 60)))
+        canvas.mouseMoveEvent(_mouse_event(QEvent.Type.MouseMove, QPoint(70, 60)))
+        canvas.mouseReleaseEvent(_mouse_event(QEvent.Type.MouseButtonRelease, QPoint(70, 60)))
+
+        assert len(received) == 1
+        # 10 widget px at 2x scale (200 widget / 100 image) == 5 image px
+        assert canvas.crop_rect().left() == 25
+
+    def test_dragging_outside_rect_does_nothing(self):
+        canvas = _make_canvas(widget_size=(200, 200), image_size=(100, 100))
+        canvas.set_crop_rect(QRect(20, 20, 40, 40))
+        original = canvas.crop_rect()
+
+        canvas.mousePressEvent(_mouse_event(QEvent.Type.MouseButtonPress, QPoint(5, 5)))
+        canvas.mouseMoveEvent(_mouse_event(QEvent.Type.MouseMove, QPoint(50, 50)))
+
+        assert canvas.crop_rect() == original
+
+    def test_paint_event_does_not_raise_on_null_image(self):
+        canvas = CropCanvas()
+        canvas.resize(100, 100)
+        canvas.repaint()  # must not raise even with no image loaded

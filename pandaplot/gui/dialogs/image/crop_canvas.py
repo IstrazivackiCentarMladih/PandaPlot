@@ -10,7 +10,7 @@ exists, starting at the full image bounds.
 from typing import Dict, Optional
 
 from PySide6.QtCore import QPoint, QRect, Qt, Signal
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QBrush, QColor, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
 _HANDLE_SIZE = 8
@@ -204,3 +204,65 @@ class CropCanvas(QWidget):
         width = max(1, rect.width())
         height = max(1, round(width / ratio))
         return QRect(rect.left(), rect.top(), width, height)
+
+    # ---- Qt event handlers -------------------------------------------
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        pos = event.position().toPoint()
+        self._active_handle = self.hit_test(pos)
+        if self._active_handle is not None:
+            self._drag_start_widget_pos = pos
+            self._drag_start_rect = QRect(self._crop_rect)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._active_handle is None or self._drag_start_widget_pos is None:
+            return
+        pos = event.position().toPoint()
+        if self._active_handle == "body":
+            start_img = self._widget_to_image(self._drag_start_widget_pos)
+            current_img = self._widget_to_image(pos)
+            delta = QPoint(current_img.x() - start_img.x(), current_img.y() - start_img.y())
+            new_rect = self.move_rect(self._drag_start_rect, delta)
+        else:
+            new_point = self._widget_to_image(pos)
+            new_rect = self.resize_rect_from_handle(self._drag_start_rect, self._active_handle, new_point)
+        self._crop_rect = new_rect
+        self.update()
+        self.cropRectChanged.emit(self.crop_rect())
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self._active_handle = None
+        self._drag_start_widget_pos = None
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor("#202020"))
+        if self._image.isNull():
+            return
+
+        display = self._display_rect()
+        painter.drawImage(display, self._image)
+
+        crop_widget_rect = QRect(
+            self._image_to_widget(self._crop_rect.topLeft()),
+            self._image_to_widget(self._crop_rect.bottomRight()),
+        )
+
+        overlay = QColor(0, 0, 0, 140)
+        painter.fillRect(QRect(display.left(), display.top(), display.width(), crop_widget_rect.top() - display.top()), overlay)
+        painter.fillRect(QRect(display.left(), crop_widget_rect.bottom(), display.width(), display.bottom() - crop_widget_rect.bottom()), overlay)
+        painter.fillRect(QRect(display.left(), crop_widget_rect.top(), crop_widget_rect.left() - display.left(), crop_widget_rect.height()), overlay)
+        painter.fillRect(QRect(crop_widget_rect.right(), crop_widget_rect.top(), display.right() - crop_widget_rect.right(), crop_widget_rect.height()), overlay)
+
+        painter.setPen(QPen(QColor("white"), 1))
+        painter.drawRect(crop_widget_rect)
+
+        painter.setBrush(QBrush(QColor("white")))
+        for handle_rect in self._handle_widget_rects().values():
+            half = _HANDLE_SIZE // 2
+            center = handle_rect.center()
+            painter.drawRect(QRect(center.x() - half, center.y() - half, _HANDLE_SIZE, _HANDLE_SIZE))
