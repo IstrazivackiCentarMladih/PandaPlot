@@ -140,8 +140,14 @@ def test_bar_series_style_fields_and_defaults():
     style = BarSeriesStyle()
     assert style.color == "#1f77b4"
     assert style.show_value_labels is False
+    assert style.value_label_text_color == ""
+    assert style.value_label_bg_color == ""
+    assert style.value_label_bg_alpha == 1.0
     assert isinstance(style.error_bars, ErrorBarConfig)
-    assert {f.name for f in dataclasses.fields(style)} == {"color", "error_bars", "show_value_labels"}
+    assert {f.name for f in dataclasses.fields(style)} == {
+        "color", "error_bars", "show_value_labels",
+        "value_label_text_color", "value_label_bg_color", "value_label_bg_alpha",
+    }
 
 
 def test_bar_series_style_error_bars_are_independent_instances():
