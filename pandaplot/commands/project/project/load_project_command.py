@@ -89,7 +89,12 @@ class LoadProjectCommand(Command):
                 self.logger.info("'%s' is already open; skipping reload", self.file_path)
                 return CommandResult.NOOP
 
-            flush_pending_note_edits(self.app_context)
+            if not flush_pending_note_edits(self.app_context):
+                self.ui_controller.show_error_message(
+                    "Open Project",
+                    "One or more open notes could not be saved. Save them manually before continuing.",
+                )
+                return CommandResult.FAILURE
 
             if self.app_state.has_project and self.app_state.is_modified:
                 should_continue = self.ui_controller.show_question(

@@ -216,7 +216,7 @@ class TestLoadProjectCommandGuards:
         calls = []
         monkeypatch.setattr(
             "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
-            lambda ctx: calls.append(ctx),
+            lambda ctx: calls.append(ctx) or True,
         )
         app_context, _ = _make_configured_app_context(
             has_project=True, project_file_path="/p/current.pplot", is_modified=False)
@@ -232,13 +232,30 @@ class TestLoadProjectCommandGuards:
         calls = []
         monkeypatch.setattr(
             "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
-            lambda ctx: calls.append(ctx),
+            lambda ctx: calls.append(ctx) or True,
         )
         app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
         command = LoadProjectCommand(app_context, "/p/current.pplot")
 
         assert command.execute() is CommandResult.NOOP
         assert calls == []
+
+    def test_execute_fails_and_reports_an_error_when_flush_fails(self, monkeypatch):
+        """Regression (PR #352 review): a flush failure means a note edit is
+        still stuck unsaved -- must refuse to load a different project
+        (which would discard the current one) instead of silently
+        proceeding with a stale is_modified reading."""
+        monkeypatch.setattr(
+            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            lambda ctx: False,
+        )
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=False)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+
+        assert command.execute() is CommandResult.FAILURE
+        command.ui_controller.show_error_message.assert_called_once()
+        command.task_scheduler.run_task.assert_not_called()
 
 
 @pytest.fixture
