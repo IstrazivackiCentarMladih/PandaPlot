@@ -214,6 +214,36 @@ def test_render_line_series_no_background_box_when_bg_color_unset():
     plt.close(fig)
 
 
+def test_render_line_series_skips_nan_points_when_annotating():
+    """NaN in either X or Y must skip that point's label entirely -- see
+    annotate_point_labels' `pd.isna(x) or pd.isna(y): continue` guard."""
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(
+        ax, _series_data(x_data=[1, np.nan, 3], y_data=[4, 5, np.nan]), style, "L", 1.0,
+        visible=True, extra={"resolve_fill_baseline": lambda q, horizontal: 0.0},
+    )
+
+    assert [t.get_text() for t in ax.texts] == ["4"]
+    plt.close(fig)
+
+
+def test_render_scatter_series_skips_nan_points_when_annotating():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(show_value_labels=True,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(
+        ax, _series_data(x_data=[1, np.nan, 3], y_data=[4, 5, np.nan]), style, "S", 1.0,
+        visible=True, extra={},
+    )
+
+    assert [t.get_text() for t in ax.texts] == ["4"]
+    plt.close(fig)
+
+
 def test_render_line_series_value_label_alpha_matches_renderer_alpha():
     """Value labels must fade with the series' own effective alpha (already
     computed by the caller as `series.alpha if series.visible else 0.3`,
