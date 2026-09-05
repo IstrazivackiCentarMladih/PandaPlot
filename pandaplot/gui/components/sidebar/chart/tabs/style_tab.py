@@ -1000,16 +1000,6 @@ class StyleTab(QWidget):
         # have just changed.
         self._update_marker_controls_enabled()
         self._update_colormap_gridding_visibility()
-        # Re-sync the master toggle from the (possibly just-changed) target's
-        # own model state -- mirrors load_series_style's sync of this same
-        # toggle, needed here too since a target switch may reach this method
-        # without going through load_series_style first (e.g. _on_chip_
-        # selected's "chart"/"axes" branches, or a test driving _current_
-        # target directly).
-        if kind == "series" and isinstance(obj, DataSeries):
-            self.value_labels_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.value_labels_enabled_toggle.setChecked(checked=getattr(obj.style, "show_value_labels", False))
-            self.value_labels_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
         self._update_value_labels_controls_visibility()
 
     def _build_axis_style_form(self, prefix: str):

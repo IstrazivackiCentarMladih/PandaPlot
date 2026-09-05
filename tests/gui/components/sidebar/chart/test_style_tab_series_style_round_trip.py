@@ -276,6 +276,7 @@ def test_value_labels_mode_and_arrow_controls_hidden_for_bar_shown_for_line():
     tab.set_chart_type(ChartType.LINE)
 
     line_series = _line_series(color="#112233", show_value_labels=True)
+    tab.load_series_style(line_series)
     tab._current_target = ("series", line_series)
     tab._update_target_cards_visibility()
     assert tab.value_labels_mode_control.isVisible() is True
@@ -283,6 +284,7 @@ def test_value_labels_mode_and_arrow_controls_hidden_for_bar_shown_for_line():
     assert tab.value_labels_offset_x_spin.isVisible() is True
 
     bar_series = _line_series(series_type=SeriesType.BAR, color="#112233", show_value_labels=True)
+    tab.load_series_style(bar_series)
     tab._current_target = ("series", bar_series)
     tab._update_target_cards_visibility()
     assert tab.value_labels_mode_control.isVisible() is False
@@ -299,6 +301,7 @@ def test_value_labels_sub_controls_hidden_when_toggle_off():
     tab.show()
     tab.set_chart_type(ChartType.LINE)
     series = _line_series(color="#112233", show_value_labels=False)
+    tab.load_series_style(series)
     tab._current_target = ("series", series)
 
     tab._update_target_cards_visibility()
@@ -314,6 +317,7 @@ def test_value_labels_text_color_row_hidden_while_matching_series_color():
     tab.show()
     tab.set_chart_type(ChartType.LINE)
     series = _line_series(color="#112233", show_value_labels=True)
+    tab.load_series_style(series)
     tab._current_target = ("series", series)
     tab._update_target_cards_visibility()
     assert tab.value_labels_match_color_toggle.isChecked() is True  # default: "" == match
@@ -329,6 +333,7 @@ def test_value_labels_background_controls_hidden_until_enabled():
     tab.show()
     tab.set_chart_type(ChartType.LINE)
     series = _line_series(color="#112233", show_value_labels=True)
+    tab.load_series_style(series)
     tab._current_target = ("series", series)
     tab._update_target_cards_visibility()
     assert tab.value_labels_bg_enabled_toggle.isChecked() is False  # default: no background
