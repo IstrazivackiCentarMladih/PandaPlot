@@ -92,6 +92,13 @@ class TestCropCanvasResizeFromHandle:
         assert result.height() == 40  # 80 / 2.0
         assert result.topLeft() == QPoint(0, 0)  # tl anchor unaffected by drag y
 
+    def test_tl_handle_with_aspect_lock_keeps_opposite_corner_fixed(self):
+        canvas = _make_canvas(image_size=(200, 200))
+        canvas.set_aspect_lock(2.0)  # width:height == 2:1
+        rect = QRect(10, 10, 60, 60)  # exclusive bottom-right at (70, 70)
+        result = canvas.resize_rect_from_handle(rect, "tl", QPoint(20, 20))
+        assert (result.left() + result.width(), result.top() + result.height()) == (70, 70)
+
     def test_tm_handle_with_aspect_lock_derives_width_anchored_at_left(self):
         canvas = _make_canvas(image_size=(200, 200))
         canvas.set_aspect_lock(2.0)

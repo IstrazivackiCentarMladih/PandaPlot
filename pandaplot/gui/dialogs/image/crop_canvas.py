@@ -177,8 +177,8 @@ class CropCanvas(QWidget):
         # Corner handle: derive height from the dragged width, anchored at
         # the opposite corner so that corner stays fixed on screen.
         height = max(1, round(width / ratio))
-        anchor_x = old_rect.right() if "l" in handle else old_rect.left()
-        anchor_y = old_rect.bottom() if "t" in handle else old_rect.top()
+        anchor_x = old_rect.left() + old_rect.width() if "l" in handle else old_rect.left()
+        anchor_y = old_rect.top() + old_rect.height() if "t" in handle else old_rect.top()
         left = anchor_x - width if "l" in handle else anchor_x
         top = anchor_y - height if "t" in handle else anchor_y
         return QRect(left, top, width, height)
