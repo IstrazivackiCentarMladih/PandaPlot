@@ -344,6 +344,19 @@ class Chart(Item):
             # column.
             new_style.z_column_id = old_style.z_column_id
             new_style.z_column = old_style.z_column
+        # Value labels (#125): carry over show_value_labels plus whichever
+        # of the mode/arrow/offset/color/background fields the new style
+        # class also declares -- Line/Scatter share the full set, Bar only
+        # the color/background/alpha subset (see BarSeriesStyle), so this
+        # loop naturally carries over exactly the overlap instead of
+        # needing a per-pair-of-types list.
+        for field_name in (
+            "show_value_labels", "value_label_mode", "value_label_show_arrow",
+            "value_label_offset_x", "value_label_offset_y", "value_label_text_color",
+            "value_label_bg_color", "value_label_bg_alpha",
+        ):
+            if hasattr(old_style, field_name) and hasattr(new_style, field_name):
+                setattr(new_style, field_name, getattr(old_style, field_name))
         series.style = new_style
         self.update_modified_time()
 
