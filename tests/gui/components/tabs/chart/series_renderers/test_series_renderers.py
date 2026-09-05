@@ -125,6 +125,122 @@ def test_render_line_series_draws_no_annotations_when_show_value_labels_is_unset
     plt.close(fig)
 
 
+def test_render_line_series_value_label_mode_x_shows_x_value():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_mode="x",
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert [t.get_text() for t in ax.texts] == ["1", "2", "3"]
+    plt.close(fig)
+
+
+def test_render_line_series_value_label_mode_xy_shows_both():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_mode="xy",
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert [t.get_text() for t in ax.texts] == ["1, 4", "2, 5", "3, 6"]
+    plt.close(fig)
+
+
+def test_render_line_series_draws_arrow_when_show_arrow_is_set():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_show_arrow=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert all(t.arrow_patch is not None for t in ax.texts)
+    plt.close(fig)
+
+
+def test_render_line_series_no_arrow_by_default():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert all(t.arrow_patch is None for t in ax.texts)
+    plt.close(fig)
+
+
+def test_render_line_series_uses_custom_offset():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_offset_x=3.0, value_label_offset_y=-4.0,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert all(t.xyann == (3.0, -4.0) for t in ax.texts)
+    plt.close(fig)
+
+
+def test_render_line_series_applies_text_color_and_background():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_text_color="#ff0000",
+                             value_label_bg_color="#00ff00", value_label_bg_alpha=0.5,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    text = ax.texts[0]
+    assert text.get_color() == "#ff0000"
+    bbox_patch = text.get_bbox_patch()
+    assert bbox_patch is not None
+    assert bbox_patch.get_alpha() == 0.5
+    plt.close(fig)
+
+
+def test_render_line_series_no_background_box_when_bg_color_unset():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 1.0, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert ax.texts[0].get_bbox_patch() is None
+    plt.close(fig)
+
+
+def test_render_scatter_series_value_label_mode_x_shows_x_value():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(show_value_labels=True, value_label_mode="x",
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(ax, _series_data(), style, "S", 1.0, visible=True, extra={})
+
+    assert [t.get_text() for t in ax.texts] == ["1", "2", "3"]
+    plt.close(fig)
+
+
+def test_render_scatter_series_applies_text_color_and_background():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(show_value_labels=True, value_label_text_color="#123123",
+                                value_label_bg_color="#456456", value_label_bg_alpha=0.25,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(ax, _series_data(), style, "S", 1.0, visible=True, extra={})
+
+    text = ax.texts[0]
+    assert text.get_color() == "#123123"
+    bbox_patch = text.get_bbox_patch()
+    assert bbox_patch is not None
+    assert bbox_patch.get_alpha() == 0.25
+    plt.close(fig)
+
+
 def test_render_scatter_series_draws_a_scatter_collection():
     fig, ax = plt.subplots()
     style = ScatterSeriesStyle(color="#123456", marker=MarkerStyle(marker_style="square", marker_size=3.0))

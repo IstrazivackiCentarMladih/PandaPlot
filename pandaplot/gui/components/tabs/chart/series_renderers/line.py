@@ -23,7 +23,16 @@ def render_line_series(axes, series_data: SeriesData, style: LineSeriesStyle,
               label=label,
               alpha=alpha)
     if style.show_value_labels:
-        annotate_point_labels(axes, series_data.x_data, series_data.y_data)
+        annotate_point_labels(
+            axes, series_data.x_data, series_data.y_data,
+            mode=style.value_label_mode,
+            show_arrow=style.value_label_show_arrow,
+            offset_x=style.value_label_offset_x,
+            offset_y=style.value_label_offset_y,
+            text_color=style.value_label_text_color,
+            bg_color=style.value_label_bg_color,
+            bg_alpha=style.value_label_bg_alpha,
+        )
     if style.fill_enabled:
         resolve_fill_baseline = extra["resolve_fill_baseline"]
         fill_color = style.fill_color or style.color
