@@ -131,3 +131,76 @@ class CropCanvas(QWidget):
         if crop_widget_rect.contains(widget_pos):
             return "body"
         return None
+
+    def resize_rect_from_handle(self, rect: QRect, handle: str, new_point: QPoint) -> QRect:
+        """Pure function: returns rect with `handle` dragged to new_point
+        (image coordinates), honoring the current aspect lock if any.
+
+        Builds the new rect from continuous (exclusive) left/top/right/
+        bottom bounds -- right = left + width, bottom = top + height --
+        rather than via QRect.setRight()/setBottom(). Those Qt methods use
+        the inclusive convention right() == left() + width() - 1, which
+        would add a spurious +1 to width/height whenever the right or
+        bottom edge is the one being dragged.
+        """
+        left, top = rect.left(), rect.top()
+        right, bottom = rect.left() + rect.width(), rect.top() + rect.height()
+        if "l" in handle:
+            left = new_point.x()
+        if "r" in handle:
+            right = new_point.x()
+        if "t" in handle:
+            top = new_point.y()
+        if "b" in handle:
+            bottom = new_point.y()
+        r = QRect(left, top, right - left, bottom - top).normalized()
+        if self._aspect_lock:
+            r = self._apply_aspect_lock(rect, r, handle, self._aspect_lock)
+        return self._clamp_to_image(r)
+
+    def _apply_aspect_lock(self, old_rect: QRect, new_rect: QRect, handle: str, ratio: float) -> QRect:
+        width = max(1, new_rect.width())
+        height = max(1, new_rect.height())
+
+        if handle in ("tm", "bm"):
+            # Only the top/bottom edge is dragged; derive width from the
+            # resulting height, anchored at the old left edge.
+            width = max(1, round(height * ratio))
+            return QRect(old_rect.left(), new_rect.top(), width, height)
+
+        if handle in ("ml", "mr"):
+            # Only the left/right edge is dragged; derive height from the
+            # resulting width, anchored at the old top edge.
+            height = max(1, round(width / ratio))
+            return QRect(new_rect.left(), old_rect.top(), width, height)
+
+        # Corner handle: derive height from the dragged width, anchored at
+        # the opposite corner so that corner stays fixed on screen.
+        height = max(1, round(width / ratio))
+        anchor_x = old_rect.right() if "l" in handle else old_rect.left()
+        anchor_y = old_rect.bottom() if "t" in handle else old_rect.top()
+        left = anchor_x - width if "l" in handle else anchor_x
+        top = anchor_y - height if "t" in handle else anchor_y
+        return QRect(left, top, width, height)
+
+    def move_rect(self, rect: QRect, delta: QPoint) -> QRect:
+        """Pure function: translates rect by delta (image coordinates),
+        clamped so it stays fully within the image bounds."""
+        moved = rect.translated(delta)
+        bounds = QRect(0, 0, self._image.width(), self._image.height())
+        if moved.left() < bounds.left():
+            moved.moveLeft(bounds.left())
+        if moved.top() < bounds.top():
+            moved.moveTop(bounds.top())
+        if moved.right() > bounds.right():
+            moved.moveRight(bounds.right())
+        if moved.bottom() > bounds.bottom():
+            moved.moveBottom(bounds.bottom())
+        return moved
+
+    def _reflow_to_aspect(self, rect: QRect, ratio: float) -> QRect:
+        """Used when the aspect lock changes: keeps the rect's top-left and
+        width fixed, derives height from the new ratio."""
+        width = max(1, rect.width())
+        height = max(1, round(width / ratio))
+        return QRect(rect.left(), rect.top(), width, height)
