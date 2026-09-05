@@ -134,6 +134,53 @@ class TestLoadProjectCommandRaceGuard:
         app_context.get_ui_controller.return_value.show_question.assert_not_called()
         app_state.load_project.assert_called_once_with(project)
 
+    def test_reconfirms_for_a_note_edit_flushed_during_the_load(self, monkeypatch):
+        """Regression (PR #352 review): a note edit typed while the load ran
+        in the background can still be inside its 2s debounce window when
+        this callback fires -- modification_revision would read unchanged
+        (the EditNoteCommand hasn't run yet) unless it's flushed here too,
+        the same way LoadProjectCommand.execute()'s own pre-dispatch check
+        needed flushing. Without this, the callback would silently install
+        the loaded project over that not-yet-committed edit."""
+        command, app_context, app_state = self._dispatch()
+
+        def fake_flush(ctx):
+            app_state.modification_revision = 1  # simulates the note's EditNoteCommand landing
+            return True
+
+        monkeypatch.setattr(
+            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            fake_flush,
+        )
+        app_context.get_ui_controller.return_value.show_question.return_value = True
+
+        project = Mock()
+        project.name = "New"
+        project.failed_item_ids = []
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_context.get_ui_controller.return_value.show_question.assert_called_once()
+        app_state.load_project.assert_called_once_with(project)
+
+    def test_discards_the_load_and_reports_an_error_when_the_flush_fails_during_the_load(self, monkeypatch):
+        """A flush failure here means a note edit is still stuck unsaved --
+        must not install the loaded project over it, and must say why
+        instead of silently discarding (same as declining reconfirmation,
+        but the user was never asked)."""
+        command, app_context, app_state = self._dispatch()
+        monkeypatch.setattr(
+            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            lambda ctx: False,
+        )
+
+        project = Mock()
+        project.name = "New"
+        command._on_load_result({"success": True, "project": project, "file_path": "/p/other.pplot"})
+
+        app_state.load_project.assert_not_called()
+        app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+        app_context.get_ui_controller.return_value.show_question.assert_not_called()
+
 
 def _make_configured_app_context(*, has_project=False, project_file_path=None, is_modified=False):
     """Like _make_app_context, but with an app_state whose has_project/

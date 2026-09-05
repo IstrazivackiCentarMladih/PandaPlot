@@ -202,6 +202,25 @@ class LoadProjectCommand(Command):
                 file_path = result.get("file_path")
 
                 if project and file_path:
+                    # A note left mid-debounce when this callback fires would
+                    # otherwise read as an unchanged modification_revision
+                    # below, the same race execute()'s own pre-dispatch check
+                    # needed flushing for (see flush_pending_note_edits). A
+                    # flush failure here means that edit is still stuck
+                    # unsaved -- must not install the loaded project over it.
+                    if not flush_pending_note_edits(self.app_context):
+                        self.ui_controller.show_error_message(
+                            "Open Project",
+                            "One or more open notes could not be saved. "
+                            "Save them manually before opening a different project.",
+                        )
+                        self.logger.warning(
+                            "Discarding loaded project '%s': a pending note edit could "
+                            "not be flushed during the load",
+                            project.name,
+                        )
+                        return
+
                     # A command executed against the still-active old project
                     # while this load ran in the background bumps
                     # modification_revision -- an edit the confirmation
