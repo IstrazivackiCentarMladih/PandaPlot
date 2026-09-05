@@ -766,6 +766,35 @@ class TestProjectModifiedHook:
         assert failing.cleanup_count == 1
         assert len(history_calls) == 1
 
+    def test_marks_project_modified_is_evaluated_before_cleanup_runs(self):
+        """marks_project_modified() may derive its answer from state
+        cleanup() releases (e.g. whether an undo snapshot was captured), so
+        on undo/redo failure it must be evaluated before
+        _invalidate_history_after_failure() calls cleanup() on the command
+        -- the same ordering hazard already fixed for display_name()."""
+
+        class ModifiedFlagFromStateCommand(MockCommand):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.snapshot = "captured"
+
+            def marks_project_modified(self) -> bool:
+                return self.snapshot is not None
+
+            def cleanup(self):
+                super().cleanup()
+                self.snapshot = None
+
+        executor = CommandExecutor()
+        command = ModifiedFlagFromStateCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(command)
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.undo()
+
+        assert calls == ["modified"]
+
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""

@@ -177,8 +177,8 @@ class CommandExecutor:
             # is still valid -- see _invalidate_history_after_failure.
             self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
             command_description = self._safe_display_name(command)
-            self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
+            self._invalidate_history_after_failure(command)
             self._notify_undo_redo_error(command_description, "undo")
             self._notify_history_changed()
             return False
@@ -215,8 +215,8 @@ class CommandExecutor:
         except Exception as e:
             self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
             command_description = self._safe_display_name(command)
-            self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
+            self._invalidate_history_after_failure(command)
             self._notify_undo_redo_error(command_description, "redo")
             self._notify_history_changed()
             return False
