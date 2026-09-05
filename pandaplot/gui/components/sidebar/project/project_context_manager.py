@@ -89,6 +89,12 @@ class ProjectViewPanelContextManager(QMenu):
             self.command_manager.create_chart_from_dataset)
         self.addAction(self.create_chart_action)
 
+        # Chart export bundle action (for charts)
+        self.export_chart_bundle_action = QAction("Export Python Bundle...", self)
+        self.export_chart_bundle_action.triggered.connect(
+            self.command_manager.export_chart_bundle)
+        self.addAction(self.export_chart_bundle_action)
+
         self.import_images_action = QAction("Import Images...", self)
         self.import_images_action.triggered.connect(
             self.command_manager.import_images)
@@ -126,6 +132,9 @@ class ProjectViewPanelContextManager(QMenu):
 
         # Show chart creation only for datasets
         self.create_chart_action.setVisible(item_type == "dataset")
+
+        # Show chart export bundle action only for charts
+        self.export_chart_bundle_action.setVisible(item_type == "chart")
 
         # Show image import only for image galleries (or a container it could be created under)
         self.import_images_action.setVisible(item_type == "imagegallery")

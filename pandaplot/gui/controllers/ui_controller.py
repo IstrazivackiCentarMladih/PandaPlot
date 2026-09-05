@@ -201,6 +201,27 @@ class UIController:
         return text if ok else None
     
 
+    def show_export_chart_bundle_dialog(self, chart_name: str) -> Optional[str]:
+        """
+        Show file dialog to export chart bundle as a zip archive.
+
+        Args:
+            chart_name (str): Name of the chart being exported
+
+        Returns:
+            Optional[str]: Selected zip file path, or None if cancelled
+        """
+        default_file = f"{chart_name}_bundle.zip"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.parent_widget,
+            f"Export Python Bundle for '{chart_name}'",
+            default_file,
+            "Zip Archives (*.zip);;All files (*.*)"
+        )
+        if file_path and not file_path.lower().endswith(".zip"):
+            file_path += ".zip"
+        return file_path if file_path else None
+
     def show_export_dataset_dialog(self, dataset_name: str) -> Optional[tuple[str, str]]:
         """
         Show file dialog to export dataset with format selection.
