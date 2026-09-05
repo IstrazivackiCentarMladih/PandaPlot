@@ -5,7 +5,7 @@ Dialog for basic image operations: crop, rotate, and resize.
 from typing import Optional, override
 
 from PySide6.QtCore import QBuffer, QIODevice, QRect, Qt
-from PySide6.QtGui import QImage, QImageWriter, QTransform
+from PySide6.QtGui import QImage, QImageWriter, QKeySequence, QShortcut, QTransform
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -53,6 +53,8 @@ class ImageEditorDialog(PDialog):
         self._updating_resize_spinboxes = False
         self._updating_crop_spinboxes = False
         self._resolved_format: Optional[tuple[str, str]] = None
+        self._undo_stack: list[QImage] = []
+        self._redo_stack: list[QImage] = []
 
         self._initialize()
         self._update_preview()
@@ -163,6 +165,13 @@ class ImageEditorDialog(PDialog):
         # --- Revert & Dialog Action Buttons ---
         controls_layout.addStretch(1)
 
+        undo_redo_row = QHBoxLayout()
+        self.btn_undo = PButton("Undo", role="secondary", on_click=self._undo, enabled=False)
+        self.btn_redo = PButton("Redo", role="secondary", on_click=self._redo, enabled=False)
+        undo_redo_row.addWidget(self.btn_undo)
+        undo_redo_row.addWidget(self.btn_redo)
+        controls_layout.addLayout(undo_redo_row)
+
         self.btn_reset = PButton("Reset All Edits", role="secondary", on_click=self._reset_edits)
         controls_layout.addWidget(self.btn_reset)
 
@@ -185,6 +194,9 @@ class ImageEditorDialog(PDialog):
         self.spin_crop_h.valueChanged.connect(self._on_crop_spinbox_changed)
         self.crop_canvas.cropRectChanged.connect(self._on_canvas_crop_rect_changed)
         self.aspect_combo.currentTextChanged.connect(self._on_aspect_changed)
+
+        QShortcut(QKeySequence("Ctrl+Z"), self, activated=self._undo)
+        QShortcut(QKeySequence("Ctrl+Y"), self, activated=self._redo)
 
     @override
     def _apply_theme(self):
@@ -238,7 +250,35 @@ class ImageEditorDialog(PDialog):
             self.spin_width.setValue(new_width)
             self._updating_resize_spinboxes = False
 
+    def _push_undo_snapshot(self) -> None:
+        self._undo_stack.append(QImage(self.working_qimage))
+        self._redo_stack.clear()
+        self._refresh_undo_redo_buttons()
+
+    def _refresh_undo_redo_buttons(self) -> None:
+        self.btn_undo.setEnabled(bool(self._undo_stack))
+        self.btn_redo.setEnabled(bool(self._redo_stack))
+
+    def _undo(self) -> None:
+        if not self._undo_stack:
+            return
+        self._redo_stack.append(QImage(self.working_qimage))
+        self.working_qimage = self._undo_stack.pop()
+        self._sync_control_values()
+        self._update_preview()
+        self._refresh_undo_redo_buttons()
+
+    def _redo(self) -> None:
+        if not self._redo_stack:
+            return
+        self._undo_stack.append(QImage(self.working_qimage))
+        self.working_qimage = self._redo_stack.pop()
+        self._sync_control_values()
+        self._update_preview()
+        self._refresh_undo_redo_buttons()
+
     def _rotate(self, degrees: int):
+        self._push_undo_snapshot()
         transform = QTransform().rotate(degrees)
         self.working_qimage = self.working_qimage.transformed(
             transform, Qt.TransformationMode.SmoothTransformation
@@ -252,6 +292,7 @@ class ImageEditorDialog(PDialog):
         if target_w <= 0 or target_h <= 0:
             return
 
+        self._push_undo_snapshot()
         self.working_qimage = self.working_qimage.scaled(
             target_w, target_h,
             Qt.AspectRatioMode.IgnoreAspectRatio,
@@ -303,11 +344,13 @@ class ImageEditorDialog(PDialog):
         if rect.isEmpty():
             return
 
+        self._push_undo_snapshot()
         self.working_qimage = self.working_qimage.copy(rect)
         self._sync_control_values()
         self._update_preview()
 
     def _reset_edits(self):
+        self._push_undo_snapshot()
         self.working_qimage = QImage(self.original_qimage)
         self._sync_control_values()
         self._update_preview()

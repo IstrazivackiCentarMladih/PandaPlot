@@ -187,3 +187,66 @@ class TestImageEditorDialogCropCanvasSync:
 
         assert dialog.crop_canvas._aspect_lock == pytest.approx(16 / 9)
         assert dialog.spin_crop_h.value() == round(dialog.spin_crop_w.value() / (16 / 9))
+
+
+class TestImageEditorDialogUndoRedo:
+    def test_undo_reverts_last_rotate(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="undo-1", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog._rotate(90)
+        assert dialog.working_qimage.width() == 80
+
+        dialog._undo()
+
+        assert dialog.working_qimage.width() == 100
+        assert dialog.working_qimage.height() == 80
+
+    def test_redo_reapplies_undone_rotate(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="undo-2", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog._rotate(90)
+        dialog._undo()
+        dialog._redo()
+
+        assert dialog.working_qimage.width() == 80
+        assert dialog.working_qimage.height() == 100
+
+    def test_new_op_after_undo_clears_redo_stack(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="undo-3", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog._rotate(90)
+        dialog._undo()
+        dialog._rotate(180)
+
+        assert dialog.btn_redo.isEnabled() is False
+
+    def test_undo_button_disabled_with_empty_stack(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="undo-4", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        assert dialog.btn_undo.isEnabled() is False
+
+        dialog._rotate(90)
+
+        assert dialog.btn_undo.isEnabled() is True
+
+    def test_reset_all_edits_is_itself_undoable(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="undo-5", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog._rotate(90)
+        dialog._reset_edits()
+        assert dialog.working_qimage.width() == 100
+
+        dialog._undo()
+
+        assert dialog.working_qimage.width() == 80
+        assert dialog.working_qimage.height() == 100
