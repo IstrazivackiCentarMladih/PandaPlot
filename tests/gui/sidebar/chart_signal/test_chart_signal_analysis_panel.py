@@ -11,6 +11,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisType
+from pandaplot.commands.base_command import CommandResult
 from pandaplot.gui.components.sidebar.chart_signal.chart_signal_analysis_panel import (
     ChartSignalAnalysisPanel,
 )
@@ -173,6 +174,25 @@ class TestSamplingRatePrefill:
         assert panel.sampling_rate.value() == pytest.approx(first, rel=1e-2)
         assert panel.sampling_rate.value() != 1.0
 
+    def test_prefill_handles_a_descending_x_axis(self, app_context, project):
+        """Regression: filtering diffs to > 0 assumed ascending x -- a
+        descending (or mixed-direction) axis produced no positive diffs at
+        all, silently falling back to the unrelated 1000 Hz default instead
+        of a usable estimate. Sampling interval is a magnitude, so the fix
+        takes abs(diff(x)) before filtering."""
+        dataset = project.find_item("ds-1")
+        dataset.data = dataset.data.iloc[::-1].reset_index(drop=True)  # descending t
+
+        panel = ChartSignalAnalysisPanel(app_context)
+        panel.current_chart = project.find_item("chart-1")
+        panel.current_chart_id = "chart-1"
+        panel._populate_sources()
+
+        index = panel.analysis_combo.findData(SignalAnalysisType.FFT)
+        panel.analysis_combo.setCurrentIndex(index)
+
+        assert panel.sampling_rate.value() == pytest.approx(100.0, rel=1e-2)
+
 
 class TestRunAnalysisAsyncDispatch:
     def _fake_result(self):
@@ -330,3 +350,150 @@ class TestRangeCommandCaching:
         panel._refresh_sampling_rate_default()
 
         command.resolve_point.assert_not_called()
+
+
+class TestStaleCompletionDiscard:
+    """Regression: the staleness check used to compare only
+    (chart_id, source) -- if the method, sampling rate, segment, or a
+    parameter widget changed while a preview/commit was in flight, the old
+    result still got displayed/committed under the new UI state. It must
+    now compare the full dispatch parameters (and a generation counter, for
+    changes to the underlying data that don't move any of those)."""
+
+    def test_run_discards_a_stale_result_when_the_method_changes_mid_flight(self, panel):
+        captured = {}
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: captured.update(on_complete=on_complete)
+        panel._build_command = lambda: fake_command
+        panel.run_analysis()
+
+        # Switch method while the (fake) background computation is still
+        # running.
+        peaks_index = panel.analysis_combo.findData(SignalAnalysisType.PEAKS)
+        panel.analysis_combo.setCurrentIndex(peaks_index)
+
+        result = Mock(analysis_name="FFT", data=pd.DataFrame({"a": [1.0]}), metadata={})
+        captured["on_complete"](result, None)
+
+        assert panel.last_result is None
+        assert panel.add_btn.isEnabled() is False
+        assert "FFT" not in panel.results_text.toPlainText()
+
+    def test_add_discards_a_stale_commit_when_the_method_changes_mid_flight(self, panel):
+        command = Mock()
+        command.result = Mock()
+        panel.app_context.get_command_executor.return_value.execute_command = lambda cmd: True
+        panel._build_command = lambda: command
+        panel.add_results_to_project()
+        assert panel._pending_command is command
+
+        peaks_index = panel.analysis_combo.findData(SignalAnalysisType.PEAKS)
+        panel.analysis_combo.setCurrentIndex(peaks_index)
+
+        command.on_complete(CommandResult.SUCCESS)
+
+        assert panel.last_result is None
+        assert "added to project" not in panel.results_text.toPlainText()
+
+    def test_run_discards_a_stale_result_after_a_chart_update_bumps_generation(self, panel):
+        """Same-params case: the underlying data changed (e.g. a dataset
+        edit re-emitted CHART_UPDATED for this chart) without moving any of
+        the dispatch parameters themselves -- only the generation counter
+        catches this one."""
+        captured = {}
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: captured.update(on_complete=on_complete)
+        panel._build_command = lambda: fake_command
+        panel.run_analysis()
+
+        panel._on_chart_updated({"chart": panel.current_chart})
+
+        result = Mock(analysis_name="FFT", data=pd.DataFrame({"a": [1.0]}), metadata={})
+        captured["on_complete"](result, None)
+
+        assert panel.last_result is None
+        assert "FFT" not in panel.results_text.toPlainText()
+
+
+class TestRunButtonRestoredFromCurrentContext:
+    """Regression: the on_complete callbacks used to unconditionally
+    re-enable Run, even if the user had since switched to a chart/tab with
+    no eligible source -- leaving an active-looking button that would
+    silently no-op via the _pending_command guard."""
+
+    def test_run_completion_leaves_run_disabled_with_no_eligible_source(self, panel):
+        captured = {}
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: captured.update(on_complete=on_complete)
+        panel._build_command = lambda: fake_command
+        panel.run_analysis()
+
+        panel.source_combo.clear()  # simulate navigating to a chart with no sources
+
+        captured["on_complete"](None, "boom")
+
+        assert panel.run_btn.isEnabled() is False
+
+    def test_add_completion_leaves_run_disabled_with_no_eligible_source(self, panel):
+        command = Mock()
+        command.result = Mock()
+        panel.app_context.get_command_executor.return_value.execute_command = lambda cmd: True
+        panel._build_command = lambda: command
+        panel.add_results_to_project()
+
+        panel.source_combo.clear()
+
+        command.on_complete(CommandResult.SUCCESS)
+
+        assert panel.run_btn.isEnabled() is False
+
+
+class TestClearWhilePending:
+    """Regression: clear() (from the Clear button and every analysis-method
+    change) used to unconditionally stop the busy spinner, even while a
+    Run/Add computation was still in flight -- the panel then looked idle
+    while Run/Add still silently no-op'd via the _pending_command guard."""
+
+    def test_clear_does_not_stop_the_spinner_while_a_command_is_pending(self, panel):
+        fake_command = Mock()
+        fake_command.run_analysis_async = lambda on_complete: None
+        panel._build_command = lambda: fake_command
+        panel.run_analysis()
+        assert panel.busy_spinner.is_running is True
+
+        panel.clear()
+
+        assert panel.busy_spinner.is_running is True
+
+    def test_clear_stops_the_spinner_once_nothing_is_pending(self, panel):
+        panel.busy_spinner.start()
+        panel.clear()
+        assert panel.busy_spinner.is_running is False
+
+
+class TestDatasetChangedInvalidatesCache:
+    """Regression: chart series read their values live from backing
+    datasets, but the panel only listened for ChartEvents.CHART_UPDATED --
+    an ordinary cell/row edit to the dataset (without that event) left the
+    cached range command and any successful last_result looking valid,
+    letting Add's fast path commit a preview computed from pre-edit data."""
+
+    def test_dataset_changed_for_a_plotted_dataset_invalidates_range_command_and_last_result(self, panel):
+        stale_range_command = panel._range_command("series", 0)
+        panel.last_result = Mock()
+        panel._last_run_params = panel._get_dispatch_params()
+
+        panel._on_dataset_changed({"dataset_id": "ds-1"})
+
+        assert panel._range_command("series", 0) is not stale_range_command
+        assert panel.last_result is None
+        assert panel._last_run_params is None
+
+    def test_dataset_changed_for_an_unrelated_dataset_is_ignored(self, panel):
+        stale_range_command = panel._range_command("series", 0)
+        panel.last_result = Mock()
+
+        panel._on_dataset_changed({"dataset_id": "some-other-dataset"})
+
+        assert panel._range_command("series", 0) is stale_range_command
+        assert panel.last_result is not None

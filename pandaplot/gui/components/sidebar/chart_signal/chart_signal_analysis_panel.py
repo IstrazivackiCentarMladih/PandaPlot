@@ -49,7 +49,7 @@ from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
 from pandaplot.gui.components.sidebar.signal.signal_parameter_widgets import (
     build_signal_parameter_widgets,
 )
-from pandaplot.models.events import ChartEvents, UIEvents
+from pandaplot.models.events import ChartEvents, DatasetEvents, UIEvents
 from pandaplot.models.project.items.chart import Chart
 from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.theme.theme_manager import ThemeManager
@@ -76,6 +76,14 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # sampling-rate-default refreshes that both run on every spinbox tick.
         self._range_command_key = None
         self._range_command_cache: Optional[ChartSignalAnalysisCommand] = None
+
+        # Bumped by _populate_sources() (tab change, chart update, or a
+        # backing-dataset edit) -- an in-flight preview/commit captures the
+        # generation at dispatch time and discards its result if this has
+        # moved on by the time it completes, since the underlying data may
+        # have changed even when the dispatch parameters (chart/source/
+        # method/segment/...) themselves did not.
+        self._generation = 0
 
         self._initialize()
 
@@ -262,7 +270,10 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         if x_segment is None or len(x_segment) < 2:
             return
 
-        diffs = np.diff(x_segment.to_numpy())
+        # Sampling interval is a magnitude -- np.abs() so a descending (or
+        # mixed-direction) x axis still yields a usable estimate instead of
+        # every diff coming back negative and getting filtered out entirely.
+        diffs = np.abs(np.diff(x_segment.to_numpy()))
         diffs = diffs[diffs > 0]
         if len(diffs) == 0:
             return
@@ -355,12 +366,14 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         if command is None:
             return
 
-        # Tab/source navigation stays enabled while a preview computes in the
-        # background -- capture what was actually requested so a stale
-        # completion (user switched chart/source mid-flight) can be discarded
-        # instead of overwriting whatever the panel now shows.
+        # Tab/source/method/segment navigation stays enabled while a preview
+        # computes in the background -- capture what was actually requested
+        # so a stale completion (any of those changed mid-flight, or the
+        # chart/its backing dataset changed underneath without changing the
+        # dispatch parameters themselves) can be discarded instead of
+        # overwriting whatever the panel now shows.
         dispatch_params = self._get_dispatch_params()
-        dispatch_context = (self.current_chart_id, self._selected_source())
+        dispatch_generation = self._generation
 
         self.run_btn.setEnabled(False)
         self.add_btn.setEnabled(False)
@@ -369,13 +382,15 @@ class ChartSignalAnalysisPanel(SidebarPanel):
 
         def _on_complete(result, error):
             self.busy_spinner.stop()
-            self.run_btn.setEnabled(True)
+            # Restore Run from the current source context rather than
+            # unconditionally re-enabling it -- the user may have navigated
+            # to a chart/tab with no eligible source while this was running.
+            self.run_btn.setEnabled(self.source_combo.count() > 0)
             self._pending_command = None
 
-            current_context = (self.current_chart_id, self._selected_source())
-            if current_context != dispatch_context:
+            if self._generation != dispatch_generation or self._get_dispatch_params() != dispatch_params:
                 self.logger.info(
-                    "Discarding stale chart signal analysis preview: chart/source changed."
+                    "Discarding stale chart signal analysis preview: dispatch parameters changed."
                 )
                 return
 
@@ -436,8 +451,8 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # itself already happened for real (the dataset was created in the
         # project regardless of what the panel shows by the time it
         # completes), but the *display* of that outcome belongs to whatever
-        # chart/source is now selected -- skip it if that's changed.
-        dispatch_context = (self.current_chart_id, self._selected_source())
+        # dispatch parameters are current now -- skip it if any changed.
+        dispatch_generation = self._generation
 
         self.run_btn.setEnabled(False)
         self.add_btn.setEnabled(False)
@@ -446,13 +461,15 @@ class ChartSignalAnalysisPanel(SidebarPanel):
 
         def _on_complete(result):
             self.busy_spinner.stop()
-            self.run_btn.setEnabled(True)
+            # Restore Run from the current source context rather than
+            # unconditionally re-enabling it -- see the matching comment in
+            # run_analysis().
+            self.run_btn.setEnabled(self.source_combo.count() > 0)
             self._pending_command = None
 
-            current_context = (self.current_chart_id, self._selected_source())
-            if current_context != dispatch_context:
+            if self._generation != dispatch_generation or self._get_dispatch_params() != current_params:
                 self.logger.info(
-                    "Not displaying chart signal analysis commit result: chart/source changed."
+                    "Not displaying chart signal analysis commit result: dispatch parameters changed."
                 )
                 return
 
@@ -480,7 +497,13 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         self._last_run_params = None
         if hasattr(self, "add_btn"):
             self.add_btn.setEnabled(False)
-        if hasattr(self, "busy_spinner"):
+        # Don't stop the busy spinner while a Run/Add computation is still
+        # in flight (this is called from the Clear button and from every
+        # analysis-method change) -- it must keep reflecting that until the
+        # completion callback clears _pending_command; stopping it here
+        # would make the panel look idle while Run/Add still silently
+        # no-op via the _pending_command guard.
+        if self._pending_command is None and hasattr(self, "busy_spinner"):
             self.busy_spinner.stop()
 
     # -- chart context --------------------------------------------------------
@@ -555,11 +578,23 @@ class ChartSignalAnalysisPanel(SidebarPanel):
     def _populate_sources(self):
         # Force _range_command() to build a fresh command even if the
         # (chart, source) key is unchanged: this runs on every
-        # UIEvents.TAB_CHANGED/ChartEvents.CHART_UPDATED, and the latter
-        # fires on chart/series-backing-dataset mutations that the cached
-        # command's _resolved_xy_cache would otherwise keep serving stale
-        # data for.
+        # UIEvents.TAB_CHANGED/ChartEvents.CHART_UPDATED/dataset change, and
+        # those fire on chart/series-backing-dataset mutations that the
+        # cached command's _resolved_xy_cache would otherwise keep serving
+        # stale data for.
         self._range_command_key = None
+        # A previously computed last_result may have been resolved from
+        # data that just changed underneath it (same chart/source/method/
+        # segment, different underlying values) -- discard it rather than
+        # let Add to Project's cached-result fast path commit a stale
+        # analysis. Also bump _generation so an in-flight preview/commit
+        # dispatched before this update discards its result on arrival even
+        # when its own dispatch parameters still compare equal.
+        self.last_result = None
+        self._last_run_params = None
+        self._generation += 1
+        if hasattr(self, "add_btn"):
+            self.add_btn.setEnabled(False)
         has_sources, any_series_excluded = populate_series_fit_sources(self.source_combo, self.current_chart)
         # A tab switch while a Run/Add-to-Project computation is still in
         # flight (for whatever chart/source was previously selected) must
@@ -576,6 +611,13 @@ class ChartSignalAnalysisPanel(SidebarPanel):
     def setup_event_subscriptions(self):
         self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
         self.subscribe_to_event(ChartEvents.CHART_UPDATED, self._on_chart_updated)
+        # Chart series/fits read their values live from source datasets, so
+        # an edit to one of those datasets (cell edits, added/removed rows
+        # or columns, ...) can change the resolved x/y without emitting
+        # CHART_UPDATED -- mirrors ChartTab's own subscription for the same
+        # reason (see chart_tab.py). DATASET_CHANGED is the generic parent
+        # of all those specific dataset events.
+        self.subscribe_to_event(DatasetEvents.DATASET_CHANGED, self._on_dataset_changed)
 
     def _on_tab_changed(self, event_data):
         if event_data.get("tab_type") == "chart":
@@ -596,6 +638,15 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         if isinstance(chart, Chart):
             self.current_chart = chart
             self.current_chart_id = chart.id
+            self._populate_sources()
+
+    def _on_dataset_changed(self, event_data):
+        changed_dataset_id = event_data.get("dataset_id")
+        if changed_dataset_id is None or self.current_chart is None:
+            return
+        # Only invalidate if this chart actually plots the changed dataset --
+        # mirrors ChartTab.on_dataset_changed's own filter.
+        if changed_dataset_id in self.current_chart.get_all_datasets():
             self._populate_sources()
 
     # -- theme ------------------------------------------------------------------
