@@ -2,7 +2,7 @@ import os
 from typing import Any, Callable, Optional, Tuple, override
 
 from pandaplot.commands.base_command import Command, CommandResult
-from pandaplot.commands.project.project.unsaved_changes import flush_pending_note_edits
+from pandaplot.commands.project.project.unsaved_changes import flush_pending_edits
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
@@ -89,7 +89,7 @@ class LoadProjectCommand(Command):
                 self.logger.info("'%s' is already open; skipping reload", self.file_path)
                 return CommandResult.NOOP
 
-            if not flush_pending_note_edits(self.app_context):
+            if not flush_pending_edits(self.app_context):
                 self.ui_controller.show_error_message(
                     "Open Project",
                     "One or more open notes could not be saved. Save them manually before continuing.",
@@ -205,10 +205,10 @@ class LoadProjectCommand(Command):
                     # A note left mid-debounce when this callback fires would
                     # otherwise read as an unchanged modification_revision
                     # below, the same race execute()'s own pre-dispatch check
-                    # needed flushing for (see flush_pending_note_edits). A
+                    # needed flushing for (see flush_pending_edits). A
                     # flush failure here means that edit is still stuck
                     # unsaved -- must not install the loaded project over it.
-                    if not flush_pending_note_edits(self.app_context):
+                    if not flush_pending_edits(self.app_context):
                         self.ui_controller.show_error_message(
                             "Open Project",
                             "One or more open notes could not be saved. "

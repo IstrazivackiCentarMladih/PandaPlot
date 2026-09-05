@@ -149,7 +149,7 @@ class TestLoadProjectCommandRaceGuard:
             return True
 
         monkeypatch.setattr(
-            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            "pandaplot.commands.project.project.load_project_command.flush_pending_edits",
             fake_flush,
         )
         app_context.get_ui_controller.return_value.show_question.return_value = True
@@ -169,7 +169,7 @@ class TestLoadProjectCommandRaceGuard:
         but the user was never asked)."""
         command, app_context, app_state = self._dispatch()
         monkeypatch.setattr(
-            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            "pandaplot.commands.project.project.load_project_command.flush_pending_edits",
             lambda ctx: False,
         )
 
@@ -262,7 +262,7 @@ class TestLoadProjectCommandGuards:
         loading a different project would discard anything."""
         calls = []
         monkeypatch.setattr(
-            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            "pandaplot.commands.project.project.load_project_command.flush_pending_edits",
             lambda ctx: calls.append(ctx) or True,
         )
         app_context, _ = _make_configured_app_context(
@@ -278,7 +278,7 @@ class TestLoadProjectCommandGuards:
         is about to be skipped as a no-op."""
         calls = []
         monkeypatch.setattr(
-            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            "pandaplot.commands.project.project.load_project_command.flush_pending_edits",
             lambda ctx: calls.append(ctx) or True,
         )
         app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
@@ -293,7 +293,7 @@ class TestLoadProjectCommandGuards:
         (which would discard the current one) instead of silently
         proceeding with a stale is_modified reading."""
         monkeypatch.setattr(
-            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            "pandaplot.commands.project.project.load_project_command.flush_pending_edits",
             lambda ctx: False,
         )
         app_context, _ = _make_configured_app_context(

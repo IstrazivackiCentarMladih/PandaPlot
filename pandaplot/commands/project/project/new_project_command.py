@@ -1,7 +1,7 @@
 from typing import Optional, override
 
 from pandaplot.commands.base_command import Command, CommandResult
-from pandaplot.commands.project.project.unsaved_changes import flush_pending_note_edits
+from pandaplot.commands.project.project.unsaved_changes import flush_pending_edits
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state import AppContext, AppState
@@ -42,7 +42,7 @@ class NewProjectCommand(Command):
     def execute(self) -> CommandResult:
         """Execute the new project command."""
         try:
-            if not flush_pending_note_edits(self.app_context):
+            if not flush_pending_edits(self.app_context):
                 self.ui_controller.show_error_message(
                     "Create New Project",
                     "One or more open notes could not be saved. Save them manually before continuing.",

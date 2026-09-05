@@ -145,7 +145,7 @@ def test_execute_flushes_pending_note_edits_before_checking_modified(monkeypatch
     a new project would discard anything."""
     calls = []
     monkeypatch.setattr(
-        "pandaplot.commands.project.project.new_project_command.flush_pending_note_edits",
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
         lambda ctx: calls.append(ctx) or True,
     )
     app_context = _make_app_context(has_project=True, is_modified=False)
@@ -163,7 +163,7 @@ def test_execute_fails_and_reports_an_error_when_flush_fails(monkeypatch):
     still stuck unsaved -- must refuse to create the new project (which
     would discard the current one) instead of silently proceeding."""
     monkeypatch.setattr(
-        "pandaplot.commands.project.project.new_project_command.flush_pending_note_edits",
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
         lambda ctx: False,
     )
     app_context = _make_app_context(has_project=True, is_modified=False)
