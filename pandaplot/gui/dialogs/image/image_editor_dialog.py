@@ -199,6 +199,7 @@ class ImageEditorDialog(PDialog):
         self.spin_height.setValue(h)
         self._updating_resize_spinboxes = False
 
+        self._updating_crop_spinboxes = True
         self.spin_crop_x.setRange(0, max(0, w - 1))
         self.spin_crop_y.setRange(0, max(0, h - 1))
         self.spin_crop_w.setRange(1, w)
@@ -208,6 +209,7 @@ class ImageEditorDialog(PDialog):
         self.spin_crop_y.setValue(0)
         self.spin_crop_w.setValue(w)
         self.spin_crop_h.setValue(h)
+        self._updating_crop_spinboxes = False
 
     def _update_preview(self):
         pixmap = QPixmap.fromImage(self.working_qimage)

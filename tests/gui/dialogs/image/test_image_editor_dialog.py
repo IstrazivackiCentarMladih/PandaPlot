@@ -95,3 +95,37 @@ class TestImageEditorDialogCropClamping:
 
         assert dialog.spin_crop_w.value() == 10  # clamped to what actually fits: 100 - 90
         assert dialog.spin_crop_x.value() == 90
+
+    def test_sync_control_values_does_not_trigger_reentrant_crop_clamping(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="clamp-2", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        # Leave the crop spinboxes holding a rect (x=10, y=10, w=40, h=30) that is
+        # only valid for the *current* 100x80 image. When _apply_crop() shrinks the
+        # working image down to 40x30 and calls _sync_control_values(), the method
+        # writes the new full-image rect one field at a time (x, y, w, h). Without
+        # the re-entrancy guard, the stale leftover values (y=10, h=30) momentarily
+        # describe a rect (0, 10, 40, 30) that overflows the new 40x30 image,
+        # spuriously triggering _on_crop_spinbox_changed's clamp-and-write-back.
+        dialog.spin_crop_x.setValue(10)
+        dialog.spin_crop_y.setValue(10)
+        dialog.spin_crop_w.setValue(40)
+        dialog.spin_crop_h.setValue(30)
+
+        write_calls: list[object] = []
+        original_write = dialog._write_crop_spinboxes
+
+        def spy(rect):
+            write_calls.append(rect)
+            return original_write(rect)
+
+        dialog._write_crop_spinboxes = spy
+
+        dialog._apply_crop()
+
+        assert write_calls == []  # no reentrant clamp write-back during the sync
+        assert dialog.spin_crop_x.value() == 0
+        assert dialog.spin_crop_y.value() == 0
+        assert dialog.spin_crop_w.value() == 40
+        assert dialog.spin_crop_h.value() == 30
