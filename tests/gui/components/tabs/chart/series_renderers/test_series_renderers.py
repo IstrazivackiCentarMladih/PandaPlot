@@ -294,6 +294,32 @@ def test_render_bar_series_draws_no_bar_labels_when_show_value_labels_is_unset()
     plt.close(fig)
 
 
+def test_render_bar_series_applies_text_color_and_background():
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321", show_value_labels=True,
+                            value_label_text_color="#ff0000",
+                            value_label_bg_color="#00ff00", value_label_bg_alpha=0.5)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
+
+    text = ax.texts[0]
+    assert text.get_color() == "#ff0000"
+    bbox_patch = text.get_bbox_patch()
+    assert bbox_patch is not None
+    assert bbox_patch.get_alpha() == 0.5
+    plt.close(fig)
+
+
+def test_render_bar_series_no_background_box_when_bg_color_unset():
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321", show_value_labels=True)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
+
+    assert ax.texts[0].get_bbox_patch() is None
+    plt.close(fig)
+
+
 def test_render_hist_series_draws_a_histogram():
     fig, ax = plt.subplots()
     style = HistSeriesStyle(color="#ababab")

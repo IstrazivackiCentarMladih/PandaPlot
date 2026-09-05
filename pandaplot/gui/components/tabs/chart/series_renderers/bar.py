@@ -14,4 +14,14 @@ def render_bar_series(axes, series_data: SeriesData, style: BarSeriesStyle,
         # negative height) it -- unlike line/scatter's point-by-point
         # annotate() loop (series_renderers/value_labels.py), matplotlib
         # already positions these correctly from the BarContainer itself.
-        axes.bar_label(bars, fmt="%.3g", fontsize=8)
+        # No mode/arrow/offset here (see BarSeriesStyle) -- only text/
+        # background color+alpha, forwarded straight through as bar_label()
+        # kwargs (it passes **kwargs on to each per-bar Annotation).
+        bbox = (
+            {"boxstyle": "round,pad=0.2", "facecolor": style.value_label_bg_color,
+             "edgecolor": "none", "alpha": style.value_label_bg_alpha}
+            if style.value_label_bg_color else None
+        )
+        axes.bar_label(bars, fmt="%.3g", fontsize=8,
+                        color=style.value_label_text_color or None,
+                        bbox=bbox)
