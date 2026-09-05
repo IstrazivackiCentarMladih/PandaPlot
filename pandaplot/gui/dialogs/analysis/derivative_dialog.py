@@ -48,7 +48,7 @@ class DerivativeDialog(BaseAnalysisDialog):
     def preview_analysis(self):
         """Preview derivative calculation."""
         try:
-            if self.dataset is None or not hasattr(self.dataset, "data") or self.dataset.data is None:
+            if self.dataset is None or self.dataset.data is None:
                 self.preview_text.setText("No dataset available for preview.")
                 return
             
