@@ -363,6 +363,115 @@ def test_load_does_not_crash_for_vector_series_with_no_show_value_labels_field()
     assert not hasattr(series.style, "show_value_labels")
 
 
+def test_load_then_apply_round_trips_value_label_mode_arrow_offset_for_line_series():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(
+        color="#112233", show_value_labels=True, value_label_mode="xy",
+        value_label_show_arrow=True, value_label_offset_x=2.0, value_label_offset_y=-3.0,
+    )
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_mode_control.currentValue() == "xy"
+    assert tab.value_labels_arrow_toggle.isChecked() is True
+    assert tab.value_labels_offset_x_spin.value() == 2.0
+    assert tab.value_labels_offset_y_spin.value() == -3.0
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.value_label_mode == "xy"
+    assert series.style.value_label_show_arrow is True
+    assert series.style.value_label_offset_x == 2.0
+    assert series.style.value_label_offset_y == -3.0
+
+
+def test_load_then_apply_round_trips_value_label_text_color_for_line_series():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=True, value_label_text_color="#abcdef")
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_match_color_toggle.isChecked() is False
+    assert tab.value_labels_text_color_row.currentColor() == "#abcdef"
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.value_label_text_color == "#abcdef"
+
+
+def test_load_then_apply_round_trips_value_label_text_color_match_convention():
+    """Default ("" == match series color) must survive the round trip, same
+    as marker/fill/band's existing match-line conventions."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=True)  # value_label_text_color == ""
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_match_color_toggle.isChecked() is True
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.value_label_text_color == ""
+
+
+def test_load_then_apply_round_trips_value_label_background_for_bar_series():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.BAR)
+    series = _line_series(
+        series_type=SeriesType.BAR, color="#654321", show_value_labels=True,
+        value_label_bg_color="#00ff00", value_label_bg_alpha=0.4,
+    )
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_bg_enabled_toggle.isChecked() is True
+    assert tab.value_labels_bg_color_row.currentColor() == "#00ff00"
+    assert tab.value_labels_bg_alpha_slider.value() == 0.4
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.value_label_bg_color == "#00ff00"
+    assert series.style.value_label_bg_alpha == 0.4
+
+
+def test_load_then_apply_round_trips_value_label_no_background_by_default():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.BAR)
+    series = _line_series(series_type=SeriesType.BAR, color="#654321", show_value_labels=True)
+
+    tab.load_series_style(series)
+
+    assert tab.value_labels_bg_enabled_toggle.isChecked() is False
+
+    tab.apply_series_style_to(series)
+
+    assert series.style.value_label_bg_color == ""
+
+
+def test_load_does_not_crash_for_vector_series_with_no_value_label_style_fields():
+    """VectorSeriesStyle declares none of the new value_label_* fields --
+    loading/applying must not raise (same convention as the existing
+    show_value_labels regression test just above)."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.set_chart_type(ChartType.VECTOR)
+    series = _vector_series(vector_color="#abcdef")
+
+    tab.load_series_style(series)  # must not raise
+    tab.apply_series_style_to(series)  # must not raise
+
+    assert not hasattr(series.style, "value_label_mode")
+    assert not hasattr(series.style, "value_label_text_color")
+
+
 def test_is_scatter_series_target_uses_the_selected_series_own_type():
     """_is_scatter_series_target must read the SELECTED SERIES' type, not
     the chart's -- a Scatter-typed series inside a Line-typed chart is

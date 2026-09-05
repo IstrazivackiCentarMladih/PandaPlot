@@ -1818,6 +1818,27 @@ class StyleTab(QWidget):
         # as the error_bars write below.
         if hasattr(style, "show_value_labels"):
             style.show_value_labels = self.value_labels_enabled_toggle.isChecked()
+        # Mode/arrow/offset: Line/Scatter only (BarSeriesStyle has no such
+        # fields -- see _update_value_labels_controls_visibility).
+        if isinstance(style, (LineSeriesStyle, ScatterSeriesStyle)):
+            style.value_label_mode = self.value_labels_mode_control.currentValue()
+            style.value_label_show_arrow = self.value_labels_arrow_toggle.isChecked()
+            style.value_label_offset_x = self.value_labels_offset_x_spin.value()
+            style.value_label_offset_y = self.value_labels_offset_y_spin.value()
+        # Text/background color+alpha: all three value-label-capable types.
+        # "" == match series color (text) / no background box (bg) -- same
+        # "" -sentinel convention as marker_color/fill_color.
+        if hasattr(style, "value_label_text_color"):
+            style.value_label_text_color = (
+                "" if self.value_labels_match_color_toggle.isChecked()
+                else self.value_labels_text_color_row.currentColor()
+            )
+        if hasattr(style, "value_label_bg_color"):
+            style.value_label_bg_color = (
+                self.value_labels_bg_color_row.currentColor()
+                if self.value_labels_bg_enabled_toggle.isChecked() else ""
+            )
+            style.value_label_bg_alpha = self.value_labels_bg_alpha_slider.value()
 
         # "Markers enabled" isn't a separate persisted flag: it maps onto
         # MarkerType.NONE -- except for a required-marker target (Scatter,
@@ -1983,6 +2004,28 @@ class StyleTab(QWidget):
             self.value_labels_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.value_labels_enabled_toggle.setChecked(checked=getattr(style, "show_value_labels", False))
             self.value_labels_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+            self.value_labels_mode_control.setCurrentValue(getattr(style, "value_label_mode", "y"))
+            self.value_labels_arrow_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_arrow_toggle.setChecked(checked=getattr(style, "value_label_show_arrow", False))
+            self.value_labels_arrow_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_offset_x_spin.setValue(getattr(style, "value_label_offset_x", 0.0))
+            self.value_labels_offset_y_spin.setValue(getattr(style, "value_label_offset_y", 6.0))
+
+            value_label_text_color = getattr(style, "value_label_text_color", "")
+            self.value_labels_text_color_row.setCurrentColor(value_label_text_color or color)
+            self.value_labels_match_color_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_match_color_toggle.setChecked(checked=value_label_text_color == "")
+            self.value_labels_match_color_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+
+            value_label_bg_color = getattr(style, "value_label_bg_color", "")
+            self.value_labels_bg_color_row.setCurrentColor(value_label_bg_color or color)
+            self.value_labels_bg_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_bg_enabled_toggle.setChecked(checked=value_label_bg_color != "")
+            self.value_labels_bg_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_bg_alpha_slider.setValue(getattr(style, "value_label_bg_alpha", 1.0))
+
+            self._update_value_labels_controls_visibility()
 
             # Error-bar fields now live on style.error_bars; not every style
             # class declares one (Hist/Vector don't), so read defensively.
