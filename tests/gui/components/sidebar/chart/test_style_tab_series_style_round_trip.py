@@ -266,6 +266,80 @@ def test_value_labels_card_visible_for_supported_types_hidden_otherwise():
     assert tab.value_labels_card.isVisible() is False
 
 
+def test_value_labels_mode_and_arrow_controls_hidden_for_bar_shown_for_line():
+    """Mode/arrow/offset only apply to Line/Scatter (BarSeriesStyle has no
+    such fields -- bar_label() has no offset/arrow concept); the toggle
+    itself and the color/background controls apply to all three."""
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+
+    line_series = _line_series(color="#112233", show_value_labels=True)
+    tab._current_target = ("series", line_series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_mode_control.isVisible() is True
+    assert tab.value_labels_arrow_toggle.isVisible() is True
+    assert tab.value_labels_offset_x_spin.isVisible() is True
+
+    bar_series = _line_series(series_type=SeriesType.BAR, color="#112233", show_value_labels=True)
+    tab._current_target = ("series", bar_series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_mode_control.isVisible() is False
+    assert tab.value_labels_arrow_toggle.isVisible() is False
+    assert tab.value_labels_offset_x_spin.isVisible() is False
+    # Color/background controls still apply to Bar.
+    assert tab.value_labels_match_color_toggle.isVisible() is True
+    assert tab.value_labels_bg_enabled_toggle.isVisible() is True
+
+
+def test_value_labels_sub_controls_hidden_when_toggle_off():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=False)
+    tab._current_target = ("series", series)
+
+    tab._update_target_cards_visibility()
+
+    assert tab.value_labels_mode_control.isVisible() is False
+    assert tab.value_labels_match_color_toggle.isVisible() is False
+    assert tab.value_labels_bg_enabled_toggle.isVisible() is False
+
+
+def test_value_labels_text_color_row_hidden_while_matching_series_color():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=True)
+    tab._current_target = ("series", series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_match_color_toggle.isChecked() is True  # default: "" == match
+    assert tab.value_labels_text_color_row.isVisible() is False
+
+    tab.value_labels_match_color_toggle.setChecked(checked=False)
+    assert tab.value_labels_text_color_row.isVisible() is True
+
+
+def test_value_labels_background_controls_hidden_until_enabled():
+    _qapp()
+    tab = StyleTab(app_context=None)
+    tab.show()
+    tab.set_chart_type(ChartType.LINE)
+    series = _line_series(color="#112233", show_value_labels=True)
+    tab._current_target = ("series", series)
+    tab._update_target_cards_visibility()
+    assert tab.value_labels_bg_enabled_toggle.isChecked() is False  # default: no background
+    assert tab.value_labels_bg_color_row.isVisible() is False
+    assert tab.value_labels_bg_alpha_slider.isVisible() is False
+
+    tab.value_labels_bg_enabled_toggle.setChecked(checked=True)
+    assert tab.value_labels_bg_color_row.isVisible() is True
+    assert tab.value_labels_bg_alpha_slider.isVisible() is True
+
+
 def test_load_does_not_crash_for_vector_series_with_no_show_value_labels_field():
     """VectorSeriesStyle declares no show_value_labels field -- loading
     must not raise just because the (hidden) card's toggle still gets

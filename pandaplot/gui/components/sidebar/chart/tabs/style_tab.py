@@ -612,11 +612,11 @@ class StyleTab(QWidget):
         layout.addWidget(error_bars_card)
 
         # VALUE LABELS group -- annotate each rendered point/bar with its
-        # own numeric value (#125). A single toggle: no further options
-        # (format, position, ...) to keep this a small, self-contained
-        # feature rather than a whole new styling surface -- see
-        # SeriesTypeSpec.supports_value_labels for which series types show
-        # this card at all.
+        # own numeric value (#125). Mode/arrow/offset apply to Line/Scatter
+        # only (BarSeriesStyle has no such fields -- see
+        # _update_value_labels_controls_visibility); color/background/alpha
+        # apply to all three -- see SeriesTypeSpec.supports_value_labels for
+        # which series types show this card at all.
         self.value_labels_card = Card()
         value_labels_card = self.value_labels_card
         value_labels_layout = QGridLayout(value_labels_card)
@@ -627,6 +627,55 @@ class StyleTab(QWidget):
         self.value_labels_enabled_toggle = ToggleSwitch()
         value_labels_header_row.addWidget(self.value_labels_enabled_toggle)
         value_labels_layout.addLayout(value_labels_header_row, 0, 0, 1, 2)
+
+        self.value_labels_mode_label = QLabel("Show:")
+        value_labels_layout.addWidget(self.value_labels_mode_label, 1, 0)
+        self.value_labels_mode_control = ValueComboBox([("X", "x"), ("Y", "y"), ("X, Y", "xy")])
+        value_labels_layout.addWidget(self.value_labels_mode_control, 1, 1)
+
+        self.value_labels_arrow_label = QLabel("Arrow:")
+        value_labels_layout.addWidget(self.value_labels_arrow_label, 2, 0)
+        self.value_labels_arrow_toggle = ToggleSwitch()
+        value_labels_layout.addWidget(self.value_labels_arrow_toggle, 2, 1)
+
+        self.value_labels_offset_x_label = QLabel("Offset X:")
+        value_labels_layout.addWidget(self.value_labels_offset_x_label, 3, 0)
+        self.value_labels_offset_x_spin = QDoubleSpinBox()
+        self.value_labels_offset_x_spin.setRange(-100.0, 100.0)
+        self.value_labels_offset_x_spin.setDecimals(1)
+        value_labels_layout.addWidget(self.value_labels_offset_x_spin, 3, 1)
+
+        self.value_labels_offset_y_label = QLabel("Offset Y:")
+        value_labels_layout.addWidget(self.value_labels_offset_y_label, 4, 0)
+        self.value_labels_offset_y_spin = QDoubleSpinBox()
+        self.value_labels_offset_y_spin.setRange(-100.0, 100.0)
+        self.value_labels_offset_y_spin.setDecimals(1)
+        value_labels_layout.addWidget(self.value_labels_offset_y_spin, 4, 1)
+
+        self.value_labels_match_color_label = QLabel("Match series color:")
+        value_labels_layout.addWidget(self.value_labels_match_color_label, 5, 0)
+        self.value_labels_match_color_toggle = ToggleSwitch(checked=True)
+        value_labels_layout.addWidget(self.value_labels_match_color_toggle, 5, 1)
+
+        self.value_labels_text_color_label = QLabel("Text color:")
+        value_labels_layout.addWidget(self.value_labels_text_color_label, 6, 0)
+        self.value_labels_text_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        value_labels_layout.addWidget(self.value_labels_text_color_row, 6, 1)
+
+        self.value_labels_bg_enabled_label = QLabel("Background:")
+        value_labels_layout.addWidget(self.value_labels_bg_enabled_label, 7, 0)
+        self.value_labels_bg_enabled_toggle = ToggleSwitch()
+        value_labels_layout.addWidget(self.value_labels_bg_enabled_toggle, 7, 1)
+
+        self.value_labels_bg_color_label = QLabel("Background color:")
+        value_labels_layout.addWidget(self.value_labels_bg_color_label, 8, 0)
+        self.value_labels_bg_color_row = ColorSwatchRow(STYLE_SWATCH_PALETTE)
+        value_labels_layout.addWidget(self.value_labels_bg_color_row, 8, 1)
+
+        self.value_labels_bg_alpha_label = QLabel("Background alpha:")
+        value_labels_layout.addWidget(self.value_labels_bg_alpha_label, 9, 0)
+        self.value_labels_bg_alpha_slider = SliderWithSpinbox(minimum=0.0, maximum=1.0, decimals=2)
+        value_labels_layout.addWidget(self.value_labels_bg_alpha_slider, 9, 1)
 
         layout.addWidget(value_labels_card)
 
@@ -777,7 +826,16 @@ class StyleTab(QWidget):
         self.error_color_row.colorChanged.connect(self._on_field_changed)
         self.error_match_line_toggle.toggled.connect(self._on_error_match_line_toggled)
         self.error_cap_size_slider.valueChanged.connect(self._on_field_changed)
-        self.value_labels_enabled_toggle.toggled.connect(self._on_field_changed)
+        self.value_labels_enabled_toggle.toggled.connect(self._on_value_labels_enabled_toggled)
+        self.value_labels_mode_control.currentValueChanged.connect(self._on_field_changed)
+        self.value_labels_arrow_toggle.toggled.connect(self._on_field_changed)
+        self.value_labels_offset_x_spin.valueChanged.connect(self._on_field_changed)
+        self.value_labels_offset_y_spin.valueChanged.connect(self._on_field_changed)
+        self.value_labels_match_color_toggle.toggled.connect(self._on_value_labels_match_color_toggled)
+        self.value_labels_text_color_row.colorChanged.connect(self._on_field_changed)
+        self.value_labels_bg_enabled_toggle.toggled.connect(self._on_value_labels_bg_enabled_toggled)
+        self.value_labels_bg_color_row.colorChanged.connect(self._on_field_changed)
+        self.value_labels_bg_alpha_slider.valueChanged.connect(self._on_field_changed)
         self.vector_color_row.colorChanged.connect(self._on_field_changed)
         self.vector_colormap_control.currentValueChanged.connect(self._on_field_changed)
         self.vector_scale_slider.valueChanged.connect(self._on_field_changed)
@@ -942,6 +1000,17 @@ class StyleTab(QWidget):
         # have just changed.
         self._update_marker_controls_enabled()
         self._update_colormap_gridding_visibility()
+        # Re-sync the master toggle from the (possibly just-changed) target's
+        # own model state -- mirrors load_series_style's sync of this same
+        # toggle, needed here too since a target switch may reach this method
+        # without going through load_series_style first (e.g. _on_chip_
+        # selected's "chart"/"axes" branches, or a test driving _current_
+        # target directly).
+        if kind == "series" and isinstance(obj, DataSeries):
+            self.value_labels_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+            self.value_labels_enabled_toggle.setChecked(checked=getattr(obj.style, "show_value_labels", False))
+            self.value_labels_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+        self._update_value_labels_controls_visibility()
 
     def _build_axis_style_form(self, prefix: str):
         """Build one axis's appearance form (title font/color, tick-value
@@ -1616,6 +1685,60 @@ class StyleTab(QWidget):
         show_color = enabled and not self.fill_match_line_toggle.isChecked()
         self.fill_color_label.setVisible(show_color)
         self.fill_color_row.setVisible(show_color)
+
+    # -- Value-labels controls ----------------------------------------------
+
+    def _on_value_labels_enabled_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
+        """Handle the Value Labels section's on/off toggle."""
+        self._update_value_labels_controls_visibility()
+        self._on_field_changed()
+
+    def _on_value_labels_match_color_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
+        """Handle the Value Labels 'Match series color' toggle."""
+        self._update_value_labels_controls_visibility()
+        self._on_field_changed()
+
+    def _on_value_labels_bg_enabled_toggled(self, _checked: bool):  # noqa: FBT001 - Qt signal-slot callback, called positionally
+        """Handle the Value Labels 'Background' toggle."""
+        self._update_value_labels_controls_visibility()
+        self._on_field_changed()
+
+    def _update_value_labels_controls_visibility(self):
+        """Show the Value Labels sub-controls only while the master toggle
+        is on -- hidden, not just greyed, when off (same convention as
+        _update_fill_controls_visibility/_update_band_controls_visibility).
+        Mode/arrow/offset are further hidden for a target whose style class
+        doesn't declare them (Bar -- see BarSeriesStyle). The text-color
+        swatch is hidden while 'Match series color' is checked, and the
+        background color/alpha are hidden until 'Background' is checked
+        (same show_color convention as Marker/Fill/Confidence-Band)."""
+        kind, obj = self._current_target
+        enabled = self.value_labels_enabled_toggle.isChecked()
+        supports_mode = (
+            enabled and kind == "series" and isinstance(obj, DataSeries)
+            and isinstance(obj.style, (LineSeriesStyle, ScatterSeriesStyle))
+        )
+        for widget in (
+            self.value_labels_mode_label, self.value_labels_mode_control,
+            self.value_labels_arrow_label, self.value_labels_arrow_toggle,
+            self.value_labels_offset_x_label, self.value_labels_offset_x_spin,
+            self.value_labels_offset_y_label, self.value_labels_offset_y_spin,
+        ):
+            widget.setVisible(supports_mode)
+
+        self.value_labels_match_color_label.setVisible(enabled)
+        self.value_labels_match_color_toggle.setVisible(enabled)
+        show_text_color = enabled and not self.value_labels_match_color_toggle.isChecked()
+        self.value_labels_text_color_label.setVisible(show_text_color)
+        self.value_labels_text_color_row.setVisible(show_text_color)
+
+        self.value_labels_bg_enabled_label.setVisible(enabled)
+        self.value_labels_bg_enabled_toggle.setVisible(enabled)
+        show_bg = enabled and self.value_labels_bg_enabled_toggle.isChecked()
+        self.value_labels_bg_color_label.setVisible(show_bg)
+        self.value_labels_bg_color_row.setVisible(show_bg)
+        self.value_labels_bg_alpha_label.setVisible(show_bg)
+        self.value_labels_bg_alpha_slider.setVisible(show_bg)
 
     # -- Background transparent toggles ----------------------------------
 
