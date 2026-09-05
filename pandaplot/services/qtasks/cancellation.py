@@ -52,10 +52,15 @@ def build_cancellation_kwargs(fn: Callable[..., Any], token: CancellationToken) 
         return {}
 
     has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+    keyword_capable_kinds = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+
+    def accepts_as_keyword(name: str) -> bool:
+        param = params.get(name)
+        return param is not None and param.kind in keyword_capable_kinds
 
     kwargs: Dict[str, Any] = {}
-    if "is_cancelled" in params or has_var_keyword:
+    if accepts_as_keyword("is_cancelled") or has_var_keyword:
         kwargs["is_cancelled"] = token.is_cancelled
-    if "cancellation_token" in params or has_var_keyword:
+    if accepts_as_keyword("cancellation_token") or has_var_keyword:
         kwargs["cancellation_token"] = token
     return kwargs

@@ -5,6 +5,13 @@ from PySide6.QtCore import QCoreApplication
 
 from pandaplot.services.qtasks import CancellationToken, TaskCancelledError, TaskScheduler
 
+# Bound on how long a test worker loop may run for. If a cancellation
+# regression stops the token from ever being marked cancelled, the worker
+# loop breaks on this deadline and waitForDone() times out on WAIT_MSECS,
+# so the test fails with an assertion instead of hanging the whole run.
+LOOP_DEADLINE_SECONDS = 2.0
+WAIT_MSECS = int((LOOP_DEADLINE_SECONDS + 3.0) * 1000)
+
 
 def test_cancellation_token_basic():
     token = CancellationToken()
@@ -57,7 +64,8 @@ def test_task_scheduler_cancel_task_by_token(qapp):
     events = []
 
     def task(progress_callback, cancellation_token):
-        while not cancellation_token.is_cancelled():
+        deadline = time.monotonic() + LOOP_DEADLINE_SECONDS
+        while not cancellation_token.is_cancelled() and time.monotonic() < deadline:
             time.sleep(0.01)
 
     token = scheduler.run_task(
@@ -67,7 +75,7 @@ def test_task_scheduler_cancel_task_by_token(qapp):
     )
 
     cancelled = scheduler.cancel_task(token)
-    scheduler.threadpool.waitForDone()
+    assert scheduler.threadpool.waitForDone(WAIT_MSECS)
     QCoreApplication.processEvents()
 
     assert cancelled is True
@@ -80,18 +88,20 @@ def test_task_scheduler_cancel_all(qapp):
     events = []
 
     def task1(progress_callback, is_cancelled):
-        while not is_cancelled():
+        deadline = time.monotonic() + LOOP_DEADLINE_SECONDS
+        while not is_cancelled() and time.monotonic() < deadline:
             time.sleep(0.01)
 
     def task2(progress_callback, is_cancelled):
-        while not is_cancelled():
+        deadline = time.monotonic() + LOOP_DEADLINE_SECONDS
+        while not is_cancelled() and time.monotonic() < deadline:
             time.sleep(0.01)
 
     scheduler.run_task(task1, on_cancelled=lambda: events.append("t1_cancelled"))
     scheduler.run_task(task2, on_cancelled=lambda: events.append("t2_cancelled"))
 
     scheduler.cancel_all()
-    scheduler.threadpool.waitForDone()
+    assert scheduler.threadpool.waitForDone(WAIT_MSECS)
     QCoreApplication.processEvents()
 
     assert "t1_cancelled" in events

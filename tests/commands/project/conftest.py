@@ -41,7 +41,14 @@ class SyncTaskScheduler:
                 f"task_arguments must not include reserved keys: {sorted(conflicting_keys)}"
             )
         token = cancellation_token or CancellationToken()
-        self._active_tokens.append((task, token))
+        entry = (task, token)
+        self._active_tokens.append(entry)
+
+        def _discard_entry():
+            try:
+                self._active_tokens.remove(entry)
+            except ValueError:
+                pass
 
         progress_callback = on_progress if on_progress is not None else (lambda _p: None)
         extra_kwargs = build_cancellation_kwargs(task, token)
@@ -49,10 +56,13 @@ class SyncTaskScheduler:
         all_kwargs = {**task_arguments, "progress_callback": progress_callback, **extra_kwargs}
 
         if token.is_cancelled():
-            if on_cancelled:
-                on_cancelled()
-            if on_finished:
-                on_finished()
+            try:
+                if on_cancelled:
+                    on_cancelled()
+                if on_finished:
+                    on_finished()
+            finally:
+                _discard_entry()
             return token
 
         try:
@@ -74,6 +84,7 @@ class SyncTaskScheduler:
         finally:
             if on_finished:
                 on_finished()
+            _discard_entry()
 
         return token
 
