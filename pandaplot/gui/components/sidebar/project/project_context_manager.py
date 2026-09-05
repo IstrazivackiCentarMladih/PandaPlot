@@ -96,6 +96,14 @@ class ProjectViewPanelContextManager(QMenu):
 
         self.addSeparator()
 
+        # Version History action
+        self.version_history_action = QAction("Version History...", self)
+        self.version_history_action.triggered.connect(
+            self.command_manager.show_version_history)
+        self.addAction(self.version_history_action)
+
+        self.addSeparator()
+
         # Delete action
         self.delete_action = QAction("Delete", self)
         self.delete_action.triggered.connect(
