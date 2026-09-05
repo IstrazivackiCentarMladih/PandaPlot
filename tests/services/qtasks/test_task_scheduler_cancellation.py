@@ -4,6 +4,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from pandaplot.services.qtasks import CancellationToken, TaskCancelledError, TaskScheduler
+from pandaplot.services.qtasks.cancellation import build_cancellation_kwargs
 
 # Bound on how long a test worker loop may run for. If a cancellation
 # regression stops the token from ever being marked cancelled, the worker
@@ -30,6 +31,33 @@ def test_cancellation_token_raise():
     token.cancel()
     with pytest.raises(TaskCancelledError):
         token.raise_if_cancelled()
+
+
+def test_build_cancellation_kwargs_skips_positional_only_params():
+    def task(is_cancelled, /, progress_callback):
+        pass
+
+    # is_cancelled is positional-only, so it must not be injected as a
+    # keyword - doing so would raise a TypeError when the task is called.
+    assert build_cancellation_kwargs(task, CancellationToken()) == {}
+
+
+def test_build_cancellation_kwargs_injects_regular_params():
+    def task(progress_callback, is_cancelled, cancellation_token):
+        pass
+
+    token = CancellationToken()
+    kwargs = build_cancellation_kwargs(task, token)
+    assert kwargs == {"is_cancelled": token.is_cancelled, "cancellation_token": token}
+
+
+def test_build_cancellation_kwargs_injects_via_var_keyword():
+    def task(progress_callback, **kwargs):
+        pass
+
+    token = CancellationToken()
+    kwargs = build_cancellation_kwargs(task, token)
+    assert kwargs == {"is_cancelled": token.is_cancelled, "cancellation_token": token}
 
 
 def test_task_scheduler_cancellation_polled(qapp):

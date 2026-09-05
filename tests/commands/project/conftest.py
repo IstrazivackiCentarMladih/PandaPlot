@@ -57,10 +57,12 @@ class SyncTaskScheduler:
 
         if token.is_cancelled():
             try:
-                if on_cancelled:
-                    on_cancelled()
-                if on_finished:
-                    on_finished()
+                try:
+                    if on_cancelled:
+                        on_cancelled()
+                finally:
+                    if on_finished:
+                        on_finished()
             finally:
                 _discard_entry()
             return token
@@ -82,9 +84,11 @@ class SyncTaskScheduler:
             if on_result:
                 on_result(result)
         finally:
-            if on_finished:
-                on_finished()
-            _discard_entry()
+            try:
+                if on_finished:
+                    on_finished()
+            finally:
+                _discard_entry()
 
         return token
 
