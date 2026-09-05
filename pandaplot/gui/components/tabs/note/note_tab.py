@@ -95,10 +95,11 @@ class NoteTab(PWidget):
         return True
 
     def save(self) -> bool:
-        """Save the note."""
+        """Save the note. Returns whether the save actually committed (see
+        NoteEditorWidget.save_content) -- False means the note is still
+        dirty and must not be treated as safely persisted."""
         try:
-            self.note_editor.save_content()
-            return True
+            return self.note_editor.save_content()
         except Exception:
             return False
 

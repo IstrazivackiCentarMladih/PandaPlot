@@ -950,14 +950,21 @@ class NoteEditorWidget(PWidget):
         self.status_label.setText(status)
         self._update_status_label_style()
 
-    def save_content(self):
-        """Save the note content."""
+    def save_content(self) -> bool:
+        """Save the note content. Returns whether the save actually
+        committed -- callers (e.g. flush_pending_note_edits) must not treat
+        a failed save as "no longer dirty", or an edit that EditNoteCommand
+        rejected (or that raised) would be silently discarded as if it had
+        been persisted."""
         try:
             content = self.text_edit.toPlainText()
 
             # Execute save command
             command = EditNoteCommand(self.app_context, self.note.id, content)
-            self.app_context.get_command_executor().execute_command(command)
+            succeeded = self.app_context.get_command_executor().execute_command(command)
+            if not succeeded:
+                self.update_status("Error: save failed")
+                return False
 
             # Local model already updated by command; avoid duplicate mutation
 
@@ -967,9 +974,11 @@ class NoteEditorWidget(PWidget):
 
             # Reset status after 2 seconds
             QTimer.singleShot(2000, lambda: self.update_status("Ready"))
+            return True
 
         except Exception as e:
             self.update_status(f"Error: {str(e)}")
+            return False
 
     def auto_save(self):
         """Auto-save the content."""
