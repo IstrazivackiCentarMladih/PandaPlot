@@ -1,0 +1,626 @@
+"""
+Chart Signal Analysis panel.
+
+Runs a signal analysis (FFT/STFT/PSD/Autocorrelation/Peak detection) on any
+series of the active chart -- a plotted data series or a fitted curve --
+optionally restricted to a segment, and stores the result as a new dataset.
+
+Modeled on two sibling panels:
+- ChartAnalysisPanel (pandaplot/gui/components/sidebar/chart_analysis/
+  chart_analysis_panel.py) for the chart-context plumbing: the series/fit
+  source picker and the segment (index range) section.
+- SignalPanel (pandaplot/gui/components/sidebar/signal/signal_panel.py) for
+  the async run/apply interaction pattern: a busy spinner, mutually
+  exclusive Run/Add-to-Project dispatch, and reusing a cached preview result
+  when nothing has changed since the last successful Run.
+"""
+
+from typing import Optional, override
+
+import numpy as np
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from pandaplot.analysis import SIGNAL_ANALYSES, SignalAnalysisResult, SignalAnalysisType
+from pandaplot.commands.base_command import CommandResult
+from pandaplot.commands.project.chart.chart_signal_analysis_command import (
+    ChartSignalAnalysisCommand,
+)
+from pandaplot.commands.project.dataset.apply_signal_analysis_result_command import (
+    ApplySignalAnalysisResultCommand,
+)
+from pandaplot.gui.components.common.busy_spinner import BusySpinner
+from pandaplot.gui.components.common.p_button import PButton
+from pandaplot.gui.components.sidebar.chart.series_source_picker import (
+    populate_series_fit_sources,
+    series_source_hint,
+)
+from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
+from pandaplot.gui.components.sidebar.signal.signal_panel import SignalPanel
+from pandaplot.gui.components.sidebar.signal.signal_parameter_widgets import (
+    build_signal_parameter_widgets,
+)
+from pandaplot.models.events import ChartEvents, UIEvents
+from pandaplot.models.project.items.chart import Chart
+from pandaplot.models.state.app_context import AppContext
+from pandaplot.services.theme.theme_manager import ThemeManager
+
+
+class ChartSignalAnalysisPanel(SidebarPanel):
+    """Side panel for signal analysis operations on chart data/fit series."""
+
+    def __init__(self, app_context: AppContext, parent: Optional[QWidget] = None):
+        super().__init__(app_context=app_context, parent=parent)
+
+        self.current_chart: Optional[Chart] = None
+        self.current_chart_id: Optional[str] = None
+
+        self.last_result: Optional[SignalAnalysisResult] = None
+        self._last_run_params = None
+        self._pending_command = None
+
+        self._initialize()
+
+    @override
+    def _init_ui(self):
+        self._init_panel_layout()
+        self._set_title("📡 Chart Signal Analysis")
+
+        content_widget = QWidget()
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        self._create_source_section(layout)
+        self._create_method_section(layout)
+        self._create_parameters_section(layout)
+        self._create_range_section(layout)
+        self._create_results_section(layout)
+        self._create_action_buttons(layout)
+        layout.addStretch()
+
+        self._set_content(content_widget, scrollable=True)
+
+        self._connect_signals()
+        self._on_analysis_changed()
+
+    # -- sections -----------------------------------------------------------
+
+    def _create_source_section(self, layout):
+        group = QGroupBox("Series")
+        form = QFormLayout(group)
+        self.source_combo = QComboBox()
+        form.addRow("Analyze:", self.source_combo)
+        self.source_hint = QLabel("Data series and fitted curves of this chart.")
+        self.source_hint.setWordWrap(True)
+        form.addRow(self.source_hint)
+        layout.addWidget(group)
+
+    def _create_method_section(self, layout):
+        group = QGroupBox("Method")
+        form = QFormLayout(group)
+
+        self.analysis_combo = QComboBox()
+        for analysis_type, info in SIGNAL_ANALYSES.items():
+            self.analysis_combo.addItem(info.label, analysis_type)
+        form.addRow("Method:", self.analysis_combo)
+
+        self.description_label = QLabel()
+        self.description_label.setWordWrap(True)
+        form.addRow("", self.description_label)
+
+        layout.addWidget(group)
+
+    def _create_parameters_section(self, layout):
+        self.parameters_group = QGroupBox("Parameters")
+        self.parameters_layout = QFormLayout(self.parameters_group)
+        layout.addWidget(self.parameters_group)
+
+    def _create_range_section(self, layout):
+        group = QGroupBox("Segment (index range)")
+        form = QFormLayout(group)
+
+        self.start_index = QSpinBox()
+        self.start_index.setMinimum(0)
+        self.start_index.setMaximum(0)
+        self.start_value_label = QLabel("–")
+        start_row = QHBoxLayout()
+        start_row.addWidget(self.start_index)
+        start_row.addWidget(self.start_value_label)
+        form.addRow("Start index:", start_row)
+
+        self.end_index = QSpinBox()
+        self.end_index.setMinimum(0)
+        self.end_index.setMaximum(0)
+        self.end_value_label = QLabel("–")
+        end_row = QHBoxLayout()
+        end_row.addWidget(self.end_index)
+        end_row.addWidget(self.end_value_label)
+        form.addRow("End index:", end_row)
+
+        layout.addWidget(group)
+
+    def _create_results_section(self, layout):
+        group = QGroupBox("Results")
+        vbox = QVBoxLayout(group)
+
+        self.run_btn = PButton("Run", role="secondary", on_click=self.run_analysis)
+        vbox.addWidget(self.run_btn)
+
+        self.busy_spinner = BusySpinner()
+        vbox.addWidget(self.busy_spinner)
+
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlaceholderText("Run analysis to see results...")
+        vbox.addWidget(self.results_text)
+
+        layout.addWidget(group)
+
+    def _create_action_buttons(self, layout):
+        row = QHBoxLayout()
+        self.add_btn = PButton(
+            "Add to Project", role="primary", on_click=self.add_results_to_project, enabled=False
+        )
+        self.clear_btn = PButton("Clear", role="secondary", on_click=self.clear)
+        row.addWidget(self.add_btn)
+        row.addWidget(self.clear_btn)
+        layout.addLayout(row)
+
+    def _connect_signals(self):
+        self.analysis_combo.currentIndexChanged.connect(self._on_analysis_changed)
+        self.source_combo.currentIndexChanged.connect(self._on_source_changed)
+        self.start_index.valueChanged.connect(self._on_segment_changed)
+        self.end_index.valueChanged.connect(self._on_segment_changed)
+
+    # -- dynamic parameters ---------------------------------------------------
+
+    def _on_analysis_changed(self):
+        analysis_type = self.analysis_combo.currentData()
+        if analysis_type is None:
+            return
+
+        info = SIGNAL_ANALYSES[analysis_type]
+        self.description_label.setText(info.description)
+
+        self._build_parameter_widgets(info)
+        self._refresh_sampling_rate_default()
+        self.clear()
+
+    def _build_parameter_widgets(self, info):
+        while self.parameters_layout.count():
+            item = self.parameters_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # reset references
+        self.sampling_rate = None
+        self.nfft_spin = None
+        self.window_combo = None
+        self.nperseg_spin = None
+        self.overlap_spin = None
+
+        self.height_spin = None
+        self.distance_spin = None
+        self.prominence_spin = None
+        self.threshold_spin = None
+
+        widgets = build_signal_parameter_widgets(self.parameters_layout, info)
+
+        self.sampling_rate = widgets.get("sampling_rate")
+        self.nfft_spin = widgets.get("nfft")
+        self.window_combo = widgets.get("window")
+        self.nperseg_spin = widgets.get("nperseg")
+        self.overlap_spin = widgets.get("overlap")
+
+        self.height_spin = widgets.get("height")
+        self.distance_spin = widgets.get("distance")
+        self.prominence_spin = widgets.get("prominence")
+        self.threshold_spin = widgets.get("threshold")
+
+    # -- sampling-rate pre-fill ----------------------------------------------
+
+    def _refresh_sampling_rate_default(self):
+        """Recompute the sampling-rate spinbox's default value as
+        ``1 / median(diff(x))`` over the currently selected segment's x
+        values, whenever the source or segment range changes. The field
+        stays user-editable in between -- this is only called from source/
+        segment change handlers, never from the sampling-rate spinbox's own
+        valueChanged, so a value the user is actively editing is never
+        clobbered outside of those triggers."""
+        if getattr(self, "sampling_rate", None) is None:
+            return
+
+        source = self._selected_source()
+        if source is None:
+            return
+        command = self._range_command(*source)
+        if command is None:
+            return
+
+        start = self.start_index.value()
+        end = self.end_index.value() + 1  # inclusive UI end -> exclusive boundary
+        xs = []
+        for i in range(start, end):
+            point = command.resolve_point(i)
+            if point is not None:
+                xs.append(point[0])
+
+        if len(xs) < 2:
+            return
+
+        diffs = np.diff(xs)
+        diffs = diffs[diffs > 0]
+        if len(diffs) == 0:
+            return
+
+        median_diff = float(np.median(diffs))
+        if median_diff <= 0:
+            return
+
+        self.sampling_rate.setValue(1.0 / median_diff)
+
+    # -- config ---------------------------------------------------------------
+
+    def _selected_source(self):
+        """Return (kind, index) for the selected series, or None."""
+        return self.source_combo.currentData()
+
+    def _current_analysis_type(self) -> Optional[SignalAnalysisType]:
+        return self.analysis_combo.currentData()
+
+    def _build_parameters(self) -> dict:
+        params: dict = {
+            "start_index": self.start_index.value(),
+            # end_index shown in the UI is the last included point; the
+            # engine takes an exclusive slice boundary.
+            "end_index": self.end_index.value() + 1,
+        }
+
+        if self.nfft_spin:
+            params["nfft"] = self.nfft_spin.value()
+        if self.window_combo:
+            params["window"] = self.window_combo.currentText()
+        if self.nperseg_spin:
+            params["nperseg"] = self.nperseg_spin.value()
+        if self.overlap_spin:
+            params["overlap"] = self.overlap_spin.value()
+        if self.height_spin:
+            params["height"] = self.height_spin.value()
+        if self.distance_spin:
+            params["distance"] = self.distance_spin.value()
+        if self.prominence_spin:
+            params["prominence"] = self.prominence_spin.value()
+        if self.threshold_spin:
+            params["threshold"] = self.threshold_spin.value()
+
+        return params
+
+    def _get_dispatch_params(self):
+        source = self._selected_source()
+        if source is None or self.current_chart_id is None:
+            return None
+        kind, index = source
+
+        return (
+            self.current_chart_id,
+            kind,
+            index,
+            self._current_analysis_type(),
+            self.sampling_rate.value() if self.sampling_rate else None,
+            self._build_parameters(),
+        )
+
+    def _build_command(self) -> Optional[ChartSignalAnalysisCommand]:
+        params = self._get_dispatch_params()
+        if params is None:
+            return None
+
+        chart_id, kind, index, analysis_type, sampling_rate, parameters = params
+        return ChartSignalAnalysisCommand(
+            self.app_context,
+            chart_id=chart_id,
+            source_kind=kind,
+            source_index=index,
+            analysis_type=analysis_type,
+            sampling_rate=sampling_rate,
+            parameters=parameters,
+        )
+
+    # -- async run/apply dispatch (mirrors SignalPanel) ------------------------
+
+    def run_analysis(self):
+        # Run and "Add to Project" share one busy spinner and one
+        # _pending_command slot -- letting both run at once would have
+        # whichever finishes first stop the spinner and clear the other's
+        # still-active reference out from under it, so treat them as mutually
+        # exclusive rather than tracking two independent in-flight jobs.
+        if self._pending_command is not None:
+            return
+
+        command = self._build_command()
+        if command is None:
+            return
+
+        # Tab/source navigation stays enabled while a preview computes in the
+        # background -- capture what was actually requested so a stale
+        # completion (user switched chart/source mid-flight) can be discarded
+        # instead of overwriting whatever the panel now shows.
+        dispatch_params = self._get_dispatch_params()
+        dispatch_context = (self.current_chart_id, self._selected_source())
+
+        self.run_btn.setEnabled(False)
+        self.add_btn.setEnabled(False)
+        self.busy_spinner.start()
+        self._pending_command = command  # keep alive until on_complete fires
+
+        def _on_complete(result, error):
+            self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
+            self._pending_command = None
+
+            current_context = (self.current_chart_id, self._selected_source())
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Discarding stale chart signal analysis preview: chart/source changed."
+                )
+                return
+
+            if error is not None:
+                self.last_result = None
+                self._last_run_params = None
+                self.add_btn.setEnabled(False)
+                self.results_text.setText(f"❌ Analysis failed:\n{error}")
+                return
+
+            self.last_result = result
+            self._last_run_params = dispatch_params
+            try:
+                self.results_text.setText(SignalPanel._format_result(result))
+                self.add_btn.setEnabled(True)
+            except Exception as e:
+                self.last_result = None
+                self._last_run_params = None
+                self.add_btn.setEnabled(False)
+                self.results_text.setText(f"❌ Analysis failed:\n{e}")
+
+        command.run_analysis_async(_on_complete)
+
+    def add_results_to_project(self):
+        # See the matching guard/comment in run_analysis(): Run and Add
+        # share one spinner and one _pending_command slot, so they must not
+        # both be in flight at once.
+        if self._pending_command is not None:
+            return
+
+        current_params = self._get_dispatch_params()
+        if current_params is None:
+            return
+
+        # If parameters are unchanged since the last successful Run preview,
+        # commit self.last_result directly without re-computing on a
+        # background thread.
+        if self.last_result is not None and self._last_run_params == current_params:
+            apply_command = ApplySignalAnalysisResultCommand(
+                app_context=self.app_context,
+                result_name=None,
+                folder_id=None,
+                result=self.last_result,
+            )
+            executor = self.app_context.get_command_executor()
+            if executor.execute_command(apply_command):
+                self.results_text.append("\n\n✅ Results added to project")
+                self.add_btn.setEnabled(False)
+            else:
+                self.add_btn.setEnabled(True)
+            return
+
+        command = self._build_command()
+        if command is None:
+            return
+
+        # See the matching capture/comment in run_analysis(): the commit
+        # itself already happened for real (the dataset was created in the
+        # project regardless of what the panel shows by the time it
+        # completes), but the *display* of that outcome belongs to whatever
+        # chart/source is now selected -- skip it if that's changed.
+        dispatch_context = (self.current_chart_id, self._selected_source())
+
+        self.run_btn.setEnabled(False)
+        self.add_btn.setEnabled(False)
+        self.busy_spinner.start()
+        self._pending_command = command
+
+        def _on_complete(result):
+            self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
+            self._pending_command = None
+
+            current_context = (self.current_chart_id, self._selected_source())
+            if current_context != dispatch_context:
+                self.logger.info(
+                    "Not displaying chart signal analysis commit result: chart/source changed."
+                )
+                return
+
+            if result is CommandResult.SUCCESS:
+                self.last_result = command.result
+                self._last_run_params = current_params
+                self.results_text.append("\n\n✅ Results added to project")
+            else:
+                self.add_btn.setEnabled(True)  # let the user retry
+
+        command.on_complete = _on_complete
+        executor = self.app_context.get_command_executor()
+        if not executor.execute_command(command):
+            # Synchronous validation failure -- on_complete never fires.
+            self.busy_spinner.stop()
+            self.run_btn.setEnabled(True)
+            self.add_btn.setEnabled(True)
+            self._pending_command = None
+
+    def clear(self):
+        if hasattr(self, "results_text"):
+            self.results_text.clear()
+
+        self.last_result = None
+        self._last_run_params = None
+        if hasattr(self, "add_btn"):
+            self.add_btn.setEnabled(False)
+        if hasattr(self, "busy_spinner"):
+            self.busy_spinner.stop()
+
+    # -- chart context --------------------------------------------------------
+
+    def _range_command(self, kind: str, index: int) -> Optional[ChartSignalAnalysisCommand]:
+        """Build a throwaway command to resolve the selected series.
+
+        Used for the segment bounds, index -> (x, y) previews, and the
+        sampling-rate default, so all three stay in sync with what will
+        actually be analyzed -- a data series' raw row count can be larger
+        once rows with missing x/y are dropped. Any analysis_type works
+        here since it's only used for source_length()/resolve_point().
+        """
+        if self.current_chart is None or self.current_chart_id is None:
+            return None
+        return ChartSignalAnalysisCommand(
+            self.app_context,
+            chart_id=self.current_chart_id,
+            source_kind=kind,
+            source_index=index,
+            analysis_type=SignalAnalysisType.FFT,
+        )
+
+    def _series_length(self, kind: str, index: int) -> int:
+        """Best-effort length of a source series, for the segment bounds."""
+        command = self._range_command(kind, index)
+        return command.source_length() if command else 0
+
+    def _on_source_changed(self):
+        source = self._selected_source()
+        if source is None:
+            last = 0
+        else:
+            last = max(self._series_length(*source) - 1, 0)
+        self.start_index.setMaximum(last)
+        self.end_index.setMaximum(last)
+        # Default to the whole series -- the last included point -- whenever
+        # the source changes, since a previous value may no longer make
+        # sense against the new series' length.
+        self.end_index.setValue(last)
+        self._update_range_labels()
+        self._refresh_sampling_rate_default()
+
+    def _on_segment_changed(self):
+        self._update_range_labels()
+        self._refresh_sampling_rate_default()
+
+    def _format_point(self, point: Optional[tuple[float, float]]) -> str:
+        if point is None:
+            return "–"
+        x, y = point
+        return f"x={x:.4g}, y={y:.4g}"
+
+    def _update_range_labels(self):
+        source = self._selected_source()
+        command = self._range_command(*source) if source else None
+        if command is None:
+            self.start_value_label.setText("–")
+            self.end_value_label.setText("–")
+            return
+
+        self.start_value_label.setText(self._format_point(command.resolve_point(self.start_index.value())))
+        self.end_value_label.setText(self._format_point(command.resolve_point(self.end_index.value())))
+
+    def _populate_sources(self):
+        has_sources, any_series_excluded = populate_series_fit_sources(self.source_combo, self.current_chart)
+        self.run_btn.setEnabled(has_sources)
+        self.source_hint.setText(
+            series_source_hint(has_sources=has_sources, any_series_excluded=any_series_excluded)
+        )
+        self._on_source_changed()
+
+    @override
+    def setup_event_subscriptions(self):
+        self.subscribe_to_event(UIEvents.TAB_CHANGED, self._on_tab_changed)
+        self.subscribe_to_event(ChartEvents.CHART_UPDATED, self._on_chart_updated)
+
+    def _on_tab_changed(self, event_data):
+        if event_data.get("tab_type") == "chart":
+            chart_id = event_data.get("tab_id")
+            self.current_chart_id = chart_id
+            project = self.app_context.get_app_state().current_project
+            chart = project.find_item(chart_id) if project and chart_id else None
+            self.current_chart = chart if isinstance(chart, Chart) else None
+        else:
+            self.current_chart = None
+            self.current_chart_id = None
+        self._populate_sources()
+
+    def _on_chart_updated(self, event_data):
+        chart = event_data.get("chart")
+        if not chart or (self.current_chart_id and chart.id != self.current_chart_id):
+            return
+        if isinstance(chart, Chart):
+            self.current_chart = chart
+            self.current_chart_id = chart.id
+            self._populate_sources()
+
+    # -- theme ------------------------------------------------------------------
+
+    @override
+    def _apply_theme(self):
+        theme_manager = self.app_context.get_manager(ThemeManager)
+        palette = theme_manager.get_surface_palette()
+
+        card_bg = palette.get("card_bg", "#ffffff")
+        card_border = palette.get("card_border", "#dee2e6")
+        base_fg = palette.get("base_fg", "#333333")
+        secondary_fg = palette.get("secondary_fg", "#666666")
+
+        self.setStyleSheet(f"""
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 9pt;
+                color: {base_fg};
+                margin-top: 5px;
+                padding-top: 10px;
+                background-color: {card_bg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+            }}
+
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+                background-color: {card_bg};
+            }}
+        """)
+
+        self._apply_title_theme(base_fg, card_border)
+
+        self.source_hint.setStyleSheet(
+            f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
+        )
+        value_label_style = f"QLabel {{ color: {secondary_fg}; background-color: transparent; }}"
+        self.start_value_label.setStyleSheet(value_label_style)
+        self.end_value_label.setStyleSheet(value_label_style)
+
+        self.results_text.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {card_bg};
+                color: {base_fg};
+                border: 1px solid {card_border};
+                border-radius: 4px;
+            }}
+        """)
