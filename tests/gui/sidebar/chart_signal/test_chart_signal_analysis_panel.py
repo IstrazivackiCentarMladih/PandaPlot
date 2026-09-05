@@ -193,6 +193,27 @@ class TestSamplingRatePrefill:
 
         assert panel.sampling_rate.value() == pytest.approx(100.0, rel=1e-2)
 
+    def test_prefill_ignores_non_finite_diffs_from_a_non_numeric_x_value(self, app_context, project):
+        """Regression: resolve_series_xy()'s missing-value mask runs before
+        its numeric coercion, so a non-numeric (but non-NaN) x cell survives
+        the mask and only turns into NaN afterward -- the resulting NaN diff
+        used to propagate through np.median into a NaN sampling rate instead
+        of being filtered alongside the zero diffs."""
+        dataset = project.find_item("ds-1")
+        dataset.data["t"] = dataset.data["t"].astype(object)
+        dataset.data.loc[10, "t"] = "not-a-number"
+
+        panel = ChartSignalAnalysisPanel(app_context)
+        panel.current_chart = project.find_item("chart-1")
+        panel.current_chart_id = "chart-1"
+        panel._populate_sources()
+
+        index = panel.analysis_combo.findData(SignalAnalysisType.FFT)
+        panel.analysis_combo.setCurrentIndex(index)
+
+        assert not np.isnan(panel.sampling_rate.value())
+        assert panel.sampling_rate.value() == pytest.approx(100.0, rel=1e-2)
+
 
 class TestRunAnalysisAsyncDispatch:
     def _fake_result(self):

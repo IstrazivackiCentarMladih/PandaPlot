@@ -273,8 +273,13 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # Sampling interval is a magnitude -- np.abs() so a descending (or
         # mixed-direction) x axis still yields a usable estimate instead of
         # every diff coming back negative and getting filtered out entirely.
+        # resolve_series_xy() coerces non-numeric x values to NaN rather than
+        # dropping them, so a single such value produces a NaN diff -- filter
+        # non-finite diffs out too, or np.median (and the sampling-rate
+        # spinbox) would silently end up NaN instead of using the remaining
+        # valid spacings.
         diffs = np.abs(np.diff(x_segment.to_numpy()))
-        diffs = diffs[diffs > 0]
+        diffs = diffs[np.isfinite(diffs) & (diffs > 0)]
         if len(diffs) == 0:
             return
 
