@@ -32,6 +32,7 @@ class NoteTab(PWidget):
 
         self._initialize()
         self.setup_connections()
+        self.register_unsaved_changes_source()
         
     @override
     def _init_ui(self):

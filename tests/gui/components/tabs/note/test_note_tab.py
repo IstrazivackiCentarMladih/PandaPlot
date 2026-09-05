@@ -1,6 +1,8 @@
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, call
 
 from pandaplot.gui.components.tabs.note.note_tab import NoteTab
+from pandaplot.models.project.items.note import Note
+from pandaplot.models.state.unsaved_changes_registry import UnsavedChangesRegistry
 
 
 def test_get_tab_data_returns_note_type_and_id():
@@ -63,3 +65,14 @@ def test_save_returns_false_when_note_editor_raises():
     tab.note_editor.save_content.side_effect = RuntimeError("boom")
 
     assert tab.save() is False
+
+
+def test_init_registers_as_an_unsaved_changes_source(qapp):
+    app_context = MagicMock()
+    app_context.get_manager.return_value.get_surface_palette.return_value = {}
+    note = Note(name="My Note", content="hello")
+
+    tab = NoteTab(app_context=app_context, note=note, parent=None)
+
+    assert call(UnsavedChangesRegistry) in app_context.get_manager.call_args_list
+    app_context.get_manager.return_value.register.assert_called_once_with(tab)
