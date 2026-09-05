@@ -1023,6 +1023,51 @@ class TestUndoRedoErrorHook:
         assert result is False
         assert len(history_calls) == 1
 
+    def test_a_raising_display_name_falls_back_to_the_class_name(self):
+        """display_name() is itself overridable and could raise -- it must
+        not prevent failure recovery, and the hook should still get a usable
+        label (the class name) instead of nothing."""
+
+        class RaisingDisplayNameCommand(MockCommand):
+            def display_name(self) -> str:
+                raise RuntimeError("display_name failed")
+
+        executor = CommandExecutor()
+        executor.execute_command(RaisingDisplayNameCommand("Failing", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert calls == [("RaisingDisplayNameCommand", "undo")]
+
+    def test_display_name_is_resolved_before_cleanup_runs(self):
+        """display_name() may derive its label from state cleanup() releases
+        (e.g. a snapshot's identifying name), so it must be resolved before
+        _invalidate_history_after_failure() calls cleanup() on the command."""
+
+        class NameFromStateCommand(MockCommand):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.state = "still here"
+
+            def display_name(self) -> str:
+                return self.state
+
+            def cleanup(self):
+                super().cleanup()
+                self.state = None
+
+        executor = CommandExecutor()
+        executor.execute_command(NameFromStateCommand("Failing", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.undo()
+
+        assert calls == [("still here", "undo")]
+
 
 class TestCleanupOnEviction:
     """Test cases for Command.cleanup() being called when a command is

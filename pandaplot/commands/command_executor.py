@@ -39,6 +39,18 @@ class CommandExecutor:
         # class name) and operation being "undo" or "redo".
         self.on_undo_redo_error = on_undo_redo_error
 
+    def _safe_display_name(self, command: Command) -> str:
+        """Resolve command.display_name(), isolating any exception it raises
+        so a bad override can't itself break undo/redo failure recovery --
+        falls back to the class name, same spirit as _safe_cleanup."""
+        try:
+            return command.display_name()
+        except Exception as e:
+            self.logger.error(
+                "Error getting display_name() for command '%s': %s",
+                command.__class__.__name__, str(e), exc_info=True)
+            return command.__class__.__name__
+
     def _notify_undo_redo_error(self, command_description: str, operation: str) -> None:
         if not self.on_undo_redo_error:
             return
@@ -164,9 +176,10 @@ class CommandExecutor:
             # succeed (or even be a no-op), nor that any other stack entry
             # is still valid -- see _invalidate_history_after_failure.
             self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
+            command_description = self._safe_display_name(command)
             self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
-            self._notify_undo_redo_error(command.display_name(), "undo")
+            self._notify_undo_redo_error(command_description, "undo")
             self._notify_history_changed()
             return False
 
@@ -201,9 +214,10 @@ class CommandExecutor:
             result = command.redo()
         except Exception as e:
             self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
+            command_description = self._safe_display_name(command)
             self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
-            self._notify_undo_redo_error(command.display_name(), "redo")
+            self._notify_undo_redo_error(command_description, "redo")
             self._notify_history_changed()
             return False
 
