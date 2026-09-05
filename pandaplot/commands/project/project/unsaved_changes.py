@@ -69,6 +69,8 @@ def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: b
     just promised to keep. Doing it here means a failure can still cancel
     the shutdown and leave the project (and its unsaved state) intact.
     """
+    flush_pending_note_edits(app_context)
+
     app_state = app_context.get_app_state()
     if not app_state.has_project or not app_state.is_modified:
         return True
