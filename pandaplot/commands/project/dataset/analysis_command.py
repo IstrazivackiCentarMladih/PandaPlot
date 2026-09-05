@@ -17,6 +17,7 @@ import pandas as pd
 
 from pandaplot.analysis import AnalysisEngine, AnalysisType
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.apply_analysis_result_command import ApplyAnalysisResultCommand
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project.items import Dataset
@@ -29,13 +30,6 @@ class AnalysisCommand(Command):
     thread. See module docstring for the undo-tracking split with
     ApplyAnalysisResultCommand.
     """
-
-    # execute() only dispatches the computation -- it returns SUCCESS before
-    # anything has actually mutated the project, and the dispatched
-    # computation may yet fail or be discarded (see _on_analysis_computed).
-    # The real mutation, and the real "unsaved changes" flag, belongs to
-    # ApplyAnalysisResultCommand alone.
-    marks_project_modified = False
 
     def __init__(
         self,
@@ -91,6 +85,15 @@ class AnalysisCommand(Command):
         self.new_column_name = analysis_config["new_column_name"]
         self.replace_existing = analysis_config.get("replace_existing", False)
         self.parameters = analysis_config.get("parameters", {})
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only dispatches the computation -- it returns SUCCESS
+        before anything has actually mutated the project, and the
+        dispatched computation may yet fail or be discarded (see
+        _on_analysis_computed). The real mutation, and the real "unsaved
+        changes" flag, belongs to ApplyAnalysisResultCommand alone."""
+        return False
 
     @override
     def occupies_undo_slot(self) -> bool:
@@ -210,8 +213,8 @@ class AnalysisCommand(Command):
                 self.dataset_id,
                 self.new_column_name,
                 outcome["result"].result_data,
-                self.column_existed_before,
-                self.original_data,
+                column_existed_before=self.column_existed_before,
+                original_data=self.original_data,
             )
             executor = self.app_context.get_command_executor()
             if executor.execute_command(apply_command):
@@ -263,9 +266,8 @@ class AnalysisCommand(Command):
     def _get_dataset(self) -> Dataset | None:
         """Get dataset from app context."""
         try:
-            app_state = self.app_context.get_app_state()
-            if app_state.has_project and app_state.current_project:
-                project = app_state.current_project
+            project = get_current_project(self.app_context)
+            if project is not None:
                 dataset_item = project.find_item(self.dataset_id)
                 if dataset_item and hasattr(dataset_item, "data") and isinstance(dataset_item, Dataset):
                     return dataset_item

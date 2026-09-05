@@ -714,7 +714,6 @@ def test_auto_range_labels_refresh_on_series_change(app_context):
     value was last typed. The read-only labels must always reflect the
     currently selected series' real data range instead."""
     dataset, chart = _make_dataset_and_chart_with_id_only_series()
-    x_id = dataset.column_id("time")
     y_id = dataset.column_id("value")
     dataset.set_data(dataset.data.assign(time2=[100, 200, 300, 400]))
     chart.add_data_series(dataset_id=dataset.id, x_column_id=dataset.column_id("time2"), y_column_id=y_id, label="second series")

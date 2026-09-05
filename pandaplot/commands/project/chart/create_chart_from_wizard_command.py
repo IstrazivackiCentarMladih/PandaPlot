@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QDialog
 
 from pandaplot.commands.base_command import Command, CommandResult
 from pandaplot.commands.project.chart.create_chart_command import CreateChartCommand
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.chart.error_bar_config import ErrorBarConfig
@@ -35,12 +36,6 @@ _DEFAULT_SERIES_COLORS = [
 class CreateChartFromWizardCommand(Command):
     """Opens `ChartWizard` non-blocking; on acceptance builds a `Chart` from it."""
 
-    # execute() only opens the dialog; the real mutation is CreateChartCommand,
-    # executed separately (and self-tracked via its own default True) once
-    # the wizard finishes (see _on_wizard_finished). A cancelled wizard must
-    # not flag the project as having unsaved changes.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext, dataset_id: Optional[str] = None,
                  preselected_column_ids: Optional[list[str]] = None):
         super().__init__()
@@ -54,6 +49,15 @@ class CreateChartFromWizardCommand(Command):
         self.dataset_id: Optional[str] = dataset_id
         self.preselected_column_ids: list[str] = preselected_column_ids or []
         self._dialog: Optional[QDialog] = None
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """execute() only opens the dialog; the real mutation is
+        CreateChartCommand, executed separately (and self-tracked via its
+        own default True) once the wizard finishes (see
+        _on_wizard_finished). A cancelled wizard must not flag the project
+        as having unsaved changes."""
+        return False
 
     def _dataset_options(self, project) -> list[tuple[str, str]]:
         return dataset_display_options(project)
@@ -138,14 +142,14 @@ class CreateChartFromWizardCommand(Command):
         try:
             self.logger.info("Executing CreateChartFromWizardCommand")
 
-            if not self.app_state.has_project or not self.app_state.current_project:
+            if get_current_project(self.app_context) is None:
                 self.logger.warning("CreateChartFromWizardCommand.execute: no project is currently loaded")
                 if not ensure_project_or_offer_create(
                     self.app_context, "Create Chart",
                     "Creating a chart requires a project. Create a new project to continue?",
                 ):
                     return CommandResult.FAILURE
-            project = self.app_state.current_project
+            project = get_current_project(self.app_context)
 
             dialog = ChartWizard(
                 self.app_context,
@@ -216,9 +220,9 @@ class CreateChartFromWizardCommand(Command):
             return
 
         try:
-            if not self.app_state.has_project or not self.app_state.current_project:
+            project = get_current_project(self.app_context)
+            if project is None:
                 return
-            project = self.app_state.current_project
 
             chart = Chart(name=self._default_chart_name(project), chart_type=dialog.get_chart_type())
             # Reported live: "when creating chart through wizard, the

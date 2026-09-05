@@ -22,6 +22,7 @@ from pandaplot.models.project.items.chart import (
     DataSeries,
     FitData,
     assign_series_column_ids,
+    resolve_manual_fit_source_data,
     restore_chart_state,
     snapshot_chart_state,
 )
@@ -894,3 +895,70 @@ class TestRetypeSeriesToColormapCarriesOverMarker:
         assert isinstance(series.style, HeatmapSeriesStyle)
         assert series.style.z_column_id == "z-id"
         assert series.style.z_column == "z"
+
+
+class TestResolveManualFitSourceData:
+    """Tests for resolve_manual_fit_source_data helper."""
+
+    @pytest.fixture
+    def dataset(self):
+        import pandas as pd
+        from pandaplot.models.project.items import Dataset
+        df = pd.DataFrame({
+            "x": [1.0, 2.0, 3.0],
+            "y": [10.0, 20.0, 30.0],
+            "y_lower": [9.0, 19.0, 29.0],
+            "y_upper": [11.0, 21.0, 31.0],
+            "text": ["a", "b", "c"],
+        })
+        return Dataset(id="ds-1", name="DS", data=df)
+
+    def test_missing_dataset_returns_none(self):
+        assert resolve_manual_fit_source_data(None, "col_x", "col_y") is None
+
+    def test_unresolvable_x_or_y_returns_none(self, dataset):
+        x_id = dataset.column_id("x")
+        y_id = dataset.column_id("y")
+        assert resolve_manual_fit_source_data(dataset, "invalid_id", y_id) is None
+        assert resolve_manual_fit_source_data(dataset, x_id, "invalid_id") is None
+
+    def test_resolves_x_and_y_without_confidence(self, dataset):
+        x_id = dataset.column_id("x")
+        y_id = dataset.column_id("y")
+        res = resolve_manual_fit_source_data(dataset, x_id, y_id)
+        assert res is not None
+        x_data, y_data, conf_lower, conf_upper = res
+        np.testing.assert_array_equal(x_data, np.array([1.0, 2.0, 3.0]))
+        np.testing.assert_array_equal(y_data, np.array([10.0, 20.0, 30.0]))
+        assert conf_lower is None
+        assert conf_upper is None
+
+    def test_resolves_x_y_and_confidence_columns(self, dataset):
+        x_id = dataset.column_id("x")
+        y_id = dataset.column_id("y")
+        lower_id = dataset.column_id("y_lower")
+        upper_id = dataset.column_id("y_upper")
+        res = resolve_manual_fit_source_data(
+            dataset, x_id, y_id,
+            confidence_lower_column_id=lower_id,
+            confidence_upper_column_id=upper_id,
+        )
+        assert res is not None
+        x_data, y_data, conf_lower, conf_upper = res
+        np.testing.assert_array_equal(x_data, np.array([1.0, 2.0, 3.0]))
+        np.testing.assert_array_equal(y_data, np.array([10.0, 20.0, 30.0]))
+        np.testing.assert_array_equal(conf_lower, np.array([9.0, 19.0, 29.0]))
+        np.testing.assert_array_equal(conf_upper, np.array([11.0, 21.0, 31.0]))
+
+    def test_unresolvable_confidence_column_returns_none(self, dataset):
+        x_id = dataset.column_id("x")
+        y_id = dataset.column_id("y")
+        text_id = dataset.column_id("text")
+        # Invalid column ID for lower
+        assert resolve_manual_fit_source_data(
+            dataset, x_id, y_id, confidence_lower_column_id="missing_id"
+        ) is None
+        # Non-numeric column ID for upper
+        assert resolve_manual_fit_source_data(
+            dataset, x_id, y_id, confidence_upper_column_id=text_id
+        ) is None

@@ -20,18 +20,12 @@ class CommandExecutor:
         self.redo_stack: List[Command] = []
         self.max_undo_levels = 10
 
-        # Optional hook invoked after a successful execute()/undo()/redo()
-        # of any command whose `marks_project_modified` is True -- wired by
-        # app.py to AppState.mark_modified, the single choke point every
-        # command passes through, so individual commands don't each need to
-        # touch AppState's dirty flag themselves.
+        # Called after a command that marks_project_modified() succeeds; wired
+        # by app.py to AppState.mark_modified.
         self.on_project_modified = on_project_modified
 
-        # Optional hook invoked whenever can_undo()/can_redo() may have
-        # changed (a command executed, was undone/redone, or history was
-        # cleared) -- wired by app.py to emit AppEvents.HISTORY_CHANGED, so
-        # e.g. the Edit menu's Undo/Redo actions can keep their enabled
-        # state in sync without polling.
+        # Called whenever can_undo()/can_redo() may have changed; wired by
+        # app.py to emit AppEvents.HISTORY_CHANGED.
         self.on_history_changed = on_history_changed
 
         # Optional hook invoked when a command's undo()/redo() raises
@@ -40,15 +34,16 @@ class CommandExecutor:
         # _invalidate_history_after_failure), and the UI needs to tell the
         # user their history was reset rather than let a later undo/redo
         # silently act on a command whose assumed state no longer holds.
-        # Called with (command_name, operation), operation being "undo" or
-        # "redo".
+        # Called with (command_description, operation), command_description
+        # being command.display_name() (a human-readable label, not the
+        # class name) and operation being "undo" or "redo".
         self.on_undo_redo_error = on_undo_redo_error
 
-    def _notify_undo_redo_error(self, command_name: str, operation: str) -> None:
+    def _notify_undo_redo_error(self, command_description: str, operation: str) -> None:
         if not self.on_undo_redo_error:
             return
         try:
-            self.on_undo_redo_error(command_name, operation)
+            self.on_undo_redo_error(command_description, operation)
         except Exception as e:
             # This runs while undo()/redo() is already handling a command
             # failure -- a raising hook (e.g. a Qt dialog) must not prevent
@@ -56,7 +51,7 @@ class CommandExecutor:
             self.logger.error("Error in on_undo_redo_error hook: %s", str(e), exc_info=True)
 
     def _notify_project_modified(self, command: Command) -> None:
-        if not (self.on_project_modified and getattr(command, "marks_project_modified", True)):
+        if not (self.on_project_modified and command.marks_project_modified()):
             return
         try:
             self.on_project_modified()
@@ -170,7 +165,7 @@ class CommandExecutor:
             self.logger.error("Error undoing command '%s': %s", command_name, str(e), exc_info=True)
             self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
-            self._notify_undo_redo_error(command_name, "undo")
+            self._notify_undo_redo_error(command.display_name(), "undo")
             self._notify_history_changed()
             return False
 
@@ -207,7 +202,7 @@ class CommandExecutor:
             self.logger.error("Error redoing command '%s': %s", command_name, str(e), exc_info=True)
             self._invalidate_history_after_failure(command)
             self._notify_project_modified(command)
-            self._notify_undo_redo_error(command_name, "redo")
+            self._notify_undo_redo_error(command.display_name(), "redo")
             self._notify_history_changed()
             return False
 

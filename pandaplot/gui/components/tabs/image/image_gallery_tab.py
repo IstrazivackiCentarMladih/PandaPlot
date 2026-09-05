@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from pandaplot.commands.composite_command import CompositeCommand
 from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
 from pandaplot.commands.project.item import DeleteItemCommand, MoveItemCommand, RenameItemCommand
 from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
@@ -718,9 +719,11 @@ class ImageGalleryTab(PWidget):
         ) == QMessageBox.StandardButton.Yes
         if not confirmed:
             return
-        for item in selected:
-            command = DeleteItemCommand(self.app_context, item_id=item.id, confirm=False)
-            self.app_context.get_command_executor().execute_command(command)
+        commands = [
+            DeleteItemCommand(self.app_context, item_id=item.id, confirm=False)
+            for item in selected
+        ]
+        self.app_context.get_command_executor().execute_command(CompositeCommand(commands))
 
     def _on_move_clicked(self) -> None:
         selected = [c for c in self._selected_children() if isinstance(c, Image)]
@@ -753,17 +756,19 @@ class ImageGalleryTab(PWidget):
         Image instance (albums are never a valid drag/move payload here --
         moving an ImageGallery through MoveItemCommand would recursively
         strip and delete its descendants from the project index)."""
+        commands = []
         for image_id in image_ids:
             if image_id == target_gallery_id:
                 continue
             child = self.current_gallery.get_item_by_id(image_id)
             if not isinstance(child, Image):
                 continue
-            move_command = MoveItemCommand(
+            commands.append(MoveItemCommand(
                 self.app_context, item_id=image_id, item_type="image",
                 source_folder_id=self.current_gallery.id, target_folder_id=target_gallery_id,
-            )
-            self.app_context.get_command_executor().execute_command(move_command)
+            ))
+        if commands:
+            self.app_context.get_command_executor().execute_command(CompositeCommand(commands))
 
     def _on_copy_clicked(self) -> None:
         selected = [c for c in self._selected_children() if isinstance(c, Image)]

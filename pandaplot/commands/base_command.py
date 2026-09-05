@@ -1,27 +1,21 @@
 import logging
+import re
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 
 
-class CommandResult(Enum):
+class CommandResult(StrEnum):
     """Outcome of `Command.execute()`/`undo()`/`redo()`.
 
-    For `execute()`: SUCCESS/FAILURE map to `CommandExecutor.execute_command()`'s
-    True/False return, same as the old bool contract. NOOP is also a "nothing
-    happened" outcome -- the command is not pushed onto the undo stack, same
-    as FAILURE -- but signals that this was expected (e.g. re-applying
-    settings that already match the current config, or renaming to the same
-    name), so the executor logs it quietly instead of as a warning.
+    SUCCESS/FAILURE/NOOP determine `CommandExecutor`'s log level (info,
+    warning, debug respectively) and, for `execute()`, whether the command is
+    pushed onto the undo stack (SUCCESS only; FAILURE and NOOP are not).
+    `undo()`/`redo()` always move the command between stacks regardless of
+    result.
 
-    For `undo()`/`redo()`: `CommandExecutor.undo()`/`redo()` still always move
-    the command between stacks regardless of the result (undoing/redoing is
-    assumed to always be attempted, unlike execute()'s NOOP short-circuit) --
-    only the log level changes (a warning for FAILURE, debug for NOOP, info
-    otherwise).
-
-    A plain Enum, not IntEnum: every member is truthy, so `if
-    command.execute():` would silently pass regardless of outcome. Always
-    compare explicitly, e.g. `if command.execute() is CommandResult.SUCCESS:`.
+    Always compare explicitly (`if command.execute() is
+    CommandResult.SUCCESS:`) -- every member is truthy, so `if
+    command.execute():` would silently pass regardless of outcome.
     """
     SUCCESS = "success"
     FAILURE = "failure"
@@ -29,13 +23,6 @@ class CommandResult(Enum):
 
 
 class Command(ABC):
-    # Whether a successful execute()/undo()/redo() of this command should
-    # flag the project as having unsaved changes (see
-    # CommandExecutor.on_project_modified). False for the project-lifecycle
-    # commands themselves (new/open/load/save/close), which manage
-    # AppState's modified flag explicitly instead.
-    marks_project_modified: bool = True
-
     def __init__(self):
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -60,6 +47,28 @@ class Command(ABC):
         CreateChartFromWizardCommand)."""
         return True
 
+    def marks_project_modified(self) -> bool:
+        """Whether a successful execute()/undo()/redo() of this command
+        should flag the project as having unsaved changes (see
+        CommandExecutor.on_project_modified). Default True; override to
+        False for project-lifecycle commands (new/open/load/save/close),
+        which manage AppState's modified flag explicitly instead."""
+        return True
+
+    def display_name(self) -> str:
+        """Human-readable name for this command, shown to the user (e.g. in
+        an undo/redo error dialog) -- unlike `__class__.__name__`, which is
+        an implementation identifier not meant for user-facing text. Default
+        derives one from the class name (e.g. CreateNoteCommand -> "Create
+        note"); override for a custom label."""
+        name = self.__class__.__name__
+        if name.endswith("Command"):
+            name = name[: -len("Command")]
+        words = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", name)
+        if not words:
+            return self.__class__.__name__
+        return " ".join([words[0]] + [w.lower() for w in words[1:]])
+
     def cleanup(self) -> None:
         """Called by CommandExecutor when this command is dropped from a
         stack outside the normal undo/redo lifecycle: eviction past
@@ -67,9 +76,12 @@ class Command(ABC):
         when the command is merely moved between undo_stack and redo_stack
         by undo()/redo(), since it may still need its state then. Default
         no-op; override to release resources held for undo (e.g. a large
-        DataFrame snapshot). Also called when a command's own `undo()`/
-        `redo()` raises -- it's dropped from both stacks in that case too,
-        so its held state still needs releasing."""
+        DataFrame snapshot). Also called when *any* command on either stack
+        raises out of its own `undo()`/`redo()` -- the whole history is
+        invalidated and cleaned up in that case (see
+        CommandExecutor._invalidate_history_after_failure), not just the
+        command that raised, so overrides can't assume this only fires for
+        their own failed undo()/redo()."""
         return
 
     def __repr__(self):

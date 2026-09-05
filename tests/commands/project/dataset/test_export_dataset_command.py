@@ -22,7 +22,7 @@ def test_marks_project_modified_is_false():
     """Regression (PR #235 review): exporting only writes an external file
     and never mutates the project, so it must not flag the project as
     having unsaved changes."""
-    assert ExportDatasetCommand.marks_project_modified is False
+    assert ExportDatasetCommand(Mock(spec=AppContext), "ds-1").marks_project_modified() is False
 
 
 @pytest.fixture

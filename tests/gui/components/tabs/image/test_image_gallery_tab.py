@@ -1,11 +1,12 @@
 """Tests for ImageGalleryTab."""
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from PySide6.QtCore import QBuffer, QIODevice, QMimeData
 from PySide6.QtGui import QColor, QPixmap
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
+from pandaplot.commands.composite_command import CompositeCommand
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.tabs.image.image_gallery_tab import ImageGalleryTab
 from pandaplot.models.project.items import Image, ImageGallery
@@ -690,8 +691,10 @@ class TestImageGalleryTabMoveCopy:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.call_count == 1
-        move_command = executor.execute_command.call_args.args[0]
-        assert move_command.item_id == image.id
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert len(composite.commands) == 1
+        assert composite.commands[0].item_id == image.id
 
     def test_move_executes_move_item_command_per_selected_image(self, app_context, monkeypatch):
         gallery = ImageGallery(name="Trip")
@@ -721,10 +724,51 @@ class TestImageGalleryTabMoveCopy:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.called
-        move_command = executor.execute_command.call_args.args[0]
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert len(composite.commands) == 1
+        move_command = composite.commands[0]
         assert move_command.item_id == image.id
         assert move_command.target_folder_id == target_gallery_id
         assert move_command.source_folder_id == gallery.id
+
+    def test_move_wraps_multiple_selected_images_in_one_composite_command(self, app_context, monkeypatch):
+        """A single 'Move to...' action on N selected images must land as one
+        undo-stack entry (one CompositeCommand of N MoveItemCommands), not N
+        separate entries that would each need their own Ctrl+Z."""
+        gallery = ImageGallery(name="Trip")
+        image1 = Image(name="Beach")
+        image2 = Image(name="Mountain")
+        gallery.add_item(image1)
+        gallery.add_item(image2)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.item(1).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        target_gallery_id = "some-other-gallery-id"
+
+        class _FakeDialog:
+            def __init__(self, *a, **kw):
+                pass
+            def exec(self):
+                from PySide6.QtWidgets import QDialog
+                return QDialog.DialogCode.Accepted
+            def get_selected_gallery_id(self):
+                return target_gallery_id
+
+        monkeypatch.setattr(
+            "pandaplot.gui.dialogs.image.gallery_destination_picker_dialog.GalleryDestinationPickerDialog",
+            _FakeDialog,
+        )
+
+        tab._on_move_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.call_count == 1
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert {cmd.item_id for cmd in composite.commands} == {image1.id, image2.id}
 
     def test_copy_executes_copy_images_command_once_for_whole_selection(self, app_context, monkeypatch):
         gallery = ImageGallery(name="Trip")
@@ -789,6 +833,65 @@ class TestImageGalleryTabMoveCopy:
         assert not executor.execute_command.called
 
 
+class TestImageGalleryTabBulkDelete:
+    def test_delete_wraps_single_selection_in_composite_command(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        image = Image(name="Beach")
+        gallery.add_item(image)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            tab._on_delete_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.call_count == 1
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert len(composite.commands) == 1
+        assert composite.commands[0].item_id == image.id
+
+    def test_delete_wraps_multiple_selected_items_in_one_composite_command(self, app_context):
+        """A single 'Delete' action on N selected items must land as one
+        undo-stack entry (one CompositeCommand of N DeleteItemCommands), not
+        N separate entries that would each need their own Ctrl+Z."""
+        gallery = ImageGallery(name="Trip")
+        image1 = Image(name="Beach")
+        image2 = Image(name="Mountain")
+        gallery.add_item(image1)
+        gallery.add_item(image2)
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.item(1).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            tab._on_delete_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert executor.execute_command.call_count == 1
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert {cmd.item_id for cmd in composite.commands} == {image1.id, image2.id}
+        # Each sub-command already skips its own confirmation dialog since
+        # the tab confirmed the whole batch up front.
+        assert all(cmd.confirm is False for cmd in composite.commands)
+
+    def test_delete_does_nothing_when_confirmation_declined(self, app_context):
+        gallery = ImageGallery(name="Trip")
+        gallery.add_item(Image(name="Beach"))
+        tab = ImageGalleryTab(app_context=app_context, gallery=gallery, parent=None)
+        tab.grid.item(0).setSelected(True)
+        tab.grid.itemSelectionChanged.emit()
+
+        with patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+            tab._on_delete_clicked()
+
+        executor = tab.app_context.get_command_executor.return_value
+        assert not executor.execute_command.called
+
+
 class TestImageGalleryTabBrokenThumbnails:
     def test_failed_thumbnail_load_produces_broken_icon_distinct_from_success(self, app_context):
         gallery = ImageGallery(name="Trip")
@@ -835,7 +938,10 @@ class TestImageGalleryTabDragDropOntoAlbum:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.called
-        move_command = executor.execute_command.call_args.args[0]
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert len(composite.commands) == 1
+        move_command = composite.commands[0]
         assert move_command.item_id == image.id
         assert move_command.target_folder_id == album.id
         assert move_command.source_folder_id == gallery.id
@@ -878,7 +984,10 @@ class TestImageGalleryTabDragDropOntoAlbum:
         tab.grid._handle_drop_on_item(album_item, mime)
 
         executor = tab.app_context.get_command_executor.return_value
-        assert executor.execute_command.call_count == 2
+        assert executor.execute_command.call_count == 1
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert {cmd.item_id for cmd in composite.commands} == {image_a.id, image_b.id}
 
     def test_dropping_an_album_id_onto_another_album_does_not_destroy_its_contents(self, app_context):
         """Regression: a drag payload can contain an album id (e.g. an album
@@ -957,7 +1066,10 @@ class TestImageGalleryTabDragDropOntoBreadcrumb:
 
         executor = tab.app_context.get_command_executor.return_value
         assert executor.execute_command.called
-        move_command = executor.execute_command.call_args.args[0]
+        composite = executor.execute_command.call_args.args[0]
+        assert isinstance(composite, CompositeCommand)
+        assert len(composite.commands) == 1
+        move_command = composite.commands[0]
         assert move_command.item_id == image.id
         assert move_command.target_folder_id == gallery.id
         assert move_command.source_folder_id == album.id

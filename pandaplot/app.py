@@ -87,11 +87,11 @@ def build_app_context() -> AppContext:
     ui_controller = UIController()
     # Every command passes through CommandExecutor, so it's the single choke
     # point to flag the project as having unsaved changes -- see
-    # Command.marks_project_modified.
-    def _warn_undo_redo_error(command_name: str, operation: str) -> None:
+    # Command.marks_project_modified().
+    def _warn_undo_redo_error(command_description: str, operation: str) -> None:
         ui_controller.show_warning_message(
             "Undo" if operation == "undo" else "Redo",
-            f"Could not {operation} '{command_name}': an unexpected error occurred. "
+            f"Could not {operation} '{command_description}': an unexpected error occurred. "
             "The undo/redo history has been reset.",
         )
 
