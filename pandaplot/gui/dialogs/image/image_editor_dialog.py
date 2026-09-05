@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
+from pandaplot.gui.dialogs.image.crop_canvas import clamp_rect_to_bounds
 from pandaplot.models.project.items import Image
 from pandaplot.models.state.app_context import AppContext
 
@@ -52,6 +53,7 @@ class ImageEditorDialog(PDialog):
             if self.working_qimage.height() > 0 else 1.0
         )
         self._updating_resize_spinboxes = False
+        self._updating_crop_spinboxes = False
         self._resolved_format: Optional[tuple[str, str]] = None
 
         self._initialize()
@@ -178,6 +180,10 @@ class ImageEditorDialog(PDialog):
         # Connect signals
         self.spin_width.valueChanged.connect(self._on_width_changed)
         self.spin_height.valueChanged.connect(self._on_height_changed)
+        self.spin_crop_x.valueChanged.connect(self._on_crop_spinbox_changed)
+        self.spin_crop_y.valueChanged.connect(self._on_crop_spinbox_changed)
+        self.spin_crop_w.valueChanged.connect(self._on_crop_spinbox_changed)
+        self.spin_crop_h.valueChanged.connect(self._on_crop_spinbox_changed)
 
     @override
     def _apply_theme(self):
@@ -259,20 +265,37 @@ class ImageEditorDialog(PDialog):
         self._sync_control_values()
         self._update_preview()
 
+    def _clamp_crop_rect(self, rect: QRect) -> QRect:
+        return clamp_rect_to_bounds(rect, self.working_qimage.width(), self.working_qimage.height())
+
+    def _write_crop_spinboxes(self, rect: QRect) -> None:
+        self._updating_crop_spinboxes = True
+        self.spin_crop_x.setValue(rect.x())
+        self.spin_crop_y.setValue(rect.y())
+        self.spin_crop_w.setValue(rect.width())
+        self.spin_crop_h.setValue(rect.height())
+        self._updating_crop_spinboxes = False
+
+    def _on_crop_spinbox_changed(self, _value: int) -> None:
+        if self._updating_crop_spinboxes:
+            return
+        rect = QRect(
+            self.spin_crop_x.value(), self.spin_crop_y.value(),
+            self.spin_crop_w.value(), self.spin_crop_h.value(),
+        )
+        clamped = self._clamp_crop_rect(rect)
+        if clamped != rect:
+            self._write_crop_spinboxes(clamped)
+
     def _apply_crop(self):
-        x = self.spin_crop_x.value()
-        y = self.spin_crop_y.value()
-        w = self.spin_crop_w.value()
-        h = self.spin_crop_h.value()
-
-        img_w = self.working_qimage.width()
-        img_h = self.working_qimage.height()
-
-        crop_rect = QRect(x, y, w, h).intersected(QRect(0, 0, img_w, img_h))
-        if crop_rect.isEmpty():
+        rect = self._clamp_crop_rect(QRect(
+            self.spin_crop_x.value(), self.spin_crop_y.value(),
+            self.spin_crop_w.value(), self.spin_crop_h.value(),
+        ))
+        if rect.isEmpty():
             return
 
-        self.working_qimage = self.working_qimage.copy(crop_rect)
+        self.working_qimage = self.working_qimage.copy(rect)
         self._sync_control_values()
         self._update_preview()
 

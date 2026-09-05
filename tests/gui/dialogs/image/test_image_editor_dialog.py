@@ -82,3 +82,16 @@ class TestImageEditorDialogFormatPreservation:
 
         assert dialog.get_result_ext() == "png"
         assert len(dialog.get_result_bytes()) > 0
+
+
+class TestImageEditorDialogCropClamping:
+    def test_out_of_bounds_crop_spinbox_values_are_clamped_back(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="clamp-1", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog.spin_crop_x.setValue(90)
+        dialog.spin_crop_w.setValue(50)  # would extend to x=140, past the 100px-wide image
+
+        assert dialog.spin_crop_w.value() == 10  # clamped to what actually fits: 100 - 90
+        assert dialog.spin_crop_x.value() == 90
