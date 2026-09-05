@@ -2,12 +2,10 @@ from typing import List, Optional, override
 
 from PySide6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -22,6 +20,9 @@ from pandaplot.commands.project.dataset.signal_analysis_command import SignalAna
 from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.panels.sidebar_panel import SidebarPanel
+from pandaplot.gui.components.sidebar.signal.signal_parameter_widgets import (
+    build_signal_parameter_widgets,
+)
 from pandaplot.models.events import DatasetEvents, DatasetOperationEvents, UIEvents
 from pandaplot.models.project.items import Dataset
 from pandaplot.models.state.app_context import AppContext
@@ -174,115 +175,18 @@ class SignalPanel(SidebarPanel):
         self.prominence_spin = None
         self.threshold_spin = None
 
-        # Sampling rate
-        if info.uses_sampling_rate:
-            self.sampling_rate = QDoubleSpinBox()
-            self.sampling_rate.setRange(0.001, 1e9)
-            self.sampling_rate.setValue(1000)
+        widgets = build_signal_parameter_widgets(self.parameters_layout, info)
 
-            self.parameters_layout.addRow(
-                "Sampling rate:",
-                self.sampling_rate
-            )
+        self.sampling_rate = widgets.get("sampling_rate")
+        self.nfft_spin = widgets.get("nfft")
+        self.window_combo = widgets.get("window")
+        self.nperseg_spin = widgets.get("nperseg")
+        self.overlap_spin = widgets.get("overlap")
 
-        # FFT size
-        if info.uses_nfft:
-            self.nfft_spin = QSpinBox()
-            self.nfft_spin.setRange(16, 1_000_000)
-            self.nfft_spin.setValue(info.default_nfft)
-            self.parameters_layout.addRow(
-                "FFT size:",
-                self.nfft_spin
-            )
-
-        # Window
-        if info.uses_window:
-            self.window_combo = QComboBox()
-
-            self.window_combo.addItems(
-                info.windows
-            )
-
-            self.parameters_layout.addRow(
-                "Window:",
-                self.window_combo
-            )
-
-        # STFT / PSD
-        if info.uses_nperseg:
-            self.nperseg_spin = QSpinBox()
-            self.nperseg_spin.setRange(8, 1_000_000)
-            self.nperseg_spin.setValue(
-                info.default_nperseg
-            )
-
-            self.parameters_layout.addRow(
-                "Segment size:",
-                self.nperseg_spin
-            )
-
-        if info.uses_overlap:
-            self.overlap_spin = QDoubleSpinBox()
-            self.overlap_spin.setRange(0.0, 0.99)
-            self.overlap_spin.setSingleStep(0.05)
-            self.overlap_spin.setValue(
-                info.default_overlap
-            )
-
-            self.parameters_layout.addRow(
-                "Overlap:",
-                self.overlap_spin
-            )
-
-        # Peak detection
-        if info.uses_height:
-            self.height_spin = QDoubleSpinBox()
-            self.height_spin.setRange(
-                -1e12,
-                1e12
-            )
-
-            self.parameters_layout.addRow(
-                "Minimum height:",
-                self.height_spin
-            )
-
-        if info.uses_distance:
-            self.distance_spin = QSpinBox()
-            self.distance_spin.setRange(
-                1,
-                1_000_000
-            )
-            self.distance_spin.setValue(1)
-
-            self.parameters_layout.addRow(
-                "Minimum distance:",
-                self.distance_spin
-            )
-
-        if info.uses_prominence:
-            self.prominence_spin = QDoubleSpinBox()
-            self.prominence_spin.setRange(
-                0,
-                1e12
-            )
-
-            self.parameters_layout.addRow(
-                "Prominence:",
-                self.prominence_spin
-            )
-
-        if info.uses_threshold:
-            self.threshold_spin = QDoubleSpinBox()
-            self.threshold_spin.setRange(
-                -1e12,
-                1e12
-            )
-
-            self.parameters_layout.addRow(
-                "Threshold:",
-                self.threshold_spin
-            )
+        self.height_spin = widgets.get("height")
+        self.distance_spin = widgets.get("distance")
+        self.prominence_spin = widgets.get("prominence")
+        self.threshold_spin = widgets.get("threshold")
 
     def _numeric_columns(self) -> List[str]:
         if not self.current_dataset or self.current_dataset.data is None:
