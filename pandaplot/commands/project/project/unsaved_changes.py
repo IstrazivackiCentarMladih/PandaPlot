@@ -11,7 +11,7 @@ from pandaplot.models.state.app_context import AppContext
 from pandaplot.services.data_managers.project_manager import ProjectManager
 
 
-def flush_pending_note_edits(app_context: AppContext) -> None:
+def flush_pending_note_edits(app_context: AppContext) -> bool:
     """Commit any open note tab's debounced, not-yet-saved edit into the
     project model before a lifecycle guard reads/acts on AppState.is_modified.
 
@@ -21,27 +21,35 @@ def flush_pending_note_edits(app_context: AppContext) -> None:
     every keystroke (see note_editor.py). A lifecycle transition (Close/New/
     Open/Exit) that races that window would otherwise see is_modified still
     False and silently proceed past a note edit that exists only in the
-    tab's QTextEdit, never written to the Note/Project model. Best-effort:
-    a lookup or save failure here must never block the lifecycle transition
-    that called this.
+    tab's QTextEdit, never written to the Note/Project model.
+
+    Returns whether every dirty tab was actually committed. A tab whose
+    save() fails (returns False or raises) is left dirty -- reported as a
+    failure rather than swallowed, since silently treating it as flushed
+    would recreate exactly the silent-data-loss bug this exists to close:
+    the caller would read an unchanged is_modified and proceed anyway. A
+    missing/unavailable TabContainer (e.g. no GUI yet) is not itself a
+    failure -- there's nothing open to lose in that case.
     """
     from pandaplot.gui.components.tabs.tab_container import TabContainer
 
     try:
         tabs = list(app_context.get_manager(TabContainer).tabs.values())
     except Exception:
-        return
+        return True
 
+    all_flushed = True
     for tab in tabs:
         has_unsaved_changes = getattr(tab, "has_unsaved_changes", None)
         save = getattr(tab, "save", None)
         if not callable(has_unsaved_changes) or not callable(save):
             continue
         try:
-            if has_unsaved_changes():
-                save()
+            if has_unsaved_changes() and not save():
+                all_flushed = False
         except Exception:
-            continue
+            all_flushed = False
+    return all_flushed
 
 
 def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: bool = False) -> bool:
@@ -69,7 +77,12 @@ def confirm_discard_unsaved_changes(app_context: AppContext, *, will_autosave: b
     just promised to keep. Doing it here means a failure can still cancel
     the shutdown and leave the project (and its unsaved state) intact.
     """
-    flush_pending_note_edits(app_context)
+    if not flush_pending_note_edits(app_context):
+        app_context.get_ui_controller().show_error_message(
+            "Unsaved Changes",
+            "One or more open notes could not be saved. Save them manually before continuing.",
+        )
+        return False
 
     app_state = app_context.get_app_state()
     if not app_state.has_project or not app_state.is_modified:
