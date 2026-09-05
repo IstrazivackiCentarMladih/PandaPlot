@@ -196,7 +196,12 @@ class EventHierarchy:
         "dataset.deleted": ["dataset.deleted", "project.changed"],
         
         # Analysis events
-        "analysis.completed": ["analysis.completed", "dataset.column_added", "dataset.structure_changed", "dataset.changed"],
+        # Does NOT fan out to dataset.column_added/structure_changed/changed:
+        # AnalysisPanel's ANALYSIS_COMPLETED payload isn't shaped like those
+        # events' payloads (e.g. it has no column_positions), and the actual
+        # column mutation already announces itself correctly via
+        # ApplyAnalysisResultCommand -> emit_columns_changed (see #322).
+        "analysis.completed": ["analysis.completed"],
         "analysis.failed": ["analysis.failed"],
         "analysis.started": ["analysis.started"],
         "analysis.config_changed": ["analysis.config_changed"],
