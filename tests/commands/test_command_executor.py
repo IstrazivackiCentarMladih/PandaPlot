@@ -268,11 +268,14 @@ class TestUndoFunctionality:
         executor.execute_command(command)
         
         result = executor.undo()
-        
+
         assert result is False
         # Command should be removed from undo stack even if undo fails
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
+        # Dropped from both stacks entirely, so its held state (e.g. a large
+        # DataFrame snapshot) must be released like any other stack eviction.
+        assert command.cleanup_count == 1
     
     def test_multiple_undo_operations(self):
         """Test multiple undo operations."""
@@ -296,6 +299,31 @@ class TestUndoFunctionality:
         assert executor.redo_stack[0] is cmd3
         assert executor.redo_stack[1] is cmd2
         assert executor.redo_stack[2] is cmd1
+
+    def test_undo_failure_invalidates_the_entire_history(self):
+        """Commands here mutate shared live project/dataset objects rather
+        than isolated snapshots, so once one command's undo() raises
+        mid-operation the state it leaves behind is unknown -- any other
+        stack entry may have been recorded against an assumption that no
+        longer holds. The whole history must be dropped and cleaned up, not
+        just the command that raised."""
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = MockCommand("Failing", should_fail=True, fail_on="undo")
+        newer = MockCommand("Newer")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        executor.execute_command(newer)
+        executor.undo()  # newer -> redo_stack; undo_stack = [older, failing]
+
+        result = executor.undo()  # pops `failing`; raises
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
 
 
 class TestRedoFunctionality:
@@ -336,11 +364,12 @@ class TestRedoFunctionality:
         executor.undo()
         
         result = executor.redo()
-        
+
         assert result is False
         # Command should be removed from redo stack even if redo fails
         assert len(executor.undo_stack) == 0
         assert len(executor.redo_stack) == 0
+        assert command.cleanup_count == 1
     
     def test_multiple_redo_operations(self):
         """Test multiple redo operations."""
@@ -368,6 +397,30 @@ class TestRedoFunctionality:
         assert executor.undo_stack[0] is cmd1
         assert executor.undo_stack[1] is cmd2
         assert executor.undo_stack[2] is cmd3
+
+    def test_redo_failure_invalidates_the_entire_history(self):
+        executor = CommandExecutor()
+        already_undone = MockCommand("AlreadyUndone")
+        failing = MockCommand("Failing", should_fail=True, fail_on="redo")
+        executor.execute_command(already_undone)
+        executor.execute_command(failing)
+        newer = MockCommand("Newer")
+        executor.execute_command(newer)
+        executor.undo()  # newer -> redo_stack
+        executor.undo()  # failing -> redo_stack
+        executor.undo()  # already_undone -> redo_stack
+
+        result = executor.redo()  # pops `already_undone`, redoes it fine
+        assert result is True
+
+        result = executor.redo()  # pops `failing`; raises
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert already_undone.cleanup_count == 1
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
 
 
 class TestCanUndoRedo:
@@ -613,6 +666,135 @@ class TestProjectModifiedHook:
         executor = CommandExecutor()
         assert executor.execute_command(MockCommand()) is True
 
+    def test_undo_that_raises_still_calls_the_hook(self):
+        """A command's undo() can mutate the shared project/dataset state
+        before raising, so the dirty flag must still be set even though the
+        operation is reported as failed -- otherwise a save right after
+        could mark that mutated state as clean."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.undo()
+
+        assert calls == ["modified"]
+
+    def test_redo_that_raises_still_calls_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.redo()
+
+        assert calls == ["modified"]
+
+    def test_a_raising_hook_does_not_prevent_recovery_from_a_failed_undo(self):
+        """on_project_modified is an external callback (wired to
+        AppState.mark_modified) invoked while undo() is already handling a
+        command failure -- if it raises, recovery (history invalidation,
+        the undo_redo_error hook, the history-changed notification) must
+        still complete, same isolation as on_undo_redo_error and
+        command.cleanup() already get."""
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = MockCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        executor.on_project_modified = lambda: (_ for _ in ()).throw(RuntimeError("mark_modified failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
+    def test_a_raising_hook_does_not_prevent_recovery_from_a_failed_redo(self):
+        executor = CommandExecutor()
+        newer = MockCommand("Newer")
+        failing = MockCommand("Failing", should_fail=True, fail_on="redo")
+        executor.execute_command(failing)
+        executor.execute_command(newer)
+        executor.undo()
+        executor.undo()
+        executor.on_project_modified = lambda: (_ for _ in ()).throw(RuntimeError("mark_modified failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.redo()  # must not raise
+
+        assert result is False
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert newer.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
+    def test_a_raising_marks_project_modified_does_not_prevent_recovery_from_a_failed_undo(self):
+        """marks_project_modified() is itself overridable, so it can raise
+        just like on_project_modified can -- it must get the same isolation,
+        since it now runs inside the same try as the hook it gates."""
+
+        class RaisingMarksProjectModifiedCommand(MockCommand):
+            def marks_project_modified(self) -> bool:
+                raise RuntimeError("marks_project_modified failed")
+
+        executor = CommandExecutor()
+        older = MockCommand("Older")
+        failing = RaisingMarksProjectModifiedCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(older)
+        executor.execute_command(failing)
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert calls == []
+        assert len(executor.undo_stack) == 0
+        assert len(executor.redo_stack) == 0
+        assert older.cleanup_count == 1
+        assert failing.cleanup_count == 1
+        assert len(history_calls) == 1
+
+    def test_marks_project_modified_is_evaluated_before_cleanup_runs(self):
+        """marks_project_modified() may derive its answer from state
+        cleanup() releases (e.g. whether an undo snapshot was captured), so
+        on undo/redo failure it must be evaluated before
+        _invalidate_history_after_failure() calls cleanup() on the command
+        -- the same ordering hazard already fixed for display_name()."""
+
+        class ModifiedFlagFromStateCommand(MockCommand):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.snapshot = "captured"
+
+            def marks_project_modified(self) -> bool:
+                return self.snapshot is not None
+
+            def cleanup(self):
+                super().cleanup()
+                self.snapshot = None
+
+        executor = CommandExecutor()
+        command = ModifiedFlagFromStateCommand("Failing", should_fail=True, fail_on="undo")
+        executor.execute_command(command)
+        calls = []
+        executor.on_project_modified = lambda: calls.append("modified")
+
+        executor.undo()
+
+        assert calls == ["modified"]
+
 
 class TestClearHistory:
     """Test cases for clear_history functionality."""
@@ -725,6 +907,195 @@ class TestHistoryChangedHook:
         executor.undo()
         executor.redo()
         executor.clear_history()  # must not raise
+
+    def test_a_raising_hook_does_not_break_execute_commands_return_value(self):
+        """on_history_changed is called right before undo()/redo()/
+        execute_command() return -- a raising hook must not escape and take
+        the True/False return with it, same isolation as
+        on_project_modified/on_undo_redo_error already get."""
+        executor = CommandExecutor()
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        result = executor.execute_command(MockCommand())  # must not raise
+
+        assert result is True
+
+    def test_a_raising_hook_does_not_break_a_successful_undo_or_redo(self):
+        executor = CommandExecutor()
+        command = MockCommand()
+        executor.execute_command(command)
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        undo_result = executor.undo()  # must not raise
+        redo_result = executor.redo()  # must not raise
+
+        assert undo_result is True
+        assert redo_result is True
+
+    def test_a_raising_hook_does_not_break_undo_or_redo_failure_reporting(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+
+    def test_a_raising_hook_does_not_break_clear_history(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        executor.on_history_changed = lambda: (_ for _ in ()).throw(RuntimeError("listener failed"))
+
+        executor.clear_history()  # must not raise
+
+        assert len(executor.undo_stack) == 0
+
+    def test_undo_failure_still_notifies(self):
+        """The stacks changed (the command was dropped) even though undo()
+        raised, so the Edit menu still needs to refresh its enabled state."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_history_changed = lambda: calls.append(None)
+
+        executor.undo()
+
+        assert len(calls) == 1
+
+    def test_redo_failure_still_notifies(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_history_changed = lambda: calls.append(None)
+
+        executor.redo()
+
+        assert len(calls) == 1
+
+
+class TestUndoRedoErrorHook:
+    """Tests for CommandExecutor.on_undo_redo_error, the hook that lets the
+    UI tell the user their undo/redo history was reset because a command's
+    undo()/redo() raised mid-operation (issue #285): since commands mutate
+    shared live project state rather than isolated snapshots, a partial
+    failure makes every remaining stack entry's assumed state suspect, so
+    the whole history is invalidated rather than just the failed command --
+    see TestUndoFunctionality.test_undo_failure_invalidates_the_entire_history."""
+
+    def test_undo_failure_calls_the_hook_with_command_display_name_and_operation(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.undo()
+
+        assert calls == [("Mock", "undo")]
+
+    def test_redo_failure_calls_the_hook_with_command_display_name_and_operation(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="redo"))
+        executor.undo()
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.redo()
+
+        assert calls == [("Mock", "redo")]
+
+    def test_successful_undo_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.undo()
+
+        assert calls == []
+
+    def test_successful_redo_does_not_call_the_hook(self):
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand())
+        executor.undo()
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.redo()
+
+        assert calls == []
+
+    def test_no_hook_configured_is_a_no_op(self):
+        """The hook is optional (None by default) -- a raising undo()/redo()
+        must not itself raise just because nothing is listening."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+
+        result = executor.undo()
+
+        assert result is False
+
+    def test_a_raising_hook_does_not_prevent_recovery(self):
+        """The hook itself (e.g. a Qt dialog) could raise. It runs while
+        undo()/redo() is already handling a command failure, so a hook
+        exception must not escape and skip the history-changed notification
+        that follows it -- same isolation as _safe_cleanup gives
+        command.cleanup()."""
+        executor = CommandExecutor()
+        executor.execute_command(MockCommand("FailingCommand", should_fail=True, fail_on="undo"))
+        executor.on_undo_redo_error = lambda command_description, operation: (_ for _ in ()).throw(RuntimeError("dialog failed"))
+        history_calls = []
+        executor.on_history_changed = lambda: history_calls.append(None)
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert len(history_calls) == 1
+
+    def test_a_raising_display_name_falls_back_to_the_class_name(self):
+        """display_name() is itself overridable and could raise -- it must
+        not prevent failure recovery, and the hook should still get a usable
+        label (the class name) instead of nothing."""
+
+        class RaisingDisplayNameCommand(MockCommand):
+            def display_name(self) -> str:
+                raise RuntimeError("display_name failed")
+
+        executor = CommandExecutor()
+        executor.execute_command(RaisingDisplayNameCommand("Failing", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        result = executor.undo()  # must not raise
+
+        assert result is False
+        assert calls == [("RaisingDisplayNameCommand", "undo")]
+
+    def test_display_name_is_resolved_before_cleanup_runs(self):
+        """display_name() may derive its label from state cleanup() releases
+        (e.g. a snapshot's identifying name), so it must be resolved before
+        _invalidate_history_after_failure() calls cleanup() on the command."""
+
+        class NameFromStateCommand(MockCommand):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.state = "still here"
+
+            def display_name(self) -> str:
+                return self.state
+
+            def cleanup(self):
+                super().cleanup()
+                self.state = None
+
+        executor = CommandExecutor()
+        executor.execute_command(NameFromStateCommand("Failing", should_fail=True, fail_on="undo"))
+        calls = []
+        executor.on_undo_redo_error = lambda command_description, operation: calls.append((command_description, operation))
+
+        executor.undo()
+
+        assert calls == [("still here", "undo")]
 
 
 class TestCleanupOnEviction:

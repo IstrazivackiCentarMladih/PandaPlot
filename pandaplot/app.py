@@ -88,9 +88,17 @@ def build_app_context() -> AppContext:
     # Every command passes through CommandExecutor, so it's the single choke
     # point to flag the project as having unsaved changes -- see
     # Command.marks_project_modified().
+    def _warn_undo_redo_error(command_description: str, operation: str) -> None:
+        ui_controller.show_warning_message(
+            "Undo" if operation == "undo" else "Redo",
+            f"Could not {operation} '{command_description}': an unexpected error occurred. "
+            "The undo/redo history has been reset.",
+        )
+
     command_executor = CommandExecutor(
         on_history_changed=lambda: event_bus.emit(AppEvents.HISTORY_CHANGED),
         on_project_modified=app_state.mark_modified,
+        on_undo_redo_error=_warn_undo_redo_error,
     )
     task_scheduler = TaskScheduler()
 

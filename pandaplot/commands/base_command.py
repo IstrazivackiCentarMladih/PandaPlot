@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import ABC, abstractmethod
 from enum import StrEnum
 
@@ -54,13 +55,33 @@ class Command(ABC):
         which manage AppState's modified flag explicitly instead."""
         return True
 
+    def display_name(self) -> str:
+        """Human-readable name for this command, shown to the user (e.g. in
+        an undo/redo error dialog) -- unlike `__class__.__name__`, which is
+        an implementation identifier not meant for user-facing text. Default
+        derives one from the class name (e.g. CreateNoteCommand -> "Create
+        note"); override for a custom label."""
+        name = self.__class__.__name__
+        if name.endswith("Command"):
+            name = name[: -len("Command")]
+        words = re.findall(r"[A-Z][a-z0-9]*|[a-z0-9]+", name)
+        if not words:
+            return self.__class__.__name__
+        return " ".join([words[0]] + [w.lower() for w in words[1:]])
+
     def cleanup(self) -> None:
         """Called by CommandExecutor when this command is dropped from a
         stack outside the normal undo/redo lifecycle: eviction past
         max_undo_levels, a redo-stack clear, or clear_history(). Not called
         when the command is merely moved between undo_stack and redo_stack
-        by undo()/redo(). Default no-op; override to release resources held
-        for undo (e.g. a large DataFrame snapshot)."""
+        by undo()/redo(), since it may still need its state then. Default
+        no-op; override to release resources held for undo (e.g. a large
+        DataFrame snapshot). Also called when *any* command on either stack
+        raises out of its own `undo()`/`redo()` -- the whole history is
+        invalidated and cleaned up in that case (see
+        CommandExecutor._invalidate_history_after_failure), not just the
+        command that raised, so overrides can't assume this only fires for
+        their own failed undo()/redo()."""
         return
 
     def __repr__(self):
