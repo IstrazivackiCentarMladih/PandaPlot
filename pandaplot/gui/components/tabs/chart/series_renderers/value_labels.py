@@ -40,18 +40,25 @@ def annotate_point_labels(
     text_color: str = "",
     bg_color: str = "",
     bg_alpha: float = 1.0,
+    alpha: float = 1.0,
 ) -> None:
     """Label each (x, y) point per `mode` ("x", "y", or "xy"), offset from
     the point by (offset_x, offset_y) points.
+
+    `alpha` is the renderer's already-computed effective alpha (series.alpha,
+    faded further when the series is hidden -- see chart_editor.py's
+    `alpha = series.alpha if series.visible else 0.3`), applied to the label
+    text/arrow/background so a faded-out or hidden series' labels fade with
+    it instead of staying fully opaque.
 
     Intended for the small datasets the issue this implements (#125) calls
     out (lab reports, a handful of points) -- no cap on point count, since a
     series with too many points to usefully label this way is one a user
     wouldn't turn this on for in the first place.
     """
-    arrowprops = {"arrowstyle": "-"} if show_arrow else None
+    arrowprops = {"arrowstyle": "-", "alpha": alpha} if show_arrow else None
     bbox = (
-        {"boxstyle": "round,pad=0.2", "facecolor": bg_color, "edgecolor": "none", "alpha": bg_alpha}
+        {"boxstyle": "round,pad=0.2", "facecolor": bg_color, "edgecolor": "none", "alpha": bg_alpha * alpha}
         if bg_color else None
     )
     for x, y in zip(x_data, y_data, strict=True):
@@ -67,4 +74,5 @@ def annotate_point_labels(
             color=text_color or None,
             arrowprops=arrowprops,
             bbox=bbox,
+            alpha=alpha,
         )

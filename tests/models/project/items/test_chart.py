@@ -596,6 +596,69 @@ class TestRetypeSeries:
         assert series.style.error_bars.y_error_column_id == "err-col"
         assert series.style.error_bars.error_cap_size == 7.0
 
+    def test_retyping_line_to_scatter_carries_over_value_label_settings(self):
+        """Regression test: a Line series' value-label configuration (#125)
+        must survive a retype to Scatter -- both style classes declare the
+        identical field set, so retype_series must carry them over the same
+        way it already does for marker/error_bars, rather than silently
+        resetting a labeled series back to unlabeled on retype."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=LineSeriesStyle(
+                color="#112233",
+                show_value_labels=True,
+                value_label_mode="xy",
+                value_label_show_arrow=True,
+                value_label_offset_x=2.0,
+                value_label_offset_y=-3.0,
+                value_label_text_color="#abcdef",
+                value_label_bg_color="#fedcba",
+                value_label_bg_alpha=0.5,
+            ),
+        )
+
+        chart.retype_series(0, "scatter")
+
+        style = chart.data_series[0].style
+        assert isinstance(style, ScatterSeriesStyle)
+        assert style.show_value_labels is True
+        assert style.value_label_mode == "xy"
+        assert style.value_label_show_arrow is True
+        assert style.value_label_offset_x == 2.0
+        assert style.value_label_offset_y == -3.0
+        assert style.value_label_text_color == "#abcdef"
+        assert style.value_label_bg_color == "#fedcba"
+        assert style.value_label_bg_alpha == 0.5
+
+    def test_retyping_line_to_bar_carries_over_only_the_fields_bar_supports(self):
+        """BarSeriesStyle has no value_label_mode/show_arrow/offset fields
+        (see BarSeriesStyle) -- retyping to Bar must carry over only the
+        color/background/alpha subset it actually declares, and must not
+        raise or silently invent those fields on the new style."""
+        chart = Chart(name="C", chart_type="line")
+        chart.add_data_series(
+            dataset_id="ds1", x_column_id="x", y_column_id="y",
+            style=LineSeriesStyle(
+                color="#112233",
+                show_value_labels=True,
+                value_label_mode="xy",
+                value_label_text_color="#abcdef",
+                value_label_bg_color="#fedcba",
+                value_label_bg_alpha=0.5,
+            ),
+        )
+
+        chart.retype_series(0, "bar")
+
+        style = chart.data_series[0].style
+        assert isinstance(style, BarSeriesStyle)
+        assert style.show_value_labels is True
+        assert style.value_label_text_color == "#abcdef"
+        assert style.value_label_bg_color == "#fedcba"
+        assert style.value_label_bg_alpha == 0.5
+        assert not hasattr(style, "value_label_mode")
+
     def test_retyping_line_to_scatter_does_not_alias_the_carried_error_bars(self):
         """The carried-over error_bars/marker must be independent copies,
         not shared references with the old (now-discarded) style object --

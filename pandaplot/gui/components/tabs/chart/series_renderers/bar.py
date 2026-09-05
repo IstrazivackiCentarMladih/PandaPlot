@@ -19,9 +19,10 @@ def render_bar_series(axes, series_data: SeriesData, style: BarSeriesStyle,
         # kwargs (it passes **kwargs on to each per-bar Annotation).
         bbox = (
             {"boxstyle": "round,pad=0.2", "facecolor": style.value_label_bg_color,
-             "edgecolor": "none", "alpha": style.value_label_bg_alpha}
+             "edgecolor": "none", "alpha": style.value_label_bg_alpha * alpha}
             if style.value_label_bg_color else None
         )
         axes.bar_label(bars, fmt="%.3g", fontsize=8,
                         color=style.value_label_text_color or style.color,
-                        bbox=bbox)
+                        bbox=bbox,
+                        alpha=alpha)

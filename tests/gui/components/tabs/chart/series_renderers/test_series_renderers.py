@@ -214,6 +214,37 @@ def test_render_line_series_no_background_box_when_bg_color_unset():
     plt.close(fig)
 
 
+def test_render_line_series_value_label_alpha_matches_renderer_alpha():
+    """Value labels must fade with the series' own effective alpha (already
+    computed by the caller as `series.alpha if series.visible else 0.3`,
+    see chart_editor.py) rather than staying fully opaque -- a faded or
+    hidden series shouldn't leave fully-opaque numbers behind."""
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 0.4, visible=False,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    assert all(t.get_alpha() == 0.4 for t in ax.texts)
+    plt.close(fig)
+
+
+def test_render_line_series_value_label_arrow_and_background_fade_with_alpha():
+    fig, ax = plt.subplots()
+    style = LineSeriesStyle(show_value_labels=True, value_label_show_arrow=True,
+                             value_label_bg_color="#00ff00", value_label_bg_alpha=0.5,
+                             marker=MarkerStyle(marker_style="none", marker_size=1.0))
+
+    render_line_series(ax, _series_data(), style, "L", 0.4, visible=True,
+                        extra={"resolve_fill_baseline": lambda q, horizontal: 0.0})
+
+    text = ax.texts[0]
+    assert text.arrow_patch.get_alpha() == 0.4
+    assert text.get_bbox_patch().get_alpha() == pytest.approx(0.5 * 0.4)
+    plt.close(fig)
+
+
 def test_render_line_series_value_label_color_falls_back_to_series_color():
     """"Match series color" toggle writes value_label_text_color = "" --
     the label must then take on the series' own rendered color, not
@@ -279,6 +310,17 @@ def test_render_scatter_series_value_label_color_falls_back_to_series_color():
     render_scatter_series(ax, _series_data(), style, "S", 1.0, visible=True, extra={})
 
     assert ax.texts[0].get_color() == "#654321"
+    plt.close(fig)
+
+
+def test_render_scatter_series_value_label_alpha_matches_renderer_alpha():
+    fig, ax = plt.subplots()
+    style = ScatterSeriesStyle(show_value_labels=True,
+                                marker=MarkerStyle(marker_style="square", marker_size=3.0))
+
+    render_scatter_series(ax, _series_data(), style, "S", 0.4, visible=False, extra={})
+
+    assert all(t.get_alpha() == 0.4 for t in ax.texts)
     plt.close(fig)
 
 
@@ -368,6 +410,30 @@ def test_render_bar_series_value_label_color_falls_back_to_series_color():
     render_bar_series(ax, _series_data(), style, "My Bars", 1.0, visible=True, extra={})
 
     assert ax.texts[0].get_color() == "#abcdef"
+    plt.close(fig)
+
+
+def test_render_bar_series_value_label_alpha_matches_renderer_alpha():
+    """Bar labels must fade with the series' own effective alpha too (the
+    same `alpha` already passed to axes.bar()) rather than staying fully
+    opaque when the bars themselves are faded/hidden."""
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321", show_value_labels=True)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 0.4, visible=False, extra={})
+
+    assert all(t.get_alpha() == 0.4 for t in ax.texts)
+    plt.close(fig)
+
+
+def test_render_bar_series_background_fades_with_alpha():
+    fig, ax = plt.subplots()
+    style = BarSeriesStyle(color="#654321", show_value_labels=True,
+                            value_label_bg_color="#00ff00", value_label_bg_alpha=0.5)
+
+    render_bar_series(ax, _series_data(), style, "My Bars", 0.4, visible=True, extra={})
+
+    assert ax.texts[0].get_bbox_patch().get_alpha() == pytest.approx(0.5 * 0.4)
     plt.close(fig)
 
 
