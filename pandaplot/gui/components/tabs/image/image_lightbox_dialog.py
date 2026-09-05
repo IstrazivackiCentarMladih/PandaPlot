@@ -60,6 +60,7 @@ class ImageLightboxDialog(QDialog):
         if self._on_edit is not None:
             nav_row.addWidget(self.edit_button)
             nav_row.addStretch()
+        self.edit_button.setVisible(self._on_edit is not None)
         nav_row.addWidget(self.next_button)
 
         layout = QVBoxLayout(self)
