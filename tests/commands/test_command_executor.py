@@ -560,7 +560,8 @@ class NonModifyingMockCommand(MockCommand):
     """A command that opts out of the dirty-tracking hook, mirroring the
     project-lifecycle commands (new/open/load/save/close), which manage
     AppState's modified flag themselves instead."""
-    marks_project_modified = False
+    def marks_project_modified(self) -> bool:
+        return False
 
 
 class TestProjectModifiedHook:

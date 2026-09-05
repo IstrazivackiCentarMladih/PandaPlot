@@ -6,6 +6,7 @@ from typing import Any, Callable, List, Optional, Tuple, override
 import pandas as pd
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.current_project import get_current_project
 from pandaplot.commands.project.dataset.add_imported_datasets_command import AddImportedDatasetsCommand
 from pandaplot.commands.project.require_project import ensure_project_or_offer_create
 from pandaplot.gui.controllers.ui_controller import UIController
@@ -36,15 +37,6 @@ class ImportDataCommand(Command):
     the undo stack.
     """
 
-    # execute() only *schedules* the background read -- the project isn't
-    # actually mutated until _on_import_result adds the parsed dataset(s),
-    # which may never happen (parse failure, project changed/closed mid-
-    # import). Notifying eagerly at schedule time would mark the project
-    # dirty for a mutation that hasn't happened yet (and might not at all),
-    # so this self-reports via app_state.mark_modified() instead -- see
-    # _on_import_result.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext, folder_id: Optional[str] = None):
         super().__init__()
         self.app_context = app_context
@@ -72,6 +64,17 @@ class ImportDataCommand(Command):
         self.is_importing = False
 
     @override
+    def marks_project_modified(self) -> bool:
+        """execute() only *schedules* the background read -- the project
+        isn't actually mutated until _on_import_result adds the parsed
+        dataset(s), which may never happen (parse failure, project
+        changed/closed mid-import). Notifying eagerly at schedule time would
+        mark the project dirty for a mutation that hasn't happened yet (and
+        might not at all), so this self-reports via
+        app_state.mark_modified() instead -- see _on_import_result."""
+        return False
+
+    @override
     def occupies_undo_slot(self) -> bool:
         """This command only dispatches the background read; the real,
         undoable effect is AddImportedDatasetsCommand, executed separately
@@ -95,7 +98,7 @@ class ImportDataCommand(Command):
                 return CommandResult.FAILURE
 
             # Check if we have a project loaded
-            if not self.app_state.has_project or not self.app_state.current_project:
+            if get_current_project(self.app_context) is None:
                 self.logger.warning("ImportDataCommand.execute: no project is currently loaded")
                 if not ensure_project_or_offer_create(
                     self.app_context, "Import Data",
@@ -103,7 +106,7 @@ class ImportDataCommand(Command):
                 ):
                     return CommandResult.FAILURE
 
-            self.project = self.app_state.current_project
+            self.project = get_current_project(self.app_context)
             if not self.project:
                 self.logger.warning("ImportDataCommand.execute: has_project is True but current_project is None")
                 return CommandResult.FAILURE

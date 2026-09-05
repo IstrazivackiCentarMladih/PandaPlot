@@ -88,7 +88,8 @@ def test_marks_project_modified_is_false():
     """NewProjectCommand sets AppState's dirty flag itself (via
     load_project) and must not be double-counted by CommandExecutor's
     generic on_project_modified hook."""
-    assert NewProjectCommand.marks_project_modified is False
+    command = NewProjectCommand(_make_app_context())
+    assert command.marks_project_modified() is False
 
 
 def test_undo_restores_the_previous_projects_dirty_state():

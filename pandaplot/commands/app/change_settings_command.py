@@ -16,10 +16,6 @@ class ChangeSettingsCommand(Command):
     edit.
     """
 
-    # Only touches ConfigManager (app-level settings), never the project
-    # itself, so it must not flag the project as having unsaved changes.
-    marks_project_modified = False
-
     def __init__(
         self,
         app_context: AppContext,
@@ -34,6 +30,13 @@ class ChangeSettingsCommand(Command):
         self.config_manager = config_manager or app_context.get_manager(ConfigManager)
         self.new_mapping = mapping
         self.old_mapping: Optional[dict[str, Any]] = None
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Only touches ConfigManager (app-level settings), never the
+        project itself, so it must not flag the project as having unsaved
+        changes."""
+        return False
 
     @override
     def execute(self) -> CommandResult:

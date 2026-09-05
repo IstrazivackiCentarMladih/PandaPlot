@@ -210,7 +210,8 @@ def test_marks_project_modified_is_false():
     """OpenProjectCommand delegates all state changes to LoadProjectCommand/
     AppState and must not be double-counted by CommandExecutor's generic
     on_project_modified hook."""
-    assert OpenProjectCommand.marks_project_modified is False
+    command = OpenProjectCommand(Mock())
+    assert command.marks_project_modified() is False
 
 
 def test_cleanup_forwards_to_the_wrapped_load_command():

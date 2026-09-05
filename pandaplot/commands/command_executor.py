@@ -19,22 +19,16 @@ class CommandExecutor:
         self.redo_stack: List[Command] = []
         self.max_undo_levels = 10
 
-        # Optional hook invoked after a successful execute()/undo()/redo()
-        # of any command whose `marks_project_modified` is True -- wired by
-        # app.py to AppState.mark_modified, the single choke point every
-        # command passes through, so individual commands don't each need to
-        # touch AppState's dirty flag themselves.
+        # Called after a command that marks_project_modified() succeeds; wired
+        # by app.py to AppState.mark_modified.
         self.on_project_modified = on_project_modified
 
-        # Optional hook invoked whenever can_undo()/can_redo() may have
-        # changed (a command executed, was undone/redone, or history was
-        # cleared) -- wired by app.py to emit AppEvents.HISTORY_CHANGED, so
-        # e.g. the Edit menu's Undo/Redo actions can keep their enabled
-        # state in sync without polling.
+        # Called whenever can_undo()/can_redo() may have changed; wired by
+        # app.py to emit AppEvents.HISTORY_CHANGED.
         self.on_history_changed = on_history_changed
 
     def _notify_project_modified(self, command: Command) -> None:
-        if self.on_project_modified and getattr(command, "marks_project_modified", True):
+        if self.on_project_modified and command.marks_project_modified():
             self.on_project_modified()
 
     def _notify_history_changed(self) -> None:

@@ -68,7 +68,9 @@ def test_marks_project_modified_is_false():
     """CloseProjectCommand manages AppState's dirty flag itself (via
     close_project) and must not be double-counted by CommandExecutor's
     generic on_project_modified hook."""
-    assert CloseProjectCommand.marks_project_modified is False
+    app_context, _app_state = _make_app_context()
+    command = CloseProjectCommand(app_context)
+    assert command.marks_project_modified() is False
 
 
 def test_cleanup_does_not_raise():

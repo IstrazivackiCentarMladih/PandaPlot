@@ -821,7 +821,7 @@ class FitPanel(SidebarPanel):
         self.range_auto_check.setChecked(True)
         self.update_data_points_display()
 
-    def _on_range_auto_toggled(self, checked: bool):
+    def _on_range_auto_toggled(self, checked: bool):  # noqa: FBT001 - Qt `toggled` callback, invoked positionally
         """Show the live data-range labels in Auto mode, or manual range
         entry (seeded from the current series' actual data range as a
         starting point) once Auto is unchecked."""

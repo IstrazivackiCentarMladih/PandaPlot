@@ -24,7 +24,7 @@ def test_marks_project_modified_is_false():
     the real mutation is CreateChartCommand, executed separately (and
     self-tracked) once the wizard finishes. A cancelled wizard must not
     flag the project as having unsaved changes."""
-    assert CreateChartFromWizardCommand.marks_project_modified is False
+    assert CreateChartFromWizardCommand(Mock()).marks_project_modified() is False
 
 
 @pytest.fixture

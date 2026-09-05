@@ -442,7 +442,7 @@ class TestExitCommandUnsavedChangesGuard:
 
 def test_marks_project_modified_is_false():
     """Exiting (or cancelling an exit) isn't itself a project edit."""
-    assert ExitCommand.marks_project_modified is False
+    assert ExitCommand(Mock()).marks_project_modified() is False
 
 
 class TestExitCommandDocumentation:

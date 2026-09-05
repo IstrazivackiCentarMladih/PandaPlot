@@ -16,15 +16,17 @@ class OpenProjectCommand(Command):
     3. Handling user cancellation gracefully
     """
 
-    # Delegates all state changes to LoadProjectCommand / AppState.
-    marks_project_modified = False
-
     def __init__(self, app_context: AppContext):
         super().__init__()
         self.app_context = app_context
         self.project_manager = app_context.get_manager(ProjectManager)
         self.load_command: Optional[LoadProjectCommand] = None
         self.was_executed = False
+
+    @override
+    def marks_project_modified(self) -> bool:
+        """Delegates all state changes to LoadProjectCommand / AppState."""
+        return False
 
     @override
     def execute(self) -> CommandResult:
