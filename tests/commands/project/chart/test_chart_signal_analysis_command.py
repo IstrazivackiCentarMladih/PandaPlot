@@ -311,6 +311,50 @@ class TestChartSignalAnalysisCommandSourceResolution:
         assert command._resolved_xy_cache is None
 
 
+class TestResolveSegmentX:
+    """resolve_segment_x() lets the UI derive a sampling-rate default from
+    the segment's x spacing in one vectorized pass, backed by the same
+    _resolved_xy_cache source_length()/resolve_point() share -- instead of
+    looping resolve_point() once per index in the segment."""
+
+    def test_returns_full_x_by_default(self, ctx):
+        _, project = ctx
+        dataset = project.find_item("ds-1")
+        command = _cmd(ctx, source_kind="series")
+        x_segment = command.resolve_segment_x()
+        assert list(x_segment) == pytest.approx(list(dataset.data["t"]))
+
+    def test_slices_to_the_requested_start_end(self, ctx):
+        _, project = ctx
+        dataset = project.find_item("ds-1")
+        command = _cmd(ctx, source_kind="series")
+        x_segment = command.resolve_segment_x(10, 20)
+        assert list(x_segment) == pytest.approx(list(dataset.data["t"].iloc[10:20]))
+
+    def test_reuses_the_resolved_xy_cache_across_calls(self, ctx):
+        """Regression: the panel builds one command per (chart, source) and
+        calls resolve_segment_x() repeatedly (once per segment-bound tick)
+        -- it must hit the memoized cache, not re-resolve the series (NaN
+        drop/to_numeric) every time."""
+        command = _cmd(ctx, source_kind="series")
+        command.resolve_segment_x(0, 5)
+        cache_after_first_call = command._resolved_xy_cache
+        assert cache_after_first_call is not None
+
+        command.resolve_segment_x(5, 10)
+
+        assert command._resolved_xy_cache is cache_after_first_call
+
+    def test_invalid_source_returns_none(self, ctx):
+        command = _cmd(ctx, source_kind="fit", source_index=9)
+        assert command.resolve_segment_x() is None
+
+    def test_no_chart_returns_none(self, ctx):
+        command = _cmd(ctx, source_kind="series")
+        command.chart_id = "not-a-real-chart"
+        assert command.resolve_segment_x() is None
+
+
 class TestChartSignalAnalysisCommandRealTaskScheduler:
     """Proves the background-thread -> main-thread callback delivery
     actually works end to end, mirroring

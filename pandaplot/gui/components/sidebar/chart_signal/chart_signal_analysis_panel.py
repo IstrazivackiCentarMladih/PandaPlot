@@ -68,6 +68,15 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         self._last_run_params = None
         self._pending_command = None
 
+        # Cache for _range_command(): a fresh ChartSignalAnalysisCommand
+        # per call would re-run NaN-drop/to_numeric series resolution on
+        # every call even though the underlying series hasn't changed --
+        # reusing one instance per (chart, source) lets its own
+        # _resolved_xy_cache actually pay off across the segment-label and
+        # sampling-rate-default refreshes that both run on every spinbox tick.
+        self._range_command_key = None
+        self._range_command_cache: Optional[ChartSignalAnalysisCommand] = None
+
         self._initialize()
 
     @override
@@ -249,16 +258,11 @@ class ChartSignalAnalysisPanel(SidebarPanel):
 
         start = self.start_index.value()
         end = self.end_index.value() + 1  # inclusive UI end -> exclusive boundary
-        xs = []
-        for i in range(start, end):
-            point = command.resolve_point(i)
-            if point is not None:
-                xs.append(point[0])
-
-        if len(xs) < 2:
+        x_segment = command.resolve_segment_x(start, end)
+        if x_segment is None or len(x_segment) < 2:
             return
 
-        diffs = np.diff(xs)
+        diffs = np.diff(x_segment.to_numpy())
         diffs = diffs[diffs > 0]
         if len(diffs) == 0:
             return
@@ -482,23 +486,30 @@ class ChartSignalAnalysisPanel(SidebarPanel):
     # -- chart context --------------------------------------------------------
 
     def _range_command(self, kind: str, index: int) -> Optional[ChartSignalAnalysisCommand]:
-        """Build a throwaway command to resolve the selected series.
+        """Return a command to resolve the selected series, reused across
+        calls for the same (chart, source) so its _resolved_xy_cache
+        actually amortizes the NaN-drop/to_numeric resolution work.
 
         Used for the segment bounds, index -> (x, y) previews, and the
         sampling-rate default, so all three stay in sync with what will
         actually be analyzed -- a data series' raw row count can be larger
         once rows with missing x/y are dropped. Any analysis_type works
-        here since it's only used for source_length()/resolve_point().
+        here since it's only used for source_length()/resolve_point()/
+        resolve_segment_x().
         """
         if self.current_chart is None or self.current_chart_id is None:
             return None
-        return ChartSignalAnalysisCommand(
-            self.app_context,
-            chart_id=self.current_chart_id,
-            source_kind=kind,
-            source_index=index,
-            analysis_type=SignalAnalysisType.FFT,
-        )
+        key = (self.current_chart_id, kind, index)
+        if self._range_command_key != key:
+            self._range_command_cache = ChartSignalAnalysisCommand(
+                self.app_context,
+                chart_id=self.current_chart_id,
+                source_kind=kind,
+                source_index=index,
+                analysis_type=SignalAnalysisType.FFT,
+            )
+            self._range_command_key = key
+        return self._range_command_cache
 
     def _series_length(self, kind: str, index: int) -> int:
         """Best-effort length of a source series, for the segment bounds."""
@@ -542,8 +553,20 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         self.end_value_label.setText(self._format_point(command.resolve_point(self.end_index.value())))
 
     def _populate_sources(self):
+        # Force _range_command() to build a fresh command even if the
+        # (chart, source) key is unchanged: this runs on every
+        # UIEvents.TAB_CHANGED/ChartEvents.CHART_UPDATED, and the latter
+        # fires on chart/series-backing-dataset mutations that the cached
+        # command's _resolved_xy_cache would otherwise keep serving stale
+        # data for.
+        self._range_command_key = None
         has_sources, any_series_excluded = populate_series_fit_sources(self.source_combo, self.current_chart)
-        self.run_btn.setEnabled(has_sources)
+        # A tab switch while a Run/Add-to-Project computation is still in
+        # flight (for whatever chart/source was previously selected) must
+        # not re-enable the Run button -- _pending_command's own guard would
+        # silently no-op the click until that computation's on_complete
+        # fires and re-enables it for real.
+        self.run_btn.setEnabled(has_sources and self._pending_command is None)
         self.source_hint.setText(
             series_source_hint(has_sources=has_sources, any_series_excluded=any_series_excluded)
         )

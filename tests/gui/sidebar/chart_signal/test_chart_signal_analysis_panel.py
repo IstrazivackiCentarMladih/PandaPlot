@@ -258,3 +258,75 @@ class TestRunAndAddMutualExclusion:
 
         assert "built" not in run_attempted
         assert panel._pending_command is add_command
+
+
+class TestPopulateSourcesRespectsPendingCommand:
+    """Regression: switching the active chart tab while a Run/Add-to-Project
+    computation is still in flight for the previous chart used to
+    re-enable the Run button via _populate_sources() (has_sources alone),
+    even though _pending_command was still set -- the button looked live
+    but silently no-op'd until the in-flight computation completed."""
+
+    def test_run_button_stays_disabled_while_a_command_is_pending(self, panel):
+        run_captured = {}
+        run_command = Mock()
+        run_command.run_analysis_async = lambda on_complete: run_captured.update(on_complete=on_complete)
+        panel._build_command = lambda: run_command
+        panel.run_analysis()
+        assert panel._pending_command is run_command
+        assert panel.run_btn.isEnabled() is False
+
+        # Simulate switching to another (still valid) chart tab while the
+        # run is still in flight.
+        panel._populate_sources()
+
+        assert panel.run_btn.isEnabled() is False
+
+    def test_run_button_re_enables_once_pending_command_clears(self, panel):
+        run_captured = {}
+        run_command = Mock()
+        run_command.run_analysis_async = lambda on_complete: run_captured.update(on_complete=on_complete)
+        panel._build_command = lambda: run_command
+        panel.run_analysis()
+
+        run_captured["on_complete"](
+            Mock(analysis_name="FFT", data=pd.DataFrame({"a": [1.0]}), metadata={}), None,
+        )
+        panel._populate_sources()
+
+        assert panel.run_btn.isEnabled() is True
+
+
+class TestRangeCommandCaching:
+    """Regression: _range_command() used to build a brand-new
+    ChartSignalAnalysisCommand on every call, defeating its own
+    _resolved_xy_cache and forcing the sampling-rate pre-fill to loop
+    resolve_point() once per index in the segment. It now reuses one
+    instance per (chart, source) -- invalidated whenever sources are
+    repopulated, since a chart update may have changed the underlying data
+    -- and computes the sampling-rate default via one vectorized
+    resolve_segment_x() call instead."""
+
+    def test_range_command_is_reused_for_the_same_source(self, panel):
+        first = panel._range_command("series", 0)
+        second = panel._range_command("series", 0)
+        assert first is second
+
+    def test_range_command_cache_is_invalidated_on_repopulate(self, panel):
+        first = panel._range_command("series", 0)
+        panel._populate_sources()
+        second = panel._range_command("series", 0)
+        assert first is not second
+
+    def test_sampling_rate_prefill_uses_resolve_segment_x_not_a_per_index_loop(self, panel):
+        index = panel.analysis_combo.findData(SignalAnalysisType.FFT)
+        panel.analysis_combo.setCurrentIndex(index)
+
+        command = panel._range_command("series", 0)
+        command.resolve_point = Mock(
+            side_effect=AssertionError("resolve_point should not be used for the sampling-rate prefill")
+        )
+
+        panel._refresh_sampling_rate_default()
+
+        command.resolve_point.assert_not_called()

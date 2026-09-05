@@ -160,6 +160,28 @@ class ChartSignalAnalysisCommand(Command):
         except (ValueError, AttributeError):
             return None
 
+    def resolve_segment_x(self, start: int = 0, end: Optional[int] = None) -> Optional[pd.Series]:
+        """Return the resolved x values for the [start:end) segment (the
+        same exclusive-end convention as parameters["end_index"]), or None
+        if the chart/series is unavailable.
+
+        Takes start/end explicitly rather than reading self.parameters, so
+        the UI can reuse one cached command instance to inspect several
+        candidate segments (e.g. while the user is still dragging a spinbox)
+        without mutating it. Used to derive a sampling-rate default from
+        the segment's x spacing in one vectorized pass, instead of looping
+        resolve_point() once per index in the segment -- backed by the same
+        _resolved_xy_cache source_length()/resolve_point() share.
+        """
+        try:
+            chart = self._get_chart()
+            if chart is None:
+                return None
+            x, _y, _x_label, _y_label = self._resolve_xy_cached(chart)
+        except (ValueError, AttributeError):
+            return None
+        return x.iloc[start:end]
+
     # -- analysis -----------------------------------------------------------
 
     def _resolve_segment(self, chart: Chart) -> pd.Series:
