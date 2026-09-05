@@ -390,7 +390,7 @@ def resolve_series_data(project, series, chart_type=None) -> SeriesData:
         return SeriesData(None, None, None, None, None, None, f"column {cols} not found in '{dataset.name}'")
 
     x_data = (df[x_column] if x_column else df.index) if needs_x_column else None
-    error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
+    error_bars = (series.style.error_bars if hasattr(series.style, "error_bars") and series.style.error_bars is not None else ErrorBarConfig())
     x_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_column_id, error_bars.x_error_column))
     y_err = _resolve_error_column(df, resolve_series_column(dataset, error_bars.y_error_column_id, error_bars.y_error_column))
     x_err_minus = _resolve_error_column(df, resolve_series_column(dataset, error_bars.x_error_minus_column_id, error_bars.x_error_minus_column))
@@ -615,7 +615,8 @@ class ChartEditorWidget(PWidget):
             cfg = data.get("config") if isinstance(data, dict) else None
             if not cfg:
                 return
-            dpi = getattr(getattr(cfg, "chart_display", None), "dpi", None)
+            chart_display = getattr(cfg, "chart_display", None)
+            dpi = chart_display.dpi if chart_display is not None else None
             if dpi and isValid(self.chart_canvas):
                 self.chart_canvas.set_dpi(
                     dpi,
@@ -655,12 +656,12 @@ class ChartEditorWidget(PWidget):
         default_height_cm = 15
         try:
             cfg_manager = self.app_context.get_manager(ConfigManager)
-            cfg = getattr(cfg_manager, "config", None)
-            chart_display = getattr(cfg, "chart_display", None) if cfg else None
+            cfg = cfg_manager.config if cfg_manager else None
+            chart_display = cfg.chart_display if cfg else None
             if chart_display:
-                dpi = getattr(chart_display, "dpi", dpi) or dpi
-                default_width_cm = getattr(chart_display, "default_width_cm", default_width_cm) or default_width_cm
-                default_height_cm = getattr(chart_display, "default_height_cm", default_height_cm) or default_height_cm
+                dpi = chart_display.dpi or dpi
+                default_width_cm = chart_display.default_width_cm or default_width_cm
+                default_height_cm = chart_display.default_height_cm or default_height_cm
         except Exception:
             pass
 
@@ -936,21 +937,23 @@ class ChartEditorWidget(PWidget):
                     # to the axes when zorder is tied (neither call here
                     # sets one), so error bars drawn first land underneath
                     # the markers/line/bars instead of obscuring them.
-                    error_bars = getattr(style, "error_bars", None)
-                    if error_bars is not None:
-                        xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
-                        yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
-                        if xerr is not None or yerr is not None:
-                            err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
-                            target_axes.errorbar(
-                                x_data, y_data,
-                                xerr=xerr,
-                                yerr=yerr,
-                                fmt="none",
-                                ecolor=err_color,
-                                elinewidth=getattr(style, "line_width", 2.0),
-                                capsize=error_bars.error_cap_size,
-                                alpha=alpha)
+                    if hasattr(style, "error_bars"):
+                        error_bars = style.error_bars
+                        if error_bars is not None:
+                            xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                            yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                            if xerr is not None or yerr is not None:
+                                err_color = error_bars.error_color or (style.color if hasattr(style, "color") else "#1f77b4")
+                                line_width = style.line_width if hasattr(style, "line_width") else 2.0
+                                target_axes.errorbar(
+                                    x_data, y_data,
+                                    xerr=xerr,
+                                    yerr=yerr,
+                                    fmt="none",
+                                    ecolor=err_color,
+                                    elinewidth=line_width,
+                                    capsize=error_bars.error_cap_size,
+                                    alpha=alpha)
 
                     renderer = SERIES_RENDERERS[series_type]
                     mappable = renderer(
@@ -1072,10 +1075,11 @@ class ChartEditorWidget(PWidget):
             # height the figure is about to be set to, not whatever height
             # it happened to have from the previous render.
             cfg_manager = self.app_context.get_manager(ConfigManager)
-            display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
-            default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
-            default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
-            default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
+            cfg = cfg_manager.config if cfg_manager else None
+            display_cfg = cfg.chart_display if cfg else None
+            default_width = display_cfg.default_width_cm if display_cfg else 20.0
+            default_height = display_cfg.default_height_cm if display_cfg else 15.0
+            default_dpi = display_cfg.dpi if display_cfg else 100
             width_cm, height_cm, dpi = resolve_chart_size(
                 config.get("width_cm"), config.get("height_cm"), config.get("dpi"),
                 default_width, default_height, default_dpi,

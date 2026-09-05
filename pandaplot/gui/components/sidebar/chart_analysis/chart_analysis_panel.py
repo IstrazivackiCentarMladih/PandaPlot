@@ -46,6 +46,13 @@ class ChartAnalysisPanel(PWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.current_chart: Optional[Chart] = None
         self.current_chart_id: Optional[str] = None
+        self.method_combo: Optional[QComboBox] = None
+        self.smooth_method_combo: Optional[QComboBox] = None
+        self.window_length_spin: Optional[QSpinBox] = None
+        self.poly_order_spin: Optional[QSpinBox] = None
+        self.window_spin: Optional[QSpinBox] = None
+        self.interp_method_combo: Optional[QComboBox] = None
+        self.num_points_spin: Optional[QSpinBox] = None
 
         self._initialize()
         self._connect_signals()
@@ -181,12 +188,13 @@ class ChartAnalysisPanel(PWidget):
         # widgets and connections around until the event loop runs.
         while self.parameters_layout.rowCount() > 0:
             self.parameters_layout.removeRow(0)
-        # Drop references so hasattr()-style checks stay honest.
-        for attr in ("method_combo", "smooth_method_combo", "window_length_spin",
-                     "poly_order_spin", "window_spin", "interp_method_combo",
-                     "num_points_spin"):
-            if hasattr(self, attr):
-                delattr(self, attr)
+        self.method_combo = None
+        self.smooth_method_combo = None
+        self.window_length_spin = None
+        self.poly_order_spin = None
+        self.window_spin = None
+        self.interp_method_combo = None
+        self.num_points_spin = None
 
     def _update_parameters_ui(self):
         self._clear_parameters()
@@ -227,9 +235,9 @@ class ChartAnalysisPanel(PWidget):
         # Remove any rows previously added below the method row.
         while self.parameters_layout.rowCount() > 1:
             self.parameters_layout.removeRow(1)
-        for attr in ("window_length_spin", "poly_order_spin", "window_spin"):
-            if hasattr(self, attr):
-                delattr(self, attr)
+        self.window_length_spin = None
+        self.poly_order_spin = None
+        self.window_spin = None
 
         method = self.smooth_method_combo.currentData()
         if method == "savgol":
@@ -261,19 +269,20 @@ class ChartAnalysisPanel(PWidget):
             "end_index": self.end_index.value() + 1,
         }
         op = self.operation_combo.currentData()
-        if op == AnalysisType.DERIVATIVE and hasattr(self, "method_combo"):
+        if op == AnalysisType.DERIVATIVE and self.method_combo is not None:
             params["method"] = self.method_combo.currentData()
-        elif op == AnalysisType.SMOOTHING and hasattr(self, "smooth_method_combo"):
+        elif op == AnalysisType.SMOOTHING and self.smooth_method_combo is not None:
             params["method"] = self.smooth_method_combo.currentData()
-            if hasattr(self, "window_length_spin"):
+            if self.window_length_spin is not None:
                 params["window_length"] = self.window_length_spin.value()
-            if hasattr(self, "poly_order_spin"):
+            if self.poly_order_spin is not None:
                 params["polynomial_order"] = self.poly_order_spin.value()
-            if hasattr(self, "window_spin"):
+            if self.window_spin is not None:
                 params["window"] = self.window_spin.value()
-        elif op == AnalysisType.INTERPOLATION and hasattr(self, "interp_method_combo"):
+        elif op == AnalysisType.INTERPOLATION and self.interp_method_combo is not None:
             params["method"] = self.interp_method_combo.currentData()
-            params["num_points"] = self.num_points_spin.value()
+            if self.num_points_spin is not None:
+                params["num_points"] = self.num_points_spin.value()
         return params
 
     def _make_command(self) -> Optional[AnalyzeChartSeriesCommand]:

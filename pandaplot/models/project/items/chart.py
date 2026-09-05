@@ -3,7 +3,7 @@ Chart model for managing chart/visualization items in the project.
 """
 
 import copy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Dict, List, Optional
@@ -55,7 +55,7 @@ class DataSeries:
     y_axis: YAxis = YAxis.PRIMARY
     alpha: float = 1.0
     series_type: SeriesType = SeriesType.LINE
-    style: Optional[SeriesStyleBase] = None
+    style: SeriesStyleBase = field(default=None)  # type: ignore[assignment]
 
     def __post_init__(self):
         if isinstance(self.y_axis, str):
@@ -91,8 +91,10 @@ class DataSeries:
         field (LineSeriesStyle/ScatterSeriesStyle/BarSeriesStyle); any
         other style class (HistSeriesStyle/VectorSeriesStyle) has none,
         so this is always False for those."""
-        error_bars = getattr(self.style, "error_bars", None)
-        return error_bars is not None and error_bars.has_error_data
+        if hasattr(self.style, "error_bars"):
+            error_bars = self.style.error_bars
+            return error_bars is not None and error_bars.has_error_data
+        return False
 
 
 @dataclass
@@ -114,22 +116,14 @@ class FitData:
     source_x_column: str = ""
     source_y_column: str = ""
     visible: bool = True
-    fit_params: Optional[Dict[str, Any]] = None
-    fit_stats: Optional[Dict[str, Any]] = None
+    fit_params: Dict[str, Any] = field(default_factory=dict)
+    fit_stats: Dict[str, Any] = field(default_factory=dict)
     confidence_lower: np.ndarray | None = None
     confidence_upper: np.ndarray | None = None
     confidence_lower_column_id: str = ""
     confidence_upper_column_id: str = ""
     is_manual: bool = False
-    style: Optional[FitStyle] = None
-
-    def __post_init__(self):
-        if self.fit_params is None:
-            self.fit_params = {}
-        if self.fit_stats is None:
-            self.fit_stats = {}
-        if self.style is None:
-            self.style = FitStyle()
+    style: FitStyle = field(default_factory=FitStyle)
 
 
 def _series_style_from_dict(series_type: SeriesType, style_dict: Dict[str, Any]) -> SeriesStyleBase:
@@ -811,38 +805,35 @@ def assign_series_column_ids(series: "DataSeries", dataset: Any) -> None:
     """
     if dataset is None:
         return
-    pairs = [
-        ("x_column", "x_column_id"),
-        ("y_column", "y_column_id"),
-    ]
-    for name_field, id_field in pairs:
-        name = getattr(series, name_field, "")
+    for name, id_field in (
+        (series.x_column, "x_column_id"),
+        (series.y_column, "y_column_id"),
+    ):
         if name:
             cid = dataset.column_id(name)
             if cid is not None:
                 setattr(series, id_field, cid)
 
-    error_bars = getattr(series.style, "error_bars", None)
-    if error_bars is not None:
-        for name_field, id_field in (
-            ("x_error_column", "x_error_column_id"),
-            ("y_error_column", "y_error_column_id"),
-            ("x_error_minus_column", "x_error_minus_column_id"),
-            ("y_error_minus_column", "y_error_minus_column_id"),
-        ):
-            name = getattr(error_bars, name_field, "")
-            if name:
-                cid = dataset.column_id(name)
-                if cid is not None:
-                    setattr(error_bars, id_field, cid)
+    if hasattr(series.style, "error_bars"):
+        error_bars = series.style.error_bars
+        if error_bars is not None:
+            for name, id_field in (
+                (error_bars.x_error_column, "x_error_column_id"),
+                (error_bars.y_error_column, "y_error_column_id"),
+                (error_bars.x_error_minus_column, "x_error_minus_column_id"),
+                (error_bars.y_error_minus_column, "y_error_minus_column_id"),
+            ):
+                if name:
+                    cid = dataset.column_id(name)
+                    if cid is not None:
+                        setattr(error_bars, id_field, cid)
 
     if isinstance(series.style, VectorSeriesStyle):
-        for name_field, id_field in (
-            ("u_column", "u_column_id"),
-            ("v_column", "v_column_id"),
-            ("magnitude_column", "magnitude_column_id"),
+        for name, id_field in (
+            (series.style.u_column, "u_column_id"),
+            (series.style.v_column, "v_column_id"),
+            (series.style.magnitude_column, "magnitude_column_id"),
         ):
-            name = getattr(series.style, name_field, "")
             if name:
                 cid = dataset.column_id(name)
                 if cid is not None:
@@ -859,9 +850,10 @@ def assign_fit_column_ids(fit: "FitData", dataset: Any) -> None:
     """Fill a fit's source ``*_column_id`` fields from its name fields."""
     if dataset is None:
         return
-    for name_field, id_field in (("source_x_column", "source_x_column_id"),
-                                 ("source_y_column", "source_y_column_id")):
-        name = getattr(fit, name_field, "")
+    for name, id_field in (
+        (fit.source_x_column, "source_x_column_id"),
+        (fit.source_y_column, "source_y_column_id"),
+    ):
         if name:
             cid = dataset.column_id(name)
             if cid is not None:
