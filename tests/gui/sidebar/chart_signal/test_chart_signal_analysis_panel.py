@@ -410,6 +410,22 @@ class TestRangeCommandCaching:
 
         command.resolve_point.assert_not_called()
 
+    def test_repopulate_with_no_eligible_source_releases_the_cached_command(self, panel):
+        """Regression: clearing only _range_command_key (not
+        _range_command_cache) meant that once there was no eligible source
+        at all (chart closed, or repopulated with nothing to analyze),
+        _range_command() returned None without ever rebuilding -- leaving
+        the old command (and its resolved, potentially large x/y series)
+        referenced for the rest of the panel's lifetime."""
+        panel._range_command("series", 0)
+        assert panel._range_command_cache is not None
+
+        panel.current_chart = None
+        panel.current_chart_id = None
+        panel._populate_sources()
+
+        assert panel._range_command_cache is None
+
 
 class TestStaleCompletionDiscard:
     """Regression: the staleness check used to compare only

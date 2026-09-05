@@ -593,8 +593,15 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # UIEvents.TAB_CHANGED/ChartEvents.CHART_UPDATED/dataset change, and
         # those fire on chart/series-backing-dataset mutations that the
         # cached command's _resolved_xy_cache would otherwise keep serving
-        # stale data for.
+        # stale data for. Clearing the cached command itself (not just its
+        # key) also matters when there's no longer an eligible source at all
+        # (chart closed, or repopulated with nothing to analyze) --
+        # _range_command() returns None without rebuilding in that case, so
+        # leaving the old command object behind would otherwise keep its
+        # resolved x/y series (potentially large) referenced for the rest of
+        # the panel's lifetime.
         self._range_command_key = None
+        self._range_command_cache = None
         # A previously computed last_result may have been resolved from
         # data that just changed underneath it (same chart/source/method/
         # segment, different underlying values) -- discard it rather than
