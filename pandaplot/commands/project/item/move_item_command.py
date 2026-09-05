@@ -74,7 +74,7 @@ class MoveItemCommand(Command):
                 return CommandResult.FAILURE
 
             # Store item name for better error messages
-            item_name = getattr(item, "name", "Unnamed Item")
+            item_name = item.name or "Unnamed Item"
             self.logger.debug(f"Moving item '{item_name}' (ID: {self.item_id})")
 
             # Validate target folder exists (if specified)
@@ -133,7 +133,7 @@ class MoveItemCommand(Command):
                     item = project.find_item(self.item_id)
                     if item is not None:
                         # Get item name for better messages
-                        item_name = getattr(item, "name", "Unnamed Item")
+                        item_name = item.name or "Unnamed Item"
 
                         # Remove item from current location
                         project.remove_item(item)
@@ -175,7 +175,7 @@ class MoveItemCommand(Command):
                 if project and self.item_id:
                     item = project.find_item(self.item_id)
                     if item is not None:
-                        item_name = getattr(item, "name", self.item_id)
+                        item_name = item.name or self.item_id
 
             error_msg = f"Failed to undo move of '{item_name}': {str(e)}"
             self.logger.error(error_msg)

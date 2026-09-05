@@ -382,11 +382,11 @@ class FitService:
         # DataFrame names against the series' dataset (name fallback for legacy).
         from pandaplot.models.project.items.chart import resolve_series_column
 
-        error_bars = getattr(series.style, "error_bars", None)
-        y_error_column_id = getattr(error_bars, "y_error_column_id", "")
-        y_error_column = getattr(error_bars, "y_error_column", "")
-        y_error_minus_column_id = getattr(error_bars, "y_error_minus_column_id", "")
-        y_error_minus_column = getattr(error_bars, "y_error_minus_column", "")
+        error_bars = series.style.error_bars if hasattr(series.style, "error_bars") else None
+        y_error_column_id = error_bars.y_error_column_id if error_bars is not None else ""
+        y_error_column = error_bars.y_error_column if error_bars is not None else ""
+        y_error_minus_column_id = error_bars.y_error_minus_column_id if error_bars is not None else ""
+        y_error_minus_column = error_bars.y_error_minus_column if error_bars is not None else ""
         plus_column = resolve_series_column(dataset, y_error_column_id, y_error_column)
         minus_column = resolve_series_column(dataset, y_error_minus_column_id, y_error_minus_column)
 
