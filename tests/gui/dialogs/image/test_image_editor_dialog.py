@@ -1,3 +1,4 @@
+import pytest
 from PySide6.QtCore import QBuffer, QIODevice
 from PySide6.QtGui import QImage
 
@@ -129,3 +130,60 @@ class TestImageEditorDialogCropClamping:
         assert dialog.spin_crop_y.value() == 0
         assert dialog.spin_crop_w.value() == 40
         assert dialog.spin_crop_h.value() == 30
+
+
+class TestImageEditorDialogCropCanvasSync:
+    def test_dragging_canvas_rect_updates_spinboxes(self, qapp):
+        from PySide6.QtCore import QRect
+
+        app_context = build_app_context()
+        image = Image(id="sync-1", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog.crop_canvas.cropRectChanged.emit(QRect(10, 5, 40, 30))
+
+        assert dialog.spin_crop_x.value() == 10
+        assert dialog.spin_crop_y.value() == 5
+        assert dialog.spin_crop_w.value() == 40
+        assert dialog.spin_crop_h.value() == 30
+
+    def test_editing_spinbox_updates_canvas_rect(self, qapp):
+        from PySide6.QtCore import QRect
+
+        app_context = build_app_context()
+        image = Image(id="sync-2", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog.spin_crop_x.setValue(15)
+        dialog.spin_crop_w.setValue(20)
+
+        assert dialog.crop_canvas.crop_rect() == QRect(15, 0, 20, 80)
+
+    def test_rotate_resets_canvas_crop_rect_to_new_full_bounds(self, qapp):
+        from PySide6.QtCore import QRect
+
+        app_context = build_app_context()
+        image = Image(id="sync-3", name="Photo", width=100, height=80, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
+
+        dialog._rotate(90)
+
+        assert dialog.crop_canvas.crop_rect() == QRect(0, 0, 80, 100)
+
+    def test_aspect_preset_locks_canvas_and_reflows_current_rect(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="sync-4", name="Photo", width=200, height=200, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(200, 200))
+        dialog.spin_crop_w.setValue(100)
+        dialog.spin_crop_h.setValue(100)
+
+        index = dialog.aspect_combo.findText("1:1")
+        dialog.aspect_combo.setCurrentIndex(index)
+
+        assert dialog.crop_canvas._aspect_lock == pytest.approx(1.0)
+
+        index_16_9 = dialog.aspect_combo.findText("16:9")
+        dialog.aspect_combo.setCurrentIndex(index_16_9)
+
+        assert dialog.crop_canvas._aspect_lock == pytest.approx(16 / 9)
+        assert dialog.spin_crop_h.value() == round(dialog.spin_crop_w.value() / (16 / 9))

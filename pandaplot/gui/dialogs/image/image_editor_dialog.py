@@ -4,14 +4,14 @@ Dialog for basic image operations: crop, rotate, and resize.
 
 from typing import Optional, override
 
-from PySide6.QtCore import QBuffer, QIODevice, QRect, QSize, Qt
-from PySide6.QtGui import QImage, QImageWriter, QPixmap, QTransform
+from PySide6.QtCore import QBuffer, QIODevice, QRect, Qt
+from PySide6.QtGui import QImage, QImageWriter, QTransform
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -19,11 +19,9 @@ from PySide6.QtWidgets import (
 
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.core.widget_extension import PDialog
-from pandaplot.gui.dialogs.image.crop_canvas import clamp_rect_to_bounds
+from pandaplot.gui.dialogs.image.crop_canvas import CropCanvas, clamp_rect_to_bounds
 from pandaplot.models.project.items import Image
 from pandaplot.models.state.app_context import AppContext
-
-_PREVIEW_MAX_SIZE = QSize(700, 500)
 
 _EXT_TO_QT_FORMAT = {
     "png": "PNG", "jpg": "JPEG", "jpeg": "JPEG",
@@ -69,14 +67,8 @@ class ImageEditorDialog(PDialog):
 
         # Left side: Image preview area
         preview_container = QVBoxLayout()
-        self.preview_label = QLabel()
-        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setMinimumSize(300, 300)
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidget(self.preview_label)
-        scroll_area.setWidgetResizable(True)
-        preview_container.addWidget(scroll_area, stretch=1)
+        self.crop_canvas = CropCanvas()
+        preview_container.addWidget(self.crop_canvas, stretch=1)
 
         self.info_label = QLabel()
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -156,6 +148,13 @@ class ImageEditorDialog(PDialog):
 
         crop_layout.addLayout(crop_dim_grid)
 
+        aspect_row = QHBoxLayout()
+        aspect_row.addWidget(QLabel("Aspect:"))
+        self.aspect_combo = QComboBox()
+        self.aspect_combo.addItems(["Free", "1:1", "Original", "16:9", "4:3"])
+        aspect_row.addWidget(self.aspect_combo)
+        crop_layout.addLayout(aspect_row)
+
         self.btn_apply_crop = PButton("Apply Crop", role="secondary", on_click=self._apply_crop)
         crop_layout.addWidget(self.btn_apply_crop)
 
@@ -184,6 +183,8 @@ class ImageEditorDialog(PDialog):
         self.spin_crop_y.valueChanged.connect(self._on_crop_spinbox_changed)
         self.spin_crop_w.valueChanged.connect(self._on_crop_spinbox_changed)
         self.spin_crop_h.valueChanged.connect(self._on_crop_spinbox_changed)
+        self.crop_canvas.cropRectChanged.connect(self._on_canvas_crop_rect_changed)
+        self.aspect_combo.currentTextChanged.connect(self._on_aspect_changed)
 
     @override
     def _apply_theme(self):
@@ -199,30 +200,22 @@ class ImageEditorDialog(PDialog):
         self.spin_height.setValue(h)
         self._updating_resize_spinboxes = False
 
+        self.crop_canvas.set_image(self.working_qimage)
+        rect = self.crop_canvas.crop_rect()
+
         self._updating_crop_spinboxes = True
         self.spin_crop_x.setRange(0, max(0, w - 1))
         self.spin_crop_y.setRange(0, max(0, h - 1))
         self.spin_crop_w.setRange(1, w)
         self.spin_crop_h.setRange(1, h)
 
-        self.spin_crop_x.setValue(0)
-        self.spin_crop_y.setValue(0)
-        self.spin_crop_w.setValue(w)
-        self.spin_crop_h.setValue(h)
+        self.spin_crop_x.setValue(rect.x())
+        self.spin_crop_y.setValue(rect.y())
+        self.spin_crop_w.setValue(rect.width())
+        self.spin_crop_h.setValue(rect.height())
         self._updating_crop_spinboxes = False
 
     def _update_preview(self):
-        pixmap = QPixmap.fromImage(self.working_qimage)
-        if pixmap.isNull():
-            self.preview_label.setText("Failed to display image")
-            return
-
-        scaled = pixmap.scaled(
-            _PREVIEW_MAX_SIZE,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        self.preview_label.setPixmap(scaled)
         self.info_label.setText(
             f"Current Size: {self.working_qimage.width()} × {self.working_qimage.height()} px"
         )
@@ -286,8 +279,21 @@ class ImageEditorDialog(PDialog):
             self.spin_crop_w.value(), self.spin_crop_h.value(),
         )
         clamped = self._clamp_crop_rect(rect)
-        if clamped != rect:
-            self._write_crop_spinboxes(clamped)
+        self._write_crop_spinboxes(clamped)
+        self.crop_canvas.set_crop_rect(clamped)
+
+    def _on_canvas_crop_rect_changed(self, rect: QRect) -> None:
+        self._write_crop_spinboxes(rect)
+
+    _ASPECT_RATIOS = {"1:1": 1.0, "16:9": 16 / 9, "4:3": 4 / 3}
+
+    def _on_aspect_changed(self, label: str) -> None:
+        if label == "Free":
+            self.crop_canvas.set_aspect_lock(None)
+        elif label == "Original":
+            self.crop_canvas.set_aspect_lock(self.aspect_ratio)
+        else:
+            self.crop_canvas.set_aspect_lock(self._ASPECT_RATIOS[label])
 
     def _apply_crop(self):
         rect = self._clamp_crop_rect(QRect(
