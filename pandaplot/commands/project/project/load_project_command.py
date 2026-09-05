@@ -2,6 +2,7 @@ import os
 from typing import Any, Callable, Optional, Tuple, override
 
 from pandaplot.commands.base_command import Command, CommandResult
+from pandaplot.commands.project.project.unsaved_changes import flush_pending_note_edits
 from pandaplot.gui.controllers.ui_controller import UIController
 from pandaplot.models.project import Project
 from pandaplot.models.state.app_context import AppContext
@@ -87,6 +88,8 @@ class LoadProjectCommand(Command):
             if self.app_state.has_project and _same_path(self.app_state.project_file_path, self.file_path):
                 self.logger.info("'%s' is already open; skipping reload", self.file_path)
                 return CommandResult.NOOP
+
+            flush_pending_note_edits(self.app_context)
 
             if self.app_state.has_project and self.app_state.is_modified:
                 should_continue = self.ui_controller.show_question(

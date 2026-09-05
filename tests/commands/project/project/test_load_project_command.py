@@ -209,6 +209,37 @@ class TestLoadProjectCommandGuards:
         command.ui_controller.show_question.assert_not_called()
         command.task_scheduler.run_task.assert_called_once()
 
+    def test_execute_flushes_pending_note_edits_before_checking_modified(self, monkeypatch):
+        """Regression (#318): a note's debounced edit must be flushed (and so
+        reflected in is_modified) before this command decides whether
+        loading a different project would discard anything."""
+        calls = []
+        monkeypatch.setattr(
+            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            lambda ctx: calls.append(ctx),
+        )
+        app_context, _ = _make_configured_app_context(
+            has_project=True, project_file_path="/p/current.pplot", is_modified=False)
+        command = LoadProjectCommand(app_context, "/p/other.pplot")
+
+        assert command.execute() is CommandResult.SUCCESS
+        assert calls == [app_context]
+        command.ui_controller.show_question.assert_not_called()
+
+    def test_execute_does_not_flush_when_reload_is_skipped_as_already_open(self, monkeypatch):
+        """No point flushing (or reading is_modified at all) when the load
+        is about to be skipped as a no-op."""
+        calls = []
+        monkeypatch.setattr(
+            "pandaplot.commands.project.project.load_project_command.flush_pending_note_edits",
+            lambda ctx: calls.append(ctx),
+        )
+        app_context, _ = _make_configured_app_context(has_project=True, project_file_path="/p/current.pplot")
+        command = LoadProjectCommand(app_context, "/p/current.pplot")
+
+        assert command.execute() is CommandResult.NOOP
+        assert calls == []
+
 
 @pytest.fixture
 def env():
