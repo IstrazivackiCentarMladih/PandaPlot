@@ -5,7 +5,7 @@ Dialog for basic image operations: crop, rotate, and resize.
 from typing import Optional, override
 
 from PySide6.QtCore import QBuffer, QIODevice, QRect, QSize, Qt
-from PySide6.QtGui import QImage, QPixmap, QTransform
+from PySide6.QtGui import QImage, QImageWriter, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QCheckBox,
     QGroupBox,
@@ -23,6 +23,11 @@ from pandaplot.models.project.items import Image
 from pandaplot.models.state.app_context import AppContext
 
 _PREVIEW_MAX_SIZE = QSize(700, 500)
+
+_EXT_TO_QT_FORMAT = {
+    "png": "PNG", "jpg": "JPEG", "jpeg": "JPEG",
+    "bmp": "BMP", "gif": "GIF", "webp": "WEBP",
+}
 
 
 class ImageEditorDialog(PDialog):
@@ -47,6 +52,7 @@ class ImageEditorDialog(PDialog):
             if self.working_qimage.height() > 0 else 1.0
         )
         self._updating_resize_spinboxes = False
+        self._resolved_format: Optional[tuple[str, str]] = None
 
         self._initialize()
         self._update_preview()
@@ -275,11 +281,26 @@ class ImageEditorDialog(PDialog):
         self._sync_control_values()
         self._update_preview()
 
+    def _resolve_output_format(self) -> tuple[str, str]:
+        """Returns (qt_format_name, result_ext). Falls back to PNG if the
+        image's original extension isn't in the Qt build's writable-formats
+        list, so we never mislabel bytes with a format they aren't."""
+        if self._resolved_format is not None:
+            return self._resolved_format
+
+        qt_format = _EXT_TO_QT_FORMAT.get(self.image_ext)
+        supported = {bytes(fmt).decode().upper() for fmt in QImageWriter.supportedImageFormats()}
+        if qt_format and qt_format in supported:
+            self._resolved_format = (qt_format, self.image_ext)
+        else:
+            self._resolved_format = ("PNG", "png")
+        return self._resolved_format
+
     def get_result_bytes(self) -> bytes:
+        qt_format, _ = self._resolve_output_format()
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        fmt = "JPEG" if self.image_ext in ("jpg", "jpeg") else "PNG"
-        self.working_qimage.save(buffer, fmt)
+        self.working_qimage.save(buffer, qt_format)
         return bytes(buffer.data())
 
     def get_result_width(self) -> int:
@@ -289,4 +310,5 @@ class ImageEditorDialog(PDialog):
         return self.working_qimage.height()
 
     def get_result_ext(self) -> str:
-        return "jpg" if self.image_ext in ("jpg", "jpeg") else "png"
+        _, ext = self._resolve_output_format()
+        return ext

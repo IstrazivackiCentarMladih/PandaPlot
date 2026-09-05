@@ -58,3 +58,27 @@ class TestImageEditorDialog:
         res_bytes = dialog.get_result_bytes()
         assert isinstance(res_bytes, bytes)
         assert len(res_bytes) > 0
+
+
+class TestImageEditorDialogFormatPreservation:
+    def test_preserves_supported_bmp_extension(self, qapp):
+        app_context = build_app_context()
+        image = Image(id="fmt-bmp", name="Photo", width=10, height=10, image_ext="bmp")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(10, 10))
+
+        assert dialog.get_result_ext() == "bmp"
+        assert len(dialog.get_result_bytes()) > 0
+
+    def test_falls_back_to_png_for_unsupported_extension(self, qapp, monkeypatch):
+        from PySide6.QtGui import QImageWriter
+
+        monkeypatch.setattr(
+            QImageWriter, "supportedImageFormats",
+            staticmethod(lambda: [b"PNG", b"JPEG", b"BMP"]),
+        )
+        app_context = build_app_context()
+        image = Image(id="fmt-webp", name="Photo", width=10, height=10, image_ext="webp")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(10, 10))
+
+        assert dialog.get_result_ext() == "png"
+        assert len(dialog.get_result_bytes()) > 0
