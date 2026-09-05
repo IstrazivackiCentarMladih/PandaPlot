@@ -102,6 +102,11 @@ class NoteTab(PWidget):
         except Exception:
             return False
 
+    def has_unsaved_changes(self) -> bool:
+        """Whether this tab's note editor has an edit not yet committed to the
+        project model (see NoteEditorWidget.has_unsaved_changes)."""
+        return self.note_editor.has_unsaved_changes()
+
     def get_note(self) -> Note:
         """Get the note associated with this tab."""
         return self.note

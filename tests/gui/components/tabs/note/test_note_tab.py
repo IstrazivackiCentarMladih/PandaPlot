@@ -28,3 +28,14 @@ def test_on_note_renamed_event_ignores_other_items():
     tab.on_note_renamed_event({"item_id": "other-id", "new_name": "Renamed"})
 
     tab.refresh_tab_title.assert_not_called()
+
+
+def test_has_unsaved_changes_delegates_to_note_editor():
+    tab = NoteTab.__new__(NoteTab)
+    tab.note_editor = Mock()
+
+    tab.note_editor.has_unsaved_changes.return_value = True
+    assert tab.has_unsaved_changes() is True
+
+    tab.note_editor.has_unsaved_changes.return_value = False
+    assert tab.has_unsaved_changes() is False
