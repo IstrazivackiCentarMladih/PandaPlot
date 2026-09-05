@@ -966,6 +966,7 @@ class TestResolveManualFitSourceData:
     @pytest.fixture
     def dataset(self):
         import pandas as pd
+
         from pandaplot.models.project.items import Dataset
         df = pd.DataFrame({
             "x": [1.0, 2.0, 3.0],
