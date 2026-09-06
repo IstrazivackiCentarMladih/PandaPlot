@@ -377,6 +377,77 @@ def test_undo_flushes_pending_note_edits_before_restoring_the_previous_project(m
     assert app_state.current_project is previous_project
 
 
+def test_redo_restores_the_loaded_projects_dirty_state():
+    """Regression (PR #352 review): a note edited in the just-loaded project
+    (flushed during undo(), or dirtied by any other command) must not have
+    that dirty state silently discarded when redo()'s cached fast path
+    reinstalls this exact project via load_project(), which unconditionally
+    reports whatever it loads as clean."""
+    from pandaplot.models.events import EventBus
+    from pandaplot.models.state.app_state import AppState
+
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+
+    command = LoadProjectCommand(app_context, "/p/other.pplot")
+    loaded_project = Mock()
+    loaded_project.name = "Loaded"
+    command.previous_project = previous_project
+    command.loaded_project = loaded_project
+    app_state.load_project(loaded_project)  # simulate the load having installed it
+
+    # Simulate a note edit dirtying the just-loaded project.
+    app_state.mark_modified()
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+
+    assert command.redo() is CommandResult.SUCCESS
+    assert app_state.current_project is loaded_project
+    assert app_state.is_modified is True
+
+
+def test_undo_restores_a_dirty_state_that_arose_after_a_prior_redo():
+    """previous_was_modified must be refreshed on every redo(), not just
+    captured once at the original execute() -- otherwise an edit made to
+    the previous project during the window between an undo() and a later
+    redo() gets silently forgotten the next time undo() runs again."""
+    from pandaplot.models.events import EventBus
+    from pandaplot.models.state.app_state import AppState
+
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+
+    command = LoadProjectCommand(app_context, "/p/other.pplot")
+    loaded_project = Mock()
+    loaded_project.name = "Loaded"
+    command.previous_project = previous_project
+    command.loaded_project = loaded_project
+    app_state.load_project(loaded_project)
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+
+    # Dirty the previous project while it's active, in the window between
+    # this undo() and the redo() below.
+    app_state.mark_modified()
+
+    assert command.redo() is CommandResult.SUCCESS
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+    assert app_state.is_modified is True
+
+
 def test_undo_aborts_and_reports_an_error_when_flush_fails(monkeypatch):
     """Regression (PR #352 review): must return ABORTED, not FAILURE --
     CommandExecutor.undo() moves the command to the redo stack regardless

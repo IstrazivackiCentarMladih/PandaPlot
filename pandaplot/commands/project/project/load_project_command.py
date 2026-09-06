@@ -51,6 +51,11 @@ class LoadProjectCommand(Command):
         # it to "no changes" -- see undo().
         self.previous_was_modified = False
         self.loaded_project: Optional[Project] = None
+        # Whether loaded_project had unsaved changes when undo() last swapped
+        # away from it (e.g. a note edit flushed during that same undo()),
+        # so redo()'s cached fast path can restore that dirty state rather
+        # than letting load_project() reset it to "no changes".
+        self.loaded_project_was_modified = False
         # AppState.modification_revision as of the moment the background
         # load task was kicked off -- see _on_load_result.
         self._dispatch_revision: int = 0
@@ -357,6 +362,13 @@ class LoadProjectCommand(Command):
             # even though nothing actually changed (see PR #352 review).
             return CommandResult.ABORTED
 
+        # Capture loaded_project's dirty state (the flush above may have
+        # just set it) before swapping away from it -- otherwise a later
+        # redo() would reinstall this exact project via load_project(),
+        # which unconditionally reports it as clean, silently discarding
+        # that it actually has unsaved content.
+        self.loaded_project_was_modified = self.app_state.is_modified
+
         if self.previous_project is not None:
             # load_project() unconditionally resets is_modified to False
             # (correct for a fresh disk load), so restore the dirty state
@@ -386,9 +398,17 @@ class LoadProjectCommand(Command):
             # ABORTED, not FAILURE -- see the matching undo() comment above.
             return CommandResult.ABORTED
 
+        # Refresh previous_was_modified in case this flush just dirtied
+        # whatever project is currently active -- otherwise a later undo()
+        # of this redo would restore a stale (pre-flush) dirty flag instead
+        # of the current one.
+        self.previous_was_modified = self.app_state.is_modified
+
         if self.loaded_project is not None:
             # We have a cached project, load it directly without file I/O
             self.app_state.load_project(self.loaded_project)
+            if self.loaded_project_was_modified:
+                self.app_state.mark_modified()
             return CommandResult.SUCCESS
         else:
             # Re-execute if we don't have the loaded project cached
