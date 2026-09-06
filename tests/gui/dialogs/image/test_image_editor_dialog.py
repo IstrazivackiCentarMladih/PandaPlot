@@ -104,20 +104,22 @@ class TestImageEditorDialogCropClamping:
         image = Image(id="clamp-2", name="Photo", width=100, height=80, image_ext="png")
         dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(100, 80))
 
-        # Leave the crop spinboxes holding a rect (x=10, y=10, w=40, h=30) that is
-        # only valid for the *current* 100x80 image. When _apply_crop() shrinks the
-        # working image down to 40x30 and calls _sync_control_values(), the ranges
-        # are updated (spin_crop_w/h's max drops to 40/30) before the values are
-        # rewritten. Without the re-entrancy guard around that setRange step, the
-        # stale leftover values (x=10, w=40 momentarily exceeds the new 40-wide
-        # range) get silently clamped by setRange() itself, which emits
-        # valueChanged and would re-enter _on_crop_spinbox_changed with a stale,
-        # partially-updated rect -- producing an extra, spurious write-back before
-        # the one legitimate write _sync_control_values() itself makes at the end.
-        dialog.spin_crop_x.setValue(10)
-        dialog.spin_crop_y.setValue(10)
-        dialog.spin_crop_w.setValue(40)
-        dialog.spin_crop_h.setValue(30)
+        # Leave the crop spinboxes holding a rect (x=60, y=55, w=30, h=20) that
+        # fits the *current* 100x80 image. When _apply_crop() crops the working
+        # image down to exactly that 30x20 region and calls
+        # _sync_control_values(), the ranges are updated to the new image's
+        # bounds (x in [0,29], y in [0,29], w in [1,30], h in [1,20]) before the
+        # values are rewritten. The stale x=60 (still sitting in the spinbox)
+        # genuinely falls outside its new [0,29] range, so setRange() itself
+        # would silently clamp it and emit valueChanged -- without the
+        # re-entrancy guard around that setRange step, that would re-enter
+        # _on_crop_spinbox_changed with a stale, partially-updated rect,
+        # producing an extra, spurious write-back before the one legitimate
+        # write _sync_control_values() itself makes at the end.
+        dialog.spin_crop_x.setValue(60)
+        dialog.spin_crop_y.setValue(55)
+        dialog.spin_crop_w.setValue(30)
+        dialog.spin_crop_h.setValue(20)
 
         write_calls: list[object] = []
         original_write = dialog._write_crop_spinboxes
@@ -133,11 +135,11 @@ class TestImageEditorDialogCropClamping:
         # Exactly the one legitimate write _sync_control_values() makes at the
         # end, with the correct final rect -- no earlier, spurious reentrant
         # write-back triggered by setRange() clamping stale values.
-        assert write_calls == [QRect(0, 0, 40, 30)]
+        assert write_calls == [QRect(0, 0, 30, 20)]
         assert dialog.spin_crop_x.value() == 0
         assert dialog.spin_crop_y.value() == 0
-        assert dialog.spin_crop_w.value() == 40
-        assert dialog.spin_crop_h.value() == 30
+        assert dialog.spin_crop_w.value() == 30
+        assert dialog.spin_crop_h.value() == 20
 
 
 class TestImageEditorDialogCropCanvasSync:
@@ -300,7 +302,11 @@ class TestImageEditorDialogAspectLockSurvivesCommitsAndRotation:
 
     def test_spinbox_edit_while_locked_reflows_to_lock(self, qapp):
         """Finding #3c: editing a crop spinbox while a lock is active must
-        reflow the result back onto the lock, not just clamp to bounds."""
+        reflow the result back onto the lock, not just clamp to bounds.
+
+        Asserting only width == height here would pass vacuously if the
+        edit were silently discarded (both dimensions unchanged at 200), so
+        this also asserts the height actually took on the edited value."""
         app_context = build_app_context()
         image = Image(id="lock-3", name="Photo", width=200, height=200, image_ext="png")
         dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(200, 200))
@@ -312,8 +318,31 @@ class TestImageEditorDialogAspectLockSurvivesCommitsAndRotation:
         dialog.spin_crop_h.setValue(50)
 
         rect = dialog.crop_canvas.crop_rect()
-        assert rect.width() / rect.height() == pytest.approx(1.0)
-        assert dialog.spin_crop_w.value() == dialog.spin_crop_h.value()
+        assert rect.height() == 50  # the edit must actually take effect
+        assert rect.width() == 50  # width re-derived from the new height
+        assert dialog.spin_crop_w.value() == dialog.spin_crop_h.value() == 50
+
+    def test_spinbox_edit_height_with_locked_ratio_derives_width_from_height(self, qapp):
+        """Finding #2 (re-review): editing spin_crop_h specifically while an
+        aspect lock is active must derive width from the *new* height,
+        rather than the lock's default width-drives-height reflow silently
+        overwriting the height edit back to match the unchanged width. A
+        non-1:1 ratio makes this direction distinguishable from the
+        (unaffected) opposite bug."""
+        app_context = build_app_context()
+        image = Image(id="lock-3b", name="Photo", width=200, height=200, image_ext="png")
+        dialog = ImageEditorDialog(app_context, image, _make_test_image_bytes(200, 200))
+
+        index = dialog.aspect_combo.findText("16:9")
+        dialog.aspect_combo.setCurrentIndex(index)
+
+        dialog.spin_crop_h.setValue(40)
+
+        rect = dialog.crop_canvas.crop_rect()
+        assert rect.height() == 40
+        assert rect.width() == round(40 * (16 / 9))
+        assert dialog.spin_crop_h.value() == 40
+        assert dialog.spin_crop_w.value() == round(40 * (16 / 9))
 
 
 class TestImageEditorDialogNoOpCropSkipsUndoAndCopy:

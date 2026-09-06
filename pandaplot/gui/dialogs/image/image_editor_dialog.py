@@ -188,10 +188,16 @@ class ImageEditorDialog(PDialog):
         # Connect signals
         self.spin_width.valueChanged.connect(self._on_width_changed)
         self.spin_height.valueChanged.connect(self._on_height_changed)
-        self.spin_crop_x.valueChanged.connect(self._on_crop_spinbox_changed)
-        self.spin_crop_y.valueChanged.connect(self._on_crop_spinbox_changed)
-        self.spin_crop_w.valueChanged.connect(self._on_crop_spinbox_changed)
-        self.spin_crop_h.valueChanged.connect(self._on_crop_spinbox_changed)
+        # Each spinbox is wired through a small wrapper that tells the
+        # shared handler which dimension it fired for -- needed so an
+        # active aspect lock reflows in the correct direction (see
+        # _on_crop_spinbox_changed / finding #2: a lock always deriving
+        # height-from-width would silently discard an edit made directly
+        # to the height spinbox).
+        self.spin_crop_x.valueChanged.connect(lambda v: self._on_crop_spinbox_changed(v, "x"))
+        self.spin_crop_y.valueChanged.connect(lambda v: self._on_crop_spinbox_changed(v, "y"))
+        self.spin_crop_w.valueChanged.connect(lambda v: self._on_crop_spinbox_changed(v, "w"))
+        self.spin_crop_h.valueChanged.connect(lambda v: self._on_crop_spinbox_changed(v, "h"))
         self.crop_canvas.cropRectChanged.connect(self._on_canvas_crop_rect_changed)
         self.aspect_combo.currentTextChanged.connect(self._on_aspect_changed)
 
@@ -320,7 +326,7 @@ class ImageEditorDialog(PDialog):
         self.spin_crop_h.setValue(rect.height())
         self._updating_crop_spinboxes = False
 
-    def _on_crop_spinbox_changed(self, _value: int) -> None:
+    def _on_crop_spinbox_changed(self, _value: int, field: str = "w") -> None:
         if self._updating_crop_spinboxes:
             return
         rect = QRect(
@@ -332,8 +338,14 @@ class ImageEditorDialog(PDialog):
         # A spinbox edit doesn't go through the canvas's own drag-time lock
         # enforcement, so an active lock has to be reapplied explicitly here
         # -- otherwise editing a spinbox while locked could leave the canvas
-        # rect (and the values written back below) violating the lock.
-        self._reapply_current_aspect_lock()
+        # rect (and the values written back below) violating the lock. When
+        # the edit was specifically to the height spinbox, the reflow must
+        # preserve that new height and derive width from it -- the default
+        # width-drives-height reflow would otherwise silently overwrite the
+        # user's height edit back to whatever height matches the unchanged
+        # width.
+        preserve = "height" if field == "h" else "width"
+        self._reapply_current_aspect_lock(preserve=preserve)
         self._write_crop_spinboxes(self.crop_canvas.crop_rect())
 
     def _on_canvas_crop_rect_changed(self, rect: QRect) -> None:
@@ -356,7 +368,7 @@ class ImageEditorDialog(PDialog):
     def _on_aspect_changed(self, label: str) -> None:
         self.crop_canvas.set_aspect_lock(self._resolve_aspect_ratio_for_label(label))
 
-    def _reapply_current_aspect_lock(self) -> None:
+    def _reapply_current_aspect_lock(self, preserve: str = "width") -> None:
         """Re-resolves and reapplies the currently selected aspect-combo
         option to the canvas.
 
@@ -368,9 +380,14 @@ class ImageEditorDialog(PDialog):
         "recompute the current label's ratio and reapply it," so this is
         the single method _sync_control_values() and _on_crop_spinbox_
         changed() both call, rather than duplicating _on_aspect_changed's
-        resolution logic in either place."""
+        resolution logic in either place.
+
+        `preserve` is forwarded to CropCanvas.set_aspect_lock -- it defaults
+        to "width" (the right choice for both situations above), and is
+        only overridden to "height" by _on_crop_spinbox_changed when the
+        user just edited the height spinbox specifically."""
         label = self.aspect_combo.currentText()
-        self.crop_canvas.set_aspect_lock(self._resolve_aspect_ratio_for_label(label))
+        self.crop_canvas.set_aspect_lock(self._resolve_aspect_ratio_for_label(label), preserve=preserve)
 
     def _apply_crop(self):
         rect = self._clamp_crop_rect(QRect(

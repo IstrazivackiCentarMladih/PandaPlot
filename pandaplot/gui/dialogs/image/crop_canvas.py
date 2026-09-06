@@ -9,7 +9,7 @@ exists, starting at the full image bounds.
 """
 from typing import Dict, Optional
 
-from PySide6.QtCore import QPoint, QRect, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QImage, QMouseEvent, QPainter, QPaintEvent, QPen, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
@@ -79,18 +79,29 @@ class CropCanvas(QWidget):
         self._crop_rect = self._clamp_to_image(rect)
         self.update()
 
-    def set_aspect_lock(self, ratio: Optional[float]) -> None:
+    def set_aspect_lock(self, ratio: Optional[float], preserve: str = "width") -> None:
+        """Applies (or clears, for ratio=None) an aspect lock to the current
+        crop rect.
+
+        `preserve` says which of the rect's current dimensions is
+        authoritative and should be kept as-is, with the other derived from
+        it to satisfy `ratio` -- "width" (the default, used when the lock
+        selection itself changes, or a commit resets the rect to full
+        bounds) or "height" (used when the user just edited the height
+        spinbox specifically, so *that* edit must survive the reflow rather
+        than being overwritten back to whatever height matches the
+        unchanged width)."""
         self._aspect_lock = ratio
         if ratio is not None and not self._crop_rect.isEmpty():
-            reflowed = self._reflow_to_aspect(self._crop_rect, ratio)
+            reflowed = self._reflow_to_aspect(self._crop_rect, ratio, preserve=preserve)
             # Same class of bug as resize_rect_from_handle (finding #2): a
             # plain intersection of the ratio-correct reflowed rect against
             # the image bounds can produce a rect that no longer satisfies
             # the lock (e.g. selecting a 1:1 lock on a wide rect whose full
             # width doesn't fit as a square within the image height). The
             # anchor here is always the rect's original top-left corner,
-            # since _reflow_to_aspect keeps that fixed and only derives a
-            # new height.
+            # since _reflow_to_aspect keeps that fixed and only derives the
+            # other dimension.
             self._crop_rect = self._clamp_aspect_locked_rect(reflowed, reflowed.topLeft(), ratio)
             self.update()
             self.cropRectChanged.emit(self.crop_rect())
@@ -162,6 +173,19 @@ class CropCanvas(QWidget):
         half = _HANDLE_SIZE // 2 + _HIT_MARGIN
         return {name: QRect(c.x() - half, c.y() - half, half * 2, half * 2) for name, c in centers.items()}
 
+    def _crop_widget_rect(self) -> QRect:
+        """The crop rect in widget coordinates, built from an explicit
+        (left, top, width, height) rather than the two-QPoint QRect
+        constructor. That constructor treats its second point as an
+        *inclusive* corner (Qt's normal QRect semantics), so feeding it the
+        exclusive bottom-right point from _image_bottom_right_exclusive()
+        would reintroduce a 1px inconsistency at the boundary -- using the
+        width/height difference directly keeps the exclusive convention
+        used throughout this file."""
+        top_left = self._image_to_widget(self._crop_rect.topLeft())
+        bottom_right = self._image_to_widget(self._image_bottom_right_exclusive())
+        return QRect(top_left, QSize(bottom_right.x() - top_left.x(), bottom_right.y() - top_left.y()))
+
     def hit_test(self, widget_pos: QPoint) -> Optional[str]:
         """Returns a handle name, "body", or None. Exposed directly so tests
         don't need to synthesize QMouseEvents to check hit-testing alone."""
@@ -169,11 +193,7 @@ class CropCanvas(QWidget):
         for name in _HANDLE_NAMES:
             if handle_rects[name].contains(widget_pos):
                 return name
-        crop_widget_rect = QRect(
-            self._image_to_widget(self._crop_rect.topLeft()),
-            self._image_to_widget(self._image_bottom_right_exclusive()),
-        )
-        if crop_widget_rect.contains(widget_pos):
+        if self._crop_widget_rect().contains(widget_pos):
             return "body"
         return None
 
@@ -273,7 +293,15 @@ class CropCanvas(QWidget):
 
         left = anchor.x() if grows_right else anchor.x() - new_width
         top = anchor.y() if grows_down else anchor.y() - new_height
-        return QRect(left, top, new_width, new_height)
+        result = QRect(left, top, new_width, new_height)
+        # Final unconditional bounds clamp: the math above derives a rect
+        # that fits the image *given an in-bounds anchor*, but this is a
+        # pure function exposed directly for tests (per the docstring
+        # above), so it must hold the "stays within image bounds"
+        # invariant even if ever called with an anchor that isn't
+        # in-bounds, rather than relying on every caller to only ever pass
+        # an anchor derived from an already-in-bounds rect.
+        return self._clamp_to_image(result)
 
     def move_rect(self, rect: QRect, delta: QPoint) -> QRect:
         """Pure function: translates rect by delta (image coordinates),
@@ -290,11 +318,17 @@ class CropCanvas(QWidget):
             moved.moveBottom(bounds.bottom())
         return moved
 
-    def _reflow_to_aspect(self, rect: QRect, ratio: float) -> QRect:
-        """Used when the aspect lock changes: keeps the rect's top-left and
-        width fixed, derives height from the new ratio."""
-        width = max(1, rect.width())
-        height = max(1, round(width / ratio))
+    def _reflow_to_aspect(self, rect: QRect, ratio: float, preserve: str = "width") -> QRect:
+        """Used when the aspect lock changes (or is re-applied after a
+        spinbox edit): keeps the rect's top-left fixed, and keeps whichever
+        of width/height `preserve` names fixed too, deriving the other
+        dimension from the new ratio."""
+        if preserve == "height":
+            height = max(1, rect.height())
+            width = max(1, round(height * ratio))
+        else:
+            width = max(1, rect.width())
+            height = max(1, round(width / ratio))
         return QRect(rect.left(), rect.top(), width, height)
 
     # ---- Qt event handlers -------------------------------------------
@@ -341,10 +375,7 @@ class CropCanvas(QWidget):
         display = self._display_rect()
         painter.drawImage(display, self._image)
 
-        crop_widget_rect = QRect(
-            self._image_to_widget(self._crop_rect.topLeft()),
-            self._image_to_widget(self._image_bottom_right_exclusive()),
-        )
+        crop_widget_rect = self._crop_widget_rect()
 
         overlay = QColor(0, 0, 0, 140)
         painter.fillRect(QRect(display.left(), display.top(), display.width(), crop_widget_rect.top() - display.top()), overlay)

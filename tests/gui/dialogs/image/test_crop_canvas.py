@@ -142,6 +142,71 @@ class TestCropCanvasAspectLockBoundaryClamping:
         assert not QRect(0, 150, 200, 50) == result
 
 
+class TestCropCanvasClampAspectLockedRectFinalBoundsClamp:
+    def test_out_of_bounds_anchor_still_clamps_result_within_bounds(self):
+        """Finding #3 (re-review): _clamp_aspect_locked_rect's own docstring
+        calls it out as "a pure function exposed directly for tests", so it
+        must hold the "result stays within image bounds" invariant
+        unconditionally -- not just for anchors derived from an
+        already-in-bounds rect (the only way the UI ever calls it).
+
+        Without a final clamp against image bounds, an out-of-bounds anchor
+        makes every one of the function's internal derivations land
+        out-of-bounds too (max_w/max_h are computed relative to the
+        anchor), producing e.g. QRect(500, 500, 1, 1) against a 100x100
+        image."""
+        canvas = _make_canvas(image_size=(100, 100))
+
+        result = canvas._clamp_aspect_locked_rect(QRect(500, 500, 20, 10), QPoint(500, 500), 2.0)
+
+        assert result.left() >= 0 and result.top() >= 0
+        assert result.left() + result.width() <= 100
+        assert result.top() + result.height() <= 100
+
+    def test_in_bounds_anchor_result_unchanged_by_final_clamp(self):
+        """The final clamp added for the above must be a no-op for the
+        existing in-bounds scenarios (e.g. finding #2's boundary-clamping
+        test) -- reproduced here directly to pin that down."""
+        canvas = _make_canvas(image_size=(200, 200))
+        rect = QRect(0, 150, 50, 25)
+
+        result = canvas._clamp_aspect_locked_rect(rect, rect.topLeft(), 2.0)
+
+        assert result.width() / result.height() == pytest.approx(2.0, rel=1e-6)
+        assert result.left() >= 0 and result.top() >= 0
+        assert result.left() + result.width() <= 200
+        assert result.top() + result.height() <= 200
+
+
+class TestCropCanvasWidgetRectExclusiveConvention:
+    def test_hit_test_body_includes_pixel_at_exclusive_bottom_right_boundary(self):
+        """Finding #4 (re-review): hit_test's body-rect (and paintEvent's
+        overlay, same construction) used to build the widget-space crop
+        rect via the two-QPoint QRect(topLeft, bottomRight) constructor,
+        which reinterprets the *exclusive* bottom-right point as an
+        *inclusive* corner -- adding a spurious 1px. Building it from an
+        explicit width/height instead means the body rect's right/bottom
+        edge sits exactly at the exclusive boundary, not one widget pixel
+        beyond it.
+
+        100x100 image in a 200x200 widget -> 2x scale, filling the widget
+        exactly. A crop rect of (20,20)-(60,60) in image space maps to
+        (40,40)-(120,120) in widget space (exclusive), so the body rect's
+        right edge is at widget x=119 (the last pixel still inside), not
+        x=120 (the exclusive boundary, one pixel outside). Widget point
+        (120, 55) sits right on that boundary and clear of every handle's
+        hit-margin (checked against each handle's rect below), so it's
+        "body" under the old buggy inclusive reinterpretation but None
+        (out past the crop rect entirely) with the fix."""
+        canvas = _make_canvas(widget_size=(200, 200), image_size=(100, 100))
+        canvas.set_crop_rect(QRect(20, 20, 40, 40))
+
+        assert canvas._crop_widget_rect() == QRect(40, 40, 80, 80)
+        for handle_rect in canvas._handle_widget_rects().values():
+            assert not handle_rect.contains(QPoint(120, 55))
+        assert canvas.hit_test(QPoint(120, 55)) is None
+
+
 class TestCropCanvasDegenerateClamp:
     def test_resize_to_opposite_edge_does_not_teleport_to_origin(self):
         """Reproduction from review finding #4: dragging a handle exactly
