@@ -99,6 +99,17 @@ class NewProjectCommand(Command):
 
     def undo(self) -> CommandResult:
         """Undo the new project command by restoring the previous project."""
+        # A note edited in the newly-created project, right before this
+        # undo, can still be mid-debounce -- no EditNoteCommand has run yet
+        # to invalidate anything, so nothing else protects this swap (see
+        # PR #352 review).
+        if not flush_pending_edits(self.app_context):
+            self.ui_controller.show_error_message(
+                "Create New Project",
+                "One or more open notes could not be saved. Save them manually before undoing.",
+            )
+            return CommandResult.FAILURE
+
         try:
             if self.previous_project:
                 # Restore previous project. load_project() unconditionally
@@ -141,6 +152,17 @@ class NewProjectCommand(Command):
                 "never completed successfully)"
             )
             return CommandResult.FAILURE
+
+        # Same race as undo() -- a note edited in the project that's about
+        # to be replaced (by redoing the creation) must be flushed first
+        # (see PR #352 review).
+        if not flush_pending_edits(self.app_context):
+            self.ui_controller.show_error_message(
+                "Create New Project",
+                "One or more open notes could not be saved. Save them manually before redoing.",
+            )
+            return CommandResult.FAILURE
+
         try:
             self.app_state.load_project(self.created_project)
 

@@ -139,6 +139,84 @@ def test_redo_restores_the_created_project_without_reprompting():
     assert redone is created
 
 
+def test_undo_flushes_pending_note_edits_before_restoring_the_previous_project(monkeypatch):
+    """Regression (PR #352 review): a note edited in the newly-created
+    project, right before the user hits Undo, can still be mid-debounce --
+    no EditNoteCommand has run yet to invalidate anything, so nothing else
+    protects this swap. Must flush first, same as execute()."""
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "New"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+
+    calls = []
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
+        lambda ctx: calls.append(ctx) or True,
+    )
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert calls == [app_context]
+    assert app_state.current_project is previous_project
+
+
+def test_undo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
+    app_context = _make_app_context()
+    command = NewProjectCommand(app_context)
+    command.previous_project = Mock()
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
+        lambda ctx: False,
+    )
+
+    assert command.undo() is CommandResult.FAILURE
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    app_context.get_app_state.return_value.load_project.assert_not_called()
+
+
+def test_redo_flushes_pending_note_edits_before_restoring_the_created_project(monkeypatch):
+    """Regression (PR #352 review): same race as undo(), but on redo() --
+    a note edited in the project that's about to be replaced (by redoing
+    the creation) must be flushed first."""
+    app_context = _make_app_context(has_project=False)
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "My Project"
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+    created = command.created_project
+
+    calls = []
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
+        lambda ctx: calls.append(ctx) or True,
+    )
+
+    assert command.redo() is CommandResult.SUCCESS
+    assert calls == [app_context]
+    redone = app_context.get_app_state.return_value.load_project.call_args.args[0]
+    assert redone is created
+
+
+def test_redo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
+    app_context = _make_app_context()
+    command = NewProjectCommand(app_context)
+    command.created_project = Mock()
+    monkeypatch.setattr(
+        "pandaplot.commands.project.project.new_project_command.flush_pending_edits",
+        lambda ctx: False,
+    )
+
+    assert command.redo() is CommandResult.FAILURE
+    app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
+    app_context.get_app_state.return_value.load_project.assert_not_called()
+
+
 def test_execute_flushes_pending_note_edits_before_checking_modified(monkeypatch):
     """Regression (#318): a note's debounced edit must be flushed (and so
     reflected in is_modified) before this command decides whether creating
