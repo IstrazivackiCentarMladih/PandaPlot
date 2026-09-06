@@ -59,6 +59,20 @@ def test_save_propagates_note_editors_reported_result():
     assert tab.save() is False
 
 
+def test_save_commits_without_occupying_an_undo_slot():
+    """Regression (PR #352 review): NoteTab.save() is the flush path
+    UnsavedChangesRegistry invokes -- it must not occupy a normal undo slot
+    (see NoteEditorWidget.save_content's track_undo parameter), since a
+    flush can run while another command already occupies a stack slot for
+    an operation that hasn't finished yet."""
+    tab = NoteTab.__new__(NoteTab)
+    tab.note_editor = Mock()
+
+    tab.save()
+
+    tab.note_editor.save_content.assert_called_once_with(track_undo=False)
+
+
 def test_save_returns_false_when_note_editor_raises():
     tab = NoteTab.__new__(NoteTab)
     tab.note_editor = Mock()

@@ -96,11 +96,20 @@ class NoteTab(PWidget):
         return True
 
     def save(self) -> bool:
-        """Save the note. Returns whether the save actually committed (see
-        NoteEditorWidget.save_content) -- False means the note is still
-        dirty and must not be treated as safely persisted."""
+        """Save the note for UnsavedChangesRegistry's flush. Returns whether
+        the save actually committed (see NoteEditorWidget.save_content) --
+        False means the note is still dirty and must not be treated as
+        safely persisted.
+
+        Commits without occupying an undo slot (track_undo=False) -- this
+        is a forced, infrastructure-triggered commit (a project-lifecycle
+        guard, or another command's own undo()/redo() swapping the current
+        project out from under this note), not a user-initiated Save
+        action, so it must not interleave with a command that already
+        occupies a stack slot for an operation that hasn't finished yet
+        (see PR #352 review)."""
         try:
-            return self.note_editor.save_content()
+            return self.note_editor.save_content(track_undo=False)
         except Exception:
             return False
 

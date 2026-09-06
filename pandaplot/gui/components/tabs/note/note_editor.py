@@ -950,18 +950,29 @@ class NoteEditorWidget(PWidget):
         self.status_label.setText(status)
         self._update_status_label_style()
 
-    def save_content(self) -> bool:
+    def save_content(self, *, track_undo: bool = True) -> bool:
         """Save the note content. Returns whether the save actually
-        committed -- callers (e.g. flush_pending_note_edits) must not treat
+        committed -- callers (e.g. flush_pending_edits) must not treat
         a failed save as "no longer dirty", or an edit that EditNoteCommand
         rejected (or that raised) would be silently discarded as if it had
-        been persisted."""
+        been persisted.
+
+        track_undo=False (used by NoteTab.save(), the flush path invoked by
+        UnsavedChangesRegistry) commits the edit without occupying an undo
+        slot. A flush can run while another command (e.g. LoadProjectCommand)
+        already occupies a stack slot for an operation that hasn't finished
+        yet -- pushing a new, undo-tracked EditNoteCommand onto the shared
+        stack there would interleave it with that command, so a later Undo
+        could pop the note edit first and apply it against whatever project
+        is current by then, not the one the edit was actually made in (see
+        PR #352 review). The toolbar Save action and the 2s auto-save timer
+        both still call this with the default True, unaffected."""
         try:
             content = self.text_edit.toPlainText()
 
             # Execute save command
             command = EditNoteCommand(self.app_context, self.note.id, content)
-            succeeded = self.app_context.get_command_executor().execute_command(command)
+            succeeded = self.app_context.get_command_executor().execute_command(command, track_undo=track_undo)
             if not succeeded:
                 self.update_status("Error: save failed")
                 return False

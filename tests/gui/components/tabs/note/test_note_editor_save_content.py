@@ -46,3 +46,34 @@ def test_save_content_returns_false_and_keeps_modified_on_exception():
 
     assert widget.save_content() is False
     assert widget.is_modified is True
+
+
+def test_save_content_defaults_to_undo_tracked():
+    """The toolbar Save action and the 2s auto-save timer both call
+    save_content() with no arguments -- both must keep occupying a normal
+    undo slot (unchanged, pre-existing behavior)."""
+    widget = _widget(execute_command_result=True)
+
+    widget.save_content()
+
+    command, kwargs = widget.app_context.get_command_executor.return_value.execute_command.call_args
+    assert kwargs.get("track_undo", True) is True
+
+
+def test_save_content_can_skip_undo_tracking():
+    """Regression (PR #352 review): NoteTab.save() (the flush path invoked
+    by UnsavedChangesRegistry) must commit without occupying an undo slot.
+    A flush can run while another command (e.g. LoadProjectCommand) already
+    occupies a stack slot for an operation that hasn't finished yet (its
+    async load, or its own undo()/redo() swapping the current project) --
+    pushing a new EditNoteCommand onto the shared undo stack there would
+    interleave it with that command, so a later Undo could pop the note
+    edit first and try to apply it against whatever project is current by
+    then, not the one the edit was actually made in."""
+    widget = _widget(execute_command_result=True)
+
+    widget.save_content(track_undo=False)
+
+    widget.app_context.get_command_executor.return_value.execute_command.assert_called_once()
+    _command, kwargs = widget.app_context.get_command_executor.return_value.execute_command.call_args
+    assert kwargs["track_undo"] is False
