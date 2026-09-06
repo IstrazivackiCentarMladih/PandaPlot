@@ -776,6 +776,12 @@ class ChartEditorWidget(PWidget):
         reset_zoom_action.triggered.connect(self._on_reset_zoom)
         toolbar.addAction(reset_zoom_action)
 
+        # Export Python bundle action
+        export_bundle_action = QAction("📦 Export Python Bundle", self)
+        export_bundle_action.setToolTip("Export chart as a standalone Python code and data bundle (.zip)")
+        export_bundle_action.triggered.connect(self._on_export_bundle)
+        toolbar.addAction(export_bundle_action)
+
     def load_chart_config(self):
         """Load chart configuration into UI controls."""
         # No configuration UI to load since it's now in the side panel
@@ -1686,6 +1692,12 @@ class ChartEditorWidget(PWidget):
 
         # Reset status after 2 seconds
         QTimer.singleShot(2000, lambda: self.update_status("Ready"))
+
+    def _on_export_bundle(self):
+        """Export chart as a standalone Python bundle."""
+        from pandaplot.commands.project.chart import ExportChartBundleCommand
+        command = ExportChartBundleCommand(self.app_context, chart_id=self.chart.id)
+        self.app_context.get_command_executor().execute_command(command)
 
     def _on_reset_zoom(self):
         """Handle reset zoom action."""

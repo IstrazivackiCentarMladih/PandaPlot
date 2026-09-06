@@ -142,6 +142,17 @@ class ProjectPanelCommandManager:
                 "Could not read the current column selection for dataset %s: %s", dataset_id, e)
             return []
 
+    def export_chart_bundle(self):
+        """Export selected chart as a Python code + data bundle."""
+        selected_info = self.get_selected_item_info()
+        if not selected_info or selected_info["type"] != "chart":
+            return
+
+        chart_id = selected_info["id"]
+        from pandaplot.commands.project.chart import ExportChartBundleCommand
+        command = ExportChartBundleCommand(self.app_context, chart_id=chart_id)
+        self.app_context.get_command_executor().execute_command(command)
+
     def create_chart_from_dataset(self):
         """Create a chart from the selected dataset."""
         selected_item = self.get_current_item()
