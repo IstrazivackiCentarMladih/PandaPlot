@@ -120,6 +120,84 @@ class TestCropCanvasResizeFromHandle:
         assert result.top() == 10  # anchored
 
 
+class TestCropCanvasAspectLockBoundaryClamping:
+    def test_locked_drag_past_boundary_preserves_ratio_and_stays_in_bounds(self):
+        """Reproduction from review finding #2: locking to 2.0 and dragging
+        the "br" handle past the image's bottom edge used to plain-intersect
+        the aspect-correct rect with the image bounds, producing a rect that
+        no longer satisfied the lock (4.0 instead of 2.0)."""
+        canvas = _make_canvas(image_size=(200, 200))
+        canvas.set_aspect_lock(2.0)
+        rect = QRect(0, 150, 50, 25)
+
+        result = canvas.resize_rect_from_handle(rect, "br", QPoint(200, 200))
+
+        assert result.width() / result.height() == pytest.approx(2.0, rel=1e-6)
+        assert result.left() >= 0 and result.top() >= 0
+        assert result.left() + result.width() <= 200
+        assert result.top() + result.height() <= 200
+        # This specific scenario is only interesting if the naive
+        # intersection (which would produce QRect(0,150,200,50), ratio 4.0)
+        # would actually have violated bounds without the fix.
+        assert not QRect(0, 150, 200, 50) == result
+
+
+class TestCropCanvasDegenerateClamp:
+    def test_resize_to_opposite_edge_does_not_teleport_to_origin(self):
+        """Reproduction from review finding #4: dragging a handle exactly
+        onto the opposite edge collapses the rect to zero size with no
+        overlap with the image bounds; the old fallback jumped this all the
+        way to QRect(0,0,1,1) instead of staying near the drag position."""
+        canvas = _make_canvas(image_size=(100, 100))
+        rect = QRect(100, 100, 50, 50)
+
+        result = canvas.resize_rect_from_handle(rect, "br", QPoint(100, 100))
+
+        assert result != QRect(0, 0, 1, 1)
+        assert result.width() == 1
+        assert result.height() == 1
+        assert result.left() >= 90  # stayed near (100, 100), not the origin
+        assert result.top() >= 90
+
+
+class TestCropCanvasMousePressButtonGuard:
+    def test_right_click_does_not_start_a_drag(self):
+        canvas = _make_canvas(widget_size=(200, 200), image_size=(100, 100))
+        canvas.set_crop_rect(QRect(20, 20, 40, 40))
+        original = canvas.crop_rect()
+
+        from PySide6.QtCore import Qt as _Qt
+
+        press = QMouseEvent(
+            QEvent.Type.MouseButtonPress, QPointF(QPoint(60, 60)), QPointF(QPoint(60, 60)),
+            _Qt.MouseButton.RightButton, _Qt.MouseButton.RightButton, _Qt.KeyboardModifier.NoModifier,
+        )
+        canvas.mousePressEvent(press)
+        canvas.mouseMoveEvent(_mouse_event(QEvent.Type.MouseMove, QPoint(90, 90)))
+
+        assert canvas.crop_rect() == original
+
+
+class TestCropCanvasSetImageResetsDragState:
+    def test_set_image_clears_in_flight_drag(self):
+        canvas = _make_canvas(widget_size=(200, 200), image_size=(100, 100))
+        canvas.set_crop_rect(QRect(20, 20, 40, 40))
+        canvas.mousePressEvent(_mouse_event(QEvent.Type.MouseButtonPress, QPoint(60, 60)))
+        assert canvas._active_handle is not None
+
+        canvas.set_image(QImage(50, 50, QImage.Format.Format_RGB32))
+
+        assert canvas._active_handle is None
+        assert canvas._drag_start_widget_pos is None
+
+        # A stale mouseMoveEvent arriving after the image swap must not
+        # apply a drag against the new image (nothing should happen, since
+        # there's no active handle anymore).
+        before = canvas.crop_rect()
+        canvas.mouseMoveEvent(_mouse_event(QEvent.Type.MouseMove, QPoint(90, 90)))
+        assert canvas.crop_rect() == before
+
+
 class TestCropCanvasMove:
     def test_move_rect_translates(self):
         canvas = _make_canvas(image_size=(100, 100))
