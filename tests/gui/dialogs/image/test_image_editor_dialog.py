@@ -108,7 +108,7 @@ class TestImageEditorDialogCropClamping:
         # fits the *current* 100x80 image. When _apply_crop() crops the working
         # image down to exactly that 30x20 region and calls
         # _sync_control_values(), the ranges are updated to the new image's
-        # bounds (x in [0,29], y in [0,29], w in [1,30], h in [1,20]) before the
+        # bounds (x in [0,29], y in [0,19], w in [1,30], h in [1,20]) before the
         # values are rewritten. The stale x=60 (still sitting in the spinbox)
         # genuinely falls outside its new [0,29] range, so setRange() itself
         # would silently clamp it and emit valueChanged -- without the
