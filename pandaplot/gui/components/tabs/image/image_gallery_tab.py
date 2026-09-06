@@ -9,6 +9,7 @@ from typing import Optional, override
 from PySide6.QtCore import QMimeData, QSize, Qt
 from PySide6.QtGui import QDrag, QPixmap
 from PySide6.QtWidgets import (
+    QDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -23,13 +24,18 @@ from PySide6.QtWidgets import (
 )
 
 from pandaplot.commands.composite_command import CompositeCommand
-from pandaplot.commands.project.image import CreateImageGalleryCommand, ImportImagesCommand
+from pandaplot.commands.project.image import (
+    CreateImageGalleryCommand,
+    EditImageCommand,
+    ImportImagesCommand,
+)
 from pandaplot.commands.project.item import DeleteItemCommand, MoveItemCommand, RenameItemCommand
 from pandaplot.gui.components.common.image_thumbnail_tile import build_gallery_tile_icon
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.common.segmented_control import SegmentedControl
 from pandaplot.gui.components.tabs.image.image_lightbox_dialog import ImageLightboxDialog
 from pandaplot.gui.core.widget_extension import PWidget
+from pandaplot.gui.dialogs.image.image_editor_dialog import ImageEditorDialog
 from pandaplot.models.events.event_types import ProjectEvents
 from pandaplot.models.project.items import Image, ImageGallery
 from pandaplot.models.state.app_context import AppContext
@@ -197,13 +203,14 @@ class ImageGalleryTab(PWidget):
 
         toolbar = QHBoxLayout()
         self.import_button = PButton("Import Images...", on_click=self._on_import_clicked)
+        self.edit_image_button = PButton("Edit Image...", on_click=self._on_edit_image_clicked, enabled=False)
         self.rename_button = PButton("Rename", on_click=self._on_rename_clicked, enabled=False)
         self.delete_button = PButton("Delete", role="destructive", on_click=self._on_delete_clicked, enabled=False)
         self.group_into_album_button = PButton("Group into Album", on_click=self._on_group_into_album_clicked, enabled=False)
         self.move_button = PButton("Move...", on_click=self._on_move_clicked, enabled=False)
         self.copy_button = PButton("Copy to...", on_click=self._on_copy_clicked, enabled=False)
         for button in (
-            self.import_button, self.rename_button, self.delete_button,
+            self.import_button, self.edit_image_button, self.rename_button, self.delete_button,
             self.group_into_album_button, self.move_button, self.copy_button,
         ):
             toolbar.addWidget(button)
@@ -267,6 +274,7 @@ class ImageGalleryTab(PWidget):
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_ADDED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_REMOVED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_RENAMED, self._on_project_item_changed)
+        self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_CONTENT_CHANGED, self._on_project_item_changed)
         self.subscribe_to_event(ProjectEvents.PROJECT_ITEM_MOVED, self._on_project_item_changed)
 
     def get_tab_title(self) -> str:
@@ -359,6 +367,11 @@ class ImageGalleryTab(PWidget):
                 widget.deleteLater()
 
     def _on_project_item_changed(self, event_data: dict):
+        # Clear thumbnail cache for any modified image if needed
+        image_id = event_data.get("image_id") or event_data.get("item_id")
+        if image_id and image_id in self._thumbnail_cache:
+            del self._thumbnail_cache[image_id]
+
         if self._event_concerns_this_gallery(event_data):
             self._populate_grid()
             # The tab title only reflects root_gallery.name, so only a rename
@@ -578,6 +591,7 @@ class ImageGalleryTab(PWidget):
     def _refresh_toolbar_state(self):
         selected = self._selected_children()
         has_image = any(isinstance(c, Image) for c in selected)
+        self.edit_image_button.setEnabled(len(selected) == 1 and isinstance(selected[0], Image))
         self.rename_button.setEnabled(len(selected) == 1)
         self.delete_button.setEnabled(len(selected) >= 1)
         self.move_button.setEnabled(has_image)
@@ -645,6 +659,11 @@ class ImageGalleryTab(PWidget):
         selected = self._selected_children()
         has_image = any(isinstance(c, Image) for c in selected)
 
+        edit_action = QAction("Edit Image...", self)
+        edit_action.setEnabled(len(selected) == 1 and isinstance(selected[0], Image))
+        edit_action.triggered.connect(self._on_edit_image_clicked)
+        menu.addAction(edit_action)
+
         rename_action = QAction("Rename", self)
         rename_action.setEnabled(len(selected) == 1)
         rename_action.triggered.connect(self._on_rename_clicked)
@@ -697,6 +716,39 @@ class ImageGalleryTab(PWidget):
             sources=dialog.get_sources(), copy_into_project=dialog.get_copy_into_project(),
         )
         self.app_context.get_command_executor().execute_command(command)
+
+    def _on_edit_image_clicked(self):
+        selected = self._selected_children()
+        if len(selected) != 1 or not isinstance(selected[0], Image):
+            return
+        self._edit_image(selected[0])
+
+    def _edit_image(self, image: Image, parent: Optional[QWidget] = None):
+        data = image.get_bytes() or self._load_external_bytes(image.source_file)
+        if not data:
+            QMessageBox.warning(self, "Edit Image Error", f"Unable to load image data for '{image.name}'.")
+            return
+
+        dialog = ImageEditorDialog(self.app_context, image, data, parent=parent or self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        try:
+            new_bytes = dialog.get_result_bytes()
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Edit Image Error", f"Failed to save the edited image for '{image.name}': {exc}"
+            )
+            return
+        new_w = dialog.get_result_width()
+        new_h = dialog.get_result_height()
+        new_ext = dialog.get_result_ext()
+
+        cmd = EditImageCommand(
+            self.app_context, image_id=image.id,
+            new_bytes=new_bytes, new_width=new_w, new_height=new_h, new_ext=new_ext
+        )
+        self.app_context.get_command_executor().execute_command(cmd)
 
     def _on_rename_clicked(self):
         selected = self._selected_children()
@@ -840,7 +892,18 @@ class ImageGalleryTab(PWidget):
                 return pixmap
             return None
 
-        ImageLightboxDialog(images, start_index, load_pixmap=_load, parent=self).exec()
+        lightbox = ImageLightboxDialog(
+            images, start_index, load_pixmap=_load,
+            # Parented to the lightbox itself (not this tab): the editor is
+            # opened *from* the lightbox, which is what's actually on top
+            # when the user clicks "Edit Image..." there. Both dialogs are
+            # application-modal via exec(), so this doesn't change any
+            # blocking behavior -- it's only about the parent/child window
+            # relationship being semantically correct.
+            on_edit=lambda img: self._edit_image(img, parent=lightbox),
+            parent=self,
+        )
+        lightbox.exec()
 
     def _on_view_mode_changed(self, mode: str) -> None:
         # Switching views is a scope simplification that resets selection

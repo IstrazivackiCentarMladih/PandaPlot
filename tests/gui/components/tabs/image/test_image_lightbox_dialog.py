@@ -133,3 +133,56 @@ class TestImageLightboxDialogFixedSize:
 
         assert dialog.windowTitle() != long_name
         assert len(dialog.windowTitle()) < len(long_name)
+
+
+class TestImageLightboxDialogEdit:
+    def test_edit_button_hidden_without_on_edit_callback(self, qapp):
+        # isVisible() only reflects real state once the dialog has actually
+        # been shown (an un-shown QDialog reports every descendant as not
+        # visible regardless of layout membership), so this needs a real
+        # show()+processEvents() pass -- matching
+        # test_dialog_can_be_shrunk_by_user_after_showing's convention above.
+        images = [Image(name="First")]
+        dialog = ImageLightboxDialog(images, 0, load_pixmap=lambda img: _colored_pixmap("red"))
+        dialog.show()
+        qapp.processEvents()
+
+        assert dialog.edit_button.isVisible() is False
+
+    def test_edit_button_present_with_on_edit_callback(self, qapp):
+        images = [Image(name="First")]
+        dialog = ImageLightboxDialog(
+            images, 0, load_pixmap=lambda img: _colored_pixmap("red"), on_edit=lambda img: None
+        )
+        dialog.show()
+        qapp.processEvents()
+
+        assert dialog.edit_button.isVisible() is True
+
+    def test_clicking_edit_invokes_callback_with_current_image_and_rerenders(self):
+        images = [Image(name="First"), Image(name="Second")]
+        received = []
+        load_calls = []
+
+        def _on_edit(img):
+            received.append(img)
+
+        def _load(img):
+            load_calls.append(img)
+            return _colored_pixmap("red")
+
+        dialog = ImageLightboxDialog(images, 1, load_pixmap=_load, on_edit=_on_edit)
+
+        # The constructor's own initial render already calls load_pixmap
+        # once -- reset the spy so the count below reflects only the
+        # re-render triggered by _trigger_edit() itself.
+        load_calls.clear()
+
+        dialog._trigger_edit()
+
+        assert received == [images[1]]
+        # _trigger_edit() must actually re-render (not just invoke the
+        # callback) -- load_pixmap is the hook _render_current() uses to
+        # fetch the image to display, so one more call after the edit
+        # confirms a real re-render happened, not just the callback firing.
+        assert load_calls == [images[1]]
