@@ -196,6 +196,12 @@ class MainMenu(PMenuBar):
 
         file_menu.addSeparator()
 
+        version_history_action = QAction("Version History...", self)
+        version_history_action.triggered.connect(self.show_version_history_dialog)
+        file_menu.addAction(version_history_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(lambda: self.app_context.get_command_executor(
         ).execute_command(ExitCommand(self.app_context)))
@@ -402,6 +408,12 @@ class MainMenu(PMenuBar):
         self.app_context.get_command_executor().execute_command(
             LoadProjectCommand(self.app_context, dialog.selected_path)
         )
+
+    def show_version_history_dialog(self):
+        """Show the version history dialog for the overall project."""
+        from pandaplot.gui.dialogs.version_history_dialog import VersionHistoryDialog
+        dialog = VersionHistoryDialog(self.app_context, parent=self.parent())
+        dialog.exec()
 
     def show_about_dialog(self):
         """Show the about dialog."""

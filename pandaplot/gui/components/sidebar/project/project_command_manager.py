@@ -195,6 +195,17 @@ class ProjectPanelCommandManager:
         command = RenameProjectCommand(self.app_context, new_name)
         self.app_context.get_command_executor().execute_command(command)
 
+    def show_version_history(self):
+        """Show version history dialog for selected item or project."""
+        selected_info = self.get_selected_item_info()
+        item_id = None
+        if selected_info and selected_info.get("type") != "project":
+            item_id = selected_info.get("id")
+
+        from pandaplot.gui.dialogs.version_history_dialog import VersionHistoryDialog
+        dialog = VersionHistoryDialog(self.app_context, parent=self.parent_widget, item_id=item_id)
+        dialog.exec()
+
     def delete_selected_item(self):
         """Delete the selected item."""
         selected_info = self.get_selected_item_info()
