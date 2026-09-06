@@ -1,4 +1,5 @@
 import warnings
+from contextlib import contextmanager
 from typing import Optional, override
 
 import numpy as np
@@ -482,6 +483,10 @@ class ChartEditorWidget(PWidget):
         # render), so update_chart must explicitly remove the previous one
         # before drawing again, or stale colorbars would accumulate.
         self._colorbar = None
+        # Maps a rendered artist (or a legend handle/text standing in for
+        # one) to the data-series/fit index that produced it, so a
+        # `pick_event` on either can be traced back to a series. Rebuilt
+        # from scratch on every update_chart() (see axes.clear() below).
         self._artist_series_map: dict = {}
 
         self._initialize()
@@ -676,6 +681,8 @@ class ChartEditorWidget(PWidget):
         self.chart_canvas = ChartCanvas(
             width=cm_to_inches(width_cm), height=cm_to_inches(height_cm), dpi=dpi)
         self.chart_canvas.mpl_connect("pick_event", self._on_pick_event)
+        self.chart_canvas.mpl_connect("motion_notify_event", self._on_canvas_motion)
+        self.chart_canvas.mpl_connect("figure_leave_event", self._on_canvas_leave)
         self.chart_canvas.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -934,65 +941,43 @@ class ChartEditorWidget(PWidget):
                     series_type = series.series_type
                     style = series.style
 
-                    # Track artists created during this series' render so clicking
-                    # on them selects this series.
-                    before_children = set(self.chart_canvas.axes.get_children())
-                    if self.chart_canvas.axes2 is not None:
-                        before_children.update(self.chart_canvas.axes2.get_children())
+                    with self._track_new_artists(i):
+                        # Draw error bars BEFORE the series/marker renderer:
+                        # matplotlib draws artists in the order they're added
+                        # to the axes when zorder is tied (neither call here
+                        # sets one), so error bars drawn first land underneath
+                        # the markers/line/bars instead of obscuring them.
+                        error_bars = getattr(style, "error_bars", None)
+                        if error_bars is not None:
+                            xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                            yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
+                            if xerr is not None or yerr is not None:
+                                err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
+                                target_axes.errorbar(
+                                    x_data, y_data,
+                                    xerr=xerr,
+                                    yerr=yerr,
+                                    fmt="none",
+                                    ecolor=err_color,
+                                    elinewidth=getattr(style, "line_width", 2.0),
+                                    capsize=error_bars.error_cap_size,
+                                    alpha=alpha)
 
-                    # Draw error bars BEFORE the series/marker renderer:
-                    # matplotlib draws artists in the order they're added
-                    # to the axes when zorder is tied (neither call here
-                    # sets one), so error bars drawn first land underneath
-                    # the markers/line/bars instead of obscuring them.
-                    error_bars = getattr(style, "error_bars", None)
-                    if error_bars is not None:
-                        xerr = build_error_array(x_err, x_err_minus, error_bars.error_direction, error_bars.error_symmetric)
-                        yerr = build_error_array(y_err, y_err_minus, error_bars.error_direction, error_bars.error_symmetric)
-                        if xerr is not None or yerr is not None:
-                            err_color = error_bars.error_color or getattr(style, "color", "#1f77b4")
-                            target_axes.errorbar(
-                                x_data, y_data,
-                                xerr=xerr,
-                                yerr=yerr,
-                                fmt="none",
-                                ecolor=err_color,
-                                elinewidth=getattr(style, "line_width", 2.0),
-                                capsize=error_bars.error_cap_size,
-                                alpha=alpha)
-
-                    renderer = SERIES_RENDERERS[series_type]
-                    mappable = renderer(
-                        target_axes, series_data, style, series.label, alpha,
-                        visible=series.visible,
-                        extra={
-                            "bins": self.chart.config.get("hist_bins", 20),
-                            "resolve_fill_baseline": (
-                                lambda query, *, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
-                                    project, _i, _style.fill_base, _style.fill_to_index, query,
-                                    horizontal=horizontal)
-                            ),
-                            "colormap": self.chart.config.get("colormap", "viridis"),
-                            "color_limits": color_limits,
-                        },
-                    )
-
-                    after_children = set(self.chart_canvas.axes.get_children())
-                    if self.chart_canvas.axes2 is not None:
-                        after_children.update(self.chart_canvas.axes2.get_children())
-
-                    new_artists = after_children - before_children
-                    for artist in new_artists:
-                        # Set picking sensitivity on lines/collections/patches
-                        try:
-                            if hasattr(artist, "set_picker"):
-                                if hasattr(artist, "get_linewidth") and artist.get_linewidth() is not None:
-                                    artist.set_picker(5)
-                                else:
-                                    artist.set_picker(True)
-                        except Exception:
-                            pass
-                        self._artist_series_map[artist] = i
+                        renderer = SERIES_RENDERERS[series_type]
+                        mappable = renderer(
+                            target_axes, series_data, style, series.label, alpha,
+                            visible=series.visible,
+                            extra={
+                                "bins": self.chart.config.get("hist_bins", 20),
+                                "resolve_fill_baseline": (
+                                    lambda query, *, horizontal, _i=i, _style=style: self._resolve_fill_baseline(
+                                        project, _i, _style.fill_base, _style.fill_to_index, query,
+                                        horizontal=horizontal)
+                                ),
+                                "colormap": self.chart.config.get("colormap", "viridis"),
+                                "color_limits": color_limits,
+                            },
+                        )
 
                     if mappable is None and series_type in SERIES_RENDERERS_REPORTING_NO_DATA:
                         series_errors.append(f"{series.label or f'Series {i + 1}'}: no plottable data")
@@ -1065,49 +1050,33 @@ class ChartEditorWidget(PWidget):
                                     fit_axes = self.chart_canvas.axes2
                                     break
 
-                        before_children = set(self.chart_canvas.axes.get_children())
-                        if self.chart_canvas.axes2 is not None:
-                            before_children.update(self.chart_canvas.axes2.get_children())
+                        with self._track_new_artists(total_data_series + fit_idx):
+                            # Plot the fit line
+                            style = fit.style
+                            line_style_adapter = LineSeriesStyle(
+                                color=style.color,
+                                line_style=style.line_style,
+                                line_width=style.line_width,
+                                marker=MarkerStyle(marker_style="none"),
+                                fill_enabled=False,
+                            )
+                            fit_series_data = SeriesData(
+                                x_data=fit.x_data, y_data=fit.y_data,
+                                x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
+                            )
+                            render_line_series(fit_axes, fit_series_data, line_style_adapter,
+                                                fit.label, style.alpha, visible=fit.visible, extra={})
 
-                        # Plot the fit line
-                        style = fit.style
-                        line_style_adapter = LineSeriesStyle(
-                            color=style.color,
-                            line_style=style.line_style,
-                            line_width=style.line_width,
-                            marker=MarkerStyle(marker_style="none"),
-                            fill_enabled=False,
-                        )
-                        fit_series_data = SeriesData(
-                            x_data=fit.x_data, y_data=fit.y_data,
-                            x_err=None, y_err=None, x_err_minus=None, y_err_minus=None, error=None,
-                        )
-                        render_line_series(fit_axes, fit_series_data, line_style_adapter,
-                                            fit.label, style.alpha, visible=fit.visible, extra={})
-
-                        if (style.band_fill_enabled
-                                and fit.confidence_lower is not None
-                                and fit.confidence_upper is not None):
-                            band_color = style.band_color or style.color
-                            fit_axes.fill_between(
-                                fit.x_data,
-                                fit.confidence_lower,
-                                fit.confidence_upper,
-                                color=band_color,
-                                alpha=style.band_fill_alpha)
-
-                        after_children = set(self.chart_canvas.axes.get_children())
-                        if self.chart_canvas.axes2 is not None:
-                            after_children.update(self.chart_canvas.axes2.get_children())
-
-                        combined_index = total_data_series + fit_idx
-                        for artist in after_children - before_children:
-                            try:
-                                if hasattr(artist, "set_picker"):
-                                    artist.set_picker(5)
-                            except Exception:
-                                pass
-                            self._artist_series_map[artist] = combined_index
+                            if (style.band_fill_enabled
+                                    and fit.confidence_lower is not None
+                                    and fit.confidence_upper is not None):
+                                band_color = style.band_color or style.color
+                                fit_axes.fill_between(
+                                    fit.x_data,
+                                    fit.confidence_lower,
+                                    fit.confidence_upper,
+                                    color=band_color,
+                                    alpha=style.band_fill_alpha)
 
             # Apply chart configuration
             config = self.chart.config
@@ -1441,7 +1410,7 @@ class ChartEditorWidget(PWidget):
                         for handle_art, text_art, orig_handle in zip(
                             legend.legend_handles, legend.get_texts(), handles, strict=False
                         ):
-                            series_idx = self._artist_series_map.get(orig_handle)
+                            series_idx = self._resolve_series_index_for_handle(orig_handle)
                             if series_idx is not None:
                                 handle_art.set_picker(True)
                                 text_art.set_picker(True)
@@ -1479,6 +1448,63 @@ class ChartEditorWidget(PWidget):
             self.logger.exception("Error updating chart")
             self.update_status(f"Chart error: {str(e)}")
 
+    def _axes_children(self) -> set:
+        """All child artists across the primary and (if present) secondary axes."""
+        children = set(self.chart_canvas.axes.get_children())
+        if self.chart_canvas.axes2 is not None:
+            children.update(self.chart_canvas.axes2.get_children())
+        return children
+
+    @contextmanager
+    def _track_new_artists(self, index: int):
+        """Map every artist added to the axes inside this `with` block to
+        `index` in `_artist_series_map` and make it pick-able, so a later
+        click on it resolves back to the series/fit at that index."""
+        before = self._axes_children()
+        yield
+        for artist in self._axes_children() - before:
+            self._make_pickable(artist)
+            self._artist_series_map[artist] = index
+
+    def _make_pickable(self, artist):
+        """Best-effort: give `artist` a pick tolerance appropriate to its
+        type. Not every artist type supports `set_picker`/pick radius the
+        same way -- a failure here just means that artist won't be
+        clickable, not a broken render, so it's swallowed rather than
+        surfaced to the user.
+        """
+        if not hasattr(artist, "set_picker"):
+            return
+        try:
+            if hasattr(artist, "get_linewidth") and artist.get_linewidth() is not None:
+                # Numeric picker: a pixel tolerance around thin lines/markers.
+                artist.set_picker(5)
+            else:
+                artist.set_picker(True)
+        except Exception:
+            self.logger.debug("Could not set picker on artist %r", artist, exc_info=True)
+
+    def _resolve_series_index_for_handle(self, handle):
+        """Resolve a legend handle to a series/fit index via
+        `_artist_series_map`.
+
+        Line/marker/collection series map their handle directly. Container
+        handles (`BarContainer`, `ErrorbarContainer`, ...) aren't themselves
+        tracked artists -- matplotlib's legend uses the container as the
+        "handle", but the container is just a tuple wrapping the individual
+        patches/lines that *are* tracked -- so recurse into it looking for a
+        tracked part.
+        """
+        series_idx = self._artist_series_map.get(handle)
+        if series_idx is not None:
+            return series_idx
+        if isinstance(handle, (tuple, list)):
+            for part in handle:
+                series_idx = self._resolve_series_index_for_handle(part)
+                if series_idx is not None:
+                    return series_idx
+        return None
+
     def _on_pick_event(self, event):
         """Handle click/pick events on chart artists (lines, scatter points, legend, etc.)."""
         artist = getattr(event, "artist", None)
@@ -1488,6 +1514,29 @@ class ChartEditorWidget(PWidget):
                 ChartEvents.SERIES_SELECTED,
                 {"chart_id": self.chart.id, "series_index": series_index},
             )
+
+    def _on_canvas_motion(self, event):
+        """Show a pointing-hand cursor while hovering a clickable series/fit
+        artist, so the click-to-select feature is discoverable rather than
+        relying on the user to guess it's there."""
+        if not isValid(self.chart_canvas):
+            return
+        hovering_pickable = False
+        if event.inaxes is not None:
+            for artist in self._artist_series_map:
+                contains, _ = artist.contains(event)
+                if contains:
+                    hovering_pickable = True
+                    break
+        cursor = Qt.CursorShape.PointingHandCursor if hovering_pickable else Qt.CursorShape.ArrowCursor
+        self.chart_canvas.setCursor(cursor)
+
+    def _on_canvas_leave(self, event):
+        """Reset the cursor when the mouse leaves the canvas entirely --
+        otherwise it can be left stuck as a pointing hand, since no further
+        `motion_notify_event`s fire outside the canvas to reset it."""
+        if isValid(self.chart_canvas):
+            self.chart_canvas.setCursor(Qt.CursorShape.ArrowCursor)
 
     def reset_chart(self):
         """Reset chart to default configuration."""
