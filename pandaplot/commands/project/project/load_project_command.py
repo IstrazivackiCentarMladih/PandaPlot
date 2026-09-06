@@ -351,7 +351,11 @@ class LoadProjectCommand(Command):
                 "Open Project",
                 "One or more open notes could not be saved. Save them manually before undoing.",
             )
-            return CommandResult.FAILURE
+            # ABORTED, not FAILURE: CommandExecutor.undo() moves the command
+            # to the redo stack regardless of result, so FAILURE would
+            # record this load as undone (and installable via a later Redo)
+            # even though nothing actually changed (see PR #352 review).
+            return CommandResult.ABORTED
 
         if self.previous_project is not None:
             # load_project() unconditionally resets is_modified to False
@@ -379,7 +383,8 @@ class LoadProjectCommand(Command):
                 "Open Project",
                 "One or more open notes could not be saved. Save them manually before redoing.",
             )
-            return CommandResult.FAILURE
+            # ABORTED, not FAILURE -- see the matching undo() comment above.
+            return CommandResult.ABORTED
 
         if self.loaded_project is not None:
             # We have a cached project, load it directly without file I/O

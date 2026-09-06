@@ -108,7 +108,11 @@ class NewProjectCommand(Command):
                 "Create New Project",
                 "One or more open notes could not be saved. Save them manually before undoing.",
             )
-            return CommandResult.FAILURE
+            # ABORTED, not FAILURE: CommandExecutor.undo() moves the command
+            # to the redo stack regardless of result, so FAILURE would
+            # record this creation as undone (and installable via a later
+            # Redo) even though nothing actually changed (see PR #352 review).
+            return CommandResult.ABORTED
 
         try:
             if self.previous_project:
@@ -161,7 +165,8 @@ class NewProjectCommand(Command):
                 "Create New Project",
                 "One or more open notes could not be saved. Save them manually before redoing.",
             )
-            return CommandResult.FAILURE
+            # ABORTED, not FAILURE -- see the matching undo() comment above.
+            return CommandResult.ABORTED
 
         try:
             self.app_state.load_project(self.created_project)

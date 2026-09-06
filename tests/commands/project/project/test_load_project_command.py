@@ -377,7 +377,11 @@ def test_undo_flushes_pending_note_edits_before_restoring_the_previous_project(m
     assert app_state.current_project is previous_project
 
 
-def test_undo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
+def test_undo_aborts_and_reports_an_error_when_flush_fails(monkeypatch):
+    """Regression (PR #352 review): must return ABORTED, not FAILURE --
+    CommandExecutor.undo() moves the command to the redo stack regardless
+    of result, so FAILURE here would record this load as undone (and
+    installable via a later Redo) even though nothing actually changed."""
     app_context = Mock()
     command = LoadProjectCommand(app_context, "/p/other.pplot")
     command.previous_project = Mock()
@@ -386,7 +390,7 @@ def test_undo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
         lambda ctx: False,
     )
 
-    assert command.undo() is CommandResult.FAILURE
+    assert command.undo() is CommandResult.ABORTED
     command.ui_controller.show_error_message.assert_called_once()
     command.app_state.load_project.assert_not_called()
 
@@ -410,7 +414,9 @@ def test_redo_flushes_pending_note_edits_before_restoring_the_loaded_project(mon
     app_context.get_app_state.return_value.load_project.assert_called_once_with(command.loaded_project)
 
 
-def test_redo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
+def test_redo_aborts_and_reports_an_error_when_flush_fails(monkeypatch):
+    """Regression (PR #352 review): must return ABORTED, not FAILURE -- see
+    the matching undo() test above."""
     app_context = _make_app_context()
     command = LoadProjectCommand(app_context, "/p/other.pplot")
     command.loaded_project = Mock()
@@ -419,7 +425,7 @@ def test_redo_fails_and_reports_an_error_when_flush_fails(monkeypatch):
         lambda ctx: False,
     )
 
-    assert command.redo() is CommandResult.FAILURE
+    assert command.redo() is CommandResult.ABORTED
     app_context.get_ui_controller.return_value.show_error_message.assert_called_once()
     app_context.get_app_state.return_value.load_project.assert_not_called()
 
