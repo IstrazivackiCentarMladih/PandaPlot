@@ -342,6 +342,17 @@ class LoadProjectCommand(Command):
 
     def undo(self) -> CommandResult:
         """Undo the load project command."""
+        # A note edited in the currently-installed project, right before
+        # this undo, can still be mid-debounce -- no EditNoteCommand has run
+        # yet to invalidate anything, so nothing else protects this swap
+        # (see PR #352 review).
+        if not flush_pending_edits(self.app_context):
+            self.ui_controller.show_error_message(
+                "Open Project",
+                "One or more open notes could not be saved. Save them manually before undoing.",
+            )
+            return CommandResult.FAILURE
+
         if self.previous_project is not None:
             # load_project() unconditionally resets is_modified to False
             # (correct for a fresh disk load), so restore the dirty state
@@ -356,17 +367,27 @@ class LoadProjectCommand(Command):
 
     def redo(self) -> CommandResult:
         """Redo the load project command."""
-        if not self.is_loading:
-            if self.loaded_project is not None:
-                # We have a cached project, load it directly without file I/O
-                self.app_state.load_project(self.loaded_project)
-                return CommandResult.SUCCESS
-            else:
-                # Re-execute if we don't have the loaded project cached
-                return self.execute()
-        else:
+        if self.is_loading:
             self.logger.warning("Cannot redo load command while load is in progress")
             return CommandResult.FAILURE
+
+        # Same race as undo(), on the cached-loaded_project fast path below
+        # -- a note edited in the project that's about to be replaced must
+        # be flushed first (see PR #352 review).
+        if not flush_pending_edits(self.app_context):
+            self.ui_controller.show_error_message(
+                "Open Project",
+                "One or more open notes could not be saved. Save them manually before redoing.",
+            )
+            return CommandResult.FAILURE
+
+        if self.loaded_project is not None:
+            # We have a cached project, load it directly without file I/O
+            self.app_state.load_project(self.loaded_project)
+            return CommandResult.SUCCESS
+        else:
+            # Re-execute if we don't have the loaded project cached
+            return self.execute()
 
     @override
     def cleanup(self) -> None:
