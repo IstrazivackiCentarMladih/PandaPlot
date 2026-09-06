@@ -68,5 +68,5 @@ Tests live in `tests/` and mirror the main package structure.
 - Naming: PascalCase classes, snake_case functions, _private methods
 - Line length: 150 characters (enforced by ruff)
 - Logging: `self.logger = logging.getLogger(self.__class__.__name__)`
-- Docstrings: NumPy/Google style with Args, Returns, Notes sections
+- Docstrings: Google style (`Args:`, `Returns:`, `Raises:` sections)
 - Follow existing patterns — don't over-engineer or add unnecessary abstractions

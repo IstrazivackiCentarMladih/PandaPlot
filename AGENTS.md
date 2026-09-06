@@ -56,7 +56,7 @@ uv run ruff check --select I --fix .     # Auto-sort imports
   - `snake_case` for functions, variables, and methods
   - `_leading_underscore` for private methods and attributes
 - **Logging:** Use class-level loggers (`self.logger = logging.getLogger(self.__class__.__name__)`).
-- **Docstrings:** Use NumPy or Google style with `Args`, `Returns`, and `Notes` sections.
+- **Docstrings:** Use Google style docstrings (`Args:`, `Returns:`, `Raises:` sections).
 
 ## Project Structure
 - `pandaplot/` - Main application package
