@@ -723,17 +723,23 @@ class ImageGalleryTab(PWidget):
             return
         self._edit_image(selected[0])
 
-    def _edit_image(self, image: Image):
+    def _edit_image(self, image: Image, parent: Optional[QWidget] = None):
         data = image.get_bytes() or self._load_external_bytes(image.source_file)
         if not data:
             QMessageBox.warning(self, "Edit Image Error", f"Unable to load image data for '{image.name}'.")
             return
 
-        dialog = ImageEditorDialog(self.app_context, image, data, parent=self)
+        dialog = ImageEditorDialog(self.app_context, image, data, parent=parent or self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
 
-        new_bytes = dialog.get_result_bytes()
+        try:
+            new_bytes = dialog.get_result_bytes()
+        except Exception as exc:
+            QMessageBox.warning(
+                self, "Edit Image Error", f"Failed to save the edited image for '{image.name}': {exc}"
+            )
+            return
         new_w = dialog.get_result_width()
         new_h = dialog.get_result_height()
         new_ext = dialog.get_result_ext()
@@ -886,9 +892,18 @@ class ImageGalleryTab(PWidget):
                 return pixmap
             return None
 
-        ImageLightboxDialog(
-            images, start_index, load_pixmap=_load, on_edit=self._edit_image, parent=self
-        ).exec()
+        lightbox = ImageLightboxDialog(
+            images, start_index, load_pixmap=_load,
+            # Parented to the lightbox itself (not this tab): the editor is
+            # opened *from* the lightbox, which is what's actually on top
+            # when the user clicks "Edit Image..." there. Both dialogs are
+            # application-modal via exec(), so this doesn't change any
+            # blocking behavior -- it's only about the parent/child window
+            # relationship being semantically correct.
+            on_edit=lambda img: self._edit_image(img, parent=lightbox),
+            parent=self,
+        )
+        lightbox.exec()
 
     def _on_view_mode_changed(self, mode: str) -> None:
         # Switching views is a scope simplification that resets selection

@@ -162,14 +162,27 @@ class TestImageLightboxDialogEdit:
     def test_clicking_edit_invokes_callback_with_current_image_and_rerenders(self):
         images = [Image(name="First"), Image(name="Second")]
         received = []
+        load_calls = []
 
         def _on_edit(img):
             received.append(img)
 
-        dialog = ImageLightboxDialog(
-            images, 1, load_pixmap=lambda img: _colored_pixmap("red"), on_edit=_on_edit
-        )
+        def _load(img):
+            load_calls.append(img)
+            return _colored_pixmap("red")
+
+        dialog = ImageLightboxDialog(images, 1, load_pixmap=_load, on_edit=_on_edit)
+
+        # The constructor's own initial render already calls load_pixmap
+        # once -- reset the spy so the count below reflects only the
+        # re-render triggered by _trigger_edit() itself.
+        load_calls.clear()
 
         dialog._trigger_edit()
 
         assert received == [images[1]]
+        # _trigger_edit() must actually re-render (not just invoke the
+        # callback) -- load_pixmap is the hook _render_current() uses to
+        # fetch the image to display, so one more call after the edit
+        # confirms a real re-render happened, not just the callback firing.
+        assert load_calls == [images[1]]
