@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
+from matplotlib.backend_bases import _Mode
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
@@ -161,15 +162,51 @@ def test_hover_over_pickable_artist_shows_pointing_hand_cursor():
     fake_artist = MagicMock()
     widget._artist_series_map = {fake_artist: 0}
 
+    def _motion(event):
+        # Bypass the hover throttle -- back-to-back calls in a test run
+        # well within its window and would otherwise be silently skipped.
+        widget._last_hover_check_time = 0.0
+        widget._on_canvas_motion(event)
+
     hit_event = SimpleNamespace(inaxes=widget.chart_canvas.axes)
     fake_artist.contains.return_value = (True, {})
-    widget._on_canvas_motion(hit_event)
+    _motion(hit_event)
     assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.PointingHandCursor
 
     fake_artist.contains.return_value = (False, {})
-    widget._on_canvas_motion(hit_event)
+    _motion(hit_event)
     assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
 
-    miss_event = SimpleNamespace(inaxes=None)
-    widget._on_canvas_motion(miss_event)
+    # A legend positioned outside the axes reports inaxes=None even though
+    # its handles/texts remain pickable -- contains() must still run.
+    fake_artist.contains.return_value = (True, {})
+    outside_legend_event = SimpleNamespace(inaxes=None)
+    _motion(outside_legend_event)
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.PointingHandCursor
+
+    fake_artist.contains.return_value = (False, {})
+    _motion(outside_legend_event)
     assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+
+def test_pick_event_ignored_while_toolbar_pan_zoom_active():
+    """Matplotlib still emits pick_event mid pan/zoom drag; a pan/zoom
+    gesture must not also steal the sidebar selection (#341 review)."""
+    _qapp()
+    app_ctx = build_app_context()
+    project, dataset, chart = _make_project_and_chart()
+    app_ctx.app_state.load_project(project)
+
+    widget = ChartEditorWidget(app_context=app_ctx, chart=chart, parent=None)
+    target_artist = next(iter(widget._artist_series_map))
+
+    listener = MagicMock()
+    app_ctx.event_bus.subscribe(ChartEvents.SERIES_SELECTED, listener)
+
+    widget.chart_canvas.toolbar.mode = _Mode.PAN
+    widget._on_pick_event(SimpleNamespace(artist=target_artist))
+    listener.assert_not_called()
+
+    widget.chart_canvas.toolbar.mode = _Mode.NONE
+    widget._on_pick_event(SimpleNamespace(artist=target_artist))
+    listener.assert_called_once()

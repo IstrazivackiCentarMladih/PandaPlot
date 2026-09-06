@@ -1,3 +1,4 @@
+import time
 import warnings
 from contextlib import contextmanager
 from typing import Optional, override
@@ -474,6 +475,12 @@ class ChartEditorWidget(PWidget):
     A chart editor widget with configuration options and live preview.
     """
 
+    # Minimum interval between hover pick-tests in _on_canvas_motion. Mouse
+    # moves fire far more often than this; without a floor, retesting every
+    # mapped artist's `contains()` on each one scales with chart size and
+    # can make large charts feel unresponsive while panning the mouse.
+    _HOVER_THROTTLE_SECONDS = 0.05
+
     def __init__(self, app_context: AppContext, chart: Chart, parent: QWidget):
         super().__init__(app_context=app_context, parent=parent)
         self.chart = chart
@@ -488,6 +495,7 @@ class ChartEditorWidget(PWidget):
         # `pick_event` on either can be traced back to a series. Rebuilt
         # from scratch on every update_chart() (see axes.clear() below).
         self._artist_series_map: dict = {}
+        self._last_hover_check_time: float = 0.0
 
         self._initialize()
         self.load_chart_config()
@@ -1506,28 +1514,65 @@ class ChartEditorWidget(PWidget):
         return None
 
     def _on_pick_event(self, event):
-        """Handle click/pick events on chart artists (lines, scatter points, legend, etc.)."""
+        """Handle click/pick events on chart artists (lines, scatter points, legend, etc.).
+
+        Matplotlib still emits `pick_event` mid pan/zoom gesture (the
+        toolbar's drag handling doesn't suppress it), so a click that's
+        actually panning/zooming the view must not also steal the sidebar
+        selection.
+        """
+        toolbar = getattr(self.chart_canvas, "toolbar", None)
+        if toolbar is not None and getattr(toolbar, "mode", None):
+            return
         artist = getattr(event, "artist", None)
         if artist in self._artist_series_map:
             series_index = self._artist_series_map[artist]
+            total_data_series = len(self.chart.data_series)
+            if series_index < total_data_series:
+                kind, kind_index = "series", series_index
+            else:
+                kind, kind_index = "fit", series_index - total_data_series
             self.publish_event(
                 ChartEvents.SERIES_SELECTED,
-                {"chart_id": self.chart.id, "series_index": series_index},
+                {
+                    "chart_id": self.chart.id,
+                    # Kept for the properties panel's flat data_series+fit_data
+                    # indexing (see ChartPropertiesPanel._on_series_selected_event).
+                    "series_index": series_index,
+                    # kind/index: the (series|fit, per-kind index) shape other
+                    # series/fit-scoped sidebar panels (Analysis, Transform,
+                    # Fit) key their own source pickers on.
+                    "kind": kind,
+                    "index": kind_index,
+                },
             )
 
     def _on_canvas_motion(self, event):
         """Show a pointing-hand cursor while hovering a clickable series/fit
         artist, so the click-to-select feature is discoverable rather than
-        relying on the user to guess it's there."""
+        relying on the user to guess it's there.
+
+        Throttled: `contains()` scans each mapped artist's plotted points,
+        and a chart can have one mapped artist per bar/data point, so
+        testing all of them on every raw mouse-move (which fire far faster
+        than the eye can perceive) would scale with chart size and could
+        make large charts feel unresponsive while panning the mouse.
+        """
         if not isValid(self.chart_canvas):
             return
-        hovering_pickable = False
-        if event.inaxes is not None:
-            for artist in self._artist_series_map:
-                contains, _ = artist.contains(event)
-                if contains:
-                    hovering_pickable = True
-                    break
+        now = time.monotonic()
+        if now - self._last_hover_check_time < self._HOVER_THROTTLE_SECONDS:
+            return
+        self._last_hover_check_time = now
+
+        # No `inaxes` gate: an outside-positioned legend (outside_right/top/
+        # bottom, or a custom anchor beyond the axes) reports `inaxes is
+        # None` there even though its handles/texts are still pickable --
+        # `contains()` itself works off screen pixel coordinates, not axes
+        # membership, so it doesn't need one either.
+        hovering_pickable = any(
+            artist.contains(event)[0] for artist in self._artist_series_map
+        )
         cursor = Qt.CursorShape.PointingHandCursor if hovering_pickable else Qt.CursorShape.ArrowCursor
         self.chart_canvas.setCursor(cursor)
 
