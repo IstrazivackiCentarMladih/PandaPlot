@@ -41,6 +41,7 @@ from pandaplot.commands.project.dataset.apply_signal_analysis_result_command imp
 from pandaplot.gui.components.common.busy_spinner import BusySpinner
 from pandaplot.gui.components.common.p_button import PButton
 from pandaplot.gui.components.sidebar.chart.series_source_picker import (
+    find_series_fit_combo_index,
     populate_series_fit_sources,
     series_source_hint,
 )
@@ -637,6 +638,23 @@ class ChartSignalAnalysisPanel(SidebarPanel):
         # reason (see chart_tab.py). DATASET_CHANGED is the generic parent
         # of all those specific dataset events.
         self.subscribe_to_event(DatasetEvents.DATASET_CHANGED, self._on_dataset_changed)
+        self.subscribe_to_event(ChartEvents.SERIES_SELECTED, self._on_series_selected_event)
+
+    def _on_series_selected_event(self, event_data):
+        """Clicking a series/fit on the chart canvas or its legend also
+        selects it here, so switching from "look at it" to "run signal
+        analysis on it" doesn't require re-finding the same entry in this
+        combo."""
+        chart_id = event_data.get("chart_id")
+        if self.current_chart_id is None or chart_id != self.current_chart_id:
+            return
+        kind = event_data.get("kind")
+        index = event_data.get("index")
+        if kind is None or index is None:
+            return
+        combo_index = find_series_fit_combo_index(self.source_combo, kind, index)
+        if combo_index >= 0:
+            self.source_combo.setCurrentIndex(combo_index)
 
     def _on_tab_changed(self, event_data):
         if event_data.get("tab_type") == "chart":

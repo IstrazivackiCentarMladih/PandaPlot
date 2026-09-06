@@ -1540,8 +1540,8 @@ class ChartEditorWidget(PWidget):
                     # indexing (see ChartPropertiesPanel._on_series_selected_event).
                     "series_index": series_index,
                     # kind/index: the (series|fit, per-kind index) shape other
-                    # series/fit-scoped sidebar panels (Analysis, Transform,
-                    # Fit) key their own source pickers on.
+                    # series/fit-scoped sidebar panels (Analysis, Signal
+                    # Analysis, Transform, Fit) key their own source pickers on.
                     "kind": kind,
                     "index": kind_index,
                 },
