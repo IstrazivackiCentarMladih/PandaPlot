@@ -192,6 +192,15 @@ class CommandExecutor:
             return False
 
         self._warn_if_not_command_result(result, command_name, "undo")
+
+        if result is CommandResult.ABORTED:
+            # Nothing happened -- put it back exactly where it was, don't
+            # touch the redo stack or notify project-modified.
+            self.undo_stack.append(command)
+            self.logger.debug("Command undo aborted (no changes made): %s", command_name)
+            self._notify_history_changed()
+            return False
+
         self.redo_stack.append(command)
         if result is CommandResult.FAILURE:
             self.logger.warning("Command undo reported failure: %s", command_name)
@@ -230,6 +239,15 @@ class CommandExecutor:
             return False
 
         self._warn_if_not_command_result(result, command_name, "redo")
+
+        if result is CommandResult.ABORTED:
+            # Nothing happened -- put it back exactly where it was, don't
+            # touch the undo stack or notify project-modified.
+            self.redo_stack.append(command)
+            self.logger.debug("Command redo aborted (no changes made): %s", command_name)
+            self._notify_history_changed()
+            return False
+
         self.undo_stack.append(command)
         if result is CommandResult.FAILURE:
             self.logger.warning("Command redo reported failure: %s", command_name)
