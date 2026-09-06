@@ -38,6 +38,24 @@ def populate_series_fit_sources(combo: QComboBox, chart: Optional[Chart]) -> tup
     return combo.count() > 0, any_series_excluded
 
 
+def find_series_fit_combo_index(combo: QComboBox, kind: str, index: int) -> int:
+    """Row in `combo` (as populated by :func:`populate_series_fit_sources`)
+    whose item data is ``(kind, index)``, or -1 if there isn't one (e.g. the
+    chart-canvas click was on a series type excluded from this combo, like
+    bar/hist/vector/colormap/heatmap/3-D).
+
+    `QComboBox.findData()` is unreliable for tuple-valued itemData (Qt's
+    QVariant comparison doesn't match Python tuple equality), so this scans
+    itemData manually -- see style_tab.py's chart_size_combo for the same
+    workaround.
+    """
+    target = (kind, index)
+    for i in range(combo.count()):
+        if combo.itemData(i) == target:
+            return i
+    return -1
+
+
 def series_source_hint(*, has_sources: bool, any_series_excluded: bool) -> str:
     """Hint label text for the outcome of populate_series_fit_sources()."""
     if not has_sources:
