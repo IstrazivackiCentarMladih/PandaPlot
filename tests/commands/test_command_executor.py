@@ -231,6 +231,26 @@ class TestTrackUndoOptOut:
         assert result is True
         assert len(executor.undo_stack) == 0
 
+    def test_track_undo_false_still_clears_the_redo_stack(self):
+        """Regression (PR #352 review): a flush-triggered commit (e.g. a
+        note force-saved before a project-lifecycle transition) still
+        genuinely changes project state even though it isn't itself pushed
+        onto the undo stack -- a stale redo-stack entry recorded before that
+        change must not survive it, or a later Redo could replay an
+        unrelated future state on top of what was just committed."""
+        executor = CommandExecutor()
+        tracked = MockCommand("Tracked")
+        executor.execute_command(tracked)
+        executor.undo()
+        assert len(executor.redo_stack) == 1
+
+        flushed = MockCommand("Flushed")
+        result = executor.execute_command(flushed, track_undo=False)
+
+        assert result is True
+        assert len(executor.redo_stack) == 0
+        assert len(executor.undo_stack) == 0  # flushed itself still isn't pushed
+
 
 class TestUndoFunctionality:
     """Test cases for undo functionality."""
