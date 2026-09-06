@@ -67,7 +67,7 @@ class DeleteItemCommand(Command):
                 self.parent_item = project.find_item(item.parent_id)
 
             # Get item name for user confirmation
-            item_name = getattr(item, "name", self.item_id)
+            item_name = item.name or self.item_id
             item_type = self.deleted_item_class.__name__.lower()
 
             # Confirm deletion (skipped when the caller already confirmed a
@@ -135,7 +135,7 @@ class DeleteItemCommand(Command):
             project.add_item(restored_item, parent_id=parent_id)
 
             # Get item info for logging
-            item_name = getattr(restored_item, "name", self.item_id)
+            item_name = restored_item.name or self.item_id
             item_type = self.deleted_item_class.__name__.lower()
 
             # Emit event
@@ -186,7 +186,7 @@ class DeleteItemCommand(Command):
             project.remove_item(item)
 
             # Get item info for logging and events
-            item_name = getattr(item, "name", self.item_id)
+            item_name = item.name or self.item_id
             item_type = self.deleted_item_class.__name__.lower()
 
             # Emit event

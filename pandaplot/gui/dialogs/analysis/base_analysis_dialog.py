@@ -186,7 +186,7 @@ class BaseAnalysisDialog(QDialog):
     
     def setup_column_choices(self):
         """Setup column choices from dataset."""
-        if self.dataset and hasattr(self.dataset, "data") and self.dataset.data is not None:
+        if self.dataset and self.dataset.data is not None:
             columns = list(self.dataset.data.columns)
             
             self.x_column_combo.addItems(columns)

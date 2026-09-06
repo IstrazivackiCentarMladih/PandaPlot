@@ -65,7 +65,7 @@ class TransformController(QObject):
             if not dataset or not isinstance(dataset, Dataset):
                 return None
             
-            if not hasattr(dataset, "data") or dataset.data is None:
+            if dataset.data is None:
                 return None
             
             df = dataset.data
@@ -123,7 +123,7 @@ class TransformController(QObject):
                 self.transform_failed.emit(dataset_id, "Dataset not found")
                 return False
             
-            if not hasattr(dataset, "data") or dataset.data is None:
+            if dataset.data is None:
                 self.transform_failed.emit(dataset_id, "Dataset has no data")
                 return False
             
@@ -222,7 +222,7 @@ class TransformController(QObject):
         """Get dataset from app context."""
         try:
             # Use the app state to get the current project and find the dataset
-            if self.app_context and hasattr(self.app_context, "app_state"):
+            if self.app_context and self.app_context.app_state:
                 app_state = self.app_context.app_state
                 if app_state.current_project:
                     return app_state.current_project.find_item(dataset_id)

@@ -515,8 +515,8 @@ class ChartPropertiesPanel(SidebarPanel):
                 self.logger.debug(
                     "Applied style to data series %d: %s (color=%s, marker_color=%s)",
                     current_row, series.label,
-                    getattr(series.style, "color", None),
-                    getattr(getattr(series.style, "marker", None), "marker_color", None),
+                    series.style.color if hasattr(series.style, "color") else None,
+                    series.style.marker.marker_color if hasattr(series.style, "marker") else None,
                 )
             else:
                 # Update fit data

@@ -823,13 +823,14 @@ class DataTab(QWidget):
             series.x_column_id = self.x_column_combo.currentData() or ""
             series.y_column_id = self.y_column_combo.currentData() or ""
             series.y_axis = self.series_y_axis_control.currentValue()
-            error_bars = getattr(series.style, "error_bars", None)
-            if error_bars is not None:
-                error_bars.x_error_column_id = self.x_error_column_combo.currentData() or ""
-                error_bars.y_error_column_id = self.y_error_column_combo.currentData() or ""
-                error_bars.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
-                error_bars.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
-                error_bars.error_symmetric = not self.error_asymmetric_check.isChecked()
+            if hasattr(series.style, "error_bars"):
+                error_bars = series.style.error_bars
+                if error_bars is not None:
+                    error_bars.x_error_column_id = self.x_error_column_combo.currentData() or ""
+                    error_bars.y_error_column_id = self.y_error_column_combo.currentData() or ""
+                    error_bars.x_error_minus_column_id = self.x_error_minus_column_combo.currentData() or ""
+                    error_bars.y_error_minus_column_id = self.y_error_minus_column_combo.currentData() or ""
+                    error_bars.error_symmetric = not self.error_asymmetric_check.isChecked()
             if self._selected_series_is_vector():
                 series.style.u_column_id = self.u_column_combo.currentData() or ""
                 series.style.v_column_id = self.v_column_combo.currentData() or ""
@@ -860,11 +861,11 @@ class DataTab(QWidget):
             # reentrancy hazard already fixed once for live-edit handlers
             # touching the reparented series form widget. Updating the
             # existing badge label in place avoids that entirely.
-            if getattr(self, "_expanded_card_y_axis_badge", None) is not None:
+            if self._expanded_card_y_axis_badge is not None:
                 self._apply_y_axis_badge_style(
                     self._expanded_card_y_axis_badge,
                     series.y_axis,
-                    getattr(self, "_expanded_card_y_axis_badge_tokens", {}),
+                    self._expanded_card_y_axis_badge_tokens,
                 )
         else:
             fit_index = current_row - total_series
@@ -1135,7 +1136,7 @@ class DataTab(QWidget):
             self.series_y_axis_control.setCurrentValue(series.y_axis)
 
             # Set error columns by id (block signals while populating)
-            error_bars = getattr(series.style, "error_bars", None) or ErrorBarConfig()
+            error_bars = series.style.error_bars if hasattr(series.style, "error_bars") and series.style.error_bars is not None else ErrorBarConfig()
             for combo, column_id in (
                 (self.x_error_column_combo, error_bars.x_error_column_id),
                 (self.y_error_column_combo, error_bars.y_error_column_id),
@@ -1148,10 +1149,10 @@ class DataTab(QWidget):
                 combo.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
             for combo, column_id in (
-                (self.u_column_combo, getattr(series.style, "u_column_id", "")),
-                (self.v_column_combo, getattr(series.style, "v_column_id", "")),
-                (self.magnitude_column_combo, getattr(series.style, "magnitude_column_id", "")),
-                (self.z_column_combo, getattr(series.style, "z_column_id", "")),
+                (self.u_column_combo, series.style.u_column_id if hasattr(series.style, "u_column_id") else ""),
+                (self.v_column_combo, series.style.v_column_id if hasattr(series.style, "v_column_id") else ""),
+                (self.magnitude_column_combo, series.style.magnitude_column_id if hasattr(series.style, "magnitude_column_id") else ""),
+                (self.z_column_combo, series.style.z_column_id if hasattr(series.style, "z_column_id") else ""),
             ):
                 combo.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
                 index = combo.findData(column_id)

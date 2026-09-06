@@ -1877,14 +1877,15 @@ class StyleTab(QWidget):
         # be gated (the Error Bars card itself is only shown for a series
         # whose spec supports error bars, but that visibility rule doesn't
         # protect this direct write).
-        error_bars = getattr(style, "error_bars", None)
-        if error_bars is not None:
-            error_bars.error_direction = self.error_direction_control.currentValue()
-            error_bars.error_color = (
-                "" if self.error_match_line_toggle.isChecked()
-                else self.error_color_row.currentColor()
-            )
-            error_bars.error_cap_size = self.error_cap_size_slider.value()
+        if hasattr(style, "error_bars"):
+            error_bars = style.error_bars
+            if error_bars is not None:
+                error_bars.error_direction = self.error_direction_control.currentValue()
+                error_bars.error_color = (
+                    "" if self.error_match_line_toggle.isChecked()
+                    else self.error_color_row.currentColor()
+                )
+                error_bars.error_cap_size = self.error_cap_size_slider.value()
 
         # Area fill. "Match line" reuses the "" == inherit-style.color
         # convention. fill_to_index is -1 (fill down to the constant baseline)
@@ -1919,42 +1920,65 @@ class StyleTab(QWidget):
 
     def load_series_style(self, series):
         """Populate the Line/Marker/Fill/Vector cards from a data series'
-        typed style object. Reads use getattr(..., default) throughout --
-        safe regardless of which of the 5 typed style classes `series.style`
-        actually is, since a hidden card's controls still get *some* value
-        (never shown, never applied back unless that card becomes visible
-        for a different series/chart-type selection)."""
+        typed style object."""
         previous_guard = self._updating_controls
         self._updating_controls = True
         try:
             style = series.style
 
-            self.vector_color_row.setCurrentColor(getattr(style, "vector_color", "#1f77b4"))
-            self.vector_colormap_control.setCurrentValue(getattr(style, "vector_colormap", ""))
-            self.vector_scale_slider.setValue(getattr(style, "vector_scale", 0.0))
-            self.vector_width_slider.setValue(getattr(style, "vector_width", 0.005))
-            self.vector_head_width_slider.setValue(getattr(style, "vector_head_width", 3.0))
-            self.vector_head_length_slider.setValue(getattr(style, "vector_head_length", 5.0))
-            self.vector_head_axis_length_slider.setValue(getattr(style, "vector_head_axis_length", 4.5))
+            if isinstance(style, VectorSeriesStyle):
+                self.vector_color_row.setCurrentColor(style.vector_color)
+                self.vector_colormap_control.setCurrentValue(style.vector_colormap)
+                self.vector_scale_slider.setValue(style.vector_scale)
+                self.vector_width_slider.setValue(style.vector_width)
+                self.vector_head_width_slider.setValue(style.vector_head_width)
+                self.vector_head_length_slider.setValue(style.vector_head_length)
+                self.vector_head_axis_length_slider.setValue(style.vector_head_axis_length)
+            else:
+                self.vector_color_row.setCurrentColor("#1f77b4")
+                self.vector_colormap_control.setCurrentValue("")
+                self.vector_scale_slider.setValue(0.0)
+                self.vector_width_slider.setValue(0.005)
+                self.vector_head_width_slider.setValue(3.0)
+                self.vector_head_length_slider.setValue(5.0)
+                self.vector_head_axis_length_slider.setValue(4.5)
 
             # Heatmap-only gridding/render fields (colormap/colorbar/scale
             # live on the Axes tab's "Color" chip instead -- see
             # AxesTab._read_color_axis_config).
-            self.heatmap_gridding_control.setCurrentValue(getattr(style, "heatmap_gridding", "grid"))
-            self.heatmap_resolution_spin.setValue(getattr(style, "heatmap_resolution", 50))
-            self.heatmap_render_mode_control.setCurrentValue(getattr(style, "render_mode", "mesh"))
-            self.heatmap_contour_levels_spin.setValue(getattr(style, "contour_levels", 10))
-            self.heatmap_contour_line_labels_toggle.setChecked(checked=getattr(style, "contour_line_labels", False))
-            self.heatmap_contour_line_width_slider.setValue(getattr(style, "contour_line_width", 1.5))
+            if hasattr(style, "heatmap_gridding"):
+                self.heatmap_gridding_control.setCurrentValue(style.heatmap_gridding)
+                self.heatmap_resolution_spin.setValue(style.heatmap_resolution)
+            else:
+                self.heatmap_gridding_control.setCurrentValue("grid")
+                self.heatmap_resolution_spin.setValue(50)
+
+            if isinstance(style, HeatmapSeriesStyle):
+                self.heatmap_render_mode_control.setCurrentValue(style.render_mode)
+                self.heatmap_contour_levels_spin.setValue(style.contour_levels)
+                self.heatmap_contour_line_labels_toggle.setChecked(checked=style.contour_line_labels)
+                self.heatmap_contour_line_width_slider.setValue(style.contour_line_width)
+            else:
+                self.heatmap_render_mode_control.setCurrentValue("mesh")
+                self.heatmap_contour_levels_spin.setValue(10)
+                self.heatmap_contour_line_labels_toggle.setChecked(checked=False)
+                self.heatmap_contour_line_width_slider.setValue(1.5)
             self._update_colormap_gridding_visibility()
 
-            color = getattr(style, "color", "#1f77b4")
+            color = style.color if hasattr(style, "color") else "#1f77b4"
             self.line_color_row.setCurrentColor(color)
-            self.line_width_slider.setValue(getattr(style, "line_width", 2.0))
+            if hasattr(style, "line_width"):
+                self.line_width_slider.setValue(style.line_width)
+            else:
+                self.line_width_slider.setValue(2.0)
             self.line_opacity_slider.setValue(series.alpha)
-            try:
-                self.line_style_control.setCurrentValue(LineStyleType(getattr(style, "line_style", "solid")))
-            except ValueError:
+
+            if hasattr(style, "line_style"):
+                try:
+                    self.line_style_control.setCurrentValue(LineStyleType(style.line_style))
+                except ValueError:
+                    self.line_style_control.setCurrentValue(LineStyleType.SOLID)
+            else:
                 self.line_style_control.setCurrentValue(LineStyleType.SOLID)
 
             # "Markers enabled" isn't a separate persisted flag: it's implied
@@ -1962,8 +1986,8 @@ class StyleTab(QWidget):
             # shape control keeps showing the last remembered shape
             # (defaulting to circle) rather than "none", since "none" isn't
             # offered as a selectable shape here.
-            marker = getattr(style, "marker", None)
-            marker_style_value = getattr(marker, "marker_style", MarkerType.NONE.value)
+            marker = style.marker if hasattr(style, "marker") else None
+            marker_style_value = marker.marker_style if marker is not None else MarkerType.NONE.value
             markers_enabled = marker_style_value != MarkerType.NONE.value
             self.markers_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.markers_enabled_toggle.setChecked(checked=markers_enabled)
@@ -1975,7 +1999,7 @@ class StyleTab(QWidget):
             except ValueError:
                 self.marker_shape_control.setCurrentValue(MarkerType.CIRCLE)
 
-            self.marker_size_slider.setValue(getattr(marker, "marker_size", 2.0))
+            self.marker_size_slider.setValue(marker.marker_size if marker is not None else 2.0)
 
             # marker_color == "" is the existing "match line color"
             # convention, now shared by marker_edge_color too. For a
@@ -1988,8 +2012,8 @@ class StyleTab(QWidget):
             # stale if this method is ever called without going through
             # set_selected first, e.g. a direct load in a test).
             is_z_driven = SERIES_TYPE_SPECS[series.series_type].uses_color_scale
-            marker_color = getattr(marker, "marker_color", "")
-            marker_edge_color = getattr(marker, "marker_edge_color", "")
+            marker_color = marker.marker_color if marker is not None else ""
+            marker_edge_color = marker.marker_edge_color if marker is not None else ""
             self.marker_color_row.setCurrentColor(marker_color or color)
             self.marker_edge_color_row.setCurrentColor(marker_edge_color or color)
             self.marker_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
@@ -1997,68 +2021,89 @@ class StyleTab(QWidget):
                 marker_edge_color == "" if is_z_driven else marker_color == ""
             )
             self.marker_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.marker_edge_width_slider.setValue(getattr(marker, "marker_edge_width", 1.0))
+            self.marker_edge_width_slider.setValue(marker.marker_edge_width if marker is not None else 1.0)
 
             self._update_marker_controls_enabled()
 
             self.value_labels_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.value_labels_enabled_toggle.setChecked(checked=getattr(style, "show_value_labels", False))
+            self.value_labels_enabled_toggle.setChecked(checked=style.show_value_labels if hasattr(style, "show_value_labels") else False)
             self.value_labels_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
-            self.value_labels_mode_control.setCurrentValue(getattr(style, "value_label_mode", "y"))
+            self.value_labels_mode_control.setCurrentValue(style.value_label_mode if hasattr(style, "value_label_mode") else "y")
             self.value_labels_arrow_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.value_labels_arrow_toggle.setChecked(checked=getattr(style, "value_label_show_arrow", False))
+            self.value_labels_arrow_toggle.setChecked(checked=style.value_label_show_arrow if hasattr(style, "value_label_show_arrow") else False)
             self.value_labels_arrow_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.value_labels_offset_x_spin.setValue(getattr(style, "value_label_offset_x", 0.0))
-            self.value_labels_offset_y_spin.setValue(getattr(style, "value_label_offset_y", 6.0))
+            self.value_labels_offset_x_spin.setValue(style.value_label_offset_x if hasattr(style, "value_label_offset_x") else 0.0)
+            self.value_labels_offset_y_spin.setValue(style.value_label_offset_y if hasattr(style, "value_label_offset_y") else 6.0)
 
-            value_label_text_color = getattr(style, "value_label_text_color", "")
+            value_label_text_color = style.value_label_text_color if hasattr(style, "value_label_text_color") else ""
             self.value_labels_text_color_row.setCurrentColor(value_label_text_color or color)
             self.value_labels_match_color_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.value_labels_match_color_toggle.setChecked(checked=value_label_text_color == "")
             self.value_labels_match_color_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
 
-            value_label_bg_color = getattr(style, "value_label_bg_color", "")
+            value_label_bg_color = style.value_label_bg_color if hasattr(style, "value_label_bg_color") else ""
             self.value_labels_bg_color_row.setCurrentColor(value_label_bg_color or color)
             self.value_labels_bg_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.value_labels_bg_enabled_toggle.setChecked(checked=value_label_bg_color != "")
             self.value_labels_bg_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.value_labels_bg_alpha_slider.setValue(getattr(style, "value_label_bg_alpha", 1.0))
+            self.value_labels_bg_alpha_slider.setValue(style.value_label_bg_alpha if hasattr(style, "value_label_bg_alpha") else 1.0)
 
             self._update_value_labels_controls_visibility()
 
             # Error-bar fields now live on style.error_bars; not every style
             # class declares one (Hist/Vector don't), so read defensively.
-            error_bars = getattr(style, "error_bars", None)
-            try:
-                self.error_direction_control.setCurrentValue(
-                    ErrorDirection(getattr(error_bars, "error_direction", ErrorDirection.BOTH))
-                )
-            except ValueError:
+            error_bars = style.error_bars if hasattr(style, "error_bars") else None
+            if error_bars is not None:
+                try:
+                    self.error_direction_control.setCurrentValue(
+                        ErrorDirection(error_bars.error_direction)
+                    )
+                except ValueError:
+                    self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
+                error_color = error_bars.error_color
+                self.error_cap_size_slider.setValue(error_bars.error_cap_size)
+            else:
                 self.error_direction_control.setCurrentValue(ErrorDirection.BOTH)
-            error_color = getattr(error_bars, "error_color", "")
+                error_color = ""
+                self.error_cap_size_slider.setValue(3.0)
+
             self.error_color_row.setCurrentColor(error_color or color)
             self.error_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
             self.error_match_line_toggle.setChecked(checked=error_color == "")
             self.error_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
             self._update_error_controls_visibility()
-            self.error_cap_size_slider.setValue(getattr(error_bars, "error_cap_size", 3.0))
 
             self._populate_fill_to_options(series)
-            self.fill_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_enabled_toggle.setChecked(checked=getattr(style, "fill_enabled", False))
-            self.fill_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_horizontal_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_horizontal_toggle.setChecked(checked=getattr(style, "fill_orientation", "vertical") == "horizontal")
-            self.fill_horizontal_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_to_control.setCurrentValue(getattr(style, "fill_to_index", -1))
-            self.fill_base_spin.setValue(getattr(style, "fill_base", 0.0))
-            fill_color = getattr(style, "fill_color", "")
-            self.fill_color_row.setCurrentColor(fill_color or color)
-            self.fill_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_match_line_toggle.setChecked(checked=fill_color == "")
-            self.fill_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
-            self.fill_opacity_slider.setValue(getattr(style, "fill_alpha", 0.3))
+            if isinstance(style, LineSeriesStyle):
+                self.fill_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_enabled_toggle.setChecked(checked=style.fill_enabled)
+                self.fill_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_horizontal_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_horizontal_toggle.setChecked(checked=style.fill_orientation == "horizontal")
+                self.fill_horizontal_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_to_control.setCurrentValue(style.fill_to_index)
+                self.fill_base_spin.setValue(style.fill_base)
+                fill_color = style.fill_color
+                self.fill_color_row.setCurrentColor(fill_color or color)
+                self.fill_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_match_line_toggle.setChecked(checked=fill_color == "")
+                self.fill_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_opacity_slider.setValue(style.fill_alpha)
+            else:
+                self.fill_enabled_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_enabled_toggle.setChecked(checked=False)
+                self.fill_enabled_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_horizontal_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_horizontal_toggle.setChecked(checked=False)
+                self.fill_horizontal_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_to_control.setCurrentValue(-1)
+                self.fill_base_spin.setValue(0.0)
+                self.fill_color_row.setCurrentColor(color)
+                self.fill_match_line_toggle.blockSignals(True)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_match_line_toggle.setChecked(checked=True)
+                self.fill_match_line_toggle.blockSignals(False)  # noqa: FBT003 - Qt bound method, positional-only
+                self.fill_opacity_slider.setValue(0.3)
             self._update_fill_controls_visibility()
         finally:
             self._updating_controls = previous_guard
@@ -2331,14 +2376,21 @@ class StyleTab(QWidget):
 
     # -- Chart size/dpi combo helpers -----------------------------------------
 
+    def _get_chart_display_config(self):
+        if not self.app_context:
+            return None
+        try:
+            cfg_manager = self.app_context.get_manager(ConfigManager)
+            if cfg_manager and cfg_manager.config:
+                return cfg_manager.config.chart_display
+        except AttributeError:
+            pass
+        return None
+
     def _measurement_unit(self) -> LengthUnit:
         """Read the app-wide chart-size display unit from Settings."""
-        try:
-            cfg_manager = self.app_context.get_manager(ConfigManager) if self.app_context else None
-        except AttributeError:
-            cfg_manager = None
-        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
-        unit = getattr(display_cfg, "measurement_unit", LengthUnit.CM) if display_cfg else LengthUnit.CM
+        display_cfg = self._get_chart_display_config()
+        unit = display_cfg.measurement_unit if display_cfg else LengthUnit.CM
         return unit if isinstance(unit, LengthUnit) else LengthUnit.CM
 
     def _configure_size_spin(self, spin, min_cm: float, max_cm: float) -> None:
@@ -2378,12 +2430,10 @@ class StyleTab(QWidget):
 
     def _app_chart_display_defaults(self):
         """Read the app-wide default chart width/height/dpi from Settings."""
-        cfg_manager = self.app_context.get_manager(ConfigManager)
-        display_cfg = getattr(getattr(cfg_manager, "config", None), "chart_display", None)
-        default_width = getattr(display_cfg, "default_width_cm", 20.0) if display_cfg else 20.0
-        default_height = getattr(display_cfg, "default_height_cm", 15.0) if display_cfg else 15.0
-        default_dpi = getattr(display_cfg, "dpi", 100) if display_cfg else 100
-        return default_width, default_height, default_dpi
+        display_cfg = self._get_chart_display_config()
+        if display_cfg:
+            return display_cfg.default_width_cm, display_cfg.default_height_cm, display_cfg.dpi
+        return 20.0, 15.0, 100
 
     def _effective_chart_size_dpi(self):
         """Resolve the chart's current effective (width_cm, height_cm, dpi),
