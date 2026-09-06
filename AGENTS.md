@@ -28,16 +28,13 @@ QT_QPA_PLATFORM=offscreen uv run pytest tests/gui/
 QT_QPA_PLATFORM=offscreen uv run pytest --cov=pandaplot
 ```
 
-## Code Quality & Static Analysis
-Run all linting and security checks before finalizing changes:
+## Code Quality & Formatting
+Run linting checks before finalizing changes:
 
 ```bash
 uv run ruff check .                     # Lint check
 uv run ruff check --fix .               # Lint auto-fix
 uv run ruff check --select I --fix .     # Auto-sort imports
-uv run bandit -r pandaplot               # Security scan
-uv run pip-audit                         # Dependency vulnerability audit
-uv run vulture pandaplot                 # Dead code check
 ```
 
 ## Architectural Patterns

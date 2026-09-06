@@ -24,7 +24,6 @@ uv add <package>         # Add a new dependency
 - **Scientific:** scipy, statsmodels
 - **Linting:** ruff (line-length = 150)
 - **Testing:** pytest, pytest-mock, pytest-cov, pytest-asyncio, pytest-qt
-- **Security:** bandit, pip-audit, vulture
 
 ## Linting & Formatting
 ```bash

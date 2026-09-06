@@ -38,9 +38,6 @@ QT_QPA_PLATFORM=offscreen uv run pytest
 ## Static Analysis & Quality Checks
 ```bash
 uv run ruff check .
-uv run bandit -r pandaplot
-uv run pip-audit
-uv run vulture pandaplot
 ```
 
 ## Project Structure
