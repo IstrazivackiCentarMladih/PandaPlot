@@ -167,6 +167,66 @@ def test_undo_flushes_pending_note_edits_before_restoring_the_previous_project(m
     assert app_state.current_project is previous_project
 
 
+def test_redo_restores_the_created_projects_dirty_state():
+    """Regression (PR #352 review): a note edited in the newly-created
+    project (flushed during undo(), or dirtied by any other command) must
+    not have that dirty state silently discarded when redo() reinstalls
+    this exact project via load_project(), which unconditionally reports
+    whatever it loads as clean."""
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "New"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+    created_project = command.created_project
+
+    # Simulate a note edit (or any command) dirtying the newly-created
+    # project after it was created.
+    app_state.mark_modified()
+
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+
+    assert command.redo() is CommandResult.SUCCESS
+    assert app_state.current_project is created_project
+    assert app_state.is_modified is True
+
+
+def test_undo_restores_a_dirty_state_that_arose_after_a_prior_redo():
+    """The previous_was_modified snapshot must be refreshed on every redo(),
+    not just captured once at the original execute() -- otherwise an edit
+    made to the previous project during the window between an undo() and a
+    later redo() gets silently forgotten the next time undo() runs again."""
+    app_state = AppState(EventBus())
+    previous_project = Mock()
+    previous_project.name = "Previous"
+    app_state.load_project(previous_project)
+
+    app_context = Mock()
+    app_context.get_app_state.return_value = app_state
+    app_context.get_ui_controller.return_value.show_new_project_dialog.return_value = "New"
+
+    command = NewProjectCommand(app_context)
+    assert command.execute() is CommandResult.SUCCESS
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+
+    # Dirty the previous project while it's active, in the window between
+    # this undo() and the redo() below.
+    app_state.mark_modified()
+
+    assert command.redo() is CommandResult.SUCCESS
+    assert command.undo() is CommandResult.SUCCESS
+    assert app_state.current_project is previous_project
+    assert app_state.is_modified is True
+
+
 def test_undo_aborts_and_reports_an_error_when_flush_fails(monkeypatch):
     """Regression (PR #352 review): must return ABORTED, not FAILURE --
     CommandExecutor.undo() moves the command to the redo stack regardless

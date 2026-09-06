@@ -31,6 +31,11 @@ class NewProjectCommand(Command):
         # restore that exact object instead of calling execute() again --
         # see redo().
         self.created_project: Optional[Project] = None
+        # Whether created_project had unsaved changes when undo() last swapped
+        # away from it (e.g. a note edit flushed during that same undo()),
+        # so redo() can restore that dirty state rather than letting
+        # load_project() reset it to "no changes" -- see undo()/redo().
+        self.created_project_was_modified = False
 
     @override
     def marks_project_modified(self) -> bool:
@@ -115,6 +120,13 @@ class NewProjectCommand(Command):
             return CommandResult.ABORTED
 
         try:
+            # Capture created_project's dirty state (the flush above may
+            # have just set it) before swapping away from it -- otherwise a
+            # later redo() would reinstall this exact project via
+            # load_project(), which unconditionally reports it as clean,
+            # silently discarding that it actually has unsaved content.
+            self.created_project_was_modified = self.app_state.is_modified
+
             if self.previous_project:
                 # Restore previous project. load_project() unconditionally
                 # resets is_modified to False (correct for a fresh disk
@@ -169,7 +181,15 @@ class NewProjectCommand(Command):
             return CommandResult.ABORTED
 
         try:
+            # Refresh previous_was_modified in case this flush just dirtied
+            # whatever project is currently active -- otherwise a later
+            # undo() of this redo would restore a stale (pre-flush) dirty
+            # flag instead of the current one.
+            self.previous_was_modified = self.app_state.is_modified
+
             self.app_state.load_project(self.created_project)
+            if self.created_project_was_modified:
+                self.app_state.mark_modified()
 
             # A brand new project has no file yet; don't restore the previous
             # project's path next launch until this one is saved (mirrors
