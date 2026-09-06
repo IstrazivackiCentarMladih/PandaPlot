@@ -57,7 +57,7 @@ class ImageEditorDialog(PDialog):
         self._redo_stack: list[QImage] = []
 
         self._initialize()
-        self._update_preview()
+        self._update_info_label()
         self._sync_control_values()
 
     @override
@@ -197,6 +197,7 @@ class ImageEditorDialog(PDialog):
 
         QShortcut(QKeySequence("Ctrl+Z"), self, activated=self._undo)
         QShortcut(QKeySequence("Ctrl+Y"), self, activated=self._redo)
+        QShortcut(QKeySequence("Ctrl+Shift+Z"), self, activated=self._redo)
 
     @override
     def _apply_theme(self):
@@ -212,22 +213,29 @@ class ImageEditorDialog(PDialog):
         self.spin_height.setValue(h)
         self._updating_resize_spinboxes = False
 
+        # set_image() unconditionally resets the canvas rect to the new
+        # full bounds, ignoring any active aspect lock -- _reapply_current_
+        # aspect_lock() below reflows that reset rect back to the currently
+        # selected lock (a no-op if the selection is "Free").
         self.crop_canvas.set_image(self.working_qimage)
-        rect = self.crop_canvas.crop_rect()
 
+        # Guarded: a spinbox still holding a value from the *previous* image
+        # size can get silently clamped by setRange() itself (e.g. the old
+        # width no longer fits the new, narrower range), which emits
+        # valueChanged and would otherwise re-enter _on_crop_spinbox_changed
+        # with a stale, partially-updated rect before the real values below
+        # are written.
         self._updating_crop_spinboxes = True
         self.spin_crop_x.setRange(0, max(0, w - 1))
         self.spin_crop_y.setRange(0, max(0, h - 1))
         self.spin_crop_w.setRange(1, w)
         self.spin_crop_h.setRange(1, h)
-
-        self.spin_crop_x.setValue(rect.x())
-        self.spin_crop_y.setValue(rect.y())
-        self.spin_crop_w.setValue(rect.width())
-        self.spin_crop_h.setValue(rect.height())
         self._updating_crop_spinboxes = False
 
-    def _update_preview(self):
+        self._reapply_current_aspect_lock()
+        self._write_crop_spinboxes(self.crop_canvas.crop_rect())
+
+    def _update_info_label(self):
         self.info_label.setText(
             f"Current Size: {self.working_qimage.width()} × {self.working_qimage.height()} px"
         )
@@ -265,7 +273,7 @@ class ImageEditorDialog(PDialog):
         self._redo_stack.append(QImage(self.working_qimage))
         self.working_qimage = self._undo_stack.pop()
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
         self._refresh_undo_redo_buttons()
 
     def _redo(self) -> None:
@@ -274,7 +282,7 @@ class ImageEditorDialog(PDialog):
         self._undo_stack.append(QImage(self.working_qimage))
         self.working_qimage = self._redo_stack.pop()
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
         self._refresh_undo_redo_buttons()
 
     def _rotate(self, degrees: int):
@@ -284,7 +292,7 @@ class ImageEditorDialog(PDialog):
             transform, Qt.TransformationMode.SmoothTransformation
         )
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
 
     def _apply_resize(self):
         target_w = self.spin_width.value()
@@ -299,7 +307,7 @@ class ImageEditorDialog(PDialog):
             Qt.TransformationMode.SmoothTransformation,
         )
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
 
     def _clamp_crop_rect(self, rect: QRect) -> QRect:
         return clamp_rect_to_bounds(rect, self.working_qimage.width(), self.working_qimage.height())
@@ -320,40 +328,73 @@ class ImageEditorDialog(PDialog):
             self.spin_crop_w.value(), self.spin_crop_h.value(),
         )
         clamped = self._clamp_crop_rect(rect)
-        self._write_crop_spinboxes(clamped)
         self.crop_canvas.set_crop_rect(clamped)
+        # A spinbox edit doesn't go through the canvas's own drag-time lock
+        # enforcement, so an active lock has to be reapplied explicitly here
+        # -- otherwise editing a spinbox while locked could leave the canvas
+        # rect (and the values written back below) violating the lock.
+        self._reapply_current_aspect_lock()
+        self._write_crop_spinboxes(self.crop_canvas.crop_rect())
 
     def _on_canvas_crop_rect_changed(self, rect: QRect) -> None:
         self._write_crop_spinboxes(rect)
 
     _ASPECT_RATIOS = {"1:1": 1.0, "16:9": 16 / 9, "4:3": 4 / 3}
 
-    def _on_aspect_changed(self, label: str) -> None:
+    def _resolve_aspect_ratio_for_label(self, label: str) -> Optional[float]:
+        """Resolves an aspect-combo label to a lock ratio (or None for
+        "Free"). "Original" is resolved against self.aspect_ratio at call
+        time (not memoized), so it always reflects the working image's
+        *current* orientation -- important because it's re-resolved after
+        every rotate, not just when the combo selection itself changes."""
         if label == "Free":
-            self.crop_canvas.set_aspect_lock(None)
-        elif label == "Original":
-            self.crop_canvas.set_aspect_lock(self.aspect_ratio)
-        else:
-            self.crop_canvas.set_aspect_lock(self._ASPECT_RATIOS[label])
+            return None
+        if label == "Original":
+            return self.aspect_ratio
+        return self._ASPECT_RATIOS[label]
+
+    def _on_aspect_changed(self, label: str) -> None:
+        self.crop_canvas.set_aspect_lock(self._resolve_aspect_ratio_for_label(label))
+
+    def _reapply_current_aspect_lock(self) -> None:
+        """Re-resolves and reapplies the currently selected aspect-combo
+        option to the canvas.
+
+        Needed in two situations that both come down to the same fix: (1)
+        every commit (rotate/resize/crop/reset) resets the canvas rect to
+        full bounds via set_image(), which ignores any active lock, and (2)
+        "Original" must track the working image's ratio *after* a rotate,
+        not the ratio at the moment "Original" was selected. Both are just
+        "recompute the current label's ratio and reapply it," so this is
+        the single method _sync_control_values() and _on_crop_spinbox_
+        changed() both call, rather than duplicating _on_aspect_changed's
+        resolution logic in either place."""
+        label = self.aspect_combo.currentText()
+        self.crop_canvas.set_aspect_lock(self._resolve_aspect_ratio_for_label(label))
 
     def _apply_crop(self):
         rect = self._clamp_crop_rect(QRect(
             self.spin_crop_x.value(), self.spin_crop_y.value(),
             self.spin_crop_w.value(), self.spin_crop_h.value(),
         ))
-        if rect.isEmpty():
+        full_bounds = QRect(0, 0, self.working_qimage.width(), self.working_qimage.height())
+        if rect == full_bounds:
+            # No-op crop (e.g. the user opened the aspect combo but never
+            # actually dragged/typed a smaller region) -- skip the undo
+            # push and the full image copy, both wasted for a crop that
+            # changes nothing.
             return
 
         self._push_undo_snapshot()
         self.working_qimage = self.working_qimage.copy(rect)
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
 
     def _reset_edits(self):
         self._push_undo_snapshot()
         self.working_qimage = QImage(self.original_qimage)
         self._sync_control_values()
-        self._update_preview()
+        self._update_info_label()
 
     def _resolve_output_format(self) -> tuple[str, str]:
         """Returns (qt_format_name, result_ext). Falls back to PNG if the
@@ -374,7 +415,15 @@ class ImageEditorDialog(PDialog):
         qt_format, _ = self._resolve_output_format()
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        self.working_qimage.save(buffer, qt_format)
+        if not self.working_qimage.save(buffer, qt_format):
+            # QImage.save() returning False means the buffer holds nothing
+            # usable -- without this check that would silently flow through
+            # as empty bytes, which EditImageCommand would then persist as
+            # the image's new (corrupt/empty) content.
+            raise RuntimeError(
+                f"Failed to encode the edited image as {qt_format}; refusing to "
+                "return empty/partial image bytes."
+            )
         return bytes(buffer.data())
 
     def get_result_width(self) -> int:
