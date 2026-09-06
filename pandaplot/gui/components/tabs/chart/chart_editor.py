@@ -496,6 +496,11 @@ class ChartEditorWidget(PWidget):
         # from scratch on every update_chart() (see axes.clear() below).
         self._artist_series_map: dict = {}
         self._last_hover_check_time: float = 0.0
+        # Trailing-edge state for the hover throttle: the most recent
+        # motion event skipped by it, and whether a timer is already
+        # queued to re-check it (see _schedule_hover_flush).
+        self._pending_hover_event = None
+        self._hover_flush_scheduled: bool = False
 
         self._initialize()
         self.load_chart_config()
@@ -1556,15 +1561,53 @@ class ChartEditorWidget(PWidget):
         and a chart can have one mapped artist per bar/data point, so
         testing all of them on every raw mouse-move (which fire far faster
         than the eye can perceive) would scale with chart size and could
-        make large charts feel unresponsive while panning the mouse.
+        make large charts feel unresponsive while panning the mouse. A
+        throttled-away event isn't just dropped, though: it's kept as
+        `_pending_hover_event` and re-evaluated by a trailing timer, so the
+        cursor still settles on the pointer's *final* position instead of
+        possibly freezing on a stale hit-test from mid-gesture.
         """
         if not isValid(self.chart_canvas):
             return
+        # The pick handler suppresses picks during a pan/zoom drag for the
+        # same reason (see _on_pick_event) -- also leave the toolbar's own
+        # pan/zoom cursor alone here rather than fighting it every move.
+        toolbar = getattr(self.chart_canvas, "toolbar", None)
+        if toolbar is not None and getattr(toolbar, "mode", None):
+            return
+
         now = time.monotonic()
         if now - self._last_hover_check_time < self._HOVER_THROTTLE_SECONDS:
+            self._schedule_hover_flush(event)
             return
         self._last_hover_check_time = now
+        self._pending_hover_event = None
+        self._apply_hover_cursor(event)
 
+    def _schedule_hover_flush(self, event):
+        """Remember `event` as the position to re-check once the throttle
+        window clears, coalescing any events already waiting -- at most one
+        trailing timer is ever in flight."""
+        self._pending_hover_event = event
+        if self._hover_flush_scheduled:
+            return
+        self._hover_flush_scheduled = True
+        remaining = self._HOVER_THROTTLE_SECONDS - (time.monotonic() - self._last_hover_check_time)
+        QTimer.singleShot(max(0, int(remaining * 1000)), self._flush_pending_hover)
+
+    def _flush_pending_hover(self):
+        self._hover_flush_scheduled = False
+        event = self._pending_hover_event
+        self._pending_hover_event = None
+        if event is None or not isValid(self.chart_canvas):
+            return
+        toolbar = getattr(self.chart_canvas, "toolbar", None)
+        if toolbar is not None and getattr(toolbar, "mode", None):
+            return
+        self._last_hover_check_time = time.monotonic()
+        self._apply_hover_cursor(event)
+
+    def _apply_hover_cursor(self, event):
         # No `inaxes` gate: an outside-positioned legend (outside_right/top/
         # bottom, or a custom anchor beyond the axes) reports `inaxes is
         # None` there even though its handles/texts are still pickable --
@@ -1579,7 +1622,11 @@ class ChartEditorWidget(PWidget):
     def _on_canvas_leave(self, event):
         """Reset the cursor when the mouse leaves the canvas entirely --
         otherwise it can be left stuck as a pointing hand, since no further
-        `motion_notify_event`s fire outside the canvas to reset it."""
+        `motion_notify_event`s fire outside the canvas to reset it. Also
+        drops any pending trailing hover check -- it would otherwise fire
+        moments later using a stale (now off-canvas) position and stomp on
+        the arrow cursor this just set."""
+        self._pending_hover_event = None
         if isValid(self.chart_canvas):
             self.chart_canvas.setCursor(Qt.CursorShape.ArrowCursor)
 

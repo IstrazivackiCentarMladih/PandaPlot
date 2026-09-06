@@ -1,5 +1,6 @@
 """Tests for chart series selection by clicking on graph artists or legend items."""
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -210,3 +211,88 @@ def test_pick_event_ignored_while_toolbar_pan_zoom_active():
     widget.chart_canvas.toolbar.mode = _Mode.NONE
     widget._on_pick_event(SimpleNamespace(artist=target_artist))
     listener.assert_called_once()
+
+
+def test_hover_cursor_ignored_while_toolbar_pan_zoom_active():
+    """The toolbar owns the cursor during a pan/zoom drag (its own
+    crosshair/hand) -- the hover handler must leave it alone rather than
+    fighting it on every move (#341 review)."""
+    _qapp()
+    app_ctx = build_app_context()
+    project, dataset, chart = _make_project_and_chart()
+    app_ctx.app_state.load_project(project)
+
+    widget = ChartEditorWidget(app_context=app_ctx, chart=chart, parent=None)
+    fake_artist = MagicMock()
+    fake_artist.contains.return_value = (True, {})
+    widget._artist_series_map = {fake_artist: 0}
+    widget.chart_canvas.setCursor(Qt.CursorShape.ArrowCursor)
+
+    widget.chart_canvas.toolbar.mode = _Mode.PAN
+    widget._on_canvas_motion(SimpleNamespace(inaxes=widget.chart_canvas.axes))
+
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
+    fake_artist.contains.assert_not_called()
+
+
+def test_throttled_hover_event_is_flushed_by_trailing_timer():
+    """A motion event skipped by the throttle isn't just dropped -- it's
+    re-evaluated once the throttle window clears, so the cursor still
+    settles on the pointer's final position instead of possibly freezing
+    mid-gesture (#341 review)."""
+    _qapp()
+    app_ctx = build_app_context()
+    project, dataset, chart = _make_project_and_chart()
+    app_ctx.app_state.load_project(project)
+
+    widget = ChartEditorWidget(app_context=app_ctx, chart=chart, parent=None)
+    fake_artist = MagicMock()
+    widget._artist_series_map = {fake_artist: 0}
+
+    # First call goes through immediately (bypassing the throttle floor).
+    widget._last_hover_check_time = 0.0
+    fake_artist.contains.return_value = (False, {})
+    widget._on_canvas_motion(SimpleNamespace(inaxes=widget.chart_canvas.axes))
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+    # Second call lands inside the throttle window -- skipped for now, but
+    # queued as the pending event rather than discarded.
+    hit_event = SimpleNamespace(inaxes=widget.chart_canvas.axes)
+    fake_artist.contains.return_value = (True, {})
+    widget._on_canvas_motion(hit_event)
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
+    assert widget._pending_hover_event is hit_event
+    assert widget._hover_flush_scheduled is True
+
+    # Simulate the trailing timer firing: the final position is evaluated.
+    widget._flush_pending_hover()
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.PointingHandCursor
+    assert widget._pending_hover_event is None
+    assert widget._hover_flush_scheduled is False
+
+
+def test_pending_hover_event_is_dropped_on_canvas_leave():
+    """A flush queued just before the mouse leaves the canvas must not
+    later fire on the stale (now off-canvas) position and stomp on the
+    arrow cursor the leave handler just set (#341 review)."""
+    _qapp()
+    app_ctx = build_app_context()
+    project, dataset, chart = _make_project_and_chart()
+    app_ctx.app_state.load_project(project)
+
+    widget = ChartEditorWidget(app_context=app_ctx, chart=chart, parent=None)
+    fake_artist = MagicMock()
+    widget._artist_series_map = {fake_artist: 0}
+
+    widget._last_hover_check_time = time.monotonic()
+    fake_artist.contains.return_value = (True, {})
+    widget._on_canvas_motion(SimpleNamespace(inaxes=widget.chart_canvas.axes))
+    assert widget._pending_hover_event is not None
+
+    widget._on_canvas_leave(SimpleNamespace())
+    assert widget._pending_hover_event is None
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+    # The timer fires later regardless -- it must be a no-op now.
+    widget._flush_pending_hover()
+    assert widget.chart_canvas.cursor().shape() == Qt.CursorShape.ArrowCursor
